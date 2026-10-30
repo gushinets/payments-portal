@@ -526,19 +526,28 @@ def write_runtime(config: RuntimeConfig) -> None:
 
 
 def quote_runtime_value(value: str) -> str:
-    # Compose's $$ escape survives interpolation; JSON quoting preserves quotes,
-    # backslashes (including a trailing backslash), whitespace and comments.
-    if any(char in "$#'\\\"" or char.isspace() for char in value):
-        return json.dumps(value, ensure_ascii=False).replace("$", "$$")
+    # Compose dotenv has its own escape grammar: JSON emits unsupported \u
+    # escapes for controls such as vertical tab, silently changing signing keys.
+    escapes = {
+        "\\": r"\\",
+        '"': r"\"",
+        "$": "$$",
+        "\a": r"\a",
+        "\b": r"\b",
+        "\t": r"\t",
+        "\v": r"\v",
+        "\f": r"\f",
+    }
+    if any(ord(char) < 32 and char not in escapes for char in value):
+        raise HarnessError("Unsupported control character in runtime configuration")
+    if any(char in "$#'\\\"" or char.isspace() or ord(char) < 32 for char in value):
+        return '"' + "".join(escapes.get(char, char) for char in value) + '"'
     return value
 
 
 def unquote_runtime_value(value: str) -> str:
-    if len(value) >= 2 and value.startswith('"') and value.endswith('"'):
-        return json.loads(value).replace("$$", "$")
-    if len(value) >= 2 and value.startswith("'") and value.endswith("'"):
-        return value[1:-1].replace("\\'", "'")
-    return value
+    # Read the same Compose-compatible syntax that the writer produces.
+    return dotenv_value(value, 0).replace("$$", "$")
 
 
 def kernel_mock_enabled() -> bool:

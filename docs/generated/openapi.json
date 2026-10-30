@@ -623,7 +623,7 @@
             "type": "string"
           },
           "product_id": {
-            "maxLength": 256,
+            "maxLength": 1024,
             "minLength": 1,
             "title": "Product Id",
             "type": "string"
@@ -710,7 +710,7 @@
         "additionalProperties": false,
         "properties": {
           "product_id": {
-            "maxLength": 256,
+            "maxLength": 1024,
             "minLength": 1,
             "title": "Product Id",
             "type": "string"
@@ -2124,7 +2124,7 @@
             "name": "product_id",
             "required": true,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 1024,
               "minLength": 1,
               "title": "Product Id",
               "type": "string"

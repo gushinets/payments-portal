@@ -245,3 +245,55 @@ it("cannot mount payment for a different target returned by bootstrap", async ()
   expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.errors.sdk);
   expect(mount).not.toHaveBeenCalled();
 });
+
+
+it.each(["inventory", "deep-link"])("retains a safe server request ID for %s failures and clears it after recovery", async (source) => {
+  const correlation = "synthetic-cabinet-correlation";
+  const failure = json({ detail: { code: "unavailable", request_id: correlation, private: "private-detail" } }, 503);
+  if (source === "inventory") list.mockResolvedValueOnce(failure);
+  else status.mockResolvedValueOnce(failure);
+  renderCabinet(source === "deep-link" ? first.purchase_intent_id : undefined);
+  const region = screen.getByRole("region", { name: source === "inventory" ? ru.Account.products.title : ru.Billing.title });
+  expect(await within(region).findByRole("alert")).toHaveTextContent(correlation);
+  expect(document.body).not.toHaveTextContent("private-detail");
+  if (source === "inventory") fireEvent.click(within(region).getByRole("button", { name: ru.Purchase.retry }));
+  else fireEvent.change(selector(), { target: { value: "" } });
+  await waitFor(() => expect(within(region).queryByRole("alert")).not.toBeInTheDocument());
+  expect(document.body).not.toHaveTextContent(correlation);
+});
+
+it.each(["inventory", "deep-link"])("uses the sent request ID for a %s network failure", async (source) => {
+  if (source === "inventory") list.mockRejectedValueOnce(new TypeError("private-network-detail"));
+  else status.mockRejectedValueOnce(new TypeError("private-network-detail"));
+  renderCabinet(source === "deep-link" ? first.purchase_intent_id : undefined);
+  const region = screen.getByRole("region", { name: source === "inventory" ? ru.Account.products.title : ru.Billing.title });
+  const alert = await within(region).findByRole("alert");
+  const request = fetcher.mock.calls.find(([url]) => source === "inventory" ? new URL(String(url)).pathname === "/api/purchase-intents" : new URL(String(url)).pathname === `/api/purchase-intents/${first.purchase_intent_id}`);
+  const sent = new Headers(request?.[1]?.headers).get("X-Request-ID");
+  expect(sent).toMatch(/^[a-f0-9]{32}$/);
+  expect(alert).toHaveTextContent(sent!);
+  expect(document.body).not.toHaveTextContent("private-network-detail");
+});
+
+it.each(["inventory", "deep-link"])("clears %s diagnostics on a session change and ignores a late failure", async (source) => {
+  const correlation = "synthetic-old-session";
+  let finish!: (value: Response) => void;
+  const delayed = new Promise<Response>((resolve) => { finish = resolve; });
+  if (source === "inventory") list.mockReturnValueOnce(delayed);
+  else status.mockReturnValueOnce(delayed);
+  renderCabinet(source === "deep-link" ? first.purchase_intent_id : undefined);
+  await waitFor(() => expect(source === "inventory" ? list : status).toHaveBeenCalled());
+  act(() => { window.localStorage.clear(); window.dispatchEvent(new Event(sessionChangedEvent)); });
+  await act(async () => finish(json({ detail: { code: "unavailable", request_id: correlation } }, 503)));
+  expect(document.body).not.toHaveTextContent(correlation);
+  expect(document.body).not.toHaveTextContent(/Идентификатор запроса: [a-z0-9]/i);
+});
+
+it("does not display an unsafe server request ID", async () => {
+  list.mockResolvedValueOnce(json({ detail: { code: "unavailable", request_id: "private unsafe<value>" } }, 503));
+  renderCabinet();
+  const alert = await within(screen.getByRole("region", { name: ru.Account.products.title })).findByRole("alert");
+  expect(alert).not.toHaveTextContent("private unsafe");
+  const request = fetcher.mock.calls.find(([url]) => new URL(String(url)).pathname === "/api/purchase-intents");
+  expect(alert).toHaveTextContent(new Headers(request?.[1]?.headers).get("X-Request-ID")!);
+});

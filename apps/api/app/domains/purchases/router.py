@@ -17,6 +17,7 @@ from app.core.settings import settings
 from app.domains.billing.contracts import BillingAccountFailure, BillingRefused
 from app.infrastructure.sentry import FailureCategory, Operation, report_exception
 from app.domains.catalog.commercial_offer import canonical_decimal
+from app.domains.catalog.contracts import MAX_PRODUCT_ID_LENGTH
 from app.domains.catalog.product_link import CurrentOffer
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases.contracts import (
@@ -38,7 +39,7 @@ PurchaseAmount = Annotated[str, Field(pattern=r"^(0|[1-9][0-9]*)(\.[0-9]+)?$")]
 
 class PurchaseReviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    product_id: str = Field(min_length=1, max_length=256)
+    product_id: str = Field(min_length=1, max_length=MAX_PRODUCT_ID_LENGTH)
 
 
 class PurchaseConfirmRequest(PurchaseReviewRequest):
@@ -238,7 +239,7 @@ async def confirm(
 async def current(
     response: Response,
     factory: Annotated[SessionFactory, Depends(get_session_factory)],
-    product_id: Annotated[str, Query(min_length=1, max_length=256)],
+    product_id: Annotated[str, Query(min_length=1, max_length=MAX_PRODUCT_ID_LENGTH)],
     authorization: Annotated[str | None, Header()] = None,
 ) -> CurrentPurchaseResponse:
     response.headers["Cache-Control"] = "no-store"

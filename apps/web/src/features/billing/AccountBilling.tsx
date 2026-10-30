@@ -6,10 +6,12 @@ import type { PurchaseIntentResponse } from "@/generated/api-contracts/types.gen
 import { Link } from "@/i18n/navigation";
 import { purchaseStatus } from "@/shared/api/purchases";
 import { subscribeToSessionChanges, useSessionOperation } from "@/shared/session/use-session-operation";
-import { newRequestId } from "./errors";
+import { newRequestId, safeRequestId } from "./errors";
 import { useAccountPurchases } from "./use-account-purchases";
 import { useBillingWidget } from "./use-billing-widget";
 import { WidgetView } from "./WidgetView";
+
+type SelectionState = { status: "loading" | "ready" } | { status: "error"; requestId: string };
 
 type AccountBillingProps = { userId: string; emailVerified: boolean; initialPurchaseId?: string };
 
@@ -27,21 +29,22 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   // undefined permits a visible single-purchase default; null explicitly selects account viewing.
   const [selectedId, setSelectedId] = useState<string | null | undefined>(initialPurchaseId);
   const [deepPurchase, setDeepPurchase] = useState<PurchaseIntentResponse | null>(null);
-  const [selectionStatus, setSelectionStatus] = useState<"loading" | "ready" | "error">(initialPurchaseId && emailVerified ? "loading" : "ready");
+  const [selectionState, setSelectionState] = useState<SelectionState>({ status: initialPurchaseId && emailVerified ? "loading" : "ready" });
 
   useEffect(() => {
     if (!initialPurchaseId || !emailVerified) return;
     const operation = begin();
+    const requestId = newRequestId();
     async function load() {
       if (!operation.token) throw new Error("session_required");
-      const result = await purchaseStatus(operation.token, initialPurchaseId!, newRequestId());
+      const result = await purchaseStatus(operation.token, initialPurchaseId!, requestId);
       if (operation.isCurrent()) {
-        if (!result.scope_held) { setSelectionStatus("error"); return; }
+        if (!result.scope_held) { setSelectionState({ status: "error", requestId }); return; }
         setDeepPurchase(result);
-        setSelectionStatus("ready");
+        setSelectionState({ status: "ready" });
       }
     }
-    void load().catch(() => { if (operation.isCurrent()) setSelectionStatus("error"); });
+    void load().catch((error: unknown) => { if (operation.isCurrent()) setSelectionState({ status: "error", requestId: safeRequestId(error) || requestId }); });
     return cancel;
   }, [begin, cancel, emailVerified, initialPurchaseId]);
 
@@ -49,21 +52,21 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
     cancel();
     setDeepPurchase(null);
     setSelectedId(null);
-    setSelectionStatus("error");
+    setSelectionState({ status: "error", requestId: "" });
   }), [cancel]);
 
   const options = deepPurchase && !purchases.items.some((item) => item.purchase_intent_id === deepPurchase.purchase_intent_id)
     ? [deepPurchase, ...purchases.items] : purchases.items;
   const defaultPurchase = purchases.status === "ready" && !purchases.cursor && purchases.items.length === 1 ? purchases.items[0] : undefined;
   const selection = selectedId === undefined ? defaultPurchase : options.find((item) => item.purchase_intent_id === selectedId);
-  const selectionBlocked = selectionStatus !== "ready" || (!!selectedId && !selection);
+  const selectionBlocked = selectionState.status !== "ready" || (!!selectedId && !selection);
   const canPay = selection?.state === "linked";
 
   function choose(id: string) {
     cancel();
     widget.close();
     setSelectedId(id || null);
-    setSelectionStatus("ready");
+    setSelectionState({ status: "ready" });
   }
 
   function manage(id: string) {
@@ -85,13 +88,13 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
       {!emailVerified && <p className="card-copy">{b("verificationRequired")}</p>}
       {emailVerified && <div className="billing-selection">
         <label htmlFor="billing-purchase">{b("selectedPurchase")}</label>
-        <select id="billing-purchase" value={selection?.purchase_intent_id ?? selectedId ?? ""} disabled={selectionStatus === "loading"} onChange={(event) => choose(event.target.value)}>
+        <select id="billing-purchase" value={selection?.purchase_intent_id ?? selectedId ?? ""} disabled={selectionState.status === "loading"} onChange={(event) => choose(event.target.value)}>
           <option value="">{b("accountView")}</option>
           {selectionBlocked && selectedId && !selection && <option value={selectedId}>{b("selectionUnavailable")}</option>}
           {options.map((item) => <option key={item.purchase_intent_id} value={item.purchase_intent_id}>{b("purchaseOption", { product: item.product_id, id: item.purchase_intent_id })}</option>)}
         </select>
-        {selectionStatus === "loading" && <p role="status">{p("loading")}</p>}
-        {selectionBlocked && selectionStatus !== "loading" && <p className="notice error" role="alert">{b("selectionUnavailable")}</p>}
+        {selectionState.status === "loading" && <p role="status">{p("loading")}</p>}
+        {selectionBlocked && selectionState.status !== "loading" && <div className="notice error" role="alert"><p>{b("selectionUnavailable")}</p>{selectionState.status === "error" && selectionState.requestId && <p>{b("requestId", { id: selectionState.requestId })}</p>}</div>}
         {selection && <p className="billing-selected-product">{b("selectedProduct", { product: selection.product_id })}</p>}
         {selection && !canPay && <p>{b("preparationRequired")} <Link href={`/products/${encodeURIComponent(selection.product_id)}`}>{p("continue")}</Link></p>}
       </div>}
@@ -110,6 +113,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
       {purchases.status === "loading" && <p role="status">{t("loading")}</p>}
       {purchases.status === "error" && <div className="notice error" role="alert">
         <p>{t("unavailable")}</p>
+        {purchases.requestId && <p>{b("requestId", { id: purchases.requestId })}</p>}
         <button className="btn-secondary" type="button" onClick={() => void purchases.load(purchases.cursor ?? undefined)}>{p("retry")}</button>
       </div>}
       {purchases.status === "ready" && !purchases.items.length && <p className="card-copy">{t("empty")}</p>}

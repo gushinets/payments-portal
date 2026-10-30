@@ -106,6 +106,11 @@ def provider_customer_owner(db: Session, *, account_id: str, provider_id: str) -
 
 
 def connection_accounts(db: Session, origin: str) -> set[str]:
+    """Origin-backed storage scopes, shared by customer and catalog admission.
+
+    This is provenance evidence only; commercial documents remain catalog-owned.
+    Unproven NULL-origin legacy heads cannot authorize a customer CREATE.
+    """
     return set(
         db.scalars(
             select(CommercialProductHead.external_billing_account_id).where(

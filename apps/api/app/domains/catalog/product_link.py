@@ -18,7 +18,7 @@ from app.domains.catalog.commercial_offer import (
     canonical_document,
     commercial_digest,
 )
-from app.domains.catalog.contracts import SourceProvenance
+from app.domains.catalog.contracts import MAX_PRODUCT_ID_LENGTH, SourceProvenance
 from app.domains.catalog.mapping_evidence import Digest, ImmutableInput, Nonempty, PositiveInteger
 
 
@@ -26,7 +26,7 @@ LINK_SCHEMA = "product-link-v2"
 
 
 class ProductLinkRequest(ImmutableInput):
-    product_id: Nonempty
+    product_id: str = Field(min_length=1, max_length=MAX_PRODUCT_ID_LENGTH, pattern=r"\S")
     tariff_id: PositiveInteger
     tariff_service_id: PositiveInteger
     period_id: PositiveInteger

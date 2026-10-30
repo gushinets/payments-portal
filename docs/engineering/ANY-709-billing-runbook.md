@@ -24,8 +24,12 @@ linking. Server API requests append
 these secrets in browser configuration, CLI arguments or checked-in files.
 The local harness decodes matching dotenv quotes and escapes before forwarding
 private values; literal quote characters inside a quoted password/signing secret
-are retained. Process environment values still take precedence. Malformed
-quoting and decoded line breaks in forwarded secrets fail with safe diagnostics.
+are retained. The private runtime file uses Compose dotenv escapes, including
+`\a`, `\b`, `\t`, `\v` and `\f`; it must preserve the exact signing-secret
+bytes through container environment interpolation. Process environment values
+still take precedence. Malformed quoting, decoded line breaks and unsupported
+control characters fail with safe diagnostics before replacing the private
+runtime file. Never copy a real secret or its encoded form into evidence.
 
 All-empty connection settings leave billing unavailable. Partial/invalid
 connection settings produce safe billing errors; they do not prevent identity
@@ -248,6 +252,15 @@ old username was already lost/rotated and no origin was retained, the old hash
 alone cannot prove provider membership: expect an explicit connection conflict
 and reconcile its provenance separately. Never reset the DB or guess an alias.
 Changing the provider origin cannot adopt the former provider's external IDs.
+
+Until that authorized publication binds a recognized legacy head's origin,
+account-only Widget opening returns `billing_connection_conflict` before
+reserving a competing customer or sending a customer CREATE. Repeat the normal
+opening after publication; it reuses the original scope. A customer-only scope
+already recorded for this origin also governs the first product publication.
+Multiple origin-backed scopes remain a conflict. Commercial-link validation
+stays with catalog admission; an unrelated corrupt link cannot by itself block
+an otherwise proven account-only opening in the same scope.
 
 ## Observable result and read-only inspection
 
@@ -729,6 +742,10 @@ show recovery and their safe purchase reference. Linked purchases show the compa
 “Subscription prepared” state, accepted terms and “Manage subscription” link to
 `/account?purchase=<id>#billing`. This means prepared, not paid/active. The deep
 link performs an owner-scoped local read; it never automatically opens a Widget.
+Inventory and deep-link read errors show a localized safe message and request
+ID. A validated server ID takes precedence; network errors use the ID sent by
+the browser. Retry, explicit selection and session changes clear the applicable
+stale diagnostics; no raw response detail is displayed.
 A single owned purchase is visibly selected by default; multiple purchases need
 explicit selection (or the product deep link). The cabinet’s open and card-manage
 actions both bootstrap that original intent with fresh effective subscription

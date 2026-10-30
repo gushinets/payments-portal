@@ -59,6 +59,12 @@ def test_dotenv_refuses_invalid_quoting_without_echoing_values(tmp_path: Path, w
             'synthetic-signing\\path"end',
         ),
         (r'"synthetic\tpassword"', r'"synthetic\tsigning"', "synthetic\tpassword", "synthetic\tsigning"),
+        (r'"synthetic\vpassword"', r'"synthetic\vsigning"', "synthetic\vpassword", "synthetic\vsigning"),
+        (r'"synthetic\fpassword"', r'"synthetic\fsigning"', "synthetic\fpassword", "synthetic\fsigning"),
+        (r'"synthetic\apassword"', r'"synthetic\asigning"', "synthetic\apassword", "synthetic\asigning"),
+        (r'"synthetic\bpassword"', r'"synthetic\bsigning"', "synthetic\bpassword", "synthetic\bsigning"),
+        (r'"synthetic\\vpassword"', r'"synthetic\\u000bsigning"', r"synthetic\vpassword", r"synthetic\u000bsigning"),
+        ("'synthetic$HOME'", "'synthetic${HOME}$$value'", "synthetic$HOME", "synthetic${HOME}$$value"),
     ],
 )
 def test_real_dotenv_preserves_lbx_credentials_through_settings_and_widget_signature(
@@ -132,3 +138,38 @@ def test_dotenv_decoded_line_breaks_cannot_enter_forwarded_secret(
     with pytest.raises(repo.HarnessError, match="LBX_SERVER_PASSWORD must be a single-line value"):
         repo.write_runtime(repo.runtime_config(root=tmp_path))
     assert not repo.RUNTIME_ENV.exists()
+
+
+@pytest.mark.parametrize("control,escape", [("\a", r"\a"), ("\b", r"\b"), ("\t", r"\t"), ("\v", r"\v"), ("\f", r"\f")])
+def test_runtime_uses_compose_control_escapes(control: str, escape: str) -> None:
+    # Compose's dotenv grammar accepts these escapes, not JSON's \u000b/\u000c.
+    assert repo.quote_runtime_value("synthetic" + control + "value") == '"synthetic' + escape + 'value"'
+
+
+@pytest.mark.parametrize("code", [*range(0, 7), *range(14, 32)])
+def test_runtime_refuses_unrepresentable_controls_without_echo(code: int) -> None:
+    with pytest.raises(repo.HarnessError) as caught:
+        repo.quote_runtime_value("private-synthetic" + chr(code) + "secret")
+    assert "private-synthetic" not in str(caught.value)
+
+
+def test_invalid_runtime_control_preserves_previous_private_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    harness = tmp_path / ".harness"
+    monkeypatch.setattr(repo, "ROOT", tmp_path)
+    monkeypatch.setattr(repo, "HARNESS_DIR", harness)
+    monkeypatch.setattr(repo, "RUNTIME_ENV", harness / "runtime.env")
+    monkeypatch.setattr(repo, "RUNTIME_JSON", harness / "runtime.json")
+    monkeypatch.setattr(repo, "read_dotenv", lambda: {})
+    monkeypatch.setenv("KERNEL_MOCK_ENABLED", "0")
+    monkeypatch.setenv("LBX_WIDGET_SIGNING_SECRET", "synthetic-good")
+    config = repo.runtime_config(root=tmp_path)
+    repo.write_runtime(config)
+    previous = repo.RUNTIME_ENV.read_bytes()
+    monkeypatch.setenv("LBX_WIDGET_SIGNING_SECRET", "private-synthetic" + chr(1) + "secret")
+    with pytest.raises(repo.HarnessError) as caught:
+        repo.write_runtime(config)
+    assert "private-synthetic" not in str(caught.value)
+    assert repo.RUNTIME_ENV.read_bytes() == previous
+    assert "private-synthetic" not in repo.RUNTIME_JSON.read_text()

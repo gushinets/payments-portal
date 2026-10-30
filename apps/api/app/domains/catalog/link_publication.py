@@ -27,6 +27,7 @@ from app.infrastructure.persistence.commercial_mappings import (
     lock_mapping_scope,
     require_publication_isolation,
 )
+from app.infrastructure.queries.billing_customers import connection_accounts
 from app.infrastructure.queries.commercial_mappings import (
     find_mapping_revision,
     connection_heads,
@@ -140,7 +141,10 @@ def resolve_connection_scope(
     """
     if provider_origin is None:
         return scope
-    accounts: set[str] = set()
+    # Customer-only openings and publication share the same origin evidence.
+    # Validate commercial documents below without making account-only reads
+    # depend on the health of unrelated product links.
+    accounts = connection_accounts(db, provider_origin)
     for head in connection_heads(
         db,
         account_id=scope.external_billing_account_id,

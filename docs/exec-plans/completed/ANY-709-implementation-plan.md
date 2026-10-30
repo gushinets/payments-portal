@@ -1,9 +1,185 @@
 # ANY-709 - Normal LBX billing, product mapping and Widget flow
 
-Status: IMPLEMENTED_AND_TESTED - Steps 1-4 and owner payment QA complete; independent final review pending
+Status: IMPLEMENTED_AND_TESTED - Review fixes verified; local startup repaired; automated Widget READY timeouts unclassified; human merge approval pending
 Completed: 2026-10-27
 Program: ANY-504, Step 7
 Issue: [ANY-709](https://linear.app/paveldik/issue/ANY-709)
+
+## Three-pass review remediation, 2026-10-30
+
+Owner-authorized scope: implement all five confirmed findings from the
+correctness, architecture and definition-of-done reviews of `a2bcb59` against
+main `ace7c27`. Preserve immutable history, external ownership and paid-access
+rules; no schema change or live payment is required.
+
+- [x] ARCH-1: use consistent origin-backed connection scope evidence for
+  publication and customer reservation; gate unproven retained legacy heads
+  before creating a competing permanent customer.
+- [x] P2-4409711513: encode runtime dotenv values for the actual Compose
+  consumer without changing signing-secret bytes; refuse unsupported controls.
+- [x] ARCH-2: align purchase product-ID admission with the published-link bound.
+- [x] DOD-1: correct the current migration handoff and distinguish historical
+  checkpoints from the single current `20261029_0003` revision.
+- [x] DOD-2: retain safe request IDs for cabinet inventory and deep-link errors,
+  clearing stale diagnostics on retry, selection and session changes.
+- [x] Run focused regressions, affected journeys and canonical verification;
+  record results and remaining environment limits below.
+
+Implementation:
+
+- Catalog and customer admission share origin-backed account evidence. Catalog
+  still validates its immutable link documents. Customer reservation refuses a
+  recognized unproven legacy head before any slot/operation/HTTP CREATE; an
+  authorized no-op publication records origin on the mutable head. Existing
+  customer-only scopes govern first publication. No ID/FK/history is rewritten.
+- The runtime writer uses Compose's supported dotenv escapes and dollar
+  escaping; its reader uses the matching grammar. Unsupported controls fail
+  without exposing values or replacing an existing private runtime file.
+- The product-link and purchase boundaries share the 1,024-character policy.
+  Review, confirmation and current-hold lookup retain full identifiers; OpenAPI
+  was regenerated with `npm run generate`. No schema change is required.
+- Cabinet read states retain a safe server request ID or the sent local ID.
+  Retry, selection and session invalidation clear the applicable stale state;
+  late responses cannot restore it. Existing localized copy is reused.
+- PR #150's migration paragraph now agrees with the actual single revision and
+  runbook. Its earlier verification commit is explicitly a historical checkpoint.
+  The current graph below supersedes the preserved 2026-10-27 database evidence.
+
+Verification of the actual working-tree fixes (not the earlier prototypes):
+
+- Before implementation, permanent regressions reproduced five PostgreSQL
+  failures with five passing controls, five component failures with 24 passing
+  controls, and 29 dotenv failures with 40 passing controls. Logs:
+  `/tmp/any709-fixes-red-postgres.log`, `/tmp/any709-fixes-red-ui.log`,
+  `/tmp/any709-fixes-red-dotenv.log`.
+- Focused checks passed: 10 PostgreSQL scenarios, 29 cabinet component cases and
+  69 dotenv cases. The product-ID cases exercise live source evaluation,
+  publication, catalog, current hold, review, confirmation, advance and Widget
+  at lengths 256/257/1024; all three purchase inputs reject length 1025
+  specifically as `product_id` too long. Scope cases include an event-coordinated
+  publication/open overlap, customer-only first publication, genuine ambiguity,
+  unchanged immutable documents and a bound account with an unrelated bad link.
+- An actual network-disabled Compose container preserved all 17 synthetic
+  secret variants. Settings and the real Widget signer then passed independent
+  HMAC checks against the original bytes. Together with unsupported-control and
+  private-file-preservation controls, 43 checks passed:
+  `/tmp/any709-fixes-compose-container.log`. No real secrets were used.
+- Full `npm run check` passed in one final run: 1,531 fast API, 355 PostgreSQL,
+  385 component and 38 web boundary tests; documentation/generation,
+  architecture, Ruff, web lint and production build also passed. Log:
+  `/tmp/any709-fixes-canonical-final.log`. No deadline or test budget changed.
+  An earlier run stopped at Turbopack's refusal of dependency symlinks outside
+  the worktree; replacing those links with local copies of the same installed
+  dependencies resolved it. No package/lockfile change was needed.
+- `npm run typecheck:web` passed (`/tmp/any709-fixes-typecheck.log`). The full
+  runner skipped the general browser suite without `RUN_E2E=true`; affected
+  journeys were separately driven against the production build in desktop and
+  mobile Chromium through real Portal HTTP and disposable PostgreSQL. Both
+  passed: one accepted purchase/customer/agreement/subscription, the same
+  purchase after reload and catalog outage, explicit Widget refresh and logout,
+  and zero purchased allowances. Only Kernel/LBX/SDK used synthetic responses.
+  Subsequently injected browser HTTP read faults verified both request IDs,
+  128-character wrapping, explicit recovery and no page overflow. Axe found zero
+  serious/critical violations in healthy and error views. Log:
+  `/tmp/any709-fixes-browser-api.log`; screenshots:
+  `/tmp/any709-fixes-{desktop,mobile}-{real-api,cabinet-errors}.png`.
+- Local dependency versions remain the previously recorded Next 16.3.1,
+  Vitest 3.2.7 and Vite 7.3.6, versus locked 16.4.2/4.1.12/7.3.7; React 19.2.8
+  matches. This is local evidence, not new-head locked-install CI evidence.
+  The application DB, live LBX, paid-access rules and deployment were untouched.
+  Review fixes were verified in the separate `any-709-review-fixes` worktree;
+  the original working directory stays on clean `ANY-765`.
+- Final documentation and diff checks passed after updating this handoff. The
+  task-owned Next process and worktree-local test PostgreSQL server were stopped.
+  Logs: `/tmp/any709-fixes-final-docs.log`, `/tmp/any709-fixes-db-stop.log`.
+
+## Owner-requested local startup and real Widget validation, 2026-10-30
+
+The owner's `npm run repo:up -- --reuse` runs the original working directory on
+`ANY-765` (`7ca593b`), separately from this ANY-709 review worktree. Image builds
+passed; startup stopped because the local application DB retained retired label
+`20261027_0003`. Initial read-only checks found 27 application tables and no
+`billing_work_items.active_recovery_deadline_at` column. The earlier synthetic
+Widget tests do not establish actual LBX/SDK readiness. Their error screenshot
+deliberately shows injected read failures, not a healthy live-provider result.
+
+- [x] Read the actual migrate failure and inspect the retained local schema.
+- [x] Save a protected application-DB backup before any change:
+  `.harness/backups/before-retired-revision-repair-20261030.dump` in the original
+  working directory (0600, ignored).
+- [x] Compare the retained schema with the original migration checkpoint and
+  current references; preserve row fingerprints through the runbook transition.
+- [x] Start the owner's local stand and verify actual LBX/SDK Widget behavior
+  in the browser, recording the branch and any remaining limits accurately.
+
+Local application-DB repair: PASS.
+
+- Original checkpoint `afb46c5` exactly matched the retained schema (ignoring
+  pg_dump random guard tokens and the nonfunctional default public-schema
+  comment). The protected backup was successfully restored into a separate
+  pytest-owned `payments_cf94dbf9_migration_audit_tests` database.
+- Rehearsed the complete transition there: old `20261027_0003` to old
+  `20261028_0004`, exact schema comparison with fresh `20261029_0003`, guarded
+  single-row version-label transition, then normal current `upgrade head` to
+  ANY-715's `20261028_0005`. All original column values in all 27 application
+  tables / 116 rows remained byte-equivalent under sorted JSON fingerprints.
+- Applied that same verified path to the owner's local application DB, checking
+  its source schema/fingerprints before mutation, after the old upgrade, and
+  against the final current-head reference. Original values were preserved.
+  The active-window and worker-generation columns were applied through their
+  original migrations; no DDL was skipped and consolidated DDL was not replayed.
+- The owner's exact `npm run repo:up -- --reuse` then exited 0. Migrate exited
+  0; API/web/PostgreSQL/observability are healthy and Caddy serves
+  `http://localhost:39053`. Both API health endpoints returned 200. The stand is
+  left running. Root `ANY-765` source and index remain unchanged; the ANY-709
+  review fixes remain in their separate worktree.
+- Evidence: `/tmp/any709-local-db-audit.log` (rehearsal PASS),
+  `/tmp/any709-local-db-repair.log` (application repair PASS),
+  `/tmp/any709-real-stand-up.log` (startup PASS). Protected fingerprints/schema
+  hashes are in `.harness/backups/retired-revision-audit-20261030.json` (0600)
+  in the original working directory. The pytest audit database was removed by
+  its fixture after rehearsal.
+
+Actual LBX Widget validation: one successful automated opening; automated READY
+timeouts remain unclassified. The owner reports the manual close/reopen flow works.
+
+- Used the owner's existing authenticated Chrome session at the local stand,
+  the actual configured `https://043.lbxbilling.ru` SDK and Client API, and the
+  already accepted purchase. No interception, fake vendor replies or SDK
+  substitution was used. Kernel remains the configured development mock;
+  this does not claim real Kernel conformance or production acceptance.
+- A successful opening showed the intended `portal-8634...` agreement, 100 RUB
+  balance, active subscription 31, the actual monthly test tariff and payment
+  history dated 2026-10-27. Viewing/selecting the agreement and history did not
+  perform a payment or accept new legal/commercial terms.
+- Other automated retries after an error and an automated Portal refresh failed to obtain the
+  vendor iframe's `READY`. Confirmed failed bootstrap requests returned HTTP
+  200; the SDK logged `Widget iframe failed to load or did not send READY` at
+  its built-in 10-second deadline, followed by Portal's 20-second SDK failure
+  and safe request ID. A control with no intermediate iframe inspection also
+  failed. These observations establish timeouts in the automated run, not a
+  general Widget defect or instability in the owner's manual flow. The agent
+  did not separately reproduce the manual close-then-open cycle. The owner
+  subsequently reported that repeated manual opening and closing work. The
+  effect of automation is unresolved; no new payment PASS is claimed.
+- Public `/lbxwidget.js`, `/widget/index.html` and `/widget/app.js` returned
+  200; the widget HTML has its root element and neither CSP nor X-Frame-Options
+  response headers. Thus the SDK's deployment suggestion alone does not prove
+  missing files. The deeper cause across delivery, browser/frame initialization
+  and the READY protocol is not yet established. Do not hide it by weakening
+  sandbox/CSP, bypassing READY, inventing SDK configuration or increasing
+  business-operation deadlines.
+- Known failed request IDs include `f8eca6ff8567fdaae19a7e13d59e0efb`,
+  `ba8d80d1c1903477983393ebb5e03377`, `3ccdfcf821d5ec5a34a94b2b68cff301`,
+  `35530d6aa5243929e9451a9473418e73`, and
+  `6715a360ff62f275cf9e0f73a254f5c8`. The successful opening used
+  `cba4bb8dcb696aeef5b2707f61d8df5e`. Capture current bootstrap/SDK timing
+  together when investigating; do not include JWTs, auth headers or response
+  credentials. Final actual-error screenshot:
+  `/tmp/any709-real-widget-final.jpg`. This supersedes any interpretation of
+  the synthetic screenshots as live Widget evidence. The actual-error image
+  records the automated attempt only; it does not contradict the owner's
+  successful manual close/reopen check.
 
 ## Subscription-send inventory review fix, 2026-10-30
 
@@ -713,11 +889,21 @@ current repeat commands and human procedures belong to the runbook.
 
 ## Migration and local database outcome
 
-The branch has one forward migration, `20261027_0003_normal_billing.py`:
+Current branch handoff (supersedes the historical checkpoint below): one
+forward migration, `20261029_0003_normal_billing.py`, after main's unchanged
+`20261001_0002`:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261027_0003
+20260924_0001 -> 20261001_0002 -> 20261029_0003
 ```
+
+Databases labelled with retired `20261027_0003` or `20261028_0004` require the
+guarded, verified transition in the
+[current runbook](../../engineering/ANY-709-billing-runbook.md#consolidated-any-709-migration).
+The old label alone does not prove that all consolidated operations ran; never
+replay DDL over a matching schema or stamp over missing operations.
+
+Historical checkpoint, 2026-10-27 (not the current migration graph):
 
 The first two main revisions are unchanged. The consolidated migration retains
 all 23 original upgrade statements and all 21 reverse-order downgrade statements,
