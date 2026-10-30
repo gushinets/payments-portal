@@ -14,6 +14,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.composition.billing import bootstrap_account
+from app.composition import billing as billing_runtime
 from app.composition.customer_diagnostics import diagnose_customer
 from app.composition.sources import source_resources
 from app.domains.billing.contracts import BillingRefused
@@ -25,6 +26,7 @@ from app.domains.billing.customers import (
     reserve_customer,
 )
 from app.models import BillingWorkItem, ExternalBillingCustomer, ExternalCreateOperation, ManualReviewCase, User
+from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.test_any709_step2_postgres import TOKEN, seed
 
@@ -215,16 +217,31 @@ def test_diagnose_missing_slot_does_not_allocate_or_contact_billing(
 
 @pytest.mark.parametrize("failure", ["email_not_unique", "unknown"])
 def test_create_500_is_retained_without_email_and_diagnosed_after_bounded_recovery(
-    migrated_database: Engine, postgres_session_factory: sessionmaker[Session], failure: str
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
 ) -> None:
     factory = postgres_session_factory
     config = step1_settings(
-        lbx_max_get_attempts=2, preflight_total_timeout_seconds=0.6, preflight_cleanup_timeout_seconds=0.025
+        lbx_max_get_attempts=2, preflight_total_timeout_seconds=5, preflight_cleanup_timeout_seconds=0.025
     )
     seed(factory)
     posts = []
+    calls: list[tuple[str, str]] = []
+
+    async def completed_retry_cycles(budget: PreflightBudget, retries: int) -> None:
+        # This checks diagnostics after completed attempts, not machine speed.
+        # Real backoff/deadline behavior has its own recovery-loop coverage.
+        budget.check()
+        if retries == 1:
+            raise PreflightDeadlineExceeded()
+        await asyncio.sleep(0)
+
+    monkeypatch.setattr(billing_runtime, "_customer_retry_wait", completed_retry_cycles)
 
     def respond(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path))
         if request.url.path.endswith("/auth"):
             data = {"token": "SECRET-TOKEN", "expires_in": 600}
         elif request.method == "POST":
@@ -241,8 +258,10 @@ def test_create_500_is_retained_without_email_and_diagnosed_after_bounded_recove
     async def scenario() -> dict[str, object]:
         async with source_resources(config, lbx_transport=httpx.MockTransport(respond)) as sources:
             for _ in range(2):
+                before = len(posts)
                 with pytest.raises(BillingRefused):
                     await bootstrap_account(sources, config, factory=factory, token=TOKEN)
+                assert len(posts) - before == (1 if failure == "email_not_unique" else 2)
         with factory() as db:
             user_id = db.scalar(select(User.id))
         return await diagnose_customer(
@@ -250,7 +269,9 @@ def test_create_500_is_retained_without_email_and_diagnosed_after_bounded_recove
         )
 
     result = asyncio.run(scenario())
-    assert len(posts) == 2 if failure == "email_not_unique" else len(posts) > 2
+    assert len(posts) == (2 if failure == "email_not_unique" else 4)
+    assert len({json.loads(request.content)["outer_id"] for request in posts}) == 1
+    assert calls.count(("GET", "/api/rest/v1/users")) > len(posts)
     assert result["diagnosis"] == ("email_conflict" if failure == "email_not_unique" else "create_outcome_unknown")
     with factory() as db:
         operation = db.scalar(select(ExternalCreateOperation))
@@ -260,6 +281,7 @@ def test_create_500_is_retained_without_email_and_diagnosed_after_bounded_recove
         assert saved["reason"] == ("email_not_unique" if failure == "email_not_unique" else "provider_rejected")
         assert "SECRET" not in json.dumps(work.payload_document)
         assert operation.send_fence is not None and operation.operation_state == "unknown"
+        assert work.attempt_count == len(posts) and work.lease_owner is None
 
 
 def test_failure_evidence_cannot_overwrite_new_fence_or_receipt(

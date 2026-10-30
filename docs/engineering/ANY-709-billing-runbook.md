@@ -455,6 +455,37 @@ alone never bind. A known receipt always
 uses its saved ID and prevents another CREATE. The owner supplied a successful
 Widget rendering screenshot on 2026-10-27; it proves that observed account only.
 
+Previously ambiguous customer discovery remains blocking across later openings,
+even when a later listing returns one matching candidate. The same applies to
+an unproven first point mismatch, a different canonical ID, Client-scope
+mismatch, provider-ID collision or another open blocking review reason. A shorter
+listing alone does not settle those causes. Closing a case alone does not clear
+an `identity_conflict` binding. Ambiguity after an UNKNOWN review retains its own
+distinct case, and ordinary paired proof may resolve customer UNKNOWN escalation.
+
+The accepted original-key restoration path remains available for an already
+proven customer. A point read of that same canonical `user_id` with a changed key
+records `customer_original_key_mismatch` and the original proven ID/operation.
+While that is the only blocking cause, another explicit opening may GET that
+same ID. Only fenced authoritative proof of the original ID/key pair resolves
+the case and restores binding; repeated mismatches keep it open. No customer
+rediscovery, CREATE, replacement ID/key or operator state reset is used. A new
+ambiguity or other blocking cause prevents this recovery. Legacy generic
+conflicts without that retained cause evidence are not guessed to be key drift.
+
+Reservation/read application check this narrow recovery policy under the customer
+lock. Customer sends and final Widget recheck retain strict admission. No key,
+customer, operation, accepted purchase or review history is replaced. These
+synthetic defensive cases do not establish that live LBX permits duplicate keys
+or that normal Widget registration changes a customer's key. The Portal never
+changes it. Use the read-only diagnostics below to investigate unknown causes;
+do not reset states or force a binding because a later listing is shorter.
+Financial admission rechecks the same locked customer evidence immediately
+before committing a genuinely new possible-send claim, including no-send resume.
+A conflict observed during inventory/source I/O prevents that new POST without
+releasing the purchase hold or changing accepted evidence. This check does not
+authorize retries or alter ambiguous financial GET-only recovery.
+
 For the current harness, this helper uses its exact project/files/protected env
 without printing secrets and forces a read-only PostgreSQL session:
 

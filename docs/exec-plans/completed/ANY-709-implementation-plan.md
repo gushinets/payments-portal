@@ -5,6 +5,105 @@ Completed: 2026-10-27
 Program: ANY-504, Step 7
 Issue: [ANY-709](https://linear.app/paveldik/issue/ANY-709)
 
+## Customer conflict recovery follow-up, revised 2026-10-31
+
+Owner-authorized revision of the last commit for
+[P1 discussion_r4422516165](https://github.com/gushinets/payments-portal/pull/150#discussion_r4422516165),
+against parent `8a3732c`. Preserve the accepted identity contract: LBX `user_id`
+is canonical; the original `billing_customer_key` remains the correlation and
+paired consistency check. The earlier blanket refusal also blocked the specified
+recovery of a previously proven customer after provider-side restoration of that
+original key. This revision narrows the fix instead of changing the specification.
+
+- [x] Reproduce that recovery regression with real PostgreSQL and synthetic HTTP.
+- [x] Distinguish a proven canonical-ID key mismatch from unresolved discovery
+  ambiguity, an unproven first match, a different ID and other review reasons.
+  Permit only read-only verification of the same proven ID for that typed cause.
+- [x] Resolve that cause only after fenced authoritative proof of the original
+  ID/key pair; retain distinct blocking causes and closed audit history.
+- [x] Keep strict customer, Widget and financial-send admission under the
+  existing locks, including the post-source-I/O financial claim check.
+- [x] Restore the September specification to the parent commit, narrow the
+  architecture/runbook explanation, and add regression coverage for recovery,
+  unresolved drift, mixed causes, stale proof and financial interleavings.
+- [x] Run focused and canonical checks, review the final cumulative change
+  and record evidence. Deliver as one amended local commit, without pushing.
+
+Implementation:
+
+- Billing owns separate read-recovery and strict admission checks. Both inspect
+  retained evidence under the existing customer/customer-operation locks. Only
+  a point mismatch for the already proven canonical ID records the versioned
+  `customer_original_key_mismatch` cause. Recovery checks its original ID,
+  operation and correlation key; untyped legacy causes remain blocked.
+- Matching original-pair proof resolves only the permitted UNKNOWN/key-drift
+  cases. Distinct ambiguity/wrong-ID/Client conflicts cannot be erased by it.
+  Every conflict rotates the fence, so delayed proof cannot overwrite a newer
+  cause. Closed cases remain unchanged.
+- Financial claims retain strict admission atomically with a genuinely new
+  possible-send record after source I/O. Existing UNKNOWN/recover-only guards
+  still precede it. The original lock order and held scopes are preserved;
+  conflict cannot retroactively cancel an already claimed provider command.
+- The September specification is byte-identical to parent `8a3732c`; earlier
+  approved amendments remain. Architecture/runbook explain the narrower policy.
+  There is no new operator reconciliation/force-bind workflow.
+
+Verification:
+
+- Before implementation, the new contract diagnostics reproduced the blanket
+  refusal (including ordinary key restoration and financial Continue). Log:
+  `/tmp/pr150-revision-red.log`.
+- First focused run: 38 PostgreSQL cases passed, including the original 25
+  conflict regressions (`/tmp/pr150-revision-focused.log`). Two further scenarios
+  then covered concurrent ambiguity during key recovery and Client-scope
+  mismatch after recovery. Final new suite contains 14 permanent cases.
+- All 14 final cases plus four temporary full HTTP diagnostics passed: actual
+  registration/email verification, account-first/buy-first, normal/lost customer
+  reply, consent, preparation, Widget type 7, logout/login and identity reuse.
+  Only SMTP/LBX/Kernel transport edges were substituted. The temporary diagnostic
+  was removed before canonical checks. Log: `/tmp/pr150-revision-contract-flows.log`.
+- Full `npm run check` passed on the final production/test code: 1,542 fast API,
+  406 PostgreSQL, 385 component and 38 web-boundary tests; generated freshness,
+  documentation, architecture, Ruff, web lint/typecheck and production build.
+  Log: `/tmp/pr150-revision-canonical.log`. The PostgreSQL run includes all 25
+  original conflict regressions and 14 new original-key recovery cases.
+- Browser E2E was skipped: `RUN_E2E=true` and an application harness were not
+  enabled. Synthetic HTTP exercises production use cases and PostgreSQL, not
+  live LBX/Kernel or the real Widget SDK. No live CREATE/payment, application
+  database mutation, deployment or production-readiness claim is made.
+- Locked JavaScript dependencies were installed offline; no lockfile change.
+  Python 3.12.13/Ruff 0.15.22 were used. Production modules remain below 500
+  lines. No schema, wire, dependency, generated, immutable identity, legal or
+  paid-access diff. The isolated test server is `payments-5564c771`; pytest owns
+  `pr150_conflict_revision_tests` creation/drop. Concurrent ANY-765/ANY-715 work
+  is untouched.
+
+Final local `review-full` pass covered the complete last-fix delta against
+`8a3732c`, including the retained conflict/diagnostic tests, new policy module,
+new recovery tests and affected callers. No additional confirmed defect was
+found within that scope:
+
+- Identity/recovery: two openings cannot erase ambiguity; original-ID/key
+  restoration succeeds without another customer or key. Mixed causes, invalid
+  evidence and legacy untyped conflicts remain blocked. UNKNOWN and lost-reply
+  positive controls continue successfully.
+- Concurrency/admission: event-coordinated stale proof cannot overwrite a newer
+  conflict. Both agreement and subscription claims refuse conflict committed
+  during source I/O, retain accepted evidence/holds, then resume after original
+  identity proof with exactly one of each provider object.
+- Architecture: billing owns both policies; callers retain transaction/commit
+  ownership. Customer-only writers never acquire purchase/user locks; financial
+  callers acquire user/purchase/financial rows before customer/operation rows.
+  There is no reverse lock acquisition or provider HTTP inside these DB units.
+- Result: the four HTTP journeys preserve verification, canonical type-7
+  identity, accepted consent and purchase reuse across lost replies/login.
+  This validates this fix, not the whole program or real-provider readiness.
+
+ANY-715/ANY-765 integration must carry the narrow cause evidence, read-recovery
+policy, strict send/Widget admission and post-I/O financial claim check together.
+Do not carry forward the superseded blanket read refusal or infer causes for
+historical generic conflicts. No automatic existing-data repair is supplied.
+
 ## Origin-scope serialization follow-up, 2026-10-30
 
 Owner-authorized fix for

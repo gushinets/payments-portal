@@ -112,7 +112,12 @@ with backoff within one nonrenewable opening deadline. Failed GETs never permit
 CREATE; saved IDs and email-uniqueness rejection allow GET recovery only. A finite
 active-send lease protects sends; each later claim needs fresh discovery under
 the owner's 2026-10-28 customer amendment. Unresolved failures are reported once
-to Sentry. No purchase/subscription or paid
+to Sentry. Unresolved customer ambiguity and other blocking review reasons
+remain blocking under the customer lock. Read-only recovery may resolve customer
+outcome-unknown escalation or a separately evidenced key mismatch for the same
+previously proven `user_id`, only after fenced proof of its original key. It
+cannot adjudicate prior ambiguity or adopt another identity. New sends and final
+Widget admission remain blocked until that proof commits. No purchase/subscription or paid
 access is created for viewing. The official SDK runs only on explicit open in a
 disposable opaque-origin host; server-side paired identity, Client readiness and
 post-I/O session checks precede each no-store JWT response. See the runbook and

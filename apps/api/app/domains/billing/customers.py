@@ -12,6 +12,13 @@ from sqlalchemy.orm import Session
 from app.core.settings import Settings
 from app.core.time import utc_now
 from app.domains.billing.contracts import CREATE_FAILURE_REASONS, CREATE_RESPONSE_SCHEMA, BillingRefused, CustomerOpen
+from app.domains.billing.customer_reviews import (
+    CUSTOMER_UNKNOWN_REVIEW,
+    customer_admission_reviews,
+    customer_recovery_reviews,
+    record_customer_conflict,
+    record_customer_review,
+)
 from app.domains.billing.customer_scope import customer_account
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.errors import InvalidAuthSessionError
@@ -23,7 +30,6 @@ from app.infrastructure.queries.billing_customers import (
     lock_customer,
     lock_user as lock_storage_user,
     overdue_customer_ids,
-    open_customer_reviews,
     recovery_work,
 )
 from app.models import (
@@ -33,7 +39,6 @@ from app.models import (
     ExternalCreateOperation,
     ExternalCreateOperationKind as Kind,
     ExternalCreateOperationState as State,
-    ManualReviewCase,
     User,
 )
 
@@ -147,6 +152,7 @@ def reserve_customer_in_transaction(db: Session, configuration: Settings, user: 
         db.flush()
     if operation.request_correlation_key != customer.billing_customer_key:
         raise BillingRefused("billing_identity_conflict", 409)
+    customer_recovery_reviews(db, customer, operation)
     return _snapshot(customer, operation, user, may_create=operation.operation_state == State.PENDING)
 
 
@@ -167,10 +173,9 @@ def claim_customer_send(
             or operation.request_correlation_key != expected.outer_key
         ):
             raise BillingRefused("billing_identity_conflict", 409)
+        customer_admission_reviews(db, customer, operation)
         if customer.provider_customer_id is not None or _receipt_id(operation) is not None:
             return _snapshot(customer, operation)
-        if customer.binding_state == Binding.IDENTITY_CONFLICT:
-            raise BillingRefused("billing_identity_conflict", 409)
         if operation.send_fence != expected.fence:
             return _snapshot(customer, operation)
         now = utc_now()
@@ -331,21 +336,6 @@ def finish_customer_attempt(factory: SessionFactory, expected: CustomerOpen) -> 
         db.commit()
 
 
-def _manual_review(db: Session, operation: ExternalCreateOperation, reason: str) -> None:
-    if operation.operation_state != State.MANUAL_REVIEW:
-        db.add(
-            ManualReviewCase(
-                reason_code=reason,
-                scope_kind="create_operation",
-                scope_reference=str(operation.create_operation_id),
-                evidence_schema_version="v1",
-                evidence_document={"create_operation_id": str(operation.create_operation_id)},
-                case_state="open",
-            )
-        )
-    operation.operation_state = State.MANUAL_REVIEW
-
-
 def apply_customer_read(
     factory: SessionFactory,
     expected: CustomerOpen,
@@ -369,6 +359,7 @@ def apply_customer_read(
             or operation.request_correlation_key != expected.outer_key
         ):
             raise BillingRefused("billing_identity_conflict", 409)
+        reviews = customer_recovery_reviews(db, customer, operation)
         if provider_id is not None and outer_key is None:
             raise BillingRefused("billing_identity_unproven", 409)
         conflict = ambiguous or (
@@ -376,16 +367,14 @@ def apply_customer_read(
             and (outer_key != customer.billing_customer_key or customer.provider_customer_id not in {None, provider_id})
         )
         if conflict:
-            customer.binding_state = Binding.IDENTITY_CONFLICT
-            operation.send_fence = uuid4()  # Invalidate any delayed successful CREATE completion.
-            _manual_review(db, operation, "customer_identity_conflict")
+            record_customer_conflict(db, customer, operation, provider_id=provider_id, ambiguous=ambiguous)
             db.commit()
             raise BillingRefused("billing_identity_conflict", 409)
         if provider_id is None:
             if operation.operation_state == State.PENDING:
                 raise BillingRefused("billing_customer_pending", 409)
             if operation.unknown_recovery_deadline_at and utc_now() >= as_utc(operation.unknown_recovery_deadline_at):
-                _manual_review(db, operation, "external_create_outcome_unknown:customer")
+                record_customer_review(db, operation, CUSTOMER_UNKNOWN_REVIEW)
             elif operation.operation_state != State.MANUAL_REVIEW:
                 operation.operation_state = State.UNKNOWN
             review_required = operation.operation_state == State.MANUAL_REVIEW
@@ -409,7 +398,7 @@ def apply_customer_read(
             work.work_state = "done"
             work.lease_owner = None
             work.lease_expires_at = None
-        for review in open_customer_reviews(db, operation.create_operation_id):
+        for review in reviews:
             review.case_state = "resolved"
             review.resolved_at = utc_now()
             review.resolved_by_principal = "system:customer-point-read"
@@ -428,7 +417,7 @@ def apply_customer_read(
             customer.binding_state = Binding.IDENTITY_CONFLICT
             if operation is not None:
                 operation.send_fence = uuid4()
-                _manual_review(db, operation, "customer_provider_id_already_bound")
+                record_customer_review(db, operation, "customer_provider_id_already_bound")
             db.commit()
             raise BillingRefused("billing_identity_conflict", 409) from None
         return result
@@ -453,6 +442,7 @@ def recheck_widget_session(
             or operation.operation_state != State.BOUND
         ):
             raise BillingRefused("billing_identity_conflict", 409)
+        customer_admission_reviews(db, customer, operation)
 
 
 def escalate_overdue_customers(factory: SessionFactory, *, now: datetime | None = None, limit: int = 100) -> int:
@@ -473,7 +463,7 @@ def escalate_overdue_customers(factory: SessionFactory, *, now: datetime | None 
                 and operation.unknown_recovery_deadline_at
                 and as_utc(operation.unknown_recovery_deadline_at) <= instant
             ):
-                _manual_review(db, operation, "external_create_outcome_unknown:customer")
+                record_customer_review(db, operation, CUSTOMER_UNKNOWN_REVIEW)
                 count += 1
                 db.commit()
     return count

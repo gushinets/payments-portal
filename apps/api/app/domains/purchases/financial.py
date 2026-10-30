@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
 from app.core.time import utc_now
+from app.domains.billing.customer_reviews import customer_admission_reviews
 from app.domains.billing.customers import authenticate
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
@@ -24,7 +25,12 @@ from app.domains.purchases.contracts import (
 )
 from app.domains.purchases.service import _locked, _operation, read_purchase
 from app.infrastructure.queries import purchases as queries
-from app.infrastructure.queries.billing_customers import recovery_work, open_customer_reviews
+from app.infrastructure.queries.billing_customers import (
+    customer_operation,
+    lock_customer,
+    recovery_work,
+    open_customer_reviews,
+)
 from app.models import (
     BillingStateObservation,
     BillingStateObservationKind,
@@ -71,6 +77,13 @@ def claim_financial(
         retry_unsent = operation.operation_state == State.PROVEN_NOT_SENT
         if not retry_unsent and operation.unknown_since is not None:
             return _operation(db, operation)
+        # Customer conflict may have arrived while inventory/source I/O ran.
+        # Serialize its current evidence with the new possible-send claim.
+        customer = lock_customer(db, row.customer_id)
+        customer_create = customer_operation(db, customer.customer_id)
+        if customer_create is None:
+            raise PurchaseRefused("billing_identity_unproven", 409)
+        customer_admission_reviews(db, customer, customer_create)
         work = recovery_work(db, operation.create_operation_id)
         if retry_unsent and (
             operation.unknown_since is None
