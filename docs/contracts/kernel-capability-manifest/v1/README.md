@@ -75,10 +75,10 @@ manifest structurally invalid.
 
 HTTP semantics remain: `200` for a complete valid manifest, `401` for absent or
 invalid service authentication, `403` for unauthorized tenant/region/scope,
-and `5xx` when a complete valid response cannot be produced. The mock's
-`detail.code` error strings are local conventions, not a promised Kernel
-error-body contract. Production requires TLS, service authentication and no
-browser access. A user's login credentials are insufficient.
+and `5xx` when a complete valid response cannot be produced. The mock now uses
+the inspected producer envelope `error: {code, message, request_id}`, with safe
+messages and generated correlation. Error code strings remain local fault-injection
+conventions. Production requires TLS, service authentication and no browser access. A user's login credentials are insufficient.
 
 ## Explicitly provisional conventions
 
@@ -116,6 +116,25 @@ reads do not grant access or approve sales. Changing a URL does not rewrite a
 retained v1 or v2 revision. See the
 [normal connection/link runbook](../../../engineering/lbx-product-links.md).
 
+## Accepted development purchase examples (ANY-765 Step 1)
+
+The single [development terms dataset](../../../../config/development/paid-access-test-terms.json)
+supplies separate Swagger/OpenAPI metadata (`x-simulated-purchase-examples`).
+It is outside the manifest wire schema and preserves PR #151's **SIMULATED**
+100 generations / 300 analyses examples. Quantities are never Kernel capability
+fields. Portal's explicitly enabled dev/test acceptance path now consumes this
+dataset independently of mock-server code; see the
+[purchase runbook](../../../engineering/ANY-709-billing-runbook.md#development-purchase-metering-any-765-step-1).
+Historical manifest fixture bytes and independent digest pins remain unchanged.
+
+Alignment was checked against producer-owned ANY-711 at
+`e627bf296a6476efcca839a0328cf1a5683555e2`:
+[contract](https://github.com/gushinets/anytoolai-platform/blob/e627bf296a6476efcca839a0328cf1a5683555e2/docs/contracts/kernel-capability-manifest/v1/README.md),
+[error models](https://github.com/gushinets/anytoolai-platform/blob/e627bf296a6476efcca839a0328cf1a5683555e2/apps/platform-api/src/anytoolai_platform_api/schemas.py).
+This is source inspection and local mock alignment, not a new real-producer HTTP
+or deployed conformance PASS. The historical evidence below retains its labels.
+No token rotation infrastructure is added.
+
 ## Standalone mock and startup scenarios
 
 The [server](../../../../tools/kernel_manifest_mock/server.py) uses only the
@@ -141,10 +160,14 @@ The mock is not automatically started and has no Portal startup dependency.
 Stop with Ctrl-C; restart with a different `--scenario` to select a case:
 
 - `valid`: complete six-product positive fixture.
+- `all-disabled`: complete six-product/two-metric inventory with all flags false;
+  independent producer digest
+  `sha256:478761c681d02330ed052aabe5e1b472dc1c2ee56d79a568a8009f4b4503a694`.
 - `disabled-product`, `missing-product`, `disabled-metric`, `missing-metric`:
   complete alternate test deployments with fresh matching semantic versions.
   Missing product also removes its metrics to preserve reference validity.
-- `unauthorized`, `forbidden`, `unavailable`: inject `401`, `403`, `503` after
+- `unauthorized`, `forbidden`, `internal-error`, `unavailable`: inject
+  safe `401`, `403`, `500`, `503` after
   the normal route/auth checks, with no successful manifest body.
 - `timeout`: delay a valid response by `--delay-seconds` (default 2 seconds;
   positive and at most 60). Set a shorter caller deadline to exercise timeout.

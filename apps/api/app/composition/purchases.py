@@ -12,6 +12,7 @@ from app.composition.billing import ensure_customer
 from app.composition.catalog import catalog_preview
 from app.composition.purchase_recovery import recover_financial as recover_financial
 from app.composition.purchase_observation import prepared_subscription_observation
+from app.composition.purchase_terms import current_technical_terms
 from app.composition.sources import SourceResources
 from app.core.errors import AppError
 from app.core.settings import Settings
@@ -31,6 +32,7 @@ from app.domains.purchases.contracts import (
     PurchaseInventoryIncomplete,
 )
 from app.domains.purchases import financial, service
+from app.domains.purchases.technical_terms import AcceptedTechnicalTerms
 from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from app.integrations.lbx._transport import customer_diagnostics
 from app.integrations.lbx.client import LbxServerClient
@@ -53,15 +55,18 @@ MAX_RELEVANT_SUBSCRIPTIONS = 20
 
 async def review_purchase(
     sources: SourceResources, configuration: Settings, *, factory: SessionFactory, token: str, product_id: str
-) -> tuple[StoredProductLink, CurrentOffer, tuple[LegalEvidence, ...]]:
+) -> tuple[StoredProductLink, CurrentOffer, tuple[LegalEvidence, ...], AcceptedTechnicalTerms | None]:
     await run_in_threadpool(service.authenticate_user, factory, configuration, token)
     _configured_seller(configuration)
     products = await catalog_preview(sources, configuration, session_factory=factory, product_id=product_id)
     product = products[0]
-    if product.link is None or product.offer is None:
+    if product.link is None or product.offer is None or product.manifest is None:
         raise PurchaseRefused("purchase_offer_unavailable", 409)
     documents = await run_in_threadpool(service.read_legal, factory, configuration, token)
-    return product.link, product.offer, documents
+    terms = await run_in_threadpool(
+        current_technical_terms, configuration, product.manifest, product.link, product.offer
+    )
+    return product.link, product.offer, documents, terms
 
 
 def _configured_seller(configuration: Settings) -> None:
@@ -81,11 +86,11 @@ async def confirm_purchase(
     prior = await run_in_threadpool(service.prior_request, factory, configuration, token, key, meaning)
     if prior is not None:
         return prior
-    link, offer, documents = await review_purchase(
+    link, offer, documents, terms = await review_purchase(
         sources, configuration, factory=factory, token=token, product_id=meaning.product_id
     )
     return await run_in_threadpool(
-        service.pin_purchase, factory, configuration, token, key, meaning, link, offer, documents
+        service.pin_purchase, factory, configuration, token, key, meaning, link, offer, documents, terms
     )
 
 

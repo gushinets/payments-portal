@@ -739,6 +739,18 @@
             "title": "Expected Fingerprint",
             "type": "string"
           },
+          "expected_technical_terms_digest": {
+            "anyOf": [
+              {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Technical Terms Digest"
+          },
           "product_id": {
             "maxLength": 256,
             "minLength": 1,
@@ -852,6 +864,18 @@
             "title": "Expected Fingerprint",
             "type": "string"
           },
+          "expected_technical_terms_digest": {
+            "anyOf": [
+              {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Technical Terms Digest"
+          },
           "legal_status": {
             "const": "draft",
             "default": "draft",
@@ -867,6 +891,16 @@
             "title": "Revision Id",
             "type": "string"
           },
+          "technical_terms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PurchaseTechnicalTermsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "terms": {
             "$ref": "#/components/schemas/PurchaseTermsResponse"
           }
@@ -879,6 +913,41 @@
           "documents"
         ],
         "title": "PurchaseReviewResponse",
+        "type": "object"
+      },
+      "PurchaseTechnicalTermsResponse": {
+        "properties": {
+          "digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "title": "Digest",
+            "type": "string"
+          },
+          "offer": {
+            "$ref": "#/components/schemas/TechnicalOffer"
+          },
+          "provenance": {
+            "const": "SIMULATED",
+            "title": "Provenance",
+            "type": "string"
+          },
+          "source_digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "title": "Source Digest",
+            "type": "string"
+          },
+          "source_version": {
+            "title": "Source Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_version",
+          "source_digest",
+          "provenance",
+          "offer",
+          "digest"
+        ],
+        "title": "PurchaseTechnicalTermsResponse",
         "type": "object"
       },
       "PurchaseTermsResponse": {
@@ -1278,6 +1347,52 @@
         ],
         "title": "SourceProvenance",
         "type": "string"
+      },
+      "TechnicalOffer": {
+        "additionalProperties": false,
+        "properties": {
+          "metric_key": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "product_id": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "quantity": {
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "quantity_mode": {
+            "const": "fixed_per_cycle",
+            "title": "Quantity Mode",
+            "type": "string"
+          },
+          "unit": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_id",
+          "metric_key",
+          "unit",
+          "quantity",
+          "quantity_mode"
+        ],
+        "title": "TechnicalOffer",
+        "type": "object"
       },
       "ValidationError": {
         "properties": {

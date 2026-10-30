@@ -225,7 +225,7 @@ def test_missing_or_invalid_service_auth_returns_401_without_sensitive_logs(
         headers = {} if authorization is None else {"Authorization": authorization}
         response = client.get(ROUTE, params=SCOPE, headers=headers)
     assert response.status_code == 401
-    assert response.json() == {"detail": {"code": "invalid_service_auth"}}
+    assert response.json()["error"]["code"] == "invalid_service_auth"
     assert response.headers["www-authenticate"] == "Bearer"
     output = capsys.readouterr()
     assert not output.out and not output.err
@@ -248,7 +248,7 @@ def test_scope_is_explicit_and_query_cannot_control_scenarios(scope: dict[str, A
         response = client.get(ROUTE, params=scope)
         valid = client.get(ROUTE, params=SCOPE)
     assert response.status_code == 403
-    assert response.json() == {"detail": {"code": "scope_forbidden"}}
+    assert response.json()["error"]["code"] == "scope_forbidden"
     assert valid.status_code == 200
 
 
@@ -258,6 +258,7 @@ def test_scope_is_explicit_and_query_cannot_control_scenarios(scope: dict[str, A
         (Scenario.UNAUTHORIZED, 401, "invalid_service_auth"),
         (Scenario.FORBIDDEN, 403, "scope_forbidden"),
         (Scenario.UNAVAILABLE, 503, "manifest_unavailable"),
+        (Scenario.INTERNAL_ERROR, 500, "internal_error"),
     ],
 )
 def test_startup_selected_http_failures(scenario: Scenario, status: int, code: str) -> None:
@@ -265,9 +266,14 @@ def test_startup_selected_http_failures(scenario: Scenario, status: int, code: s
         response = client.get(ROUTE, params=SCOPE)
         document = client.get("/openapi.json").json()
     assert response.status_code == status
-    assert response.json() == {"detail": {"code": code}}
+    assert set(response.json()) == {"error"}
+    assert set(response.json()["error"]) == {"code", "message", "request_id"}
+    assert response.json()["error"]["code"] == code
+    assert response.json()["error"]["request_id"].startswith("req_")
+    assert response.headers["x-request-id"] == response.json()["error"]["request_id"]
+    assert TOKEN not in response.text
     documented = document["paths"][ROUTE]["get"]["responses"][str(status)]["content"]["application/json"]
-    assert documented["examples"][code]["value"] == response.json()
+    assert documented["examples"][code]["value"]["error"]["code"] == code
 
 
 def test_timeout_uses_real_http_read_deadline() -> None:
@@ -280,7 +286,7 @@ def test_no_browser_manifest_cors_control_or_unrelated_routes() -> None:
     with _running_mock() as client:
         browser = client.get(ROUTE, params=SCOPE, headers={"Origin": "http://localhost:3000"})
         assert browser.status_code == 403
-        assert browser.json() == {"detail": {"code": "browser_access_forbidden"}}
+        assert browser.json()["error"]["code"] == "browser_access_forbidden"
         assert "access-control-allow-origin" not in browser.headers
         for path in ("/", "/health", "/control/scenario"):
             assert client.get(path).status_code == 404
@@ -311,7 +317,7 @@ def test_openapi_documents_real_endpoint_and_reuses_versioned_schema() -> None:
         assert parameters[name]["in"] == "query"
         assert parameters[name]["required"] is True
         assert parameters[name]["schema"] == {"type": "string", "enum": [value]}
-    assert set(operation["responses"]) == {"200", "401", "403", "503"}
+    assert set(operation["responses"]) == {"200", "401", "403", "500", "503"}
     success = operation["responses"]["200"]["content"]["application/json"]
     assert success["schema"] == {"$ref": "#/components/schemas/CapabilityManifest"}
     assert success["example"] == FIXTURE
@@ -434,3 +440,26 @@ def test_timeout_fault_has_a_bounded_delay(delay_seconds: float) -> None:
 def test_mock_is_excluded_from_docker_inputs() -> None:
     assert "tools/kernel_manifest_mock" in (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
     assert "token=" not in repr(MockConfig(app_env="test", token=TOKEN))
+
+
+def test_all_disabled_is_complete_with_independent_producer_digest() -> None:
+    with _running_mock(Scenario.ALL_DISABLED) as client:
+        response = client.get(ROUTE, params=SCOPE)
+    assert response.status_code == 200
+    payload = response.json()
+    _assert_complete_manifest(payload)
+    assert all(not item["enabled"] for item in payload["products"] + payload["usage_metrics"])
+    assert payload["manifest_version"] == "sha256:478761c681d02330ed052aabe5e1b472dc1c2ee56d79a568a8009f4b4503a694"
+
+
+def test_mock_documents_canonical_purchase_examples_outside_manifest() -> None:
+    with _running_mock() as client:
+        document = client.get("/openapi.json").json()
+        manifest = client.get(ROUTE, params=SCOPE).json()
+    source = json.loads((ROOT / "config/development/paid-access-test-terms.json").read_text())
+    assert document["x-simulated-purchase-examples"] == source
+    assert [(o["product_id"], o["quantity"], o["unit"]) for o in source["offers"]] == [
+        ("proposal_ai", 100, "generation"),
+        ("brief_decoder", 300, "analysis"),
+    ]
+    assert "quantity" not in json.dumps(manifest)

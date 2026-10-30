@@ -467,6 +467,9 @@
     "acceptedTerms": "Condições aceitas originalmente",
     "awaitingVerification": "O pagamento aguarda verificação oficial. Consultar o estado salvo lê apenas registros do Portal e não atualiza os dados de cobrança.",
     "accessDeferred": "Pagamento e acesso ao produto são etapas distintas. O acesso pago e o uso/as cotas serão implementados depois; esta tela não confirma ativação.",
+    "technicalLimit": "Limite de teste por ciclo confirmado",
+    "simulatedTerms": "SIMULATED · condições de teste",
+    "technicalUnknown": "Limite técnico não confirmado; execução com cota indisponível.",
     "fullFunding": "É necessário cobrir o valor integral.",
     "fundingUnspecified": "Os requisitos de cobertura não foram informados.",
     "states": {

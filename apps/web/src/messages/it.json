@@ -467,6 +467,9 @@
     "acceptedTerms": "Condizioni accettate inizialmente",
     "awaitingVerification": "Il pagamento attende una verifica autorevole. Il controllo dello stato salvato legge solo i dati del Portale e non aggiorna i dati di fatturazione.",
     "accessDeferred": "Pagamento e accesso al prodotto sono separati. L’accesso a pagamento e l’utilizzo/le quote saranno disponibili nelle fasi successive; questa schermata non conferma l’attivazione.",
+    "technicalLimit": "Limite di test per ciclo confermato",
+    "simulatedTerms": "SIMULATED · condizioni di test",
+    "technicalUnknown": "Limite tecnico non confermato; esecuzione con quota non disponibile.",
     "fullFunding": "È richiesta la copertura completa.",
     "fundingUnspecified": "I requisiti di copertura non sono specificati.",
     "states": {

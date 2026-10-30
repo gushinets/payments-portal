@@ -77,6 +77,9 @@ describe("ANY-709 Step 4 purchase journey", () => {
     fireEvent.click(screen.getByRole("button", { name: ru.Purchase.buy }));
     const checkbox = await screen.findByRole("checkbox");
     expect(screen.getByText(ru.Purchase.draftLegal)).toBeVisible();
+    expect(screen.getByText("100 generation")).toBeVisible();
+    expect(screen.getByText(ru.Purchase.simulatedTerms)).toBeVisible();
+    expect(screen.getByText("proposal_ai.test_generations")).toBeVisible();
     expect(screen.getByRole("link", { name: /Тестовый проект/ })).toHaveAttribute("lang", "ru");
     expect(screen.getByRole("button", { name: ru.Purchase.confirm })).toBeDisabled();
     fireEvent.click(checkbox);
@@ -87,6 +90,7 @@ describe("ANY-709 Step 4 purchase journey", () => {
     expect(advance).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(confirm.mock.calls[0][0].body))).toEqual({
       product_id: "proposal_ai", revision_id: purchaseReview.revision_id, expected_fingerprint: purchaseReview.expected_fingerprint,
+      expected_technical_terms_digest: purchaseReview.expected_technical_terms_digest,
       documents: purchaseReview.documents.map(({ document_version_id, acceptance_text_hash }) => ({ document_version_id, acceptance_text_hash }))
     });
     expect(confirm.mock.calls[0][0].headers["Idempotency-Key"]).toBeTruthy();
@@ -186,11 +190,12 @@ describe("ANY-709 Step 4 purchase journey", () => {
     await accept();
     expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.errors.termsChanged);
     expect(advance).not.toHaveBeenCalled();
-    const fresh = { ...purchaseReview, terms: { ...purchaseReview.terms, recurring_amount: "150" }, expected_fingerprint: "sha256:" + "d".repeat(64) };
+    const fresh = { ...purchaseReview, expected_technical_terms_digest: "sha256:" + "f".repeat(64), technical_terms: { ...purchaseReview.technical_terms!, offer: { ...purchaseReview.technical_terms!.offer, quantity: 101 } }, terms: { ...purchaseReview.terms, recurring_amount: "150" }, expected_fingerprint: "sha256:" + "d".repeat(64) };
     review.mockResolvedValueOnce(json(fresh));
     fireEvent.click(screen.getByRole("button", { name: ru.Purchase.buy }));
     expect(await screen.findByRole("checkbox")).not.toBeChecked();
     expect(screen.getByText("150 RUB", { exact: false })).toBeVisible();
+    expect(screen.getByText("101 generation")).toBeVisible();
     expect(confirm).toHaveBeenCalledTimes(1);
   });
 
@@ -216,6 +221,16 @@ describe("ANY-709 Step 4 purchase journey", () => {
     expect(review).not.toHaveBeenCalled(); expect(advance).not.toHaveBeenCalled();
     expect(bootstrap).not.toHaveBeenCalled();
     expect(fetcher.mock.calls.some(([url]) => String(url).includes("catalog"))).toBe(false);
+  });
+
+  it("keeps legacy missing technical history unavailable without current fixture values", async () => {
+    owned = { ...savedPurchase, accepted: { ...purchaseReview, technical_terms: null, expected_technical_terms_digest: null } };
+    renderProduct();
+    fireEvent.click(await screen.findByText(ru.Purchase.acceptedTerms));
+    expect(screen.getByText(ru.Purchase.technicalUnknown)).toBeVisible();
+    expect(screen.queryByText("100 generation")).not.toBeInTheDocument();
+    expect(screen.queryByText(ru.Purchase.simulatedTerms)).not.toBeInTheDocument();
+    expect(review).not.toHaveBeenCalled();
   });
 
   it("keeps unknown status distinct from no purchase and retries without Buy", async () => {

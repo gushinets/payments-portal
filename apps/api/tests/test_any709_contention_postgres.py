@@ -61,7 +61,7 @@ async def test_same_key_confirmation_during_user_lock_preserves_one_acceptance(
         if original is not None:
             meaning = original.accepted.meaning
         else:
-            link, offer, documents = await review_purchase(
+            link, offer, documents, _ = await review_purchase(
                 sources, config, factory=factory, token=TOKEN, product_id="proposal_ai"
             )
             meaning = PurchaseMeaning(

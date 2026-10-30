@@ -7,10 +7,12 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domains.billing.contracts import BillingRefused
 from app.domains.catalog.product_link import CurrentOffer, ProductLinkRequest
+from app.domains.catalog.mapping_evidence import Digest
+from app.domains.purchases.technical_terms import AcceptedTechnicalTerms
 from app.models import ExternalCreateOperationKind, ExternalCreateOperationState, PurchaseIntentState
 
 type FinancialRequestDocument = dict[str, str | int | bool | list[dict[str, int]]]
@@ -73,18 +75,36 @@ class PurchaseMeaning(BaseModel):
     product_id: str
     revision_id: UUID
     expected_fingerprint: str
+    expected_technical_terms_digest: Digest | None = None
     documents: tuple[LegalSelection, ...]
 
 
 class AcceptedPurchase(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    schema_version: Literal["accepted-purchase:v1"] = "accepted-purchase:v1"
+    schema_version: Literal["accepted-purchase:v1", "accepted-purchase:v2"] = "accepted-purchase:v1"
     meaning: PurchaseMeaning
     selection: ProductLinkRequest
     offer: CurrentOffer
     documents: tuple[LegalEvidence, ...]
     provider_origin: str
     seller_id: int
+    technical_terms: AcceptedTechnicalTerms | None = None
+
+    @model_validator(mode="after")
+    def verify_technical_meaning(self) -> AcceptedPurchase:
+        terms = self.technical_terms
+        if self.schema_version == "accepted-purchase:v1" and (terms or self.meaning.expected_technical_terms_digest):
+            raise ValueError("legacy purchase has no technical evidence")
+        if self.meaning.expected_technical_terms_digest != (terms.digest if terms else None):
+            raise ValueError("technical acceptance mismatch")
+        if terms and (
+            terms.revision_id != self.meaning.revision_id
+            or terms.selection != self.selection
+            or terms.offer.product_id != self.meaning.product_id
+            or terms.commercial_fingerprint != self.offer.fingerprint
+        ):
+            raise ValueError("technical binding mismatch")
+        return self
 
 
 @dataclass(frozen=True)

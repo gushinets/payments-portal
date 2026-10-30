@@ -61,6 +61,7 @@ def openapi_document(
     fixture: dict[str, Any],
     manifest_path: str,
     scope: dict[str, str],
+    test_offers: dict[str, Any],
 ) -> dict[str, Any]:
     manifest_schema = _schema_for_openapi(schema)
     # Use the implicit OAS 3.1 dialect, which includes the contract's 2020-12
@@ -73,7 +74,15 @@ def openapi_document(
                 "application/json": {
                     "schema": {"$ref": "#/components/schemas/MockError"},
                     "examples": {
-                        code: {"value": {"detail": {"code": code}}}
+                        code: {
+                            "value": {
+                                "error": {
+                                    "code": code,
+                                    "message": "Simulated manifest request refused.",
+                                    "request_id": "req_example",
+                                }
+                            }
+                        }
                         for code in codes
                     },
                 }
@@ -89,6 +98,11 @@ def openapi_document(
                 "403",
                 "Unauthorized tenant/region/scope or a browser Origin header.",
                 ("scope_forbidden", "browser_access_forbidden"),
+            ),
+            (
+                "500",
+                "Safe unexpected producer failure; no partial manifest.",
+                ("internal_error",),
             ),
             (
                 "503",
@@ -123,9 +137,15 @@ def openapi_document(
                 "service-auth, exact-scope and browser-access restrictions. "
                 "Manifest schema is projected from the versioned JSON Schema; "
                 "enabled semantics, identity/reference uniqueness and semantic "
-                "digest rules remain defined in the contract README."
+                "digest rules remain defined in the contract README.\n\n"
+                "SIMULATED purchase examples, separate from the manifest: "
+                + "; ".join(
+                    f"{o['product_id']}: {o['quantity']} {o['unit']} per confirmed cycle"
+                    for o in test_offers["offers"]
+                )
             ),
         },
+        "x-simulated-purchase-examples": test_offers,
         "servers": [{"url": "/", "description": "Current development mock"}],
         "paths": {
             manifest_path: {
@@ -164,13 +184,16 @@ def openapi_document(
                 "MockError": {
                     "type": "object",
                     "additionalProperties": False,
-                    "required": ["detail"],
+                    "required": ["error"],
                     "properties": {
-                        "detail": {
+                        "error": {
                             "type": "object",
                             "additionalProperties": False,
-                            "required": ["code"],
-                            "properties": {"code": {"type": "string"}},
+                            "required": ["code", "message", "request_id"],
+                            "properties": {
+                                name: {"type": "string"}
+                                for name in ("code", "message", "request_id")
+                            },
                         }
                     },
                 },

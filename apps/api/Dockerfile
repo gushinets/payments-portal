@@ -37,6 +37,7 @@ FROM base AS development
 COPY --from=development-dependencies /opt/api-venv /opt/api-venv
 
 COPY apps/api ./apps/api
+COPY config/development ./config/development
 
 EXPOSE 8000
 

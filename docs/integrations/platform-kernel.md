@@ -111,3 +111,19 @@ checker remains in Portal CI. The owner removed external source monitoring on
 2026-10-19; the [real producer gate](../contracts/kernel-capability-manifest/v1/step-8-handoff.md#real-producer-delivery-gate-separate-integration-activity)
 remains future work. Delivery: [ANY-728](https://linear.app/paveldik/issue/ANY-728),
 companion [ANY-727](https://linear.app/paveldik/issue/ANY-727).
+
+## ANY-765 Step 1 consumer alignment
+
+Producer-owned ANY-711 contract and error models were inspected read-only at
+`e627bf296a6476efcca839a0328cf1a5683555e2`; see the
+[producer contract](https://github.com/gushinets/anytoolai-platform/blob/e627bf296a6476efcca839a0328cf1a5683555e2/docs/contracts/kernel-capability-manifest/v1/README.md).
+The existing positive fixture/digest are retained. The local mock adds the
+all-disabled inventory and safe 500/503 producer-shaped error envelope. This
+source inspection does not claim a new real Kernel HTTP run.
+
+Portal review/new confirmation validate the two test metrics' current owner,
+unit and enabled flags. Quantities 100/300 belong exclusively to the separate
+explicitly enabled development purchase dataset and accepted v2 history; the
+manifest and commercial link carry no technical quantity. SIMULATED provenance
+survives configuration changes. No peer edit, shared runtime package, access
+delivery, usage or production metric approval is introduced by this step.

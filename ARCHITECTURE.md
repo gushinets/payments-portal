@@ -161,6 +161,18 @@ owner's intended-agreement test payment have passed; independent final review
 remains pending. The current acceptance ledger records their scope and limits.
 See the [Step 3 runbook](docs/engineering/ANY-709-billing-runbook.md#purchase-api-and-financial-recovery-step-3).
 
+ANY-765 Step 1 adds explicitly enabled development purchase metering. Composition
+reads one versioned dev/test dataset independently of mock code and validates
+selected metric ownership/unit against the live Kernel manifest already used by
+review. A separate technical digest extends request idempotency meaning without
+changing the commercial fingerprint. New `accepted-purchase:v2` JSON snapshots
+pin all values, binding and SIMULATED provenance. Legacy v1 and saved replays
+remain source-independent and receive no invented metering. The development
+image includes the data; production rejects its enablement and contains no data
+fallback. See the [purchase runbook](docs/engineering/ANY-709-billing-runbook.md#development-purchase-metering-any-765-step-1).
+This changes acceptance only; paid projection/deadlines/cabinet paid-state remain
+later steps.
+
 ## Current domains and API
 
 - **Identity** — contour-local users, hashed sessions, registration, login,

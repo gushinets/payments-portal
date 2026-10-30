@@ -81,7 +81,7 @@ def setup_purchase(factory: sessionmaker[Session]) -> PurchaseTransport:
 
 async def accept(sources: SourceResources, factory: sessionmaker[Session], *, key: str = "one-request") -> Purchase:
     config = step1_settings()
-    link, offer, documents = await review_purchase(
+    link, offer, documents, _ = await review_purchase(
         sources, config, factory=factory, token=TOKEN, product_id="proposal_ai"
     )
     meaning = PurchaseMeaning(
@@ -369,7 +369,7 @@ async def test_any709_step3_twenty_confirmations_one_scope_and_consent(
         kernel_transport=httpx.MockTransport(transport.kernel),
         lbx_transport=httpx.MockTransport(transport.respond),
     ) as sources:
-        link, offer, docs = await review_purchase(
+        link, offer, docs, _ = await review_purchase(
             sources, config, factory=factory, token=TOKEN, product_id="proposal_ai"
         )
     meaning = PurchaseMeaning(
@@ -518,7 +518,7 @@ async def test_any709_step3_rechecks_local_changes_during_source_io(
         kernel_transport=httpx.MockTransport(transport.kernel),
         lbx_transport=httpx.MockTransport(transport.respond),
     ) as sources:
-        link, offer, docs = await review_purchase(
+        link, offer, docs, _ = await review_purchase(
             sources, config, factory=factory, token=TOKEN, product_id="proposal_ai"
         )
         meaning = PurchaseMeaning(
@@ -710,7 +710,7 @@ async def test_any709_step3_price_changed_between_review_and_confirmation_has_no
         kernel_transport=httpx.MockTransport(transport.kernel),
         lbx_transport=httpx.MockTransport(transport.respond),
     ) as sources:
-        link, offer, docs = await review_purchase(
+        link, offer, docs, _ = await review_purchase(
             sources, config, factory=factory, token=TOKEN, product_id="proposal_ai"
         )
         meaning = PurchaseMeaning(

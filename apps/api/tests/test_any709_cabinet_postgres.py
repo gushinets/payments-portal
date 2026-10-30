@@ -64,7 +64,7 @@ async def test_owned_inventory_paginates_without_sources_and_never_discloses_oth
     ) as sources:
         first = await accept(sources, factory)
         await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=first.id)
-        link, offer, docs = await review_purchase(
+        link, offer, docs, _ = await review_purchase(
             sources, config, factory=factory, token=TOKEN, product_id="brief_decoder"
         )
         second = await confirm_purchase(

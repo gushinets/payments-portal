@@ -986,6 +986,7 @@ def test_canonical_checks_use_a_worktree_scoped_temp_directory(tmp_path: Path) -
         "PATH": "tools",
         "TEMP": "unreadable-system-temp",
         "OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:4318",
+        "PURCHASE_TEST_TERMS_ENABLED": "true",
     }
 
     first = canonical_check_environment(root=first_root, environ=original)
@@ -998,6 +999,7 @@ def test_canonical_checks_use_a_worktree_scoped_temp_directory(tmp_path: Path) -
     assert {first[name] for name in ("TEMP", "TMP", "TMPDIR")} == {str(first_temp)}
     assert {second[name] for name in ("TEMP", "TMP", "TMPDIR")} == {str(second_temp)}
     assert first["OTEL_EXPORTER_OTLP_ENDPOINT"] == ""
+    assert first["PURCHASE_TEST_TERMS_ENABLED"] == second["PURCHASE_TEST_TERMS_ENABLED"] == "false"
     assert second["OTEL_EXPORTER_OTLP_ENDPOINT"] == ""
     assert first["INSTANCE_TENANT_ID"] == "anytoolai"
     assert first["INSTANCE_REGION"] == "ru"

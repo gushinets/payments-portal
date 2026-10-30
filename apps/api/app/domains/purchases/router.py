@@ -27,6 +27,8 @@ from app.domains.purchases.contracts import (
     PurchaseMeaning,
 )
 from app.domains.purchases import service
+from app.domains.purchases.technical_terms import AcceptedTechnicalTerms, TechnicalOffer
+from app.domains.catalog.mapping_evidence import Digest
 from app.domains.purchases.account import list_account_purchases
 from app.http.dependencies import get_session_factory
 from app.models import PurchaseIntentState
@@ -44,6 +46,7 @@ class PurchaseReviewRequest(BaseModel):
 class PurchaseConfirmRequest(PurchaseReviewRequest):
     revision_id: UUID
     expected_fingerprint: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    expected_technical_terms_digest: Digest | None = None
     documents: list[LegalSelection] = Field(min_length=1, max_length=MAX_PURCHASE_LEGAL_DOCUMENTS)
 
     @model_validator(mode="after")
@@ -58,6 +61,7 @@ class PurchaseConfirmRequest(PurchaseReviewRequest):
             product_id=self.product_id,
             revision_id=self.revision_id,
             expected_fingerprint=self.expected_fingerprint,
+            expected_technical_terms_digest=self.expected_technical_terms_digest,
             documents=tuple(sorted(self.documents, key=lambda doc: str(doc.document_version_id))),
         )
 
@@ -78,10 +82,20 @@ class PurchaseTermsResponse(BaseModel):
     full_funding_required: bool
 
 
+class PurchaseTechnicalTermsResponse(BaseModel):
+    source_version: str
+    source_digest: Digest
+    provenance: Literal["SIMULATED"]
+    offer: TechnicalOffer
+    digest: Digest
+
+
 class PurchaseReviewResponse(BaseModel):
     product_id: str
     revision_id: UUID
     expected_fingerprint: str
+    expected_technical_terms_digest: Digest | None = None
+    technical_terms: PurchaseTechnicalTermsResponse | None = None
     terms: PurchaseTermsResponse
     documents: list[LegalEvidence]
     legal_status: Literal["draft"] = "draft"
@@ -114,13 +128,27 @@ class AccountPurchasesResponse(BaseModel):
 
 
 def present_review(
-    product_id: str, revision_id: UUID, offer: CurrentOffer, documents: tuple[LegalEvidence, ...]
+    product_id: str,
+    revision_id: UUID,
+    offer: CurrentOffer,
+    documents: tuple[LegalEvidence, ...],
+    technical_terms: AcceptedTechnicalTerms | None = None,
 ) -> PurchaseReviewResponse:
     money = offer.money
     return PurchaseReviewResponse(
         product_id=product_id,
         revision_id=revision_id,
         expected_fingerprint=offer.fingerprint,
+        expected_technical_terms_digest=technical_terms.digest if technical_terms else None,
+        technical_terms=PurchaseTechnicalTermsResponse(
+            source_version=technical_terms.source_version,
+            source_digest=technical_terms.source_digest,
+            provenance=technical_terms.provenance,
+            offer=technical_terms.offer,
+            digest=technical_terms.digest,
+        )
+        if technical_terms
+        else None,
         terms=PurchaseTermsResponse(
             recurring_unit_amount=canonical_decimal(money.recurring_unit_amount),
             recurring_amount=canonical_decimal(money.recurring_amount),
@@ -151,6 +179,7 @@ def present_purchase(purchase: Purchase) -> PurchaseIntentResponse:
             purchase.accepted.meaning.revision_id,
             purchase.accepted.offer,
             purchase.accepted.documents,
+            purchase.accepted.technical_terms,
         ),
     )
 
@@ -196,7 +225,7 @@ async def review(
     authorization: Annotated[str | None, Header()] = None,
 ) -> PurchaseReviewResponse:
     response.headers["Cache-Control"] = "no-store"
-    link, offer, documents = await _boundary(
+    link, offer, documents, technical_terms = await _boundary(
         review_purchase(
             request.app.state.sources,
             settings,
@@ -205,7 +234,7 @@ async def review(
             product_id=payload.product_id,
         )
     )
-    return present_review(payload.product_id, link.mapping_revision_id, offer, documents)
+    return present_review(payload.product_id, link.mapping_revision_id, offer, documents, technical_terms)
 
 
 @router.post("/purchase-intents", response_model=PurchaseIntentResponse)

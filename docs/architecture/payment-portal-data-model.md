@@ -232,8 +232,15 @@ characters; existing users receive no fabricated names.
 
 `purchase_intents` ties one user/customer/account/product/offer to a published
 mapping revision, exact legal acceptance event, accepted commercial
-fingerprint, immutable accepted snapshot, and client idempotency key. Its
-closed states are `created`, `preparing`, `awaiting_external_result`, `linked`,
+fingerprint, immutable accepted snapshot, and client idempotency key.
+New ANY-765 Step 1 acceptances use `accepted-purchase:v2`: complete optional
+technical terms, their independent expected digest, dev source version/content
+digest, exact link/component/offer binding, Kernel evidence and SIMULATED
+provenance are embedded in the existing JSON snapshot. Legacy v1 remains
+readable without metering. No quota columns, schema migration, allowance or
+paid-state writer is introduced.
+
+The purchase closed states are `created`, `preparing`, `awaiting_external_result`, `linked`,
 `resolved_no_external_effect`, `failed_before_external_effect`, and
 `manual_review`. PostgreSQL triggers keep the accepted evidence/provenance
 fields immutable.

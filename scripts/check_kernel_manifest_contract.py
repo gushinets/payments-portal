@@ -156,7 +156,7 @@ def validate_documentation(document: dict[str, Any], html: str, schema: dict[str
         require(parameters[name]["required"] is True, "openapi_scope_drift")
         require(parameters[name]["in"] == "query", "openapi_scope_drift")
         require(parameters[name]["schema"] == {"type": "string", "enum": [expected]}, "openapi_scope_drift")
-    require(set(operation["responses"]) == {"200", "401", "403", "503"}, "openapi_status_drift")
+    require(set(operation["responses"]) == {"200", "401", "403", "500", "503"}, "openapi_status_drift")
     success = operation["responses"]["200"]["content"]["application/json"]
     require(success["schema"] == {"$ref": prefix}, "openapi_success_schema_drift")
     validate_manifest(success["example"], schema)
@@ -202,13 +202,13 @@ async def check_case(scenario: str, schema: dict[str, Any], *, fixture: dict[str
     }
     errors = {
         "unauthorized": "kernel_authentication_failed", "forbidden": "kernel_scope_forbidden",
-        "unavailable": "kernel_unavailable", "wrong-tenant": "kernel_scope_mismatch", "wrong-region": "kernel_scope_mismatch",
+        "unavailable": "kernel_unavailable", "internal-error": "kernel_unavailable", "wrong-tenant": "kernel_scope_mismatch", "wrong-region": "kernel_scope_mismatch",
     }
-    disabled = {"disabled-product", "missing-product", "disabled-metric", "missing-metric"}
+    disabled = {"all-disabled", "disabled-product", "missing-product", "disabled-metric", "missing-metric"}
     with running_mock(scenario, fixture=fixture) as origin:
         async with httpx.AsyncClient(base_url=origin, trust_env=False, timeout=2) as http:
             response = await http.get(ROUTE, params=SCOPE, headers={"Authorization": f"Bearer {TEST_TOKEN}"})
-            require(response.status_code == {"unauthorized": 401, "forbidden": 403, "unavailable": 503}.get(scenario, 200), "http_status_mismatch")
+            require(response.status_code == {"unauthorized": 401, "forbidden": 403, "internal-error": 500, "unavailable": 503}.get(scenario, 200), "http_status_mismatch")
             if response.status_code == 200:
                 try:
                     validate_manifest(response.json(), schema)
@@ -303,9 +303,9 @@ async def check_local(scenario: str | None = None) -> None:
                 validate_manifest(response.json(), schema)
         return
     for case in (
-        "valid", "disabled-product", "missing-product", "disabled-metric", "missing-metric", "wrong-schema",
+        "valid", "all-disabled", "disabled-product", "missing-product", "disabled-metric", "missing-metric", "wrong-schema",
         "malformed-json", "partial", "wrong-type", "duplicate-product", "duplicate-metric", "invalid-reference",
-        "digest-mismatch", "wrong-tenant", "wrong-region", "unauthorized", "forbidden", "unavailable",
+        "digest-mismatch", "wrong-tenant", "wrong-region", "unauthorized", "forbidden", "internal-error", "unavailable",
     ):
         await check_case(case, schema)
     multiple = copy.deepcopy(fixture)

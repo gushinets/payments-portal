@@ -103,6 +103,12 @@ test("purchase prepares once, then one wide cabinet Widget verifies the selected
   const panel = await openProduct(page);
   await panel.getByRole("button", { name: ru.Purchase.buy, exact: true }).click();
   await expect(panel.getByRole("button", { name: ru.Purchase.confirm })).toBeDisabled();
+  await expect(panel.getByText("100 generation", { exact: true })).toBeVisible();
+  await expect(panel.getByText(ru.Purchase.simulatedTerms)).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const reviewAccessibility = await new AxeBuilder({ page }).analyze();
+  expect(reviewAccessibility.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath("purchase-technical-review.png"), fullPage: true });
   await panel.getByRole("checkbox").check();
   await panel.getByRole("button", { name: ru.Purchase.confirm }).click();
   await expect(panel.getByRole("alert")).toContainText(ru.Billing.errors.termsChanged);
@@ -130,6 +136,9 @@ test("purchase prepares once, then one wide cabinet Widget verifies the selected
   await expect(products.getByRole("link", { name: ru.Account.products.allProducts })).toHaveAttribute("href", "/ru/products");
   await expect(products.getByRole("link", { name: ru.Account.products.detailAction })).toHaveAttribute("href", "/ru/products/proposal_ai");
   expect(state.confirmations).toHaveLength(2);
+  expect(state.confirmations[1].body).toMatchObject({
+    expected_technical_terms_digest: purchaseReview.expected_technical_terms_digest,
+  });
   expect(state.advances).toBe(1);
   expect(state.bootstraps).toEqual([{ purchase_intent_id: savedPurchase.purchase_intent_id }]);
   await page.screenshot({ path: testInfo.outputPath("cabinet-payment.png"), fullPage: true });

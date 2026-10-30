@@ -178,6 +178,7 @@ function PurchasePanel({ productId, user, headingLevel }: { productId: string; u
         result = await confirmPurchase(token, {
           product_id: productId, revision_id: frozen.review.revision_id,
           expected_fingerprint: frozen.review.expected_fingerprint,
+          expected_technical_terms_digest: frozen.review.expected_technical_terms_digest,
           documents: frozen.review.documents.map(({ document_version_id, acceptance_text_hash }) => ({ document_version_id, acceptance_text_hash }))
         }, frozen.key, id);
       } catch (error) {

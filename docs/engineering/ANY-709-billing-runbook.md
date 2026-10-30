@@ -11,6 +11,50 @@ owns current outcomes. Historical authoring NOT_RUN entries below are explicitly
 checkpoint evidence, not the current acceptance status. Paid access and launch
 remain later program steps; independent review is not replaced by author QA.
 
+## Development purchase metering (ANY-765 Step 1)
+
+Set `PURCHASE_TEST_TERMS_ENABLED=true` explicitly in the private development
+environment, then rebuild/restart the development API through the normal
+worktree lifecycle. The default is false; Settings refuses true with
+`APP_ENV=production`, including test deployments using that value. The
+development image copies the single
+[versioned dataset](../../config/development/paid-access-test-terms.json);
+the production image does not copy it. The separate Kernel mock documentation
+reads the same data, without Portal importing mock code.
+
+The examples are **SIMULATED**, fixed per confirmed cycle: ProposalAI
+`proposal_ai.test_generations`, 100 `generation`; Brief Decoder
+`brief_decoder.test_analyses`, 300 `analysis`. Prices and lifecycle still
+come from LBX. Review and each genuinely new confirmation obtain a live Kernel
+manifest and current selected LBX offer. Product/metric enablement, metric owner
+and unit must match. Missing, malformed or incompatible enabled data refuses
+with `purchase_technical_terms_unavailable`; there is no fallback.
+
+Review shows the exact limit and simulation label. Confirmation supplies
+`expected_technical_terms_digest` independently of the unchanged commercial
+fingerprint. The digest covers source version/content, complete values and
+provenance, account, exact link revision/component/offer and Kernel evidence.
+Changed or omitted expected meaning returns `terms_changed` before acceptance.
+A new explicit review and unchecked consent are required after this refusal.
+
+New `accepted-purchase:v2` snapshots preserve the complete technical evidence
+alongside the original commercial/legal associations. Technical quantities are
+strict JSON integers in `0..9007199254740991` (exact in browser JSON and within
+PostgreSQL BIGINT); booleans, floats and strings are refused. Zero is a finite
+zero allowance input, never unlimited. This step creates no allowance or access.
+
+When the source is disabled, new v2 purchases retain absent technical evidence;
+absence is not proof of an access-only or unlimited offer. Legacy
+`accepted-purchase:v1` remains readable without invented limits. Same-key
+replay and owned status use the original snapshot before any source/configuration
+lookup; fixture edits, removal or disablement cannot rewrite accepted values
+or upgrade SIMULATED provenance. Different technical meaning under the same key
+returns `purchase_idempotency_conflict`.
+
+Step 2 consumes saved evidence only. Paid grants, allowance issuance, revisions,
+outbox writes, production quantities and real LBX/Kernel execution remain later
+work. No legal text or legal-event meaning changes here.
+
 ## Connection and deployment
 
 Server API reads and product linking require only `LBX_BASE_URL` (HTTP(S)

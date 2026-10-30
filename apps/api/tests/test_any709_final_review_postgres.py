@@ -204,7 +204,7 @@ async def test_retained_conflict_blocks_new_admission_but_operator_can_retarget(
         kernel_transport=httpx.MockTransport(transport.kernel),
         lbx_transport=httpx.MockTransport(transport.respond),
     ) as sources:
-        link, offer, documents = await review_purchase(
+        link, offer, documents, _ = await review_purchase(
             sources, config, factory=factory, token=TOKEN, product_id="proposal_ai"
         )
         meaning = PurchaseMeaning(

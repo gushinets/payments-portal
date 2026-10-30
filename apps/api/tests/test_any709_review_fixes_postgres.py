@@ -245,7 +245,7 @@ async def test_same_tariff_products_use_product_scope_and_point_proven_history(
         first = await accept(sources, factory, key="product-a")
         if already_linked:
             await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=first.id)
-        link, offer, docs = await review_purchase(
+        link, offer, docs, _ = await review_purchase(
             sources, config, factory=factory, token=TOKEN, product_id="brief_decoder"
         )
         meaning = PurchaseMeaning(

@@ -245,7 +245,7 @@ async def test_future_schedule_preserves_current_terms_and_partially_prepared_pu
         assert next(op for op in prepared.operations if op.kind == Kind.AGREEMENT).state == State.BOUND
         assert next(op for op in prepared.operations if op.kind == Kind.SUBSCRIPTION).state == State.PENDING
         pause_after_agreement = False
-        _, before, _ = await purchases.review_purchase(
+        _, before, _, _ = await purchases.review_purchase(
             sources, config, factory=factory, token=TOKEN, product_id="proposal_ai"
         )
         prices = json.loads(transport.offer.bodies["prices"])
@@ -259,7 +259,7 @@ async def test_future_schedule_preserves_current_terms_and_partially_prepared_pu
         inline = services["response"][0]["prices"][0]
         services["response"][0]["prices"].append({**inline, "price_start_date": "2026-11-01"})
         transport.offer.bodies["services"] = json.dumps(services).encode()
-        link, after, documents = await purchases.review_purchase(
+        link, after, documents, _ = await purchases.review_purchase(
             sources, config, factory=factory, token=TOKEN, product_id="proposal_ai"
         )
         assert before.fingerprint == after.fingerprint and before.price_id == after.price_id
@@ -280,7 +280,7 @@ async def test_future_schedule_preserves_current_terms_and_partially_prepared_pu
         assert transport.creates("/subscriptions") == (0 if resume_on_effective_date else 1)
         # On the actual effective date the new price identity is material, even at the same amount.
         monkeypatch.setattr(current_offer, "utc_now", lambda: datetime(2026, 11, 1, 12, tzinfo=UTC))
-        _, effective, _ = await purchases.review_purchase(
+        _, effective, _, _ = await purchases.review_purchase(
             sources, config, factory=factory, token=TOKEN, product_id="proposal_ai"
         )
         assert effective.price_id == 1999 and effective.fingerprint != after.fingerprint

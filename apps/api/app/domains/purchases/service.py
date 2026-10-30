@@ -7,7 +7,6 @@ acknowledgement or the caller disappears. Only original fenced point proof binds
 
 from __future__ import annotations
 
-import json
 from datetime import date, datetime
 from uuid import UUID, uuid4
 
@@ -36,6 +35,8 @@ from app.domains.purchases.contracts import (
     PurchaseMeaning,
     PurchaseRefused,
 )
+from app.domains.purchases.technical_terms import AcceptedTechnicalTerms
+from app.domains.purchases.evidence import accepted as accepted
 from app.infrastructure.persistence.commercial_mappings import lock_mapping_scope
 from app.infrastructure.queries.billing_customers import (
     customer_operation,
@@ -87,24 +88,6 @@ def read_legal(factory: SessionFactory, configuration: Settings, token: str) -> 
     with factory() as db:
         authenticate(db, configuration, token)
         return legal_evidence(db, configuration)
-
-
-def accepted(row: PurchaseIntent) -> AcceptedPurchase:
-    try:
-        result = AcceptedPurchase.model_validate_json(json.dumps(row.accepted_snapshot))
-    except (ValueError, TypeError):
-        raise PurchaseRefused("purchase_history_unproven", 409) from None
-    if (
-        row.accepted_snapshot_schema_version != result.schema_version
-        or row.product_id != result.meaning.product_id
-        or row.mapping_revision_id != result.meaning.revision_id
-        or row.accepted_commercial_fingerprint != result.offer.fingerprint
-        or result.meaning.expected_fingerprint != result.offer.fingerprint
-        or row.billing_offer_id != result.selection.billing_offer_id
-        or result.selection.product_id != row.product_id
-    ):
-        raise PurchaseRefused("purchase_history_unproven", 409)
-    return result
 
 
 def _verify_original_consent(db: Session, row: PurchaseIntent, evidence: AcceptedPurchase) -> None:
@@ -345,6 +328,7 @@ def pin_purchase(
     link: StoredProductLink,
     offer: CurrentOffer,
     documents: tuple[LegalEvidence, ...],
+    technical_terms: AcceptedTechnicalTerms | None = None,
 ) -> Purchase:
     with factory() as db:
         user = authenticate(db, configuration, token)
@@ -365,6 +349,8 @@ def pin_purchase(
             or head.provider_origin != configuration.lbx_provider_origin
             or link.mapping_revision_id != meaning.revision_id
             or offer.fingerprint != meaning.expected_fingerprint
+            or meaning.expected_technical_terms_digest != (technical_terms.digest if technical_terms else None)
+            or configuration.purchase_test_terms_enabled != (technical_terms is not None)
             or current_documents != documents
             or selected != tuple((doc.document_version_id, doc.acceptance_text_hash) for doc in meaning.documents)
         ):
@@ -377,12 +363,14 @@ def pin_purchase(
         if slot.binding_state == Binding.IDENTITY_CONFLICT:
             raise PurchaseRefused("billing_identity_conflict", 409)
         evidence = AcceptedPurchase(
+            schema_version="accepted-purchase:v2",
             meaning=meaning,
             selection=link.document.selection,
             offer=offer,
             documents=documents,
             provider_origin=configuration.lbx_provider_origin,
             seller_id=int(configuration.lbx_seller_organization_id),
+            technical_terms=technical_terms,
         )
         event = LegalAcceptanceEvent(
             id=uuid4(),
