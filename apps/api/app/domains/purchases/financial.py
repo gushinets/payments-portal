@@ -80,8 +80,7 @@ def claim_financial(
         retry_unsent = operation.operation_state == State.PROVEN_NOT_SENT
         if not retry_unsent and operation.unknown_since is not None:
             return _operation(db, operation)
-        # Customer conflict may have arrived while inventory/source I/O ran.
-        # Serialize its current evidence with the new possible-send claim.
+        # Serialize customer conflicts arriving during source I/O with the new possible-send claim.
         customer = lock_customer(db, row.customer_id)
         customer_create = customer_operation(db, customer.customer_id)
         if customer_create is None:
@@ -412,9 +411,8 @@ def _bind_financial(
             )
             db.add(evidence)
             db.flush()
-            # Any reconciliation claim marks this as a monitored subscription.
-            # Preparation may append evidence, but it cannot replace lifecycle,
-            # financial status, supporting observation or source trust.
+            # Any reconciliation claim marks this subscription as monitored.
+            # Preparation cannot replace its lifecycle, financial status, supporting observation or trust.
             if sub.reconciliation_fencing_token == 0:
                 sub.lifecycle_status = Lifecycle.ACTIVE if observation.state == 2 else Lifecycle.INACTIVE
                 sub.latest_observation_id = evidence.observation_id
