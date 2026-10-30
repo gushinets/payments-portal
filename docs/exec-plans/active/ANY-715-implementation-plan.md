@@ -1835,6 +1835,41 @@ Verification:
 Only disposable test databases were used. Browser E2E, real LBX/webhook delivery,
 application/production migration and launch gates remain unchanged.
 
+### Rebase onto current ANY-709 — 2026-10-30
+
+The owner requested rebasing ANY-715 onto the updated ANY-709. The remote base
+was fetched at `688127c` (new commits `a2bcb59` and `688127c`), replacing
+`fc85a95e`. Original ANY-715 HEAD `b44a45f` is retained locally as
+`codex/any715-before-rebase-20261030`. All eleven commits replayed without
+conflicts; `git range-diff` marked every original/rebased patch equivalent.
+
+The combined customer module reached 508 lines, exceeding the existing
+500-line architecture guard, although each branch independently fit the guard.
+Extracted the existing connection-account admission checks into
+`domains/billing/customer_scope.py`; `customers.py` now has 488 lines. Query
+order, refusal conditions/codes, caller-owned transaction and permanent identity
+reservation order are unchanged. No new source call or state transition was
+introduced. The original eleven rebased patches remain intact.
+
+Verification on the rebased working tree with this bounded compatibility
+extraction:
+
+- The first canonical attempt stopped at the 508-line architecture guard before
+  test execution. The scope extraction restored architecture/Ruff/format PASS.
+  Log: `.harness/any715-rebase-20261030-architecture-precheck.log`.
+- Full `npm run check` **PASS**: **1,667** fast API, **499** PostgreSQL,
+  **385** component and **38** web boundary tests, including typecheck; Ruff,
+  web lint, production build, documentation, architecture and generated
+  freshness passed. This includes the new ANY-709 connection/product identity,
+  subscription inventory and term-fencing scenarios, all ANY-715 worker/recovery
+  scenarios, the seven refusal regressions and all timeout/cancel variants.
+  Log: `.harness/any715-rebase-20261030-check.log`.
+- Only a separate disposable test database was used. Development Kernel
+  settings were cleared only in the child check process. The test PostgreSQL
+  server is stopped after verification. Browser E2E, real LBX/webhook delivery
+  and application/production migration were not run; existing enablement gates
+  remain unchanged.
+
 ## 6. Final Verification & Review
 
 ### Complete behavior scenario
