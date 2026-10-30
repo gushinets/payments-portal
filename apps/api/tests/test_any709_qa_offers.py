@@ -174,6 +174,27 @@ async def test_any709_qa_current_price_uses_latest_started_price_of_selected_per
     assert source.counts == {name: 2 for name in source.bodies}
 
 
+@pytest.mark.parametrize("start", ["2026-09-01", "2026-10-01", "2026-11-01"])
+@pytest.mark.parametrize(
+    "field,value", [("period_type", 4), ("period_length", 2), ("period_type", None), ("period_length", None)]
+)
+async def test_any709_qa_period_metadata_belongs_to_effective_price(start: str, field: str, value: int | None) -> None:
+    source = scheduled_prices()
+    baseline = await quote(scheduled_prices())
+    prices = json.loads(source.bodies["prices"])
+    row = next(row for row in prices["response"] if row["period_id"] == 1 and row["start_date"] == start)
+    row[field] = value
+    source.bodies["prices"] = json.dumps(prices).encode()
+    if start == "2026-10-01":
+        with pytest.raises(SelectedOfferRefused, match="price_period_conflict"):
+            await quote(source)
+    else:
+        result = await quote(source)
+        assert result.price_id == baseline.price_id == 288
+        assert result.money == baseline.money and result.period == baseline.period
+        assert result.fingerprint == baseline.fingerprint
+
+
 @pytest.mark.parametrize("name,date_field", [("services", "price_start_date"), ("prices", "start_date")])
 @pytest.mark.parametrize("change", ["all_future", "other_period_only", "empty", "unknown_start", "null_start"])
 async def test_any709_qa_current_price_requires_applicable_dated_record(

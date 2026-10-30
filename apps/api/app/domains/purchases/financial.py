@@ -245,6 +245,14 @@ def changed_unsent_terms(factory: SessionFactory, purchase: Purchase) -> None:
     with factory() as db:
         row = _locked(db, purchase)
         operations = queries.operations(db, purchase.id, lock=True)
+        # Source I/O used this frozen snapshot. A later send, receipt or binding
+        # invalidates its decision; the caller reloads the current purchase.
+        if (
+            row.state == IntentState.LINKED
+            or row.state != purchase.state
+            or tuple(_operation(db, op) for op in operations) != purchase.operations
+        ):
+            return
         if any(
             op.operation_state not in {State.PENDING, State.PROVEN_NOT_SENT} or op.bound_external_object_id
             for op in operations

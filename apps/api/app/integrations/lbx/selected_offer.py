@@ -194,11 +194,6 @@ def _applicable_price[Price: (LbxServicePrice, LbxInlinePrice)](
     for row in relevant:
         budget.check()
         _price_start(row)
-        if isinstance(row, LbxServicePrice) and (row.period_type, row.period_length) != (
-            period.period_type,
-            period.period_length,
-        ):
-            _incomplete("price_period_conflict")
     applicable = [row for row in relevant if _price_start(row) <= effective_on]
     if not applicable:
         _incomplete("applicable_price_missing")
@@ -207,6 +202,11 @@ def _applicable_price[Price: (LbxServicePrice, LbxInlinePrice)](
     if len(candidates) != 1:
         _incomplete("price_applicability_ambiguous")
     row = candidates[0]
+    if isinstance(row, LbxServicePrice) and (row.period_type, row.period_length) != (
+        period.period_type,
+        period.period_length,
+    ):
+        _incomplete("price_period_conflict")
     until = min((_price_start(price) for price in relevant if _price_start(price) > start), default=None)
     if isinstance(row, LbxServicePrice) and row.next_change_date is not None and row.next_change_date != until:
         _incomplete("price_schedule_gap_or_overlap")

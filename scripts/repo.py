@@ -254,17 +254,48 @@ def runtime_caddy_port(config: RuntimeConfig) -> int:
     return config.otlp_http_port + 1000
 
 
+def dotenv_value(value: str, line_number: int) -> str:
+    """Decode one line without expansion or an API-environment dependency."""
+    if not value.startswith(("'", '"')):
+        return re.split(r"\s+#", value, maxsplit=1)[0].rstrip()
+    quote = value[0]
+    pattern = (
+        r"'((?:\\'|[^'])*)'\s*(?:#.*)?"
+        if quote == "'"
+        else r'"((?:\\"|[^"])*)"\s*(?:#.*)?'
+    )
+    match = re.fullmatch(pattern, value)
+    if match is None:
+        raise HarnessError(f"Invalid dotenv quoting at line {line_number}")
+    escapes = {
+        "\\": "\\",
+        "'": "'",
+        '"': '"',
+        "a": "\a",
+        "b": "\b",
+        "f": "\f",
+        "n": "\n",
+        "r": "\r",
+        "t": "\t",
+        "v": "\v",
+    }
+    escape_pattern = r"\\([\\'])" if quote == "'" else r"""\\([\\'"abfnrtv])"""
+    return re.sub(escape_pattern, lambda item: escapes[item[1]], match[1])
+
+
 def read_dotenv(path: Path = ROOT / ".env") -> dict[str, str]:
     if not path.exists():
         return {}
 
     values: dict[str, str] = {}
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
+    for line_number, raw_line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        values[key.strip()] = value.strip().strip("'\"")
+        values[key.strip()] = dotenv_value(value.strip(), line_number)
     return values
 
 
@@ -497,7 +528,7 @@ def write_runtime(config: RuntimeConfig) -> None:
 def quote_runtime_value(value: str) -> str:
     # Compose's $$ escape survives interpolation; JSON quoting preserves quotes,
     # backslashes (including a trailing backslash), whitespace and comments.
-    if any(char in value for char in "$#'\\\" "):
+    if any(char in "$#'\\\"" or char.isspace() for char in value):
         return json.dumps(value, ensure_ascii=False).replace("$", "$$")
     return value
 

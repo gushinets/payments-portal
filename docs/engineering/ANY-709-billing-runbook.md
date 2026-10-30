@@ -22,6 +22,10 @@ linking. Server API requests append
 `/api/rest/v1` exactly once; Client API/SDK paths are
 `/api/rest/v1/client` and `/lbxwidget.js` on the same validated origin. Never put
 these secrets in browser configuration, CLI arguments or checked-in files.
+The local harness decodes matching dotenv quotes and escapes before forwarding
+private values; literal quote characters inside a quoted password/signing secret
+are retained. Process environment values still take precedence. Malformed
+quoting and decoded line breaks in forwarded secrets fail with safe diagnostics.
 
 All-empty connection settings leave billing unavailable. Partial/invalid
 connection settings produce safe billing errors; they do not prevent identity
@@ -586,7 +590,13 @@ user and the normal configured link; never assign a research customer ID.
    Agreement creation uses a Moscow calendar date; the subscription request
    omits activation/start dates, disables manual/demo activation and requests
    balance-gated activation. Original accepted live terms are rechecked before
-   each previously unsent financial operation. No DB transaction spans HTTP.
+   each previously unsent financial operation. Customer-wide same-tariff inventory
+   is also reread before each new financial send, including a subscription send
+   after its agreement is bound or an explicit `PROVEN_NOT_SENT` continuation.
+   An unproven competing subscription requires review; incomplete inventory
+   permits only a later read, while ended subscriptions and another point-proven
+   Portal purchase remain admissible. Ambiguous CREATE recovery stays GET-only.
+   No DB transaction spans HTTP.
 4. Inspect `GET /api/purchase-intents/current?product_id=<product>` and
    `GET /api/purchase-intents/<purchase_intent_id>`. Both use owned local history
    without catalog reads or CREATE. A `linked` result is a prepared subscription,

@@ -219,16 +219,25 @@ def add_second_period(transport: PurchaseTransport) -> dict:
 
 @pytest.mark.parametrize("already_linked", [False, True])
 @pytest.mark.parametrize("inventory", ["proven", "unknown", "wrong_seller", "changed_terms"])
+@pytest.mark.parametrize("resume_subscription", [False, True])
 async def test_same_tariff_products_use_product_scope_and_point_proven_history(
     migrated_database: Engine,
     postgres_session_factory: sessionmaker[Session],
     already_linked: bool,
     inventory: str,
+    resume_subscription: bool,
 ) -> None:
     factory = postgres_session_factory
     transport = setup_purchase(factory)
     config = step1_settings()
     manifest = add_second_period(transport)
+    reject_subscription = False
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if reject_subscription and request.method == "POST" and request.url.path.endswith("/subscriptions"):
+            raise httpx.ConnectError("synthetic no-send", request=request)
+        return transport.respond(request)
+
     publish_product_link(
         factory,
         evaluation=link_document(selection=link_selection(product_id="brief_decoder", period_id=9902)),
@@ -240,7 +249,7 @@ async def test_same_tariff_products_use_product_scope_and_point_proven_history(
     async with source_resources(
         config,
         kernel_transport=httpx.MockTransport(lambda request: httpx.Response(200, json=manifest)),
-        lbx_transport=httpx.MockTransport(transport.respond),
+        lbx_transport=httpx.MockTransport(respond),
     ) as sources:
         first = await accept(sources, factory, key="product-a")
         if already_linked:
@@ -262,6 +271,11 @@ async def test_same_tariff_products_use_product_scope_and_point_proven_history(
         second = await confirm_purchase(sources, config, factory=factory, token=TOKEN, key="product-b", meaning=meaning)
         if not already_linked:
             await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=first.id)
+        if resume_subscription:
+            reject_subscription = True
+            paused = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=second.id)
+            assert next(op for op in paused.operations if op.kind == Kind.SUBSCRIPTION).state == State.PROVEN_NOT_SENT
+            reject_subscription = False
         if inventory == "unknown":
             transport.subscriptions.append({**transport.subscriptions[0], "subscription_id": 999})
         elif inventory == "wrong_seller":
@@ -273,6 +287,8 @@ async def test_same_tariff_products_use_product_scope_and_point_proven_history(
         except PurchaseRefused as error:
             assert inventory == "unknown" and error.code == "purchase_existing_subscription_review"
             result = service.read_purchase(factory, second.user_id, second.id)
+        assert result.accepted == second.accepted
+        assert [op.id for op in result.operations] == [op.id for op in second.operations]
         if inventory == "proven":
             assert result.state == IntentState.LINKED and result.held
             assert transport.creates("/users") == 1
@@ -281,4 +297,5 @@ async def test_same_tariff_products_use_product_scope_and_point_proven_history(
             assert len({row["agreement_id"] for row in transport.subscriptions}) == 2
         else:
             assert result.state == IntentState.MANUAL_REVIEW and result.held
-            assert transport.creates("/agreements") == transport.creates("/subscriptions") == 1
+            assert transport.creates("/agreements") == (2 if resume_subscription else 1)
+            assert transport.creates("/subscriptions") == 1

@@ -292,8 +292,9 @@ async def _prepare(
             if not await _live_original(sources, configuration, purchase, factory, budget=budget):
                 break
             try:
-                if kind == Kind.AGREEMENT:
-                    await _inventory(client, purchase, customer, factory, budget=budget)
+                # A bound agreement does not prove current subscription admission,
+                # including when a proven-not-sent subscription is explicitly resumed.
+                await _inventory(client, purchase, customer, factory, budget=budget)
                 found = await _find_financial(client, purchase, operation, customer, budget=budget)
             except PurchaseInventoryIncomplete:
                 await run_in_threadpool(financial.financial_pending, factory, purchase, operation)

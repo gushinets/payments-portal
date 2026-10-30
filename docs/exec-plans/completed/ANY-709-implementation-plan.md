@@ -5,6 +5,109 @@ Completed: 2026-10-27
 Program: ANY-504, Step 7
 Issue: [ANY-709](https://linear.app/paveldik/issue/ANY-709)
 
+## Subscription-send inventory review fix, 2026-10-30
+
+Owner-authorized follow-up for
+[P1 discussion_r4409729888](https://github.com/gushinets/payments-portal/pull/150#discussion_r4409729888):
+recheck customer-wide same-tariff subscription inventory before every genuinely
+new subscription send, including an explicit `PROVEN_NOT_SENT` continuation
+after its agreement was bound. A prior agreement check is not current admission
+proof for that later send.
+
+- [x] Refuse an unproven competing subscription without a subscription POST;
+  retain the purchase hold and immutable accepted evidence.
+- [x] Keep incomplete inventory retryable and ended subscriptions admissible.
+- [x] Preserve the exception for another point-proven Portal purchase and reject
+  changed ownership/seller/material terms on that proof.
+- [x] Preserve GET-only recovery after an ambiguous CREATE outcome, on both
+  explicit advance and recovery entrypoints.
+- [x] Reproduce with PostgreSQL regressions, run focused and canonical checks,
+  and record their actual results. No schema, paid-access or wire change.
+
+Implementation and focused evidence:
+
+- The existing customer-wide inventory check now guards both unsent financial
+  operations, rather than only agreement creation. It remains below the
+  GET-only/recover-only guards and before the durable possible-send claim.
+  Known conflicts enter review with the scope held; incomplete reads preserve
+  the pending/no-send operation for a later explicit attempt.
+- Six new admission cases cover first subscription send and proven-not-sent
+  continuation after agreement preparation, with competing, ended or incomplete
+  external subscriptions. Two recovery controls prove that a 500-after-effect
+  subscription still binds through GET only, despite new competing inventory.
+- Eight additional cases extend the existing other-product/same-tariff matrix
+  through subscription no-send continuation: valid original Portal proof stays
+  admissible, while unknown inventory, wrong seller and changed material terms
+  require review. Accepted evidence and operation identities remain unchanged.
+- Before the fix: 10 expected failures and 14 passing controls (four unrelated
+  cases deselected), `/tmp/any709-p1-red.log`. After the fix: 45 PostgreSQL
+  purchase/inventory/recovery/terms-fencing tests passed,
+  `/tmp/any709-p1-focused.log`. Ruff check/format and `git diff --check` passed.
+- Full `npm run check` passed documentation/generation, architecture, Ruff,
+  38 web boundary tests, 378 component tests, lint, all 1,488 fast API tests,
+  the production web build and all 345 PostgreSQL tests. Log:
+  `/tmp/any709-p1-canonical.log`. The repository-root `.venv/bin` was on `PATH`;
+  optional local Kernel mock/connection environment overrides were disabled for
+  the canonical test process. No runtime deadline or test budget was changed.
+- Browser E2E was skipped by the canonical runner: it requires `RUN_E2E=true`
+  and a running harness stack. Synthetic HTTP and the worktree-local disposable
+  PostgreSQL test database were used; no live LBX mutation or payment. The test
+  PostgreSQL server was stopped after verification.
+
+## Current-offer, stale-advance and dotenv review fixes, 2026-10-29
+
+Owner-authorized scope: the three confirmed P2 findings on `fc85a95`.
+
+- [x] Validate period metadata only on the uniquely effective price; retain
+  complete date, schedule, selected-price and inline consistency checks.
+- [x] Fence the terms-change transition against the purchase/operation snapshot
+  that authorized source I/O. A concurrent advance must retain its newer result;
+  genuine changes to still-current unsent terms must retain their refusal path.
+- [x] Parse matching dotenv quotes and escapes before forwarding private values,
+  preserving bootstrap without extra runtime dependencies and environment override
+  precedence. Test the actual file-to-Settings path and the Widget signature.
+- [x] Reproduce the failures with permanent regressions, run focused and canonical
+  checks, and record actual evidence. No migrations, live LBX mutations, accepted
+  history rewrites or paid-access changes are required.
+
+Implementation and evidence:
+
+- The price selector validates all relevant start dates, selects the unique
+  effective row, then checks its period metadata and next-change consistency.
+  Twelve new current/history/future cases include mismatched and missing period
+  metadata; strict selected-row refusal and existing inline/date checks remain.
+- The terms transition locks the latest purchase and financial operations, then
+  compares their snapshots with those used before source I/O. Newer state,
+  fences, receipts or bindings make the old decision inapplicable; the caller
+  returns a fresh purchase. LINKED purchases cannot be demoted by catalog terms.
+  Five PostgreSQL cases cover agreement/subscription interleavings, a changed
+  fence returning to the same state, and genuine unsent terms-change controls.
+  Original accepted/legal evidence, scopes and financial CREATE identities stay
+  intact; fresh payment point proof succeeds after the stale request returns.
+- Twenty-six dotenv cases cover real files, paired quotes, escapes, whitespace,
+  process-environment precedence, redacted invalid-input errors and the complete
+  private runtime-file/Settings/Widget-signature path. Bootstrap remains standard
+  library only. A Python 3.12 `-S` check passed, and 2,000 synthetic quoted-value
+  round trips matched `python-dotenv` with interpolation disabled.
+- Before implementation, the regressions reproduced 26 fast failures and three
+  PostgreSQL state-transition failures; the genuine terms-change controls passed.
+  Focused source/configuration checks passed, including the final 100-case
+  offer/dotenv subset. The focused purchase/recovery suite passed 61 PostgreSQL
+  cases. Logs: `/tmp/any709-p2-red-fast.log`, `/tmp/any709-p2-red-postgres.log`,
+  `/tmp/any709-p2-focused-fast.log`, `/tmp/any709-p2-focused-postgres.log`.
+- Full `npm run check` passed documentation/generation, architecture, Ruff,
+  38 boundary tests, 378 component tests, lint, all 1,488 fast API tests and the
+  production web build. PostgreSQL finished with 327 passed and two failures:
+  `test_customer_ensure_find_create_recover[unknown_error_after_effect]` and
+  `[old_review]` expired their 0.6-second request budgets. Repeating their
+  unchanged customer-only file in isolation passed all 11 cases. This is not an
+  entirely green single canonical run; customer code/tests and runtime deadlines
+  were not changed to hide the result. Logs: `/tmp/any709-p2-canonical-check.log`,
+  `/tmp/any709-p2-customer-controls.log`.
+- Browser E2E was not run (no web changes or running harness stack). Synthetic
+  HTTP and disposable PostgreSQL were used; no live LBX mutation, application-DB
+  migration, deployment or payment occurred. No wire/schema changes were needed.
+
 ## Single branch migration, 2026-10-29
 
 Owner request: keep one ANY-709 migration after main's unchanged
