@@ -234,6 +234,7 @@ def canonical_check_environment(
     temp_dir.mkdir(parents=True, exist_ok=True)
     for variable in ("TEMP", "TMP", "TMPDIR"):
         environment[variable] = str(temp_dir)
+    environment["BILLING_WORKER_ENABLED"] = "false"
     environment["OTEL_EXPORTER_OTLP_ENDPOINT"] = ""
     environment["INSTANCE_TENANT_ID"] = LOCAL_INSTANCE_TENANT_ID
     environment["INSTANCE_REGION"] = LOCAL_INSTANCE_REGION
@@ -492,10 +493,14 @@ def write_runtime(config: RuntimeConfig) -> None:
         "KERNEL_BASE_URL", "KERNEL_SERVICE_TOKEN",
         "LBX_BASE_URL", "LBX_SERVER_USERNAME", "LBX_SERVER_PASSWORD",
         "LBX_WIDGET_SIGNING_SECRET", "LBX_SELLER_ORGANIZATION_ID",
+        "LBX_WEBHOOK_ENABLED", "LBX_WEBHOOK_AUTH_HEADER", "LBX_WEBHOOK_AUTH_VALUE",
         "LBX_CURRENCY_ID", "LBX_CURRENCY",
         "LBX_CONNECT_TIMEOUT_SECONDS", "LBX_READ_TIMEOUT_SECONDS",
         "LBX_MAX_RESPONSE_BYTES", "LBX_MAX_GET_ATTEMPTS",
         "LBX_RETRY_DELAY_SECONDS", "LBX_MAX_RETRY_DELAY_SECONDS",
+        "BILLING_WORKER_ENABLED", "BILLING_WORKER_URGENT_CONCURRENCY",
+        "BILLING_WORKER_NORMAL_CONCURRENCY", "BILLING_WORKER_IO_TIMEOUT_SECONDS",
+        "BILLING_WORKER_SCAN_BATCH_SIZE",
         "MAPPING_OPERATOR_LOCK_FILE",
     ):
         value = os.environ.get(name, local_env.get(name, ""))
@@ -3279,17 +3284,26 @@ def cmd_billing_purchase(args: argparse.Namespace) -> None:
     environment["PYTHONPATH"] = os.pathsep.join(
         value for value in (str(ROOT / "apps/api"), environment.get("PYTHONPATH", "")) if value
     )
+    command = [
+        sys.executable,
+        "-m",
+        "app.cli.billing_purchases",
+        args.action,
+        "--user-id",
+        str(args.user_id),
+        "--purchase-id",
+        str(args.purchase_id),
+    ]
+    for name in (
+        "resolution", "case_id", "expected_case_digest",
+        "expected_observation_id", "expected_reconciliation_fence",
+        "operation_id", "expected_operation_fence", "reason", "reference",
+    ):
+        value = getattr(args, name, None)
+        if value is not None:
+            command.extend(["--" + name.replace("_", "-"), str(value)])
     result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "app.cli.billing_purchases",
-            args.action,
-            "--user-id",
-            str(args.user_id),
-            "--purchase-id",
-            str(args.purchase_id),
-        ],
+        command,
         cwd=ROOT,
         env=environment,
         check=False,
@@ -3516,11 +3530,18 @@ def build_parser() -> argparse.ArgumentParser:
     customer.add_argument("--user-id", type=uuid.UUID, required=True)
     customer.set_defaults(func=cmd_billing_customer)
     purchase = sub.add_parser(
-        "billing-purchase", help="Financial inspect and GET-only recovery"
+        "billing-purchase", help="Billing evidence, GET-only rechecks and audited resolutions"
     )
-    purchase.add_argument("action", choices=("inspect", "recover"))
+    purchase.add_argument("action", choices=("inspect", "recover", "reconcile", "resolve-review"))
     purchase.add_argument("--user-id", type=uuid.UUID, required=True)
     purchase.add_argument("--purchase-id", type=uuid.UUID, required=True)
+    purchase.add_argument("--resolution", choices=("restore-original", "bind-original"))
+    for name in ("case-id", "expected-observation-id", "operation-id", "expected-operation-fence"):
+        purchase.add_argument("--" + name, type=uuid.UUID)
+    purchase.add_argument("--expected-case-digest")
+    purchase.add_argument("--expected-reconciliation-fence", type=int)
+    purchase.add_argument("--reason")
+    purchase.add_argument("--reference")
     purchase.set_defaults(func=cmd_billing_purchase)
     sub.add_parser("sync-api").set_defaults(func=cmd_sync_api)
     sub.add_parser("lock-api").set_defaults(func=cmd_lock_api)

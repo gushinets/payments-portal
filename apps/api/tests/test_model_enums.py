@@ -26,6 +26,7 @@ from app.models import (
     Region,
     RegionStatus,
     UserStatus,
+    WebhookDeliveryState,
 )
 from app.models._shared import PersistedEnumType
 
@@ -97,6 +98,7 @@ def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
         "primary_selection",
         "deterministic_access_boundary",
     }
+    assert _values(WebhookDeliveryState) == {"pending", "processed", "ignored"}
     assert set(model_enums.__all__) == {
         "AcceptanceKind",
         "BillingStateObservationKind",
@@ -112,6 +114,7 @@ def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
         "PurchaseIntentState",
         "RegionStatus",
         "UserStatus",
+        "WebhookDeliveryState",
     }
 
 

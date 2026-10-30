@@ -23,8 +23,8 @@ ANY-709 Step 3 adds accepted-purchase APIs and financial preparation/recovery,
 with automated QA and recorded owner test-payment validation complete.
 Step 4 adds localized product/account Buy/Continue/Manage and a shared payment-capable
 Widget controller; automated and intended-agreement owner payment QA passed,
-with independent final review pending. Billing lifecycle
-workers and paid access remain later work. Final 4F
+with independent final review pending. ANY-715 supplies embedded lifecycle
+polling and GET-only recovery/inventory; paid access remains later work. Final 4F
 verification and human screenshot/intent acceptance remain pending.
 
 Each production deployment serves exactly one contour. Region Resolver is a
@@ -65,8 +65,34 @@ tables and fifteen provider-neutral target persistence tables. Those fifteen
 tables are empty after bootstrap. ANY-664 can append approved mapping revisions
 through its restricted operator path; simulated evidence remains simulated.
 ANY-709 Step 3 adds a purchase mutex and request-driven financial preparation.
-Workers, paid-access derivation and invalidation delivery remain later work. The two source-catalog projection tables are inert schema
+ANY-715 Step 2 adds embedded reconciliation polling; paid-access derivation
+and invalidation delivery remain later work. The two source-catalog projection tables are inert schema
 slots with no runtime readers/writers.
+
+ANY-715 Step 1 supplies shared authoritative subscription reconciliation through
+`composition/reconciliation.py`, billing Application contracts/apply and LBX
+normalization. Four bounded point reads run outside transactions; short fenced
+claim/apply transactions preserve original purchase/legal provenance. Complete
+matching proof establishes finite source trust; incomplete attempts cannot
+renew it, and owned negative/conflict evidence reduces usability immediately.
+Preparation readback preserves reconciled facts. Scope provenance has no chosen
+primary, and no access revision, allowance or paid grant is produced. Step 2
+adds atomic enrollment, bounded embedded execution and provider-free trust-expiry
+evidence. Step 3 dispatches shared GET-only uncertain-create recovery, separate
+fixed two-hour local deadlines and bounded customer inventory. Permanent operation
+keys, original accepted proof and customer send leases remain authoritative;
+no background CREATE or cross-product adoption is permitted. Step 4 adds the
+default-disabled authenticated `POST /api/billing/lbx/webhook`: bounded input,
+redacted durable inbox and generation-coalesced hints commit before 200; worker
+GET/apply alone updates facts. Real header/delivery compatibility remains a
+separate enablement gate; polling is independent. See [billing operations](docs/engineering/ANY-715-billing-operations.md).
+
+Step 5 extends the existing privileged purchase CLI with local inspection,
+GET-only recovery/reconciliation and two audited resolutions: restore original
+canonical facts or bind the uniquely proven original possible-send operation.
+Fresh proof, expected review/evidence/fences and OS principal are rechecked in the
+shared writer; facts/binding, review audit and scheduling commit atomically.
+No terminal hold release, arbitrary rebind or access authority is introduced.
 
 The canonical target is defined, in precedence order, by
 [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md), the
@@ -504,7 +530,8 @@ payment state, or manual operator input alone never grant paid access.
 | Commercial mapping publication | `publish_product_link()` appends a v2 immutable revision and CAS-updates one product head after live checks; same identity is a no-op across price changes. Catalog HTTP runs outside short resource-owning worker DB units. |
 | Accepted purchase | `pin_purchase()` atomically commits immutable terms, consent, local customer slot, permanent financial identities and one product hold after source reads. |
 | Financial preparation | `claim_financial()` commits permanent possible-send evidence/work before HTTP; fenced point-read apply owns separate short binding/observation transactions. |
-| Other target billing tables | Source-catalog slots are inert; worker reconciliation and paid-access behavior belong to later `ANY-504` steps. |
+| Subscription reconciliation | Claims commit before source reads; shared fenced apply atomically writes observations, facts and work. Audited operator resolutions use that same apply/bind transaction. |
+| Other target billing tables | Source-catalog slots are inert; paid-access behavior belongs to later `ANY-504` steps. |
 
 ## Enforced architecture guards
 
@@ -576,8 +603,11 @@ trace/span, and structured-log context remain correlated across the framework
 worker boundary.
 
 Password-reset email delivery remains the existing synchronous framework
-background task. The clean baseline does not introduce a billing worker
-runtime merely because durable work tables exist.
+background task. ANY-715 Step 2 adds a durable billing runner embedded in the API lifespan. It
+uses isolated worker HTTP/DB resources, PostgreSQL claims/generations and the
+shared fenced reconciliation path. Local enrollment and trust expiry perform
+no provider HTTP. Paid-access production remains deferred; see the
+[billing operations runbook](docs/engineering/ANY-715-billing-operations.md).
 
 The web dependency direction is:
 

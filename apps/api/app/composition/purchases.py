@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 from uuid import UUID
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from starlette.concurrency import run_in_threadpool
 
-from app.composition.billing import ensure_customer, recover_customer
+from app.composition.billing import ensure_customer
 from app.composition.catalog import catalog_preview
+from app.composition.purchase_recovery import recover_financial as recover_financial
 from app.composition.purchase_observation import prepared_subscription_observation
 from app.composition.sources import SourceResources
 from app.core.errors import AppError
 from app.core.settings import Settings
 from app.domains.billing.contracts import BillingAccountFailure, CustomerOpen
+from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.customers import reserve_customer, recheck_widget_session
 from app.domains.catalog.link_publication import StoredProductLink
 from app.domains.catalog.product_link import CurrentOffer, current_offer_fingerprint
@@ -31,13 +35,15 @@ from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExcee
 from app.integrations.lbx._transport import customer_diagnostics
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.current_offer import current_billing_date, read_current_offer
-from app.integrations.lbx.errors import LbxCreateNotSent, LbxError, LbxScopeMismatch
+from app.integrations.lbx.errors import LbxCreateNotSent, LbxError, LbxScopeMismatch, LbxResponseInvalid
 from app.integrations.lbx.financial import (
     NewAgreement,
     NewSubscription,
     Subscription,
     prove_agreement,
     prove_subscription,
+    prove_effective_terms,
+    inventory_terminal,
 )
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State, PurchaseIntentState
 
@@ -133,21 +139,35 @@ async def _inventory(
     factory: SessionFactory,
     *,
     budget: PreflightBudget,
+    delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
+    inventory: tuple[Subscription, ...] | None = None,
 ) -> None:
-    rows = await client.discover_subscriptions(user_id=int(customer.provider_id), budget=budget)
+    rows = (
+        inventory
+        if inventory is not None
+        else await client.discover_subscriptions(user_id=int(customer.provider_id), budget=budget)
+    )
     relevant = [row for row in rows if row.tariff_id == purchase.accepted.selection.tariff_id]
     if len(relevant) > MAX_RELEVANT_SUBSCRIPTIONS:
         raise PurchaseInventoryIncomplete()
     own = _operation(purchase, Kind.SUBSCRIPTION).bound_id
     for candidate in relevant:
         point = await client.get_subscription(subscription_id=candidate.subscription_id, budget=budget)
+        if (point.subscription_id, point.agreement_id, point.tariff_id) != (
+            candidate.subscription_id,
+            candidate.agreement_id,
+            candidate.tariff_id,
+        ):
+            raise PurchaseRefused("purchase_inventory_incomplete", 409)
         agreement = await client.get_agreement(agreement_id=point.agreement_id, budget=budget)
         if agreement.user_id != int(customer.provider_id):
             raise LbxScopeMismatch()
-        if point.state is None:
-            raise PurchaseInventoryIncomplete()
-        if point.state != 3 and str(point.subscription_id) != own:
-            other = await run_in_threadpool(
+        try:
+            terminal = inventory_terminal(point)
+        except LbxResponseInvalid:
+            raise PurchaseInventoryIncomplete() from None
+        if not terminal and str(point.subscription_id) != own:
+            other = await delegate(
                 service.other_inventory_purchase, factory, purchase, point.subscription_id, point.agreement_id
             )
             if other is not None:
@@ -157,7 +177,7 @@ async def _inventory(
                     seller_id=other.accepted.seller_id,
                     number=_operation(other, Kind.AGREEMENT).key,
                 )
-                prove_subscription(
+                prove_effective_terms(
                     point,
                     agreement_id=point.agreement_id,
                     selection=other.accepted.selection,
@@ -165,6 +185,15 @@ async def _inventory(
                 )
                 continue
             raise PurchaseRefused("purchase_existing_subscription_review", 409)
+    if inventory is not None:
+        return
+    again = await client.discover_subscriptions(user_id=int(customer.provider_id), budget=budget)
+
+    def identity(row: Subscription) -> tuple[int, int, int]:
+        return row.subscription_id, row.agreement_id, row.tariff_id
+
+    if sorted(map(identity, rows)) != sorted(map(identity, again)):
+        raise PurchaseRefused("purchase_inventory_incomplete", 409)
 
 
 async def _find_financial(
@@ -174,6 +203,7 @@ async def _find_financial(
     customer: CustomerOpen,
     *,
     budget: PreflightBudget,
+    require_discovery: bool = False,
 ) -> tuple[int, Subscription | None] | None:
     user_id = int(customer.provider_id)
     agreement_op = _operation(purchase, Kind.AGREEMENT)
@@ -181,15 +211,21 @@ async def _find_financial(
         saved = operation.bound_id or operation.candidate_id
         ids = (
             (int(saved),)
-            if saved
+            if saved and not require_discovery
             else await client.discover_agreements(user_id=user_id, number=operation.key, budget=budget)
         )
         if len(ids) > 1:
             raise LbxScopeMismatch()
         if not ids:
             return None
+        if require_discovery and saved and ids != (int(saved),):
+            raise LbxScopeMismatch()
         point = await client.get_agreement(agreement_id=ids[0], budget=budget)
         prove_agreement(point, user_id=user_id, seller_id=purchase.accepted.seller_id, number=operation.key)
+        if require_discovery and (
+            operation.agreement_create_date is None or point.create_date != operation.agreement_create_date.isoformat()
+        ):
+            raise LbxResponseInvalid()
         return point.agreement_id, None
     if agreement_op.bound_id is None:
         raise PurchaseRefused("purchase_pending", 409)
@@ -202,6 +238,8 @@ async def _find_financial(
     if saved:
         # A known ID remains authoritative when the non-unique outer hint changes.
         if any(value != int(saved) for value in ids):
+            raise LbxScopeMismatch()
+        if require_discovery and ids != (int(saved),):
             raise LbxScopeMismatch()
         ids = (int(saved),)
     if len(ids) > 1:
@@ -223,19 +261,22 @@ async def _recover_one(
     factory: SessionFactory,
     *,
     budget: PreflightBudget,
+    work_claim: WorkClaim | None = None,
+    delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
 ) -> bool:
     try:
         found = await _find_financial(client, purchase, operation, customer, budget=budget)
     except LbxScopeMismatch:
-        await run_in_threadpool(financial.financial_pending, factory, purchase, operation, conflict=True)
+        await delegate(financial.financial_pending, factory, purchase, operation, conflict=True, work_claim=work_claim)
         return False
     except LbxError as error:
         facts = error.response_facts
-        await run_in_threadpool(
+        await delegate(
             financial.financial_pending,
             factory,
             purchase,
             operation,
+            work_claim=work_claim,
             failure_facts={
                 "code": error.code,
                 "http_status": facts.http_status if facts else None,
@@ -246,19 +287,21 @@ async def _recover_one(
         return False
     if found is None:
         if operation.state not in {State.PENDING, State.PROVEN_NOT_SENT}:
-            await run_in_threadpool(financial.financial_pending, factory, purchase, operation)
+            await delegate(financial.financial_pending, factory, purchase, operation, work_claim=work_claim)
         return False
     # No absent/unsent financial operation is adopted from a coincidental object.
     if operation.state in {State.PENDING, State.PROVEN_NOT_SENT}:
-        await run_in_threadpool(financial.financial_pending, factory, purchase, operation, conflict=True)
+        await delegate(financial.financial_pending, factory, purchase, operation, conflict=True, work_claim=work_claim)
         return False
+    budget.check()
     provider_id, point = found
-    await run_in_threadpool(
+    await delegate(
         financial.bind_financial,
         factory,
         purchase,
         operation,
         provider_id,
+        work_claim=work_claim,
         observation=prepared_subscription_observation(point, purchase) if point else None,
     )
     return True
@@ -446,27 +489,3 @@ async def verify_payment_purchase(
     if result.state != PurchaseIntentState.LINKED or any(op.state != State.BOUND for op in result.operations):
         raise PurchaseRefused("purchase_not_prepared", 409)
     return result
-
-
-async def recover_financial(
-    sources: SourceResources, configuration: Settings, *, factory: SessionFactory, user_id: UUID, purchase_id: UUID
-) -> Purchase:
-    """Privileged/request-driven Step 8 seam: GET only; no customer ensure or JWT."""
-    purchase = await run_in_threadpool(service.inspect_purchase, factory, configuration, user_id, purchase_id)
-    _connection(purchase, configuration)
-    if not purchase.held or sources.billing is None:
-        raise PurchaseRefused("purchase_scope_released", 409)
-    await run_in_threadpool(service.verify_original_consent, factory, purchase)
-    async with sources.billing.operation() as budget:
-        current = await run_in_threadpool(service.customer_for_purchase, factory, configuration, purchase)
-        current = await recover_customer(sources.require_lbx(), factory, current, budget=budget)
-        return await _prepare(
-            sources,
-            configuration,
-            factory=factory,
-            purchase=purchase,
-            customer=current,
-            budget=budget,
-            token=None,
-            recover_only=True,
-        )

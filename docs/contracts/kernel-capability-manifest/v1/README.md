@@ -60,11 +60,11 @@ is not sufficient to prove those relationships or that a producer returned
 its entire configured deployment.
 
 The [complete positive fixture](fixtures/valid-manifest.json) declares a
-six-product **test deployment**, not a partial copy of a live registry. Only
-`proposal_ai` is enabled; all five other products, including `kernel_demo`,
-are disabled. `proposal_ai.test_generations`, unit `generation`, is explicitly
-**TEST-ONLY** and enabled for the positive example. It is not a real paid
-metric. No price, allowance or commercial/legal approval is established by
+six-product **test deployment**, not a partial copy of a live registry. `proposal_ai` and `brief_decoder` are enabled; the other four products, including
+`kernel_demo`, are disabled. `proposal_ai.test_generations` (unit `generation`)
+and `brief_decoder.test_analyses` (unit `analysis`) are independent, explicitly
+**TEST-ONLY** metrics enabled for the positive example. They are not real paid
+metrics. No price, allowance or commercial/legal approval is established by
 this fixture.
 
 `enabled` controls new bindings. Both the selected product and selected metric

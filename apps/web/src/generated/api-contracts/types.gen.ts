@@ -82,6 +82,70 @@ export type AccountPurchasesResponse = {
 };
 
 /**
+ * BillingHealthResponse
+ */
+export type BillingHealthResponse = {
+    /**
+     * Active Slots
+     */
+    active_slots?: number;
+    /**
+     * Cleanup Pending
+     */
+    cleanup_pending?: number;
+    /**
+     * Enrolled Batches
+     */
+    enrolled_batches?: number;
+    /**
+     * Failures
+     */
+    failures?: number;
+    /**
+     * Invalid Work
+     */
+    invalid_work?: number;
+    /**
+     * Last Progress At
+     */
+    last_progress_at?: string | null;
+    /**
+     * Last Scan At
+     */
+    last_scan_at?: string | null;
+    /**
+     * Last Verified Subscription At
+     */
+    last_verified_subscription_at?: string | null;
+    /**
+     * Oldest Due At
+     */
+    oldest_due_at?: string | null;
+    /**
+     * Pending Work
+     */
+    pending_work?: number;
+    /**
+     * Status
+     */
+    status: 'disabled' | 'not_configured' | 'running' | 'degraded' | 'stopping';
+};
+
+/**
+ * BillingWebhookResponse
+ */
+export type BillingWebhookResponse = {
+    /**
+     * Delivery Id
+     */
+    delivery_id: string;
+    /**
+     * Outcome
+     */
+    outcome: 'queued' | 'ignored';
+};
+
+/**
  * CatalogMoney
  */
 export type CatalogMoney = {
@@ -1068,6 +1132,22 @@ export type GetSessionApiAuthSessionGetResponses = {
 
 export type GetSessionApiAuthSessionGetResponse = GetSessionApiAuthSessionGetResponses[keyof GetSessionApiAuthSessionGetResponses];
 
+export type BillingWebhookApiBillingLbxWebhookPostData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/billing/lbx/webhook';
+};
+
+export type BillingWebhookApiBillingLbxWebhookPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: BillingWebhookResponse;
+};
+
+export type BillingWebhookApiBillingLbxWebhookPostResponse = BillingWebhookApiBillingLbxWebhookPostResponses[keyof BillingWebhookApiBillingLbxWebhookPostResponses];
+
 export type WidgetBootstrapApiBillingWidgetBootstrapPostData = {
     body: WidgetBootstrapRequest;
     headers?: {
@@ -1144,6 +1224,22 @@ export type ProductDetailApiCatalogProductsProductIdGetResponses = {
 };
 
 export type ProductDetailApiCatalogProductsProductIdGetResponse = ProductDetailApiCatalogProductsProductIdGetResponses[keyof ProductDetailApiCatalogProductsProductIdGetResponses];
+
+export type BillingHealthApiHealthBillingGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/health/billing';
+};
+
+export type BillingHealthApiHealthBillingGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: BillingHealthResponse;
+};
+
+export type BillingHealthApiHealthBillingGetResponse = BillingHealthApiHealthBillingGetResponses[keyof BillingHealthApiHealthBillingGetResponses];
 
 export type LivenessApiHealthLiveGetData = {
     body?: never;

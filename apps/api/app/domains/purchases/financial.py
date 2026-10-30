@@ -24,7 +24,11 @@ from app.domains.purchases.contracts import (
 )
 from app.domains.purchases.service import _locked, _operation, read_purchase
 from app.infrastructure.queries import purchases as queries
+from app.infrastructure.queries.billing_reconciliation import open_reviews
 from app.infrastructure.queries.billing_customers import recovery_work, open_customer_reviews
+from app.domains.billing.work import enroll_subscription
+from app.domains.billing.work_contracts import WorkClaim
+from app.domains.billing.operator_contracts import OriginalOperationProof, ReviewResolution
 from app.models import (
     BillingStateObservation,
     BillingStateObservationKind,
@@ -123,6 +127,10 @@ def claim_financial(
             work.active_recovery_deadline_at = now + RECOVERY_WINDOW
             work.next_attempt_at = work.active_recovery_deadline_at
             work.attempt_count += 1
+        from app.domains.billing.background_recovery import enroll_operation
+
+        db.flush()
+        enroll_operation(db, operation, row.external_billing_account_id, sent=True)
         row.state = IntentState.PREPARING
         row.state_updated_at = now
         db.flush()
@@ -192,6 +200,8 @@ def _review(db: Session, row: PurchaseIntent, operation: ExternalCreateOperation
                 evidence_document={
                     "purchase_intent_id": str(row.purchase_intent_id),
                     "create_operation_id": str(operation.create_operation_id),
+                    "operation_state_at_conflict": operation.operation_state.value,
+                    "send_fence_at_conflict": str(operation.send_fence) if operation.send_fence else None,
                 },
                 case_state="open",
             )
@@ -209,10 +219,15 @@ def financial_pending(
     *,
     conflict: bool = False,
     failure_facts: FinancialFailureFacts | None = None,
+    work_claim: WorkClaim | None = None,
 ) -> None:
     with factory() as db:
         row = _locked(db, purchase)
         op = next(op for op in queries.operations(db, purchase.id, lock=True) if op.create_operation_id == expected.id)
+        if work_claim is not None:
+            from app.domains.billing.work import verify_operation_claim
+
+            verify_operation_claim(db, work_claim, expected.id)
         if op.send_fence != expected.fence:
             return  # A stale failure cannot demote a newer proven result.
         work = recovery_work(db, op.create_operation_id)
@@ -274,11 +289,28 @@ def _bind_financial(
     provider_id: int,
     *,
     observation: PreparedSubscriptionObservation | None = None,
+    work_claim: WorkClaim | None = None,
+    resolution: ReviewResolution | None = None,
+    resolution_proof: OriginalOperationProof | None = None,
 ) -> None:
     with factory() as db:
         row = _locked(db, purchase)
         operations = queries.operations(db, purchase.id, lock=True)
+        existing = queries.linked_subscription(db, purchase.id)
+        resolved_case = None
+        if resolution is not None:
+            from app.domains.billing.operator_review import authorize_original_binding
+
+            resolved_case = authorize_original_binding(
+                db, resolution, resolution_proof, row, operations, existing, expected
+            )
+        if existing is not None and open_reviews(db, existing.subscription_id):
+            raise PurchaseRefused("purchase_review_required", 409)
         op = next(op for op in operations if op.create_operation_id == expected.id)
+        if work_claim is not None:
+            from app.domains.billing.work import verify_operation_claim
+
+            verify_operation_claim(db, work_claim, expected.id)
         if op.send_fence != expected.fence:
             raise PurchaseRefused("purchase_pending", 409)
         if (
@@ -302,7 +334,12 @@ def _bind_financial(
         op.send_fence = uuid4()
         work = recovery_work(db, op.create_operation_id)
         if work:
-            work.work_state = "done"
+            if work_claim is not None:
+                from app.domains.billing.work import finish
+
+                finish(db, work, work_claim, due=None)
+            else:
+                work.work_state = "done"
         for case in open_customer_reviews(db, op.create_operation_id):
             if case.reason_code == "external_create_outcome_unknown:" + op.operation_kind.value:
                 case.case_state = "resolved"
@@ -324,6 +361,7 @@ def _bind_financial(
                 raise PurchaseRefused("purchase_pending", 409)
             now = utc_now()
             sub = queries.linked_subscription(db, purchase.id)
+            new_subscription = sub is None
             if sub is None:
                 sub = ExternalSubscription(
                     subscription_id=uuid4(),
@@ -348,7 +386,6 @@ def _bind_financial(
                 or sub.external_agreement_id != agreement.bound_external_object_id
             ):
                 raise PurchaseRefused("purchase_review_required", 409)
-            sub.lifecycle_status = Lifecycle.ACTIVE if observation.state == 2 else Lifecycle.INACTIVE
             evidence = BillingStateObservation(
                 observation_kind=BillingStateObservationKind.AUTHORITATIVE_SUBSCRIPTION_READ,
                 external_billing_account_id=row.external_billing_account_id,
@@ -363,10 +400,22 @@ def _bind_financial(
             )
             db.add(evidence)
             db.flush()
-            sub.latest_observation_id = evidence.observation_id
+            # Any reconciliation claim marks this as a monitored subscription.
+            # Preparation may append evidence, but it cannot replace lifecycle,
+            # financial status, supporting observation or source trust.
+            if sub.reconciliation_fencing_token == 0:
+                sub.lifecycle_status = Lifecycle.ACTIVE if observation.state == 2 else Lifecycle.INACTIVE
+                sub.latest_observation_id = evidence.observation_id
+            if new_subscription:
+                enroll_subscription(db, sub)
             # No paid trust extension, financial eligibility, access scope, grant or allowance.
             row.state = IntentState.LINKED
             row.state_updated_at = now
+        if resolved_case is not None:
+            from app.domains.billing.operator_review import audit_original_binding
+
+            sub = queries.linked_subscription(db, purchase.id)
+            audit_original_binding(db, resolved_case, operations, sub, proof=resolution_proof)
         db.flush()
         db.commit()
 
@@ -378,14 +427,28 @@ def bind_financial(
     provider_id: int,
     *,
     observation: PreparedSubscriptionObservation | None = None,
+    work_claim: WorkClaim | None = None,
+    resolution: ReviewResolution | None = None,
+    resolution_proof: OriginalOperationProof | None = None,
 ) -> None:
     if type(provider_id) is not int or not 0 < provider_id < 10**20:
         raise ValueError("invalid financial provider identity")
     try:
-        _bind_financial(factory, purchase, expected, provider_id, observation=observation)
+        _bind_financial(
+            factory,
+            purchase,
+            expected,
+            provider_id,
+            observation=observation,
+            work_claim=work_claim,
+            resolution=resolution,
+            resolution_proof=resolution_proof,
+        )
     except IntegrityError:
+        if resolution is not None:
+            raise PurchaseRefused("purchase_review_required", 409) from None
         # The failed unit has closed/rolled back before recording the conflict.
-        financial_pending(factory, purchase, expected, conflict=True)
+        financial_pending(factory, purchase, expected, conflict=True, work_claim=work_claim)
         raise PurchaseRefused("purchase_review_required", 409) from None
 
 

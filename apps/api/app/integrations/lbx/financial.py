@@ -146,70 +146,75 @@ def prove_agreement(point: Agreement, *, user_id: int, seller_id: int, number: s
 def prove_subscription(
     point: Subscription, *, agreement_id: int, selection: ProductLinkRequest, offer: CurrentOffer
 ) -> None:
+    # Preparation deliberately excludes terminal subscriptions. Lifecycle reads
+    # share the effective-term proof below without inheriting this restriction.
+    if point.state is None or point.current_blocking is None:
+        raise LbxResponseInvalid()
+    if point.state not in {-2, -1, 0, 2} or point.current_blocking not in {0, 1, 3}:
+        raise LbxScopeMismatch()
+    prove_effective_terms(point, agreement_id=agreement_id, selection=selection, offer=offer)
+
+
+def prove_effective_terms(
+    point: Subscription, *, agreement_id: int, selection: ProductLinkRequest, offer: CurrentOffer
+) -> None:
+    """Compare accepted effective terms, independently of lifecycle/calendar."""
+    # Known contradictions are decisive even when another required field is
+    # missing. Only a positive match requires every effective term below.
+    expected = (
+        (point.agreement_id, agreement_id),
+        (point.tariff_id, selection.tariff_id),
+        (point.period_id, selection.period_id),
+        (point.period_type, {"day": 1, "week": 2, "month": 3, "year": 4}[offer.period.unit]),
+        (point.period_length, offer.period.length),
+        (point.is_demo, False),
+        (point.is_offer_agrm, False),
+        (point.total_price, offer.money.recurring_amount),
+    )
+    if any(value is not None and value != wanted for value, wanted in expected):
+        raise LbxScopeMismatch()
+    if offer.money.currency != "RUB" or (
+        point.currency_symbol is not None and point.currency_symbol.casefold() not in {"rub", "руб", "₽"}
+    ):
+        raise LbxScopeMismatch()
     required = (
         point.period_id,
         point.period_type,
         point.period_length,
-        point.state,
-        point.current_blocking,
         point.is_demo,
         point.is_offer_agrm,
         point.currency_symbol,
         point.total_price,
         point.services,
     )
+    if point.services is not None:
+        if len(point.services) != 1:
+            raise LbxScopeMismatch()
+        service = point.services[0]
+        expected_service = (
+            (service.tariff_service_id, selection.tariff_service_id),
+            (service.multiplicator, Decimal(selection.quantity)),
+            (service.price, offer.money.recurring_unit_amount),
+            (service.periodic_service, 1),
+            (service.bulk_service, False),
+            (service.connection_price, offer.money.connection_unit_amount),
+        )
+        if (
+            any(value is not None and value != wanted for value, wanted in expected_service)
+            or service.bulk_price not in {None, Decimal(0)}
+            or service.bulk_include_amount not in {None, Decimal(0)}
+        ):
+            raise LbxScopeMismatch()
+        required += (service.multiplicator, service.price, service.periodic_service, service.bulk_service)
+        # Swagger does not promise connection_price. A nonzero accepted charge
+        # still needs explicit effective evidence before a positive match.
+        if offer.money.connection_amount != 0:
+            required += (service.connection_price,)
     if any(value is None for value in required):
         raise LbxResponseInvalid()
-    if (
-        point.agreement_id != agreement_id
-        or point.tariff_id != selection.tariff_id
-        or point.period_id != selection.period_id
-    ):
-        raise LbxScopeMismatch()
-    if (point.period_type, point.period_length) != (
-        {"day": 1, "week": 2, "month": 3, "year": 4}[offer.period.unit],
-        offer.period.length,
-    ):
-        raise LbxScopeMismatch()
-    if (
-        point.state not in {-2, -1, 0, 2}
-        or point.current_blocking not in {0, 1, 3}
-        or point.is_demo
-        or point.is_offer_agrm
-    ):
-        raise LbxScopeMismatch()
-    if (
-        offer.money.currency != "RUB"
-        or point.currency_symbol.casefold() not in {"rub", "руб", "₽"}
-        or point.total_price != offer.money.recurring_amount
-    ):
-        raise LbxScopeMismatch()
-    if len(point.services) != 1:
-        raise LbxScopeMismatch()
-    service = point.services[0]
-    if any(
-        value is None
-        for value in (
-            service.multiplicator,
-            service.price,
-            service.periodic_service,
-            service.bulk_service,
-        )
-    ):
+
+
+def inventory_terminal(point: Subscription) -> bool:
+    if point.state not in {-2, -1, 0, 2, 3}:
         raise LbxResponseInvalid()
-    if (
-        service.tariff_service_id != selection.tariff_service_id
-        or service.multiplicator != Decimal(selection.quantity)
-        or service.price != offer.money.recurring_unit_amount
-        or service.bulk_price not in {None, Decimal(0)}
-        or service.bulk_include_amount not in {None, Decimal(0)}
-        or service.periodic_service != 1
-        or service.bulk_service
-    ):
-        raise LbxScopeMismatch()
-    # Swagger's effective service projection does not promise connection_price.
-    # A nonzero accepted connection charge needs explicit effective evidence.
-    if service.connection_price is None and offer.money.connection_amount != 0:
-        raise LbxResponseInvalid()
-    if service.connection_price is not None and service.connection_price != offer.money.connection_unit_amount:
-        raise LbxScopeMismatch()
+    return point.state == 3

@@ -10,6 +10,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
+from app.domains.billing.customer_scope import customer_account
+from app.domains.billing.work_contracts import WorkClaim
+from app.domains.billing.customer_receipts import CUSTOMER_RECEIPT_SCHEMA, receipt_id as _receipt_id
 from app.core.time import utc_now
 from app.domains.billing.contracts import CREATE_FAILURE_REASONS, CREATE_RESPONSE_SCHEMA, BillingRefused, CustomerOpen
 from app.domains.catalog.publication import SessionFactory
@@ -17,17 +20,14 @@ from app.domains.identity.errors import InvalidAuthSessionError
 from app.domains.identity.services.auth import as_utc, authenticate_session
 from app.infrastructure.queries.billing_customers import (
     BillingUserLockBusy,
-    connection_accounts,
     customer_operation,
     customer_slot,
-    foreign_customer,
     lock_customer,
     lock_user as lock_storage_user,
     overdue_customer_ids,
     open_customer_reviews,
     recovery_work,
 )
-from app.infrastructure.queries.commercial_mappings import connection_heads
 from app.models import (
     BillingWorkItem,
     ExternalBillingCustomer,
@@ -41,7 +41,6 @@ from app.models import (
 
 
 RECOVERY_WINDOW = timedelta(hours=2)
-CUSTOMER_RECEIPT_SCHEMA = "customer-create-receipt:v1"
 
 
 def lock_user(db: Session, user_id: UUID) -> User:
@@ -49,25 +48,6 @@ def lock_user(db: Session, user_id: UUID) -> User:
         return lock_storage_user(db, user_id)
     except BillingUserLockBusy:
         raise BillingRefused("billing_busy", 503) from None
-
-
-def _receipt_id(operation: ExternalCreateOperation) -> str | None:
-    if operation.recovery_hint_schema_version is None and operation.recovery_hint_document is None:
-        return None
-    hint = operation.recovery_hint_document
-    if operation.recovery_hint_schema_version != CUSTOMER_RECEIPT_SCHEMA or not isinstance(hint, dict):
-        raise BillingRefused("billing_identity_unproven", 409)
-    value = hint.get("provider_customer_candidate_id")
-    if (
-        not isinstance(value, str)
-        or not value.isascii()
-        or not value.isdecimal()
-        or len(value) > 20
-        or int(value) <= 0
-        or str(int(value)) != value
-    ):
-        raise BillingRefused("billing_identity_unproven", 409)
-    return value
 
 
 def authenticate(db: Session, configuration: Settings, token: str) -> User:
@@ -118,25 +98,7 @@ def reserve_customer_in_transaction(db: Session, configuration: Settings, user: 
 
     Caller has locked the user. No provider calls, consent or commit here.
     """
-    accounts = connection_accounts(db, configuration.lbx_provider_origin)
-    if len(accounts) > 1:
-        raise BillingRefused("billing_connection_conflict", 409)
-    account = next(iter(accounts), configuration.lbx_external_billing_account_id)
-    # An ordinary account opening cannot prove a legacy head's origin. Refuse
-    # before reserving a competing permanent identity; authorized publication
-    # can bind the mutable head, after which both paths reuse its original scope.
-    if any(
-        head.provider_origin is None and head.external_billing_account_id != account
-        for head in connection_heads(
-            db,
-            account_id=configuration.lbx_external_billing_account_id,
-            provider_origin=configuration.lbx_provider_origin,
-            legacy_account_id=configuration.lbx_legacy_credential_scope,
-        )
-    ):
-        raise BillingRefused("billing_connection_conflict", 409)
-    if foreign_customer(db, user.id, account):
-        raise BillingRefused("billing_connection_conflict", 409)
+    account = customer_account(db, configuration, user.id)
     customer = customer_slot(db, account, user.id)
     if customer is None:
         customer = ExternalBillingCustomer(
@@ -224,6 +186,10 @@ def claim_customer_send(
         work.lease_expires_at = now + timedelta(
             seconds=configuration.preflight_total_timeout_seconds + configuration.preflight_cleanup_timeout_seconds
         )
+        from app.domains.billing.background_recovery import enroll_operation
+
+        db.flush()
+        enroll_operation(db, operation, customer.external_billing_account_id, sent=True)
         result = _snapshot(customer, operation, user, may_create=True)
         db.commit()  # Fence, active-send lease and recovery item precede POST.
         return result
@@ -366,6 +332,15 @@ def _manual_review(db: Session, operation: ExternalCreateOperation, reason: str)
     operation.operation_state = State.MANUAL_REVIEW
 
 
+def mark_customer_identity_conflict(
+    db: Session, customer: ExternalBillingCustomer, operation: ExternalCreateOperation
+) -> None:
+    """Caller owns the transaction; original paired-key proof may restore it."""
+    customer.binding_state = Binding.IDENTITY_CONFLICT
+    operation.send_fence = uuid4()
+    _manual_review(db, operation, "customer_identity_conflict")
+
+
 def apply_customer_read(
     factory: SessionFactory,
     expected: CustomerOpen,
@@ -373,11 +348,22 @@ def apply_customer_read(
     provider_id: str | None = None,
     outer_key: str | None = None,
     ambiguous: bool = False,
+    work_claim: WorkClaim | None = None,
 ) -> CustomerOpen:
     """Apply point proof only against its current fence; lists alone never bind."""
     with factory() as db:
+        if work_claim is not None:
+            from app.infrastructure.queries.billing_background import customer as read_customer
+
+            lock_user(db, read_customer(db, expected.customer_id).user_id)
         customer = lock_customer(db, expected.customer_id)
         operation = customer_operation(db, customer.customer_id)
+        if work_claim is not None:
+            from app.domains.billing.work import verify_operation_claim
+
+            verify_operation_claim(db, work_claim, expected.operation_id)
+            if customer.binding_state == Binding.IDENTITY_CONFLICT:
+                raise BillingRefused("billing_identity_conflict", 409)
         if (
             operation is None
             or operation.create_operation_id != expected.operation_id
@@ -396,9 +382,7 @@ def apply_customer_read(
             and (outer_key != customer.billing_customer_key or customer.provider_customer_id not in {None, provider_id})
         )
         if conflict:
-            customer.binding_state = Binding.IDENTITY_CONFLICT
-            operation.send_fence = uuid4()  # Invalidate any delayed successful CREATE completion.
-            _manual_review(db, operation, "customer_identity_conflict")
+            mark_customer_identity_conflict(db, customer, operation)
             db.commit()
             raise BillingRefused("billing_identity_conflict", 409)
         if provider_id is None:
@@ -426,9 +410,14 @@ def apply_customer_read(
             operation.send_fence = uuid4()
         work = recovery_work(db, operation.create_operation_id)
         if work is not None:
-            work.work_state = "done"
-            work.lease_owner = None
-            work.lease_expires_at = None
+            if work_claim is not None:
+                from app.domains.billing.work import finish
+
+                finish(db, work, work_claim, due=None)
+            else:
+                work.work_state = "done"
+                work.lease_owner = None
+                work.lease_expires_at = None
         for review in open_customer_reviews(db, operation.create_operation_id):
             review.case_state = "resolved"
             review.resolved_at = utc_now()

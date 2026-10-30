@@ -21,8 +21,9 @@ starts empty, and ANY-664's restricted publication path commits immutable
 commercial mapping revisions. ANY-709 Step 3 implements acceptance, held purchase
 scopes and request-driven financial preparation/recovery, with focused synthetic
 tests passing and the recorded owner test-payment QA complete; independent final
-review remains pending (see the ANY-709 current acceptance ledger). Subscription reconciliation workers, paid-access derivation and
-invalidation delivery remain unimplemented. The two source-catalog projection tables remain inert.
+review remains pending (see the ANY-709 current acceptance ledger). ANY-715
+implements embedded reconciliation and GET-only recovery/inventory with local
+deadlines. Paid-access derivation and invalidation delivery remain unimplemented. The two source-catalog projection tables remain inert.
 
 ## Cross-cutting critical paths
 
@@ -59,9 +60,13 @@ invalidation delivery remain unimplemented. The two source-catalog projection ta
 - Webhook receipt, Widget callback, outbound command success, payment state, or
   manual operator input alone never grants paid access.
 
-These are target constraints. Provider command flows, webhook processing,
-reconciliation workers, paid-access derivation, and invalidation delivery are
-not current runtime behavior.
+These are cross-cutting constraints. Purchase preparation and embedded
+reconciliation/recovery and default-disabled durable webhook hints are implemented;
+paid-access derivation and invalidation delivery remain later work. Webhook receipt
+and coalesced work commit before 200. Complete fenced rereads process only covered
+receipt generations; incomplete reads/crashes retry, and later hints remain due.
+Polling converges independently of delivery, ordering or provider retries. See the
+[real enablement gate and rollback](engineering/ANY-715-billing-operations.md#real-enablement-checklist-and-rollback).
 
 ## Transaction, idempotency, and retry contract
 
@@ -147,8 +152,9 @@ worker boundary. Do not add unbounded blocking work, retry loops, or retry
 sleeps.
 
 Password-reset email delivery remains its bounded synchronous framework
-background task. Billing work tables do not establish a worker runtime; the
-durable worker implementation belongs to a later step.
+background task. Billing work tables do not establish a worker runtime by
+themselves. Billing uses the separate bounded embedded runner with durable
+PostgreSQL claims and provider-free deadline capacity documented below.
 
 ## Agent-verifiable signals
 
@@ -222,6 +228,26 @@ request/response bodies, URLs/query values, headers, cookies, authorization,
 provider payloads, secrets, or card/token/payment values.
 
 ## Recovery
+
+ANY-715 Step 5 purchase diagnostics distinguish durable queue progress from
+complete verified subscription proof. Health/metrics expose both; outage/backlog
+never extends source trust. The privileged CLI reuses worker reconciliation and
+financial recovery. Supported review resolutions recheck current original
+provenance/fences under business locks and commit facts/bindings, audit and queue
+changes together. Identical completed commands replay without writes or source
+calls; stale/different commands refuse. A failed read may leave its finite
+reconciliation lease, never an unbounded replacement source request. Terminal
+holds/history and fixed UNKNOWN windows survive inspection, rechecks and refusals.
+
+ANY-715 Step 1 shared reconciliation uses short database-time fenced claims and
+apply transactions around one bounded four-point source read set. Incomplete
+attempts never renew finite source trust; owned blocks/conflicts reduce usability
+without depending on complete unrelated commercial fields. Preparation cannot
+overwrite monitored facts. Steps 2–3 execute it in the bounded embedded worker, with separate provider-free
+trust/create deadlines, urgent GET-only recovery and bounded customer inventory.
+Local contention preserves original send authority; retries and source outages
+never move financial UNKNOWN deadlines or convert completed no-send evidence. See the
+[billing operations runbook](engineering/ANY-715-billing-operations.md).
 
 Development environments are worktree-isolated and disposable. The Step-4
 baseline is a destructive compatibility boundary:

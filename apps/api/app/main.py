@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
 from app.composition.sources import source_resources
+from app.composition.billing_worker import billing_worker_resources
 from app.core.database import SessionLocal, engine
 from app.core.errors import AppError
 from app.core.observability import (
@@ -23,6 +24,7 @@ from app.domains.identity.router import router as auth_router
 from app.domains.legal.router import router as legal_router
 from app.domains.purchases.router import router as purchases_router
 from app.http.errors import app_error_handler, unexpected_failure_middleware
+from app.http.billing_webhook import router as billing_webhook_router
 from app.http.health import health_router
 from app.http.metrics import metrics_router
 from app.infrastructure.sentry import configure_sentry
@@ -45,7 +47,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     async with source_resources(settings) as sources:
         _app.state.sources = sources
-        yield
+        async with billing_worker_resources(settings) as worker:
+            _app.state.billing_worker = worker
+            _app.state.billing_worker_mode = (
+                "disabled" if not settings.billing_worker_enabled else "not_configured" if worker is None else "running"
+            )
+            yield
 
 
 def get_cors_origins() -> tuple[str, ...]:
@@ -85,6 +92,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(billing_router)
+    app.include_router(billing_webhook_router)
     app.include_router(purchases_router)
     app.include_router(catalog_router)
     app.include_router(auth_router)

@@ -120,6 +120,123 @@
         "title": "AccountPurchasesResponse",
         "type": "object"
       },
+      "BillingHealthResponse": {
+        "properties": {
+          "active_slots": {
+            "default": 0,
+            "title": "Active Slots",
+            "type": "integer"
+          },
+          "cleanup_pending": {
+            "default": 0,
+            "title": "Cleanup Pending",
+            "type": "integer"
+          },
+          "enrolled_batches": {
+            "default": 0,
+            "title": "Enrolled Batches",
+            "type": "integer"
+          },
+          "failures": {
+            "default": 0,
+            "title": "Failures",
+            "type": "integer"
+          },
+          "invalid_work": {
+            "default": 0,
+            "title": "Invalid Work",
+            "type": "integer"
+          },
+          "last_progress_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Progress At"
+          },
+          "last_scan_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Scan At"
+          },
+          "last_verified_subscription_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Verified Subscription At"
+          },
+          "oldest_due_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Due At"
+          },
+          "pending_work": {
+            "default": 0,
+            "title": "Pending Work",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "disabled",
+              "not_configured",
+              "running",
+              "degraded",
+              "stopping"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "BillingHealthResponse",
+        "type": "object"
+      },
+      "BillingWebhookResponse": {
+        "properties": {
+          "delivery_id": {
+            "format": "uuid",
+            "title": "Delivery Id",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "queued",
+              "ignored"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "delivery_id",
+          "outcome"
+        ],
+        "title": "BillingWebhookResponse",
+        "type": "object"
+      },
       "CatalogMoney": {
         "properties": {
           "connection_amount": {
@@ -1715,6 +1832,27 @@
         ]
       }
     },
+    "/api/billing/lbx/webhook": {
+      "post": {
+        "operationId": "billing_webhook_api_billing_lbx_webhook_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingWebhookResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Billing Webhook",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
     "/api/billing/widget-bootstrap": {
       "post": {
         "operationId": "widget_bootstrap_api_billing_widget_bootstrap_post",
@@ -1834,6 +1972,27 @@
         "summary": "Product Detail",
         "tags": [
           "catalog"
+        ]
+      }
+    },
+    "/api/health/billing": {
+      "get": {
+        "operationId": "billing_health_api_health_billing_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingHealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Billing Health",
+        "tags": [
+          "health"
         ]
       }
     },

@@ -96,7 +96,8 @@ async def test_late_proven_unsent_resume_has_one_new_bounded_recovery_window(
             op = db.get(ExternalCreateOperation, original.id)
             assert (op.unknown_since, op.unknown_recovery_deadline_at, op.recovery_hint_document) == history
             work = db.get(BillingWorkItem, work_id)
-            assert work.active_recovery_deadline_at == current.deadline == work.next_attempt_at
+            assert work.active_recovery_deadline_at == current.deadline
+            assert work.next_attempt_at < current.deadline  # Step 8 schedules urgent GET recovery separately.
             assert work.attempt_count == 2
         # Explicit advance and GET-only recovery never resend or renew this window.
         instant += timedelta(hours=1)

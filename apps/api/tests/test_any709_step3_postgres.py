@@ -811,7 +811,14 @@ async def test_any709_step3_lost_claim_ack_and_late_apply_keep_original_fence_an
             assert saved.unknown_recovery_deadline_at == op.deadline
             assert saved.operation_state == State.MANUAL_REVIEW and saved.bound_external_object_id is None
             work = db.scalar(select(BillingWorkItem).where(BillingWorkItem.coalescing_key == str(op.id)))
-            assert work and work.next_attempt_at == op.deadline
+            assert work and work.next_attempt_at < op.deadline
+            deadline = db.scalar(
+                select(BillingWorkItem).where(
+                    BillingWorkItem.work_kind == "external_create_deadline",
+                    BillingWorkItem.scope_reference == str(op.id),
+                )
+            )
+            assert deadline.next_attempt_at == op.deadline
 
 
 async def test_any709_step3_api_ownership_local_status_and_same_key_survive_source_outage(

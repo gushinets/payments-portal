@@ -111,7 +111,7 @@ def test_any709_step2_proven_unsent_bootstrap_releases_only_its_claim_and_reuses
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(ExternalBillingCustomer)) == 1
         assert db.scalar(select(func.count()).select_from(ExternalCreateOperation)) == 1
-        assert db.scalar(select(func.count()).select_from(BillingWorkItem)) == 1
+        assert db.scalar(select(func.count()).select_from(BillingWorkItem)) == 2
         assert db.scalar(select(func.count()).select_from(PurchaseIntent)) == 0
         assert db.scalar(select(ExternalCreateOperation)).operation_state == State.BOUND
 
@@ -135,7 +135,7 @@ def test_any709_step2_preauth_outage_leaves_the_same_operation_pending_without_a
     factory = postgres_session_factory
     seed(factory)
     config = step1_settings(
-        lbx_max_get_attempts=2, preflight_total_timeout_seconds=0.6, preflight_cleanup_timeout_seconds=0.025
+        lbx_max_get_attempts=2, preflight_total_timeout_seconds=2, preflight_cleanup_timeout_seconds=0.25
     )
     calls: list[tuple[str, str]] = []
 
@@ -180,30 +180,39 @@ def test_any709_step2_lost_replies_exhaust_one_budget_and_retain_the_operation(
 ) -> None:
     factory = postgres_session_factory
     seed(factory)
-    config = step1_settings(preflight_total_timeout_seconds=0.6, preflight_cleanup_timeout_seconds=0.025)
+    config = step1_settings(preflight_total_timeout_seconds=2, preflight_cleanup_timeout_seconds=0.025)
     monkeypatch.setattr(billing, "CUSTOMER_RETRY_BASE_SECONDS", 0.01)
     monkeypatch.setattr(billing, "CUSTOMER_RETRY_MAX_SECONDS", 0.02)
     posts = 0
+    opening_posts = 0
 
-    def transport(request: httpx.Request) -> httpx.Response:
-        nonlocal posts
+    async def transport(request: httpx.Request) -> httpx.Response:
+        nonlocal posts, opening_posts
         if request.url.path.endswith("/auth"):
             return httpx.Response(200, json={"code": 200, "response": {"token": "private-server", "expires_in": 600}})
         if request.method == "POST":
             posts += 1
+            opening_posts += 1
             raise httpx.ReadTimeout("lost reply", request=request)
         assert request.url.path.endswith("/users")
+        if opening_posts == 2:
+            # Exhaust the budget during discovery after two completed failures,
+            # not at a machine-speed-dependent DB claim/POST boundary. A failed
+            # discovery must never authorize a third CREATE in this opening.
+            await asyncio.sleep(10)
         return httpx.Response(200, json={"code": 200, "response": []})
 
     async def scenario() -> None:
+        nonlocal opening_posts
         async with source_resources(config, lbx_transport=httpx.MockTransport(transport)) as sources:
             identity = None
             for _ in range(3):
+                opening_posts = 0
                 with pytest.raises(BillingRefused, match="billing_customer_pending"):
                     await billing.bootstrap_account(sources, config, factory=factory, token=TOKEN)
                 with factory() as db:
                     operation = db.scalar(select(ExternalCreateOperation))
-                    assert operation.operation_state in {State.UNKNOWN, State.POSSIBLE_SEND}
+                    assert operation.operation_state == State.UNKNOWN
                     current = (
                         operation.create_operation_id,
                         operation.send_fence,
@@ -213,15 +222,14 @@ def test_any709_step2_lost_replies_exhaust_one_budget_and_retain_the_operation(
                     if identity is None:
                         identity = current
                     assert current[0] == identity[0]
-                    work = db.scalar(select(BillingWorkItem))
-                    if operation.operation_state == State.UNKNOWN:
-                        assert work.lease_owner is None
-                    else:
-                        assert work.lease_owner is not None and work.lease_expires_at is not None
+                    work = db.scalar(
+                        select(BillingWorkItem).where(BillingWorkItem.work_kind == "external_create_recovery")
+                    )
+                    assert work.lease_owner is None and work.lease_expires_at is None
                     assert work.work_state == "pending"
 
     asyncio.run(scenario())
-    assert posts > 3  # Bounded automatic recovery replaces one POST per opening.
+    assert posts == 6  # Two bounded attempts in each explicit opening.
 
 
 def test_any709_step2_unsent_release_rejects_nonowner_and_changed_claims(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -96,10 +97,18 @@ class Settings(BaseSettings):
     kernel_max_response_bytes: int = Field(default=262144, ge=1024, le=1048576)
     kernel_max_retries: int = Field(default=1, ge=0, le=2)
     kernel_retry_delay_seconds: float = Field(default=0.1, ge=0, le=5, allow_inf_nan=False)
+    billing_worker_enabled: bool = True
+    billing_worker_urgent_concurrency: int = Field(default=2, ge=1, le=16)
+    billing_worker_normal_concurrency: int = Field(default=1, ge=1, le=16)
+    billing_worker_io_timeout_seconds: float = Field(default=60, gt=0, le=600, allow_inf_nan=False)
+    billing_worker_scan_batch_size: int = Field(default=100, ge=1, le=100)
     lbx_base_url: str = ""
     lbx_server_username: SecretStr = SecretStr("")
     lbx_server_password: SecretStr = SecretStr("")
     lbx_widget_signing_secret: SecretStr = SecretStr("")
+    lbx_webhook_enabled: bool = False
+    lbx_webhook_auth_header: str = ""
+    lbx_webhook_auth_value: SecretStr = SecretStr("")
     lbx_seller_organization_id: str = ""
     lbx_currency_id: str = "1"
     lbx_currency: str = "RUB"
@@ -199,7 +208,44 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def require_webhook_configuration_when_enabled(self) -> Settings:
+        if not self.lbx_webhook_enabled:
+            return self
+        if self.lbx_configuration_error is not None:
+            raise ValueError("LBX webhook requires a valid configured LBX connection")
+        header = self.lbx_webhook_auth_header
+        if not re.fullmatch(r"[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}", header) or header.lower() in {
+            "host",
+            "content-type",
+            "content-length",
+            "connection",
+            "transfer-encoding",
+            "cookie",
+            "x-request-id",
+            "traceparent",
+            "tracestate",
+            "baggage",
+            "user-agent",
+            "forwarded",
+            "x-forwarded-for",
+            "x-forwarded-host",
+            "x-forwarded-proto",
+        }:
+            raise ValueError("LBX_WEBHOOK_AUTH_HEADER must name a credential header")
+        value = self.lbx_webhook_auth_value.get_secret_value()
+        if (
+            not value
+            or len(value) > 4096
+            or any(not 32 <= ord(char) <= 126 for char in value)
+            or value != value.strip()
+        ):
+            raise ValueError("LBX_WEBHOOK_AUTH_VALUE must be a nonempty printable ASCII secret without edge whitespace")
+        return self
+
+    @model_validator(mode="after")
     def require_safe_kernel_configuration(self) -> Settings:
+        if self.preflight_cleanup_timeout_seconds >= self.billing_worker_io_timeout_seconds:
+            raise ValueError("worker cleanup reserve must be shorter than the worker total timeout")
         if self.preflight_cleanup_timeout_seconds >= self.preflight_total_timeout_seconds:
             raise ValueError("preflight cleanup reserve must be shorter than the total timeout")
         if self.kernel_mock_enabled and self.app_env == AppEnv.PRODUCTION:

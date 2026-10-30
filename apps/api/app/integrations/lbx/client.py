@@ -80,9 +80,14 @@ class LbxServerClient:
         configuration: Settings,
         *,
         transport: httpx.AsyncBaseTransport | None = None,
+        max_connections: int | None = None,
     ) -> None:
         if configuration.lbx_configuration_error is not None:
             raise LbxNotConfigured()
+        if max_connections is not None and max_connections < 1:
+            raise ValueError("LBX HTTP capacity must be positive")
+        offer_connections = configuration.preflight_max_active if max_connections is None else max_connections
+        account_connections = 4 if max_connections is None else max_connections
         self._configuration = configuration
         self._session: _Session | None = None
         self._session_lock = asyncio.Lock()
@@ -98,8 +103,8 @@ class LbxServerClient:
             trust_env=False,
             verify=True,
             limits=httpx.Limits(
-                max_connections=configuration.preflight_max_active,
-                max_keepalive_connections=configuration.preflight_max_active,
+                max_connections=offer_connections,
+                max_keepalive_connections=offer_connections,
             ),
             transport=transport,
         )
@@ -114,7 +119,7 @@ class LbxServerClient:
             follow_redirects=False,
             trust_env=False,
             verify=True,
-            limits=httpx.Limits(max_connections=4, max_keepalive_connections=4),
+            limits=httpx.Limits(max_connections=account_connections, max_keepalive_connections=account_connections),
             transport=transport,
         )
 

@@ -128,8 +128,9 @@ database lifecycle.
   focused synthetic tests and the local development migration have passed; real
   purchase/payment QA is pending. Step 4 consumes these contracts in localized
   Buy/Continue/Manage UI; targeted synthetic tests PASS; real payment acceptance is NOT_RUN.
-  Reconciliation, paid-access and
-  billing-callback runtime remain future work. See the
+  ANY-715 Steps 1–4 implement embedded reconciliation/recovery and default-disabled
+  authenticated durable webhook hints. Paid-access derivation remains future work;
+  real webhook authentication/delivery is an enablement gate. See the
   [purchase runbook](../../docs/engineering/ANY-709-billing-runbook.md#purchase-api-and-financial-recovery-step-3).
 - Never log authentication tokens, authorization headers, secrets, card fields,
   or unredacted webhook bodies.

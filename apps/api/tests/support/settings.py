@@ -21,6 +21,10 @@ DEFAULT_API_TEST_ENV = {
     "SENTRY_DSN": "",
     "SENTRY_RELEASE": "",
     "SKIP_LEGAL_SEED": "true",
+    "BILLING_WORKER_ENABLED": "false",
+    "LBX_WEBHOOK_ENABLED": "false",
+    "LBX_WEBHOOK_AUTH_HEADER": "",
+    "LBX_WEBHOOK_AUTH_VALUE": "",
 }
 
 

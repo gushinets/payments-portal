@@ -5,6 +5,13 @@ Last verified: 2026-09-24
 
 ## Sensitive data
 
+ANY-715 Step 1 reconciliation persists allowlisted normalized conclusions,
+calendar facts and immutable local provenance, never raw source payloads,
+credentials or contact fields. Scope and original customer/agreement/subscription
+bindings are server-resolved and rechecked under locks before apply. Conflicts
+cannot silently rebind or grant access; see
+[billing operations](engineering/ANY-715-billing-operations.md).
+
 Never collect, persist, or log full card data. Redact card-related external
 fields, raw session, password-reset, and email-verification tokens,
 authorization headers, webhook secrets, passwords, and private billing or
@@ -87,6 +94,14 @@ receipt durable. A concrete integration may persist additional payload data only
 under a separately approved integration-specific requirement that defines its
 need, security treatment, and retention.
 
+ANY-715 Step 4 implements `POST /api/billing/lbx/webhook`, disabled by default.
+Exact constant-time credential-header authentication precedes bounded ASGI body
+processing. Deployment resolves account/contour; only proven local bindings route
+hints. Inbox evidence retains event, safe hashes and local work/generation
+correlation, never unrestricted provider fields. Real LBX header/delivery
+compatibility must pass the [operations gate](engineering/ANY-715-billing-operations.md#real-enablement-checklist-and-rollback)
+before enablement. Receipt cannot update subscription/access facts.
+
 ## Trust boundaries
 
 - Validate HTTP, environment, webhook, and database-boundary data.
@@ -166,6 +181,16 @@ readiness, not client-data, payment, subscription or access authority. Once read
 no loading timer may interrupt an active checkout.
 
 ## High-risk review paths
+
+ANY-715 privileged purchase commands retain the existing OS/deployment access
+boundary. `inspect` is local and read-only; other rechecks use bounded GETs.
+Only fresh original-object proof plus current review/evidence/fence expectations
+permits the two audited resolutions. Principal, bounded reason/reference,
+before/after identities and proof summary stay in existing durable review storage,
+atomically with shared apply/bind. Never include secrets/PII in operator text or
+logs. No terminal hold release, arbitrary identity override, admin API, new role,
+manual paid marking or quota editing is exposed. See the exact
+[effects and refusals](engineering/ANY-715-billing-operations.md#privileged-purchase-operations).
 
 Authentication, payments, legal sources and seeds, migrations, telemetry
 redaction, production Compose, deployment configuration, and secret handling
