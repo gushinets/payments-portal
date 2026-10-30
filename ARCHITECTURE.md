@@ -475,6 +475,17 @@ instead of relabelled; synthetic history is never promoted. No
 and metric identifiers and External Billing object identifiers remain opaque
 at this boundary.
 
+Origin-backed customer reservation, purchase acceptance and product-link
+publication share one PostgreSQL transaction advisory lock keyed by
+tenant/region/normalized provider origin. It is independent of credentials and
+legacy/default account aliases. Under READ COMMITTED, scope reads and their
+durable write occur inside that lock. Applicable lock levels are user, origin,
+resolved-account product, offer, then protected rows; purchase admission takes
+origin before its product/head locks. Publication retains the product/offer CAS
+guards, including no-op origin proof. Caller timeouts bound contention. Source
+HTTP never holds these transactions. Read-only catalog/history queries do not
+replace the final locked admission decision.
+
 Browser returns, Widget callbacks, webhook receipt, outbound command success,
 payment state, or manual operator input alone never grant paid access.
 

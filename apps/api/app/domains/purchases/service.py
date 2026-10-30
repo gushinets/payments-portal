@@ -27,6 +27,7 @@ from app.domains.legal.acceptance_text import (
     expected_acceptance_text_hash,
 )
 from app.domains.legal.service import create_document_acceptance
+from app.domains.purchases.admission import lock_purchase_link
 from app.domains.purchases.contracts import (
     AcceptedPurchase,
     FinancialOperation,
@@ -36,7 +37,6 @@ from app.domains.purchases.contracts import (
     PurchaseMeaning,
     PurchaseRefused,
 )
-from app.infrastructure.persistence.commercial_mappings import lock_mapping_scope
 from app.infrastructure.queries.billing_customers import (
     customer_operation,
     lock_customer,
@@ -353,8 +353,7 @@ def pin_purchase(
         previous = _prior_request(db, user.id, key, meaning)
         if previous is not None:
             return previous
-        account = link.document.scope.external_billing_account_id
-        lock_mapping_scope(db, account_id=account, offer_id="product-head:v2:" + meaning.product_id)
+        account = lock_purchase_link(db, configuration, link, meaning.product_id)
         head = queries.current_head(db, account, meaning.product_id)
         now = utc_now()
         current_documents = legal_evidence(db, configuration, pin=True, effective_at=now)

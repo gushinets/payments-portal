@@ -23,10 +23,13 @@ from app.domains.catalog.publication import (
     validate_stored_mapping,
 )
 from app.infrastructure.persistence.commercial_mappings import (
+    MappingStorageBusy,
+    MappingStorageDeadline,
     bound_publication_transaction,
     lock_mapping_scope,
     require_publication_isolation,
 )
+from app.infrastructure.persistence.billing_connections import ConnectionScopeBusy, lock_connection_scope
 from app.infrastructure.queries.billing_customers import connection_accounts
 from app.infrastructure.queries.commercial_mappings import (
     find_mapping_revision,
@@ -235,6 +238,19 @@ def query_link_history(
         return next(iter(candidates.values()))
 
 
+def _lock_connection(db: Session, scope: CommercialScope, provider_origin: str | None) -> None:
+    if provider_origin is None:
+        return  # Retained unproven publication helpers cannot attach origin proof.
+    try:
+        lock_connection_scope(db, tenant_id=scope.tenant_id, region=scope.region, provider_origin=provider_origin)
+    except ConnectionScopeBusy:
+        raise MappingStorageBusy() from None
+    except DBAPIError as error:
+        if getattr(error.orig, "sqlstate", None) == "57014":
+            raise MappingStorageDeadline() from None
+        raise
+
+
 def publish_product_link(
     session_factory: SessionFactory,
     *,
@@ -256,10 +272,7 @@ def publish_product_link(
     with session_factory() as db:
         require_publication_isolation(db)
         bound_publication_transaction(db, deadline=deadline, lock_timeout_seconds=lock_timeout_seconds)
-        # Both first publish and cross-offer retarget serialize on the PRODUCT.
-        lock_mapping_scope(
-            db, account_id=scope.external_billing_account_id, offer_id="product-head:v2:" + selection.product_id
-        )
+        _lock_connection(db, scope, provider_origin)
         _check_deadline(deadline)
         scope = resolve_connection_scope(
             db, scope=scope, provider_origin=provider_origin, legacy_account_id=legacy_account_id, deadline=deadline
@@ -271,6 +284,10 @@ def publish_product_link(
             evaluation = evaluation.model_copy(
                 update={"identity_digest": commercial_digest(evaluation.identity_json())}
             )
+        # Use the resolved account, matching purchase acceptance's product lock.
+        lock_mapping_scope(
+            db, account_id=scope.external_billing_account_id, offer_id="product-head:v2:" + selection.product_id
+        )
         require_compatible_connection(db, scope=scope, product_id=selection.product_id, deadline=deadline)
         head = find_product_head(db, account_id=scope.external_billing_account_id, product_id=selection.product_id)
         latest = None

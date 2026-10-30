@@ -5,6 +5,99 @@ Completed: 2026-10-27
 Program: ANY-504, Step 7
 Issue: [ANY-709](https://linear.app/paveldik/issue/ANY-709)
 
+## Origin-scope serialization follow-up, 2026-10-30
+
+Owner-authorized fix for
+[P1 discussion_r4421302727](https://github.com/gushinets/payments-portal/pull/150#discussion_r4421302727)
+on `688127c`. The prior shared-query/NULL-head guard did not serialize account
+selection with publication. Preserve immutable account IDs, accepted consent,
+customer/financial operation identities and recovery fences. No schema or wire
+change, live provider write, payment or database repair is required.
+
+- [x] Share one PostgreSQL transaction advisory lock keyed by deployment
+  tenant/contour and normalized provider origin, independent of credentials and
+  legacy/default account aliases. Require READ COMMITTED and inherit finite
+  caller timeouts; only known contention becomes a temporary refusal.
+- [x] Serialize customer scope resolution/reservation and every origin-backed
+  publication branch. Purchase acceptance takes origin before product/head
+  locks; publication locks the product at the resolved account. Keep provider
+  HTTP outside transactions and preserve exact replay/recovery paths.
+- [x] Extract focused admission units within the existing 500-line limits.
+- [x] Add event-coordinated PostgreSQL regressions for the missing ordering,
+  both directions, empty first rows, rollback, bounded contention, purchase lock
+  order, rotation and safe HTTP refusal/replay. Retain ambiguity and historical
+  evidence controls.
+- [x] Run focused checks, correctness/architecture/DoD review and the broadest
+  supported canonical check; record results and remaining acceptance limits.
+- [x] Update the runbook with the protocol, coordinated writer rollout,
+  read-only consistency audit and ANY-715/ANY-765 integration handoff.
+
+Baseline: the unchanged PR head was independently reproduced with PostgreSQL
+READ COMMITTED and synthetic HTTP. Publication committed between the first
+customer account read and its following head query; the customer/operation
+committed at the default account, one synthetic CREATE returned a candidate,
+and later reservation refused the two proven scopes. The existing overlap test
+paused publication before its commit and did not exercise this ordering.
+
+The production patch extracts customer scope admission and purchase lock order
+into focused units. Publication resolves scope under the common origin lock and
+then uses the same resolved-account product lock as acceptance. Customer
+reservation reenters the already-held origin lock within purchase acceptance's
+transaction; neither the helper nor the resolver owns commit/rollback.
+
+Focused production-patch checks passed: 11 lock/error-classification cases and
+33 PostgreSQL/HTTP cases across the new protocol, retained scopes, purchase
+contention, stale-term fencing and subscription inventory. The subsequently
+added HTTP Widget case checks safe `billing_busy`, no provider request or local
+identity while blocked, then successful explicit reopening with one customer
+and no financial CREATE. Its result is recorded with final canonical evidence
+below. The earlier 99-test temporary prototype is separate design evidence.
+
+Self-review of the complete fix and affected callers:
+
+- Correctness: the two-read scope decision and slot/head write share one lock;
+  the missing schedule now observes a real PostgreSQL advisory waiter. Both
+  transaction orders, rollback and timeout preserve one scope. Existing exact
+  replay returns before new-admission locks; financial UNKNOWN remains GET-only.
+- Architecture: all active customer/head origin writers and purchase acceptance
+  participate. User → origin → resolved product → offer/rows has no reverse
+  acquisition between these participants. Provider HTTP remains outside DB
+  units. There is no registry table, schema change or duplicate scope authority.
+- DoD: real HTTP purchase contention/refusal/retry and Widget reopening cover
+  the affected entrypoints, with request IDs, no-store, retained accepted terms
+  and no duplicate customer/financial identity. No new confirmed actionable
+  issue was found in this fix's reviewed boundary; this is not renewed full-PR
+  or live-provider acceptance.
+
+Final production-patch verification:
+
+- Full `npm run check` passed in one completed final run: 1,542 fast API,
+  367 PostgreSQL, 385 component and 38 boundary tests, documentation/generated
+  artifact checks, architecture, Ruff, web lint and production build. Log:
+  `/tmp/pr150-origin-fix-canonical.log`. The PostgreSQL partition includes the
+  Widget HTTP contention/reopen case and all new origin-lock regressions.
+- `npm ci --offline --no-audit --no-fund` installed the unchanged lockfile.
+  Web-workspace ESLint is 10.8.1; Next/Vitest/Vite are 16.4.2/4.1.12/7.3.7.
+  Initial copied dependencies omitted workspace-nested packages; the initial
+  boundary failure was environmental and was resolved by the clean install.
+- Earlier combined API attempts could not connect after the previously shared
+  local test server stopped. The final run used this worktree's own isolated
+  Compose PostgreSQL server and disposable `pr150_origin_fix_canonical_tests`;
+  pytest owned the database lifecycle. No application database was migrated or
+  repaired. Source HTTP was synthetic throughout.
+- Architecture/source limits and final diff checks passed; no package,
+  lockfile, generated, schema or legal-content change was introduced. The
+  documentation evidence update was checked separately after the full run.
+- Browser E2E was skipped by the canonical runner because `RUN_E2E=true` and a
+  running application harness were not enabled. Real HTTP ASGI purchase/Widget
+  journeys ran against PostgreSQL and synthetic provider transport. No fresh
+  real SDK/LBX/payment or production acceptance result is claimed.
+
+No live-provider operation or GitHub reply/thread resolution has been performed.
+The owner authorized committing and pushing this verified follow-up to ANY-709.
+ANY-715/ANY-765 integration remains an explicit handoff; their working copies
+were not changed by this ANY-709 fix. Human merge approval is still required.
+
 ## Three-pass review remediation, 2026-10-30
 
 Owner-authorized scope: implement all five confirmed findings from the

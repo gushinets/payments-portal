@@ -291,7 +291,9 @@ def test_widget_overlaps_privileged_origin_proof_without_competing_identity(
         pending = executor.submit(publish_existing, factory, config)
         try:
             assert entered.wait(5)
-            with pytest.raises(BillingRefused, match="billing_connection_conflict"):
+            # Publication owns origin; a bounded waiter is temporary, not a
+            # permanent identity conflict or permission to create another slot.
+            with pytest.raises(BillingRefused, match="billing_busy"):
                 open_account(factory, config, transport)
             assert transport.creates("/users") == 0
             with factory() as db:

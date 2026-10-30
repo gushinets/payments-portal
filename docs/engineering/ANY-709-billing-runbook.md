@@ -262,6 +262,57 @@ Multiple origin-backed scopes remain a conflict. Commercial-link validation
 stays with catalog admission; an unrelated corrupt link cannot by itself block
 an otherwise proven account-only opening in the same scope.
 
+### Origin-scope concurrency and rollout
+
+Customer reservation, new purchase acceptance and origin-backed publication
+(including identical publication that attaches legacy origin proof) share one
+PostgreSQL transaction advisory lock. Its stable key uses tenant/contour and
+normalized provider origin, never credentials or a selected account alias.
+Account selection and its durable customer/head write are serialized under
+READ COMMITTED. Applicable lock order is user → origin → resolved-account
+product → offer → protected rows. Provider HTTP remains outside transactions.
+
+An account/new-purchase waiter that exceeds the existing short lock budget
+returns temporary `503 billing_busy` with its request ID and no new customer,
+consent, purchase or financial operation. Retry explicitly after contention
+ends. Same-key saved purchase replay remains local and does not wait for a new
+origin admission. Publication retains `mapping_storage_busy` and its original
+absolute deadline; a wait does not renew that deadline. A different origin uses
+a different lock. Unsupported transaction isolation fails instead of authorizing
+scope from an earlier snapshot.
+
+Update every writing API/CLI process together before relying on this protocol;
+an older binary does not acquire the shared lock. Preserve the same namespaced
+key convention across deployments. No migration, new registry, account-ID
+relabel or database reset is part of this fix. Inspect an existing stand
+read-only before rollout:
+
+```sql
+SELECT provider_origin, count(DISTINCT external_billing_account_id) AS account_count
+FROM (
+    SELECT provider_origin, external_billing_account_id
+    FROM commercial_product_heads WHERE provider_origin IS NOT NULL
+    UNION
+    SELECT provider_origin, external_billing_account_id
+    FROM external_billing_customers WHERE provider_origin IS NOT NULL
+) AS origin_scopes
+GROUP BY provider_origin
+HAVING count(DISTINCT external_billing_account_id) > 1;
+```
+
+Any returned origin requires a separate evidence-based reconciliation of its
+retained IDs, bindings, receipts and possible-send history. Do not delete or
+relabel conflicting identities automatically. NULL-origin legacy rows still
+need the privileged provenance process above; this query does not prove their
+origin. This fix prevents new conflicting admissions and does not repair
+pre-existing ambiguity.
+
+Integration handoff: carry the same protocol to dependent ANY-715/ANY-765
+branches before their rollout. ANY-715 already extracts `customer_scope.py`;
+retain its later recovery changes while adding the origin lock. Apply the
+purchase origin-before-product order too. Do not apply an isolated lock only
+inside reservation after purchase has already locked its product/head.
+
 ## Observable result and read-only inspection
 
 `GET /api/catalog/products` lists enabled technical products with one bounded
