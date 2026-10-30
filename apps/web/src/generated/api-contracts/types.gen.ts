@@ -465,6 +465,10 @@ export type PurchaseConfirmRequest = {
      */
     expected_fingerprint: string;
     /**
+     * Expected Technical Terms Digest
+     */
+    expected_technical_terms_digest?: string | null;
+    /**
      * Product Id
      */
     product_id: string;
@@ -530,6 +534,10 @@ export type PurchaseReviewResponse = {
      */
     expected_fingerprint: string;
     /**
+     * Expected Technical Terms Digest
+     */
+    expected_technical_terms_digest?: string | null;
+    /**
      * Legal Status
      */
     legal_status?: 'draft';
@@ -541,7 +549,31 @@ export type PurchaseReviewResponse = {
      * Revision Id
      */
     revision_id: string;
+    technical_terms?: PurchaseTechnicalTermsResponse | null;
     terms: PurchaseTermsResponse;
+};
+
+/**
+ * PurchaseTechnicalTermsResponse
+ */
+export type PurchaseTechnicalTermsResponse = {
+    /**
+     * Digest
+     */
+    digest: string;
+    offer: TechnicalOffer;
+    /**
+     * Provenance
+     */
+    provenance: 'SIMULATED';
+    /**
+     * Source Digest
+     */
+    source_digest: string;
+    /**
+     * Source Version
+     */
+    source_version: string;
 };
 
 /**
@@ -796,6 +828,32 @@ export type SessionUserResponse = {
  * SourceProvenance
  */
 export type SourceProvenance = 'CONFIGURED_SOURCE' | 'SIMULATED';
+
+/**
+ * TechnicalOffer
+ */
+export type TechnicalOffer = {
+    /**
+     * Metric Key
+     */
+    metric_key: string;
+    /**
+     * Product Id
+     */
+    product_id: string;
+    /**
+     * Quantity
+     */
+    quantity: number;
+    /**
+     * Quantity Mode
+     */
+    quantity_mode: 'fixed_per_cycle';
+    /**
+     * Unit
+     */
+    unit: string;
+};
 
 /**
  * ValidationError

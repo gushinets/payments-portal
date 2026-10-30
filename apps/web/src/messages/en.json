@@ -467,6 +467,9 @@
     "acceptedTerms": "Originally accepted terms",
     "awaitingVerification": "Payment status is awaiting authoritative verification. Checking saved status reads Portal records only; it does not refresh billing facts.",
     "accessDeferred": "Payment and product access are separate. Paid-access delivery and usage/quota will be implemented in later stages; this screen does not confirm activation.",
+    "technicalLimit": "Test limit per confirmed cycle",
+    "simulatedTerms": "SIMULATED · test terms",
+    "technicalUnknown": "Technical limit is unproven; metered execution is unavailable.",
     "fullFunding": "Full funding is required.",
     "fundingUnspecified": "Funding requirements are not specified.",
     "states": {

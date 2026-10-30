@@ -1,6 +1,6 @@
 # ANY-765 — Paid Access Projection, Allowances, Revision & Invalidation
 
-Status: implementation-ready plan; no application implementation started
+Status: Step 1 implemented; local verification complete with recorded limitations; Steps 2–4 not started
 Validation: **READY WITH GATES** — validated using the validate-plan skill
 Updated: 2026-10-30
 Issue: [ANY-765](https://linear.app/paveldik/issue/ANY-765)
@@ -572,6 +572,161 @@ lookup.
 **Proposed commit**
 
 `ANY-765 - Pin consented development metering terms`
+
+### Step 1 implementation record — 2026-10-30
+
+**Scope and baseline.** Implemented only Step 1 on `ANY-765`, tested base HEAD
+`7ca593be5b98c6a8073ee4e44d0a24f3b213308e` plus this uncommitted working-tree
+diff. The checkout initially had no unrelated changes. Repository root and branch
+were verified before editing. No stage/commit/push/branch switch/merge/rebase or
+other-worktree mutation occurred. Migration head remains `20261028_0005`.
+
+Inherited Step 8 is published `b44a45f5a4dc47b5a70c8468df462f016e66be2d`;
+PR #154 metadata still names that SHA. Local `ANY-715` has rewritten Step 8 history on the newer Step 7 base,
+ending at `037139f3e2aec3b1951cd841a67a3963a8688ae4`, not a
+new Step 1 prerequisite. Local/origin `ANY-709` was `688127c`; refreshed
+GitHub metadata exposes predecessor `fc85a95`. Relevant selected-price
+metadata/commercial fingerprint v2 is already inherited and unchanged here.
+The later Step 7 subscription-send inventory/stale-unsent-decision corrections
+at `a2bcb59` are not imported by this acceptance-only step: it performs no
+financial send. Consume/recheck their missing delta before relying on those
+financial seams in later integration. No predecessor integration is claimed.
+
+PR #151 head `c1b093757702c112298a07f60999e9697f0efcd4` was inspected:
+two enabled products and literal manifest digest already match this baseline,
+but its separate 100/300 metadata was absent. Those exact examples now live in
+one versioned `config/development/paid-access-test-terms.json`, consumed by API
+development composition and mock documentation. No finalized mock alignment
+delta was present in this checkout's committed mock history; the bounded missing
+all-disabled, safe 500/503 and producer-envelope delta was implemented here.
+No external worktree preparation was edited or treated as delivered evidence.
+
+Producer-owned ANY-711 contract/router/error models were inspected at
+`e627bf296a6476efcca839a0328cf1a5683555e2`. Positive fixture bytes/digest and
+historical SIMULATED labels are retained. This is peer source inspection;
+new real Kernel HTTP conformance was not run.
+
+**Delivered behavior.** Explicit `PURCHASE_TEST_TERMS_ENABLED` defaults false
+and refuses true under `APP_ENV=production`. Development image data and Compose/
+harness forwarding are wired; the production image contains no fixture fallback.
+One live manifest/current-offer review validates enabled product, metric owner
+and unit through existing capability policy. A separate technical digest binds
+version/content/provenance, exact link/account/component/commercial offer and
+Kernel evidence into confirmation and idempotency meaning. Commercial fingerprint
+and legal-event semantics remain unchanged. New v2 snapshots freeze complete
+technical evidence; v1 and same-key replay never look up today's fixture or
+invent metering. Strict quantities allow integer zero and refuse booleans,
+floats, negatives, strings and values above the exact JSON integer bound.
+Localized review/history shows exact quantity/unit and simulation, or unproven
+technical evidence. Generated OpenAPI/TypeScript contracts were regenerated.
+
+Canonical checks explicitly disable inherited development test terms; explicit
+per-test configuration still enables acceptance tests. The pin transaction also
+requires enablement to match the presence of technical evidence, so internal
+callers cannot bypass the source with an absent digest/terms pair.
+
+The purchase service's saved-evidence decoder moved into focused
+`purchases/evidence.py` to retain the architecture's 500-line module bound.
+No grants, allowances, primary/revision/outbox writer, deadline processing,
+paid-state endpoint, legal text or subsequent-step implementation was added.
+
+**Verification results (2026-10-30).**
+
+- **PASS:** focused API/mock/purchase tests: 160 passed; after checker alignment,
+  focused independent checker + technical contract suite: 44 passed.
+- **PASS:** affected purchase PostgreSQL suites: 78 passed, including all six
+  new Step 1 cases. Step 1 PostgreSQL rerun after strengthening changed-fixture
+  replay: 6 passed. Tests use only disposable local PostgreSQL and synthetic
+  transports, with zero provider POSTs and zero paid-state/allowance/outbox rows.
+- **PASS:** purchase/cabinet components: 43 passed; broad components: 379 passed;
+  web boundaries: 38 passed; web lint and typecheck.
+- **PASS:** Ruff on changed Python, API formatting, `npm run generate`,
+  `npm run generate:check`, architecture/docs checks and `git diff --check`.
+- **FAILED then corrected:** first focused mock run had one stale OpenAPI status
+  assertion; first broad `check:fast` had three independent-checker status
+  assumptions after adding 500. Both were corrected and their focused suites
+  passed.
+- **FAILED / environment-sensitive:** that first broad run also had four
+  inherited configuration failures: two harness tests and two Sentry production
+  settings tests inherited local `KERNEL_MOCK_ENABLED=1`. The later full
+  `npm run check` used command-local empty external source settings and
+  mock/test-terms disabled: API-fast **1607 passed**, web build **PASS**, all
+  preceding static/component/boundary stages **PASS**. Its PostgreSQL output
+  reached 89% without a failure, but the session interruption made its final
+  exit/result unavailable. The aggregate command is **RESULT_UNAVAILABLE**,
+  not PASS. The private environment file is unchanged.
+- The initial sandbox-only TCP test attempt was interrupted; Docker/socket
+  checks were rerun successfully with local permissions. This is not a test PASS.
+- **PASS:** final mock/error-correlation + independent-checker rerun: 86 passed.
+- **PASS:** `PLAYWRIGHT_BASE_URL=http://127.0.0.1:39765
+  PLAYWRIGHT_API_BASE_URL=http://127.0.0.1:39765 npm run test:e2e --
+  apps/web/e2e/any709-purchase.spec.ts --workers=2`: 14 passed across desktop
+  and mobile Chromium. All API/SDK requests are synthetic interceptions; no
+  billing backend is started. Review limit/digest, unchecked fresh consent,
+  no horizontal overflow and serious/critical Axe checks passed. Review,
+  prepared and cabinet screenshots were captured; desktop/mobile review images
+  were visually inspected.
+- Browser artifacts: `.harness/playwright-report/results.json` and
+  `.harness/playwright-results/any709-purchase-purchase-p-08dbf-ifies-the-selected-purchase-{desktop,mobile}-chromium/purchase-technical-review.png`.
+  The dedicated loopback web process was stopped after the run.
+- **PASS:** complete tracked/untracked diff self-review using the repository
+  correctness, payment-security and UI-accessibility checklists. No unrelated
+  changes, secrets, manual generated edits or later-step writers were found.
+  This is self-review, not independent reviewer or merge approval.
+- The full PostgreSQL partition was restarted with durable output:
+  `PYTEST_ADDOPTS="--junitxml=.harness/any765/step1-postgres.xml"
+  npm run test:api:postgres`, using the same empty external settings.
+  Log/status: `.harness/any765/step1-postgres.log` and
+  `.harness/any765/step1-postgres.exit`.
+  **FAIL:** 474 passed, 1 failed, exit 1, 1315.69 seconds. All **7** final
+  Step 1 PostgreSQL cases passed, including the internal pin-without-terms guard.
+  The failure was the unchanged
+  `test_customer_ensure_find_create_recover[duplicate]`: its two-second
+  preflight elapsed and `bootstrap_account` returned
+  `BillingAccountFailure("billing_customer_pending")`. Account-only customer
+  bootstrap does not execute the changed purchase/technical-terms path. No
+  customer-flow code, test timeout or production behavior was changed to mask
+  this result. **PASS:** the isolated unchanged customer module rerun
+  (`PYTEST_ADDOPTS="-k billing_customer_ensure --durations=5"
+  npm run test:api:postgres`): **11 passed**, exit 0, 22.60 seconds.
+  This demonstrates a time-sensitive full-run failure; it does not erase the
+  failed aggregate result. Durable artifacts:
+  `.harness/any765/customer-ensure-rerun.{log,xml,exit}`.
+- **PASS:** the final check-environment isolation regression
+  (`PYTEST_ADDOPTS="-k canonical_checks_use_a_worktree_scoped_temp_directory"
+  npm run test:api:fast`): 1 passed.
+
+**Final scope review.** The complete working-tree diff, including untracked
+source/test/data files, was reviewed after the last pin and check-environment
+guards. Branch remains `ANY-765`, HEAD remains `7ca593b`, and the index is empty.
+Only Step 1 is implemented; no grant/allowance/revision/outbox writer or later
+step was started. Changed areas are purchase evidence/contracts/composition/
+presentation, the dev source/settings/image wiring, bounded mock alignment,
+localized purchase terms, generated API contracts, focused tests and owned
+implementation documentation. The raw `check:fast` failure, unavailable first
+`check` aggregate result and failed full PostgreSQL run remain recorded above;
+there is no claim of an entirely green canonical aggregate.
+
+Cleanup **PASS**: the dedicated web process was stopped and
+`PATH="$PWD/.venv/bin:$PATH" make test_db_stop` stopped only this worktree's
+`payments-cf94dbf9-postgres-1`; no volumes/database history or other worktrees
+were removed. Final documentation and whitespace checks **PASS**.
+
+**Environment limitation.** Node is 24.14.0. The existing installation resolved
+Next 16.3.1 and Vitest 3.2.7, while the unchanged manifest/lock pins Next 16.4.2
+and Vitest 4.1.12; React 19.2.8 matches. Local web PASS refers to those actual
+installed versions. A clean `npm ci` and rerun on the lock-pinned web versions
+are **NOT_RUN**; dependencies and lock files were not changed by this step.
+
+**Remaining gates.** Configured test-LBX purchase/natural renewal and real
+Kernel/deployed conformance are **NOT_RUN**; no real external mutation was
+authorized or performed. They are later acceptance/enablement conditions, not
+Step 1 implementation prerequisites. Production purchased quantities, paid
+projection and coordinated ANY-766 wire/enforcement remain future work. API
+development-image rebuild/runtime smoke is not claimed by static wiring.
+Manual QA should use an explicitly enabled dev/test source and verify that a
+changed technical limit requires fresh review/unchecked consent; a real LBX
+purchase requires separate authorization.
 
 ### Step 2 — Derive and atomically commit paid access
 

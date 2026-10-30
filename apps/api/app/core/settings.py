@@ -87,6 +87,7 @@ class Settings(BaseSettings):
     kernel_base_url: str = ""
     kernel_service_token: SecretStr = SecretStr("")
     kernel_mock_enabled: bool = False
+    purchase_test_terms_enabled: bool = False
     # Application policy, in seconds/bytes/operations; not a source-provider SLA.
     preflight_total_timeout_seconds: float = Field(default=10.0, gt=0, le=120, allow_inf_nan=False)
     preflight_cleanup_timeout_seconds: float = Field(default=0.25, gt=0, le=5, allow_inf_nan=False)
@@ -250,6 +251,8 @@ class Settings(BaseSettings):
             raise ValueError("preflight cleanup reserve must be shorter than the total timeout")
         if self.kernel_mock_enabled and self.app_env == AppEnv.PRODUCTION:
             raise ValueError("Kernel mock requires development/test")
+        if self.purchase_test_terms_enabled and self.app_env == AppEnv.PRODUCTION:
+            raise ValueError("Purchase test terms require development/test")
         token = self.kernel_service_token.get_secret_value()
         if not self.kernel_base_url and not token:
             return self

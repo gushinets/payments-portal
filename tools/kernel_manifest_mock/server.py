@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
+from uuid import uuid4
 
 from .documentation import SWAGGER_HTML, openapi_document
 
@@ -23,16 +24,21 @@ from .documentation import SWAGGER_HTML, openapi_document
 MANIFEST_PATH = "/internal/v1/capability-manifest"
 MANIFEST_SCOPE = {"tenant_id": "anytoolai", "region": "ru"}
 CONTRACT_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "docs/contracts/kernel-capability-manifest/v1"
+    Path(__file__).resolve().parents[2] / "docs/contracts/kernel-capability-manifest/v1"
 )
 FIXTURE_PATH = CONTRACT_PATH / "fixtures/valid-manifest.json"
+TEST_OFFERS_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "config/development/paid-access-test-terms.json"
+)
 MAX_DELAY_SECONDS = 60
 REQUEST_TIMEOUT_SECONDS = 5
 
 
 class Scenario(StrEnum):
     VALID = "valid"
+    ALL_DISABLED = "all-disabled"
+    INTERNAL_ERROR = "internal-error"
     DISABLED_PRODUCT = "disabled-product"
     MISSING_PRODUCT = "missing-product"
     DISABLED_METRIC = "disabled-metric"
@@ -143,7 +149,10 @@ def semantic_version(manifest: dict[str, Any]) -> str:
 def response_manifest(fixture: dict[str, Any], scenario: Scenario) -> dict[str, Any]:
     manifest = copy.deepcopy(fixture)
     manifest["generated_at"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    if scenario == Scenario.DISABLED_PRODUCT:
+    if scenario == Scenario.ALL_DISABLED:
+        for item in manifest["products"] + manifest["usage_metrics"]:
+            item["enabled"] = False
+    elif scenario == Scenario.DISABLED_PRODUCT:
         selected = next(
             product
             for product in manifest["products"]
@@ -156,11 +165,19 @@ def response_manifest(fixture: dict[str, Any], scenario: Scenario) -> dict[str, 
             for product in manifest["products"]
             if product["product_id"] != "proposal_ai"
         ]
-        manifest["usage_metrics"] = [metric for metric in manifest["usage_metrics"] if metric["product_id"] != "proposal_ai"]
+        manifest["usage_metrics"] = [
+            metric
+            for metric in manifest["usage_metrics"]
+            if metric["product_id"] != "proposal_ai"
+        ]
     elif scenario == Scenario.DISABLED_METRIC:
         manifest["usage_metrics"][0]["enabled"] = False
     elif scenario == Scenario.MISSING_METRIC:
-        manifest["usage_metrics"] = [metric for metric in manifest["usage_metrics"] if metric["product_id"] != "proposal_ai"]
+        manifest["usage_metrics"] = [
+            metric
+            for metric in manifest["usage_metrics"]
+            if metric["product_id"] != "proposal_ai"
+        ]
     elif scenario == Scenario.WRONG_TENANT:
         manifest["tenant_id"] = "other-test-tenant"
     elif scenario == Scenario.WRONG_REGION:
@@ -195,7 +212,11 @@ class ManifestMockServer(ThreadingHTTPServer):
             (CONTRACT_PATH / "manifest.schema.json").read_text(encoding="utf-8")
         )
         self.openapi = openapi_document(
-            schema, self.fixture, MANIFEST_PATH, MANIFEST_SCOPE
+            schema,
+            self.fixture,
+            MANIFEST_PATH,
+            MANIFEST_SCOPE,
+            json.loads(TEST_OFFERS_PATH.read_text(encoding="utf-8")),
         )
         super().__init__(address, ManifestMockHandler)
 
@@ -212,13 +233,20 @@ class ManifestMockHandler(BaseHTTPRequestHandler):
         pass
 
     def _send(
-        self, status: int, body: bytes, content_type: str = "application/json"
+        self,
+        status: int,
+        body: bytes,
+        content_type: str = "application/json",
+        *,
+        request_id: str | None = None,
     ) -> None:
         try:
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
+            if request_id is not None:
+                self.send_header("X-Request-ID", request_id)
             if status == 401:
                 self.send_header("WWW-Authenticate", "Bearer")
             self.end_headers()
@@ -229,7 +257,21 @@ class ManifestMockHandler(BaseHTTPRequestHandler):
             pass
 
     def _error(self, status: int, code: str) -> None:
-        self._send(status, json.dumps({"detail": {"code": code}}).encode("utf-8"))
+        # Producer-shaped, safe correlation; never echo request/header data.
+        request_id = "req_" + uuid4().hex
+        self._send(
+            status,
+            json.dumps(
+                {
+                    "error": {
+                        "code": code,
+                        "message": "Simulated manifest request refused.",
+                        "request_id": request_id,
+                    }
+                }
+            ).encode("utf-8"),
+            request_id=request_id,
+        )
 
     def do_GET(self) -> None:
         target = urlsplit(self.path)
@@ -238,10 +280,13 @@ class ManifestMockHandler(BaseHTTPRequestHandler):
                 self._error(403, "browser_access_forbidden")
                 return
             if target.path == "/docs":
-                self._send(200, SWAGGER_HTML.encode("utf-8"), "text/html; charset=utf-8")
+                self._send(
+                    200, SWAGGER_HTML.encode("utf-8"), "text/html; charset=utf-8"
+                )
             else:
                 self._send(
-                    200, json.dumps(self.server.openapi, ensure_ascii=False).encode("utf-8")
+                    200,
+                    json.dumps(self.server.openapi, ensure_ascii=False).encode("utf-8"),
                 )
             return
         if target.path != MANIFEST_PATH:
@@ -270,12 +315,19 @@ class ManifestMockHandler(BaseHTTPRequestHandler):
         if config.scenario == Scenario.UNAVAILABLE:
             self._error(503, "manifest_unavailable")
             return
+        if config.scenario == Scenario.INTERNAL_ERROR:
+            self._error(500, "internal_error")
+            return
         if config.scenario == Scenario.TIMEOUT:
             time.sleep(config.delay_seconds)
         if config.scenario == Scenario.MALFORMED_JSON:
             self._send(200, b'{"schema_version":')
             return
-        payload = response_manifest(self.server.fixture, config.scenario)
+        try:
+            payload = response_manifest(self.server.fixture, config.scenario)
+        except (KeyError, TypeError, ValueError):
+            self._error(500, "internal_error")
+            return
         self._send(200, json.dumps(payload, ensure_ascii=False).encode("utf-8"))
 
     def _method_not_allowed(self) -> None:
@@ -315,7 +367,10 @@ def main() -> None:
             f"scenario={config.scenario}",
             flush=True,
         )
-        print(f"Read-only Swagger UI: http://{args.host}:{server.server_port}/docs", flush=True)
+        print(
+            f"Read-only Swagger UI: http://{args.host}:{server.server_port}/docs",
+            flush=True,
+        )
         try:
             server.serve_forever()
         except KeyboardInterrupt:

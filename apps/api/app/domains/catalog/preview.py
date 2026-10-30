@@ -32,6 +32,7 @@ class ProductPreview:
     link: StoredProductLink | None = None
     offer: CurrentOffer | None = None
     reason: str | None = None
+    manifest: CapabilityManifest | None = None
 
 
 def require_enabled_product(manifest: CapabilityManifest, product_id: str) -> None:

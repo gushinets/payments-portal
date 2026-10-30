@@ -467,6 +467,9 @@
     "acceptedTerms": "Condiciones aceptadas originalmente",
     "awaitingVerification": "El pago espera una verificación autorizada. Consultar el estado guardado solo lee los registros del Portal y no actualiza los datos de facturación.",
     "accessDeferred": "El pago y el acceso al producto son independientes. El acceso de pago y el uso/las cuotas llegarán en etapas posteriores; esta pantalla no confirma la activación.",
+    "technicalLimit": "Límite de prueba por ciclo confirmado",
+    "simulatedTerms": "SIMULATED · condiciones de prueba",
+    "technicalUnknown": "Límite técnico sin confirmar; ejecución con cuota no disponible.",
     "fullFunding": "Se requiere financiación completa.",
     "fundingUnspecified": "No se especifican los requisitos de financiación.",
     "states": {

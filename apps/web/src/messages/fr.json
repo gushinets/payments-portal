@@ -467,6 +467,9 @@
     "acceptedTerms": "Conditions initialement acceptées",
     "awaitingVerification": "Le paiement attend une vérification auprès de la facturation. La consultation de l’état enregistré lit uniquement le Portail et n’actualise pas les données de facturation.",
     "accessDeferred": "Le paiement et l’accès au produit sont distincts. L’accès payant et le suivi de l’utilisation/des quotas seront livrés ultérieurement ; cet écran ne confirme aucune activation.",
+    "technicalLimit": "Limite de test par cycle confirmé",
+    "simulatedTerms": "SIMULATED · conditions de test",
+    "technicalUnknown": "Limite technique non confirmée ; exécution avec quota indisponible.",
     "fullFunding": "Un financement intégral est requis.",
     "fundingUnspecified": "Les exigences de financement ne sont pas précisées.",
     "states": {

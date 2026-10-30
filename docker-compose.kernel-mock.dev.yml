@@ -24,6 +24,7 @@ services:
       - --delay-seconds
       - ${KERNEL_MOCK_DELAY_SECONDS:-30}
     volumes:
+      - ./config/development:/app/config/development:ro
       - ./tools/kernel_manifest_mock:/app/tools/kernel_manifest_mock:ro
       - ./docs/contracts/kernel-capability-manifest/v1:/app/docs/contracts/kernel-capability-manifest/v1:ro
     ports:

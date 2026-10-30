@@ -467,6 +467,9 @@
     "acceptedTerms": "Ursprünglich akzeptierte Bedingungen",
     "awaitingVerification": "Der Zahlungsstatus wartet auf eine verbindliche Prüfung. Die Statusabfrage liest nur Portal-Daten und aktualisiert keine Abrechnungsdaten.",
     "accessDeferred": "Zahlung und Produktzugang sind getrennt. Bezahlter Zugang sowie Nutzung/Kontingente folgen später; diese Ansicht bestätigt keine Aktivierung.",
+    "technicalLimit": "Testlimit je bestätigtem Zyklus",
+    "simulatedTerms": "SIMULATED · Testbedingungen",
+    "technicalUnknown": "Technisches Limit nicht bestätigt; Ausführung mit Kontingent nicht verfügbar.",
     "fullFunding": "Vollständige Deckung ist erforderlich.",
     "fundingUnspecified": "Anforderungen zur Deckung sind nicht angegeben.",
     "states": {
