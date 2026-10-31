@@ -212,10 +212,13 @@ async def test_reauth_cannot_reset_total_get_attempt_limit() -> None:
         return fixture_response("auth") if request.url.path.endswith("/auth") else httpx.Response(401)
 
     async with lbx_source(httpx.MockTransport(respond), lbx_max_get_attempts=3) as (client, owner):
-        with pytest.raises(LbxAttemptsExhausted):
+        with pytest.raises(LbxAttemptsExhausted) as caught:
             async with owner.operation() as budget:
                 await client.get_tariff(tariff_id=TARIFF, budget=budget)
     assert count == 3
+
+    assert caught.value.response_facts.http_status == 401
+    assert caught.value.response_facts.failure_kind == "authorization"
 
 
 @pytest.mark.parametrize("kind,expected", [("timeout", LbxTimeout), ("network", LbxUnavailable)])

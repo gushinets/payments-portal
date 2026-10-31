@@ -57,13 +57,18 @@ def test_opt_in_injects_container_source_settings_without_printing_secrets(
     repo.write_runtime(repo.runtime_config())
     written = repo.read_runtime_env()
     assert written["KERNEL_SERVICE_TOKEN"] == written["KERNEL_MOCK_TOKEN"] == "explicit-simulated-service-token"
-    assert written["MAPPING_OPERATOR_UIDS"] == "[0]"
+    assert "MAPPING_OPERATOR_UIDS" not in written
     assert written["KERNEL_MOCK_PORT"] == str(repo.runtime_config().kernel_mock_port)
     output = capsys.readouterr()
     assert not output.out and not output.err
     monkeypatch.setenv("KERNEL_MOCK_ENABLED", "0")
     repo.write_runtime(repo.runtime_config())
-    assert "KERNEL_SERVICE_TOKEN" not in repo.read_runtime_env()
+    written = repo.read_runtime_env()
+    assert written["KERNEL_SERVICE_TOKEN"] == "explicit-simulated-service-token"
+    assert "KERNEL_MOCK_ENABLED" not in written
+    assert "KERNEL_MOCK_TOKEN" not in written
+    assert "KERNEL_MOCK_SCENARIO" not in written
+    assert "KERNEL_MOCK_DELAY_SECONDS" not in written
 
 
 @pytest.mark.parametrize(

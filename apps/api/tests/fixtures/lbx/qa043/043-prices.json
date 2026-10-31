@@ -1,0 +1,1 @@
+{"code": 200, "response": [ { "bulk_include_amount": 0, "bulk_price": 0.000000, "connection_price": 0.000000, "next_change_date": null, "period_id": 1, "period_length": 1, "period_type": 3, "price": 100.000000, "price_id": 288, "start_date": "2026-10-01" } ]}

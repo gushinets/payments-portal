@@ -110,39 +110,47 @@ export async function postJson<T>(
   body: unknown,
   contract: string,
   token?: string,
-  extraHeaders?: Readonly<Record<string, string>>
+  extraHeaders?: Readonly<Record<string, string>>,
+  timeoutMs = requestTimeoutMs
 ): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
-  const response = await fetch(`${resolveApiBase()}${path}`, {
-    method: "POST",
-    headers: {
-      ...extraHeaders,
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    },
-    body: JSON.stringify(body),
-    signal: controller.signal
-  }).finally(() => window.clearTimeout(timeoutId));
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${resolveApiBase()}${path}`, {
+      method: "POST",
+      headers: {
+        ...extraHeaders,
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
 
-  if (!response.ok) {
-    throw await makeApiError(response);
+    if (!response.ok) {
+      throw await makeApiError(response);
+    }
+
+    return await decodeSuccessfulResponse<T>(response, path, contract);
+  } finally {
+    window.clearTimeout(timeoutId);
   }
-
-  return decodeSuccessfulResponse<T>(response, path, contract);
 }
 
 export async function getJson<T>(
   path: string,
   token: string | undefined,
-  contract: string
+  contract: string,
+  extraHeaders?: Readonly<Record<string, string>>,
+  timeoutMs = requestTimeoutMs
 ): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(`${resolveApiBase()}${path}`, {
       headers: {
+        ...extraHeaders,
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
       signal: controller.signal

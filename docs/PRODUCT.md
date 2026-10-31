@@ -1,7 +1,7 @@
 # Product Scope
 
 Status: authoritative
-Last updated: 2026-10-22
+Last updated: 2026-10-27
 
 AnyToolAI Portal combines public product discovery, direct account entry, and
 identity/legal-consent flows for AnyToolAI products, deployed as one contour
@@ -12,23 +12,34 @@ selects deployment or contour.
 
 The current `ru` surface is product-centric: product-first home and discovery,
 detail pages keyed by Kernel `product_id`, presentation-only pricing
-navigation, direct auth entry, and an authenticated cabinet led by published
-products. Identity/verification/logout context supports the per-product
-commercial/access/usage/action slots. Account/session/email-verification,
+navigation, direct auth entry, and an authenticated cabinet led by the user’s
+held accepted purchases. Brief cards link to product details and the full
+catalog remains one link away. Identity/verification/logout context supports
+one wide billing Widget with an explicit purchase selection. Account/session/email-verification,
 password-recovery and legal-acceptance flows remain implemented. Published
 immutable commercial terms are displayed; paid access remains unknown and
-actual usage/quota unavailable. The repository remains pre-production and
-provider-independent on the surface established by ANY-636 4F. ANY-664 adds
-read-only source clients, controlled immutable offer publication and DB-only
-catalog browsing; genuine
+actual usage/quota unavailable. The repository remains pre-production on the
+surface established by ANY-636 4F. ANY-664 adds
+historical read-only source clients and controlled immutable offer publication.
+ANY-709 Step 1 adds direct versioned links and source-backed catalog/current
+offers; genuine
 Kernel conformance and sales remain gated. There are no production direct-
 provider subscribers or subscriptions to migrate.
+ANY-709 Step 2 adds independently optional FIO and explicit verified-email
+account-only Widget viewing, verified on the test stand. One durable customer is
+shared across products. This action needs no offer or subscription and does not
+authorize purchases or paid access. ANY-709 Steps 3–4 add immutable purchase
+consent, fenced preparation/recovery and localized Buy/Continue/Manage with a
+verified payment-capable Widget. Automated checks and the recorded owner
+intended-agreement Widget/YooKassa test payment passed; independent final review
+remains pending. Paid access is deferred. See the
+[current acceptance ledger](exec-plans/completed/ANY-709-implementation-plan.md#current-acceptance-and-final-review).
 
 The former CloudPayments/direct-provider implementation and Portal-owned
 catalog/order/payment/subscription/entitlement runtime have been physically
 removed. The clean database contains provider-neutral target persistence;
-ANY-664 can append immutable mapping revisions. Purchase orchestration,
-reconciliation and paid-access producers remain later work. The sole long-term
+ANY-664 can append immutable mapping revisions. Purchase orchestration is
+implemented by ANY-709; reconciliation workers and paid-access producers remain later work. The sole long-term
 production target is external-billing-managed.
 
 Contour architecture is defined in [contours](architecture/contours.md).
@@ -40,7 +51,9 @@ and the accepted
 The [accepted live-source admission amendment](superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
 narrowly supersedes source-catalog mirroring/new-sale TTL: publication and each
 genuinely new purchase require current Kernel/LBX reads; approved immutable
-terms and catalog browsing use PostgreSQL without source requests. Paid-access,
+history stays in PostgreSQL. ANY-709 Step 1 supersedes file approval and
+DB-only public browsing with enabled-product discovery and current selected
+offers; customer purchase consent is immutable and implemented by Step 3. Paid-access,
 subscription trust/reconciliation and AccessSnapshot remain unchanged.
 The [Billing Authority and Consistency](architecture/billing-authority.md)
 document is historical/superseded only; it is neither current-state nor target
@@ -59,17 +72,19 @@ only their source-read/admission strategy.
 ## Implemented
 
 - Locale-prefixed product-first home, public catalog and detail pages at
-  `/[locale]/products/[product_id]`, using Kernel identity and stored approved
-  immutable offer mappings through the Portal catalog API. Browsing makes no
-  live Kernel/LBX calls and does not promise current sellability.
+  `/[locale]/products/[product_id]`, using Kernel identity and live selected LBX
+  offers through the Portal catalog API. Immutable links/history are in PostgreSQL.
+  New purchase admission independently revalidates sources and consent.
 - `/[locale]/pricing` and localized public Pricing navigation as presentation
   only: a not-ready state, localized metadata and safe home/products links,
   without commercial facts, purchase controls or API calls.
 - `/[locale]/account` as the direct sign-in/registration entry and authenticated
-  product-centric cabinet, with compact identity context and one card per
-  published product, showing commercial terms and independent unknown-access
-  and unavailable-usage states; the header retains its sign-in modal. These
-  account-only states are absent from public catalog/detail pages and home.
+  cabinet. Only owned held accepted purchases appear as compact cards; unfinished
+  purchases remain resumable. No published-but-unpurchased product is listed.
+  A full-catalog link is always available. A product management link selects its
+  purchase in the cabinet; every payment action uses fresh original-purchase
+  verification before opening the one wide Widget. Account-only viewing remains
+  available without a purchase or healthy source catalog.
 - The approved RU mockup's product/visual direction encoded by evolved Bundle 3
   and applied across the active Portal: navy/amber, flat dark panels, thin
   borders, compact radii/spacing and Manrope (the ANY-636 basic Cyrillic coverage
@@ -78,6 +93,11 @@ only their source-read/admission strategy.
 - Password-based registration, sessions, logout, and the existing
   `/[locale]/forgot-password`, `/[locale]/reset-password`, and
   `/[locale]/verify-email` flows. Region Resolver confirmation is not implemented.
+- Product-page Buy/Continue with live review, explicit draft legal
+  consent, original held-purchase recovery and verified payment bootstrap. The
+  UI distinguishes unknown from no purchase and awaits financial verification.
+  One disposable SDK lifecycle replaces account/payment views and rejects late
+  credentials after close, product/user change or logout. No access is granted.
 - Canonical RU legal pages and generated registration acceptance copy.
 - Versioned `ru` legal-document metadata and append-only acceptance evidence.
 - One clean PostgreSQL first-install schema with configured-contour and legal
@@ -108,9 +128,11 @@ trust boundary under ANY-541.
   external-billing integrations. Those are not implemented product surfaces.
 - Genuine enablement of ANY-504 Step 6's live-source clients and immutable
   approved offer mappings, subject to real Kernel/LBX and approval gates.
-  ANY-664 implements the Portal path with simulated local evidence and DB-only
-  catalog browsing; there is no periodic source-catalog mirror. Purchase/Widget in Step 7;
-  reconciliation/recovery in Step 8; confirmed paid-access projection and
+  ANY-664 records the historical Step 6 baseline. ANY-709 implements live catalog
+  browsing and Step 7 purchase/payment UI with recorded owner payment QA complete
+  and independent final review pending;
+  there is no periodic source-catalog mirror. Operating reconciliation/recovery
+  in Step 8; confirmed paid-access projection and
   delivery in Step 9; actual usage/quota integration in Step 10. These are
   deferred ownership boundaries, not implemented runtime. They populate the
   existing pricing/product/cabinet commercial, access, usage and action slots
@@ -125,8 +147,8 @@ trust boundary under ANY-541.
 
 - A production instance serves one contour and does not know another contour's
   customers, users, legal records, or base URLs.
-- Checkout stays unavailable until the approved external-billing runtime and
-  its Phase 0 gates are complete.
+- Real purchase/payment and production enablement retain the approved Phase 0
+  and human acceptance gates. An implemented browser flow is not runtime PASS.
 - UI “not ready/unknown” does not establish no subscription, no access, or zero
   usage/quota. Authentication and email verification do not establish paid access.
 - A browser return, Widget callback, webhook receipt, outbound request success,
@@ -141,9 +163,10 @@ trust boundary under ANY-541.
   routes use Kernel `product_id` through the Portal API and immutable mapping.
   Technical product/metric identity comes from Platform Kernel;
   commercial offers come from External Billing.
-- Discovery CTAs open product detail or account surfaces. No purchase/checkout
-  CTA or fabricated product-execution URL is exposed in 4F.
+- Historical 4F discovery CTAs open product detail/account surfaces. ANY-709
+  adds verified Buy/Continue/Manage; no product-execution URL is fabricated.
 - Pricing navigation and its unavailable placeholder establish presentation
   topology only. Published offer terms use the ANY-504 Step 6 Portal path;
   current sellability and genuine enablement retain the source/approval gates;
-  purchase/provider Widget behavior remains Step 7.
+  ANY-709 implements and tests Step 7 purchase/Widget behavior, with recorded
+  owner payment QA complete and independent final review pending.

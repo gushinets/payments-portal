@@ -11,11 +11,11 @@ import {
   sessionStorageKey
 } from "@/shared/api/auth";
 import { HeaderAccount } from "@/shared/ui/HeaderAccount";
-import { simulatedProduct } from "../fixtures/catalog";
+import { savedPurchase } from "../fixtures/purchase";
 import { renderWithIntl } from "../setup/render-with-intl";
 
 const fetchMock = vi.fn<typeof fetch>();
-const catalogFetchMock = vi.fn<typeof fetch>();
+const purchasesFetchMock = vi.fn<typeof fetch>();
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -56,6 +56,8 @@ function renderAccountClient(locale: "ru" | "pt" = "ru", withHeader = false) {
       messages: {
         Auth: messages.Auth,
         Account: messages.Account,
+        Billing: messages.Billing,
+        Purchase: messages.Purchase,
         CatalogPreview: messages.CatalogPreview,
         EmailVerification: messages.EmailVerification
       }
@@ -67,9 +69,10 @@ describe("direct account authentication and session", () => {
   beforeEach(() => {
     window.localStorage.clear();
     fetchMock.mockReset();
-    catalogFetchMock.mockReset().mockImplementation(async () => jsonResponse({ products: [simulatedProduct] }));
-    vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/catalog/products")
-      ? catalogFetchMock(input, init) : fetchMock(input, init)) satisfies typeof fetch);
+    purchasesFetchMock.mockReset().mockImplementation(async () => jsonResponse({ purchases: [{ ...savedPurchase, created_at: "2026-10-27T12:00:00Z" }], next_cursor: null }));
+    vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/purchase-intents")
+      ? purchasesFetchMock(input, init) : String(input).includes("/api/purchase-intents/current?")
+        ? Promise.resolve(jsonResponse({ purchase: null })) : fetchMock(input, init)) satisfies typeof fetch);
   });
 
   afterEach(() => {
@@ -101,7 +104,7 @@ describe("direct account authentication and session", () => {
       screen.queryByRole("region", { name: ruMessages.Account.products.title })
     ).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(catalogFetchMock).not.toHaveBeenCalled();
+    expect(purchasesFetchMock).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -110,7 +113,7 @@ describe("direct account authentication and session", () => {
     ["pt", true],
     ["pt", false]
   ] as const)(
-    "shows compact identity, published terms and independent account product statuses in %s (email verified: %s)",
+    "shows compact identity and only owned purchase cards in %s (email verified: %s)",
     async (locale, emailVerified) => {
       const messages = locale === "pt" ? ptMessages : ruMessages;
       window.localStorage.setItem(sessionStorageKey, "session-token");
@@ -120,8 +123,6 @@ describe("direct account authentication and session", () => {
           user: { ...accountUser, email_verified: emailVerified }
         })
       );
-      const publishedProducts = [simulatedProduct, { ...simulatedProduct, product_id: "new_published_tool" }];
-      catalogFetchMock.mockResolvedValueOnce(jsonResponse({ products: publishedProducts }));
 
       renderAccountClient(locale);
 
@@ -150,27 +151,19 @@ describe("direct account authentication and session", () => {
       const products = screen.getByRole("region", {
         name: messages.Account.products.title
       });
-      expect(await within(products).findByText("proposal_ai")).toBeVisible();
-      const cards = within(products).getAllByRole("article");
-      expect(cards).toHaveLength(publishedProducts.length);
-      for (const [index, product] of publishedProducts.entries()) {
-        const card = within(cards[index]);
-        expect(card.getByText(product.product_id)).toBeVisible();
-        expect(card.getByText(messages.CatalogPreview.simulated)).toBeVisible();
-        expect(card.getByRole("heading", { level: 3 })).toBeVisible();
-        expect(card.getByRole("link", { name: messages.CatalogPreview.details }))
-          .toHaveAttribute("href", `/${locale}/products/${product.product_id}`);
-        expect(card.getByText(locale === "ru" ? "9 007 199 254 740 993,01 RUB" : "9.007.199.254.740.993,01 RUB"))
-          .toBeVisible();
-        for (const slot of ["access", "usage"] as const) {
-          expect(card.getByText(messages.Account.products.state[slot].label)).toBeVisible();
-          expect(card.getByText(messages.Account.products.state[slot].description)).toBeVisible();
-        }
-        expect(card.queryByText(messages.Account.products.state.commercial.description)).not.toBeInTheDocument();
+      expect(within(products).getByRole("link", { name: messages.Account.products.allProducts })).toHaveAttribute("href", `/${locale}/products`);
+      if (emailVerified) {
+        const card = within(await within(products).findByRole("article"));
+        expect(card.getByRole("heading", { name: "proposal_ai" })).toBeVisible();
+        expect(card.getByText(messages.Account.products.prepared)).toBeVisible();
+        expect(card.getByRole("link", { name: messages.Account.products.detailAction })).toHaveAttribute("href", `/${locale}/products/proposal_ai`);
+        expect(purchasesFetchMock).toHaveBeenCalledTimes(1);
+        expect(purchasesFetchMock.mock.calls[0]?.[1]?.headers).toHaveProperty("Authorization");
+      } else {
+        expect(within(products).queryByRole("article")).not.toBeInTheDocument();
+        expect(purchasesFetchMock).not.toHaveBeenCalled();
       }
-      expect(within(products).queryByRole("progressbar")).not.toBeInTheDocument();
-      expect(catalogFetchMock).toHaveBeenCalledTimes(1);
-      expect(catalogFetchMock.mock.calls[0]?.[1]?.headers).not.toHaveProperty("Authorization");
+      expect(within(products).queryByText("new_published_tool")).not.toBeInTheDocument();
       expect(screen.queryByText(accountUser.user_id)).not.toBeInTheDocument();
       expect(
         screen.getByRole("button", {

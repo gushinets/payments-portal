@@ -8,14 +8,27 @@ const removedContracts = [
   "/api/account/subscriptions",
   "/api/auth/payment-status"
 ];
+// Match complete subscription/access nouns, never the adjective in
+// "Нет доступных продуктов" (a valid empty technical catalog).
+const inventedSubscriptionState = /нет\s+(?:активн[а-яё]+\s+)?(?:подписки|подписок|подписка|подписку|доступа?)(?![а-яё])|(?:подписк[аи]|доступа?)\s+(?:нет|отсутству(?:ет|ют))(?![а-яё])|no\s+(?:active\s+)?(?:subscriptions?|access)\b/iu;
+
+test("subscription-state guard permits an empty catalog but rejects invented access facts", () => {
+  expect(ruMessages.CatalogPreview.empty).not.toMatch(inventedSubscriptionState);
+  for (const unsupported of ["Нет подписки", "Нет активных подписок", "Нет доступа", "Подписка отсутствует", "Доступа нет", "No subscription", "No access"]) {
+    expect(unsupported).toMatch(inventedSubscriptionState);
+  }
+});
 
 test.beforeEach(async ({ page }) => {
-  // These legacy layout journeys cover the empty/unavailable catalog case.
+  // These layout journeys cover a genuinely empty technical catalog. Unknown
+  // product IDs are 404; source outages are covered separately in catalog-preview.
   // Positive source-ID and exact-money coverage lives in catalog-preview.spec.
   await page.route("**/api/catalog/products", (route) => route.fulfill({ json: { products: [] } }));
   await page.route("**/api/catalog/products/*", (route) => route.fulfill({
     status: 404, json: { detail: { code: "catalog_product_not_found" } }
   }));
+  await page.route("**/api/purchase-intents", (route) => route.fulfill({ json: { purchases: [], next_cursor: null } }));
+  await page.route("**/api/purchase-intents/current?*", (route) => route.fulfill({ json: { purchase: null } }));
 });
 const portalRoutes = [
   "/ru",
@@ -87,8 +100,9 @@ async function expectPortalBoundary(
   expect(providerScriptSources).toEqual([]);
   expect(hasCloudPaymentsSdk).toBe(false);
 
-  // Catalog browse reads only the Portal API, alongside existing identity reads.
+  // Public browsing and local owned inventory do not open billing or create purchases.
   expect(traffic.apiRequests.filter((request) => request !== "GET /api/auth/session" &&
+    request !== "GET /api/purchase-intents" &&
     !request.startsWith("GET /api/catalog/products")))
     .toEqual([]);
   const main = page.getByRole("main");
@@ -99,9 +113,7 @@ async function expectPortalBoundary(
   await expect(navigation).not.toContainText(/CloudPayments/i);
   await expect(main).not.toContainText(/(?:490|990)\s*₽|200\s*k\s*\+|320\s*\/\s*500|3\s*\/\s*10/i);
   await expect(footer).not.toContainText(/(?:490|990)\s*₽|200\s*k\s*\+|320\s*\/\s*500|3\s*\/\s*10/i);
-  await expect(main).not.toContainText(
-    /нет\s+(?:активн[а-яё]+\s+)?(?:подписк|доступ)|(?:подписк[аи]|доступ)\s+(?:нет|отсутствует)|no\s+(?:subscription|access)/i
-  );
+  await expect(main).not.toContainText(inventedSubscriptionState);
   await expect(main).not.toContainText(
     /\d[\d\s.,]*\s*(?:₽|руб|RUB|€|\$)|[€$₽]\s*\d/i
   );
@@ -201,7 +213,7 @@ for (const route of portalRoutes) {
   });
 }
 
-test("home preserves account entry and discovery with an empty published catalog", async ({
+test("home preserves account entry and discovery with an empty technical catalog", async ({
   page
 }, testInfo) => {
   const traffic = observePortalTraffic(page);
@@ -250,7 +262,7 @@ test("home preserves account entry and discovery with an empty published catalog
 });
 
 for (const authenticated of [false, true]) {
-  test(`public account CTAs keep neutral copy and open the account entry (authenticated: ${authenticated})`, async ({
+  test(`home account entry and product purchase controls preserve account navigation (authenticated: ${authenticated})`, async ({
     page
   }) => {
     const email = "cta-portal@example.com";
@@ -282,7 +294,20 @@ for (const authenticated of [false, true]) {
         await page.getByRole("button", { name: ruMessages.CookieBanner.acceptAction, exact: true }).click();
       }
       const main = page.getByRole("main");
-      const accountAction = main.getByRole("link", { name: "Открыть аккаунт", exact: true });
+      let accountAction: Locator;
+      if (pathname === "/ru") {
+        accountAction = main.getByRole("link", { name: ruMessages.Catalog.signInAction, exact: true });
+      } else {
+        const purchase = main.getByRole("region", { name: ruMessages.Purchase.title });
+        if (authenticated) {
+          await expect(purchase.getByRole("button", { name: ruMessages.Purchase.buy, exact: true })).toBeEnabled();
+          await expect(purchase.getByRole("button", { name: ruMessages.Billing.open, exact: true })).toHaveCount(0);
+          accountAction = page.getByRole("navigation", { name: ruMessages.Navigation.mainAriaLabel })
+            .getByRole("link", { name: `${email} ${ruMessages.Auth.header.accountArea}`, exact: true });
+        } else {
+          accountAction = purchase.getByRole("link", { name: ruMessages.Purchase.signIn, exact: true });
+        }
+      }
       await expect(accountAction).toHaveAttribute("href", "/ru/account");
       await accountAction.click();
       await expect(page).toHaveURL(/\/ru\/account$/);
@@ -350,7 +375,7 @@ for (const emailVerified of [true, false]) {
     await expect(main.locator("h1")).toHaveCount(1);
     const headingTags = await main.locator("h1, h2, h3, h4, h5, h6").evaluateAll((headings) => headings.map((heading) => heading.tagName));
     expect(headingTags[0]).toBe("H1");
-    expect(headingTags.slice(1)).toEqual(emailVerified ? ["H2", "H2"] : ["H2", "H2", "H2"]);
+    expect(headingTags.slice(1)).toEqual(emailVerified ? ["H2", "H2", "H2"] : ["H2", "H2", "H2", "H2"]);
     const identity = main.getByRole("complementary", { name: ruMessages.Account.authenticated.summaryTitle });
     await expect(identity.getByRole("heading", { level: 2, name: ruMessages.Account.authenticated.summaryTitle })).toBeVisible();
     await expect(identity.getByRole("term")).toHaveText([ruMessages.Account.authenticated.emailLabel]);
@@ -369,7 +394,16 @@ for (const emailVerified of [true, false]) {
       await expect(main.getByRole("button", { name: "Отправить письмо ещё раз" })).toBeEnabled();
     }
 
-    const productRegion = main.getByRole("region", { name: "Продукты" });
+    const productRegion = main.getByRole("region", { name: ruMessages.Account.products.title });
+    await expect(productRegion.getByRole("heading", { level: 2, name: ruMessages.Account.products.title, exact: true })).toBeVisible();
+    const billingRegion = main.getByRole("region", { name: ruMessages.Billing.title, exact: true });
+    await expect(billingRegion.getByRole("heading", { level: 2, name: ruMessages.Billing.title, exact: true })).toBeVisible();
+    const openBilling = billingRegion.getByRole("button", { name: ruMessages.Billing.open, exact: true });
+    if (emailVerified) {
+      await expect(openBilling).toBeEnabled();
+    } else {
+      await expect(openBilling).toBeDisabled();
+    }
     const headingBox = await main.getByRole("heading", { level: 1 }).boundingBox();
     const identityBox = await identity.boundingBox();
     const productBox = await productRegion.boundingBox();
@@ -384,12 +418,10 @@ for (const emailVerified of [true, false]) {
       expect(identityBox!.x + identityBox!.width).toBeLessThanOrEqual(productBox!.x);
       expect(headingBox!.y + headingBox!.height).toBeLessThanOrEqual(productBox!.y);
     }
-    await expect(productRegion.getByRole("status")).toHaveText(ruMessages.CatalogPreview.empty);
+    await expect(productRegion.getByText(ruMessages.Account.products.empty)).toBeVisible();
     await expect(productRegion.getByRole("article")).toHaveCount(0);
-    await expect(productRegion.getByRole("link")).toHaveCount(0);
-    await expect(main).not.toContainText(
-      /нет\s+(?:активн[а-яё]+\s+)?(?:подписк|доступ)|(?:подписк[аи]|доступ)\s+(?:нет|отсутствует)|no\s+(?:subscription|access)/i
-    );
+    await expect(productRegion.getByRole("link", { name: ruMessages.Account.products.allProducts })).toHaveAttribute("href", "/ru/products");
+    await expect(main).not.toContainText(inventedSubscriptionState);
     await expect(main).not.toContainText(
       /\d[\d\s.,]*\s*(?:₽|руб|RUB|€|\$)|[€$₽]\s*\d/i
     );
@@ -412,6 +444,9 @@ for (const emailVerified of [true, false]) {
       await expectKeyboardFocus(page, identity.getByRole("button", { name: ruMessages.EmailVerification.pending.resend }));
     }
     await expectKeyboardFocus(page, identity.getByRole("button", { name: ruMessages.Account.authenticated.signOutAction }));
+    expect(traffic.apiRequests.filter((request) => request.includes("/api/billing/widget-bootstrap"))).toEqual([]);
+    expect(traffic.scriptRequests.filter((url) => new URL(url).pathname === "/lbxwidget.js")).toEqual([]);
+    await expect(billingRegion.locator("iframe")).toHaveCount(0);
   });
 }
 
@@ -438,9 +473,9 @@ test("RU Portal navigation, product discovery and account forms remain usable at
   await page.goto("/ru/products/proposal_ai", { waitUntil: "networkidle" });
   await expect(main.getByRole("heading", { level: 1, name: ruMessages.CatalogPreview.productTitle })).toBeVisible();
   await expect(main.getByRole("status")).toHaveText(ruMessages.CatalogPreview.notFound);
-  await expectMobileLayout(page, testInfo, "product-unavailable");
+  await expectMobileLayout(page, testInfo, "product-not-found");
 
-  await expectKeyboardFocus(page, main.getByRole("link", { name: ruMessages.Catalog.signInAction }));
+  await expectKeyboardFocus(page, main.getByRole("link", { name: ruMessages.Purchase.signIn, exact: true }));
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/ru\/account$/);
   await expect(main.getByRole("heading", { name: "Вход или регистрация" })).toBeVisible();

@@ -10,9 +10,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from app.cli import commercial_mappings as cli
-from app.composition import mapping_operator
-from app.composition.mapping_operator import fresh_mapping_evaluation
+from apps.api.tests.support import v1_cli as cli
+from apps.api.tests.support import v1_mapping_operator as mapping_operator
+from apps.api.tests.support.v1_mapping_operator import fresh_mapping_evaluation
 from app.domains.catalog.mapping_evidence import MappingRefused
 from app.domains.catalog.commercial_offer import CommercialEvidenceBasis, SelectedOfferRefused
 from apps.api.tests.support.commercial_mappings import SIMULATED_UID, operator_settings, reviewed_fixture

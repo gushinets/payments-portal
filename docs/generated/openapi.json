@@ -62,28 +62,62 @@
         "title": "AcceptDocumentResponse",
         "type": "object"
       },
-      "CatalogAllowance": {
+      "AccountPurchaseResponse": {
         "properties": {
-          "metric_key": {
-            "title": "Metric Key",
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
             "type": "string"
           },
-          "quantity": {
-            "pattern": "^[1-9][0-9]*$",
-            "title": "Quantity",
+          "product_id": {
+            "title": "Product Id",
             "type": "string"
           },
-          "unit": {
-            "title": "Unit",
+          "purchase_intent_id": {
+            "format": "uuid",
+            "title": "Purchase Intent Id",
             "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PurchaseIntentState"
           }
         },
         "required": [
-          "metric_key",
-          "unit",
-          "quantity"
+          "purchase_intent_id",
+          "product_id",
+          "state",
+          "created_at"
         ],
-        "title": "CatalogAllowance",
+        "title": "AccountPurchaseResponse",
+        "type": "object"
+      },
+      "AccountPurchasesResponse": {
+        "properties": {
+          "next_cursor": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "purchases": {
+            "items": {
+              "$ref": "#/components/schemas/AccountPurchaseResponse"
+            },
+            "title": "Purchases",
+            "type": "array"
+          }
+        },
+        "required": [
+          "purchases",
+          "next_cursor"
+        ],
+        "title": "AccountPurchasesResponse",
         "type": "object"
       },
       "CatalogMoney": {
@@ -127,25 +161,27 @@
       },
       "CatalogOffer": {
         "properties": {
-          "allowance": {
-            "$ref": "#/components/schemas/CatalogAllowance"
+          "billing_provenance": {
+            "$ref": "#/components/schemas/CommercialEvidenceMode"
           },
-          "evidence_mode": {
-            "$ref": "#/components/schemas/MappingEvidenceMode"
+          "commercial_quantity": {
+            "pattern": "^[1-9][0-9]*$",
+            "title": "Commercial Quantity",
+            "type": "string"
+          },
+          "full_funding_required": {
+            "title": "Full Funding Required",
+            "type": "boolean"
           },
           "money": {
             "$ref": "#/components/schemas/CatalogMoney"
           },
-          "offer_id": {
-            "format": "uuid",
-            "title": "Offer Id",
-            "type": "string"
-          },
           "period": {
             "$ref": "#/components/schemas/CatalogPeriod"
           },
-          "publication_state": {
-            "$ref": "#/components/schemas/PublicationState"
+          "prepaid": {
+            "title": "Prepaid",
+            "type": "boolean"
           },
           "revision_id": {
             "format": "uuid",
@@ -156,21 +192,17 @@
             "exclusiveMinimum": 0.0,
             "title": "Revision Number",
             "type": "integer"
-          },
-          "terms": {
-            "$ref": "#/components/schemas/CatalogTermSummary"
           }
         },
         "required": [
-          "offer_id",
           "revision_id",
           "revision_number",
-          "evidence_mode",
-          "publication_state",
+          "billing_provenance",
           "money",
           "period",
-          "allowance",
-          "terms"
+          "commercial_quantity",
+          "prepaid",
+          "full_funding_required"
         ],
         "title": "CatalogOffer",
         "type": "object"
@@ -214,15 +246,28 @@
         "properties": {
           "availability": {
             "enum": [
-              "APPROVED_UNVERIFIED_NOW",
-              "SIMULATED_PREVIEW",
-              "UNAVAILABLE_AMBIGUOUS_OFFERS"
+              "DETAILS_REQUIRED",
+              "UNMAPPED",
+              "CURRENT_OFFER",
+              "OFFER_UNSUPPORTED",
+              "OFFER_INCOMPLETE"
             ],
             "title": "Availability",
             "type": "string"
           },
-          "evidence_mode": {
-            "$ref": "#/components/schemas/MappingEvidenceMode"
+          "availability_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Availability Reason"
+          },
+          "kernel_provenance": {
+            "$ref": "#/components/schemas/SourceProvenance"
           },
           "offer": {
             "anyOf": [
@@ -241,8 +286,9 @@
         },
         "required": [
           "product_id",
-          "evidence_mode",
+          "kernel_provenance",
           "availability",
+          "availability_reason",
           "offer"
         ],
         "title": "CatalogProductResponse",
@@ -264,52 +310,31 @@
         "title": "CatalogProductsResponse",
         "type": "object"
       },
-      "CatalogTermSummary": {
+      "CommercialEvidenceMode": {
+        "enum": [
+          "CONFIGURED_SOURCE",
+          "SIMULATED"
+        ],
+        "title": "CommercialEvidenceMode",
+        "type": "string"
+      },
+      "CurrentPurchaseResponse": {
         "properties": {
-          "connection_charge_basis": {
-            "enum": [
-              "per_service_unit",
-              "once"
-            ],
-            "title": "Connection Charge Basis",
-            "type": "string"
-          },
-          "discounts": {
-            "const": "none",
-            "title": "Discounts",
-            "type": "string"
-          },
-          "full_funding_required": {
-            "title": "Full Funding Required",
-            "type": "boolean"
-          },
-          "prepaid": {
-            "title": "Prepaid",
-            "type": "boolean"
-          },
-          "proration": {
-            "const": "none",
-            "title": "Proration",
-            "type": "string"
-          },
-          "tax_treatment": {
-            "enum": [
-              "included",
-              "not_applicable"
-            ],
-            "title": "Tax Treatment",
-            "type": "string"
+          "purchase": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PurchaseIntentResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
-          "prepaid",
-          "full_funding_required",
-          "tax_treatment",
-          "discounts",
-          "proration",
-          "connection_charge_basis"
+          "purchase"
         ],
-        "title": "CatalogTermSummary",
+        "title": "CurrentPurchaseResponse",
         "type": "object"
       },
       "EmailVerificationConfirmRequest": {
@@ -372,6 +397,78 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LegalEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "acceptance_text": {
+            "title": "Acceptance Text",
+            "type": "string"
+          },
+          "acceptance_text_hash": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Acceptance Text Hash",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "doc_type": {
+            "title": "Doc Type",
+            "type": "string"
+          },
+          "document_version_id": {
+            "format": "uuid",
+            "title": "Document Version Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url_path": {
+            "title": "Url Path",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_version_id",
+          "acceptance_text_hash",
+          "doc_type",
+          "version",
+          "content_hash",
+          "title",
+          "url_path",
+          "acceptance_text"
+        ],
+        "title": "LegalEvidence",
+        "type": "object"
+      },
+      "LegalSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "acceptance_text_hash": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Acceptance Text Hash",
+            "type": "string"
+          },
+          "document_version_id": {
+            "format": "uuid",
+            "title": "Document Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_version_id",
+          "acceptance_text_hash"
+        ],
+        "title": "LegalSelection",
         "type": "object"
       },
       "LivenessResponse": {
@@ -446,14 +543,6 @@
         "title": "LogoutResponse",
         "type": "object"
       },
-      "MappingEvidenceMode": {
-        "enum": [
-          "SIMULATED",
-          "GENUINE"
-        ],
-        "title": "MappingEvidenceMode",
-        "type": "string"
-      },
       "PasswordResetConfirmRequest": {
         "properties": {
           "password": {
@@ -516,13 +605,258 @@
         "title": "PasswordResetRequestResponse",
         "type": "object"
       },
-      "PublicationState": {
-        "enum": [
-          "SIMULATED",
-          "PUBLISHED_APPROVED_UNVERIFIED_NOW"
+      "PurchaseConfirmRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/LegalSelection"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Documents",
+            "type": "array"
+          },
+          "expected_fingerprint": {
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "title": "Expected Fingerprint",
+            "type": "string"
+          },
+          "product_id": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Product Id",
+            "type": "string"
+          },
+          "revision_id": {
+            "format": "uuid",
+            "title": "Revision Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_id",
+          "revision_id",
+          "expected_fingerprint",
+          "documents"
         ],
-        "title": "PublicationState",
+        "title": "PurchaseConfirmRequest",
+        "type": "object"
+      },
+      "PurchaseIntentResponse": {
+        "properties": {
+          "accepted": {
+            "$ref": "#/components/schemas/PurchaseReviewResponse"
+          },
+          "paid_access_granted": {
+            "const": false,
+            "default": false,
+            "title": "Paid Access Granted",
+            "type": "boolean"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "purchase_intent_id": {
+            "format": "uuid",
+            "title": "Purchase Intent Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "scope_held": {
+            "title": "Scope Held",
+            "type": "boolean"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PurchaseIntentState"
+          }
+        },
+        "required": [
+          "purchase_intent_id",
+          "product_id",
+          "state",
+          "reason",
+          "scope_held",
+          "accepted"
+        ],
+        "title": "PurchaseIntentResponse",
+        "type": "object"
+      },
+      "PurchaseIntentState": {
+        "enum": [
+          "created",
+          "preparing",
+          "awaiting_external_result",
+          "linked",
+          "resolved_no_external_effect",
+          "failed_before_external_effect",
+          "manual_review"
+        ],
+        "title": "PurchaseIntentState",
         "type": "string"
+      },
+      "PurchaseReviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "product_id": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Product Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_id"
+        ],
+        "title": "PurchaseReviewRequest",
+        "type": "object"
+      },
+      "PurchaseReviewResponse": {
+        "properties": {
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/LegalEvidence"
+            },
+            "title": "Documents",
+            "type": "array"
+          },
+          "expected_fingerprint": {
+            "title": "Expected Fingerprint",
+            "type": "string"
+          },
+          "legal_status": {
+            "const": "draft",
+            "default": "draft",
+            "title": "Legal Status",
+            "type": "string"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "revision_id": {
+            "format": "uuid",
+            "title": "Revision Id",
+            "type": "string"
+          },
+          "terms": {
+            "$ref": "#/components/schemas/PurchaseTermsResponse"
+          }
+        },
+        "required": [
+          "product_id",
+          "revision_id",
+          "expected_fingerprint",
+          "terms",
+          "documents"
+        ],
+        "title": "PurchaseReviewResponse",
+        "type": "object"
+      },
+      "PurchaseTermsResponse": {
+        "properties": {
+          "commercial_quantity": {
+            "pattern": "^[1-9][0-9]*$",
+            "title": "Commercial Quantity",
+            "type": "string"
+          },
+          "connection_amount": {
+            "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+            "title": "Connection Amount",
+            "type": "string"
+          },
+          "connection_unit_amount": {
+            "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+            "title": "Connection Unit Amount",
+            "type": "string"
+          },
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "type": "string"
+          },
+          "decimal_places": {
+            "maximum": 36.0,
+            "minimum": 0.0,
+            "title": "Decimal Places",
+            "type": "integer"
+          },
+          "full_funding_required": {
+            "title": "Full Funding Required",
+            "type": "boolean"
+          },
+          "period_anchor": {
+            "enum": [
+              "calendar_month",
+              "instance_start",
+              "first_instance_start"
+            ],
+            "title": "Period Anchor",
+            "type": "string"
+          },
+          "period_length": {
+            "exclusiveMinimum": 0.0,
+            "title": "Period Length",
+            "type": "integer"
+          },
+          "period_unit": {
+            "enum": [
+              "day",
+              "week",
+              "month",
+              "year"
+            ],
+            "title": "Period Unit",
+            "type": "string"
+          },
+          "prepaid": {
+            "title": "Prepaid",
+            "type": "boolean"
+          },
+          "recurring_amount": {
+            "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+            "title": "Recurring Amount",
+            "type": "string"
+          },
+          "recurring_unit_amount": {
+            "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+            "title": "Recurring Unit Amount",
+            "type": "string"
+          },
+          "units": {
+            "const": "major",
+            "default": "major",
+            "title": "Units",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recurring_unit_amount",
+          "recurring_amount",
+          "connection_unit_amount",
+          "connection_amount",
+          "currency",
+          "decimal_places",
+          "commercial_quantity",
+          "period_unit",
+          "period_length",
+          "period_anchor",
+          "prepaid",
+          "full_funding_required"
+        ],
+        "title": "PurchaseTermsResponse",
+        "type": "object"
       },
       "ReadinessSuccessResponse": {
         "properties": {
@@ -559,6 +893,18 @@
             "title": "Email",
             "type": "string"
           },
+          "first_name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Name"
+          },
           "offer_consent": {
             "title": "Offer Consent",
             "type": "boolean"
@@ -567,9 +913,33 @@
             "title": "Password",
             "type": "string"
           },
+          "patronymic": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patronymic"
+          },
           "personal_consent": {
             "title": "Personal Consent",
             "type": "boolean"
+          },
+          "surname": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surname"
           }
         },
         "required": [
@@ -727,9 +1097,42 @@
             "title": "Email Verified",
             "type": "boolean"
           },
+          "first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Name"
+          },
+          "patronymic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patronymic"
+          },
           "region": {
             "title": "Region",
             "type": "string"
+          },
+          "surname": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surname"
           },
           "tenant_id": {
             "title": "Tenant Id",
@@ -750,6 +1153,14 @@
         ],
         "title": "SessionUserResponse",
         "type": "object"
+      },
+      "SourceProvenance": {
+        "enum": [
+          "CONFIGURED_SOURCE",
+          "SIMULATED"
+        ],
+        "title": "SourceProvenance",
+        "type": "string"
       },
       "ValidationError": {
         "properties": {
@@ -789,6 +1200,131 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WidgetBootstrapRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "purchase_intent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Intent Id"
+          }
+        },
+        "title": "WidgetBootstrapRequest",
+        "type": "object"
+      },
+      "WidgetBootstrapResponse": {
+        "properties": {
+          "credential": {
+            "title": "Credential",
+            "type": "string"
+          },
+          "disableAutopayments": {
+            "title": "Disableautopayments",
+            "type": "boolean"
+          },
+          "disableCreateSubscription": {
+            "title": "Disablecreatesubscription",
+            "type": "boolean"
+          },
+          "disableEditSubscription": {
+            "title": "Disableeditsubscription",
+            "type": "boolean"
+          },
+          "disableInvoiceGeneration": {
+            "title": "Disableinvoicegeneration",
+            "type": "boolean"
+          },
+          "disablePayments": {
+            "title": "Disablepayments",
+            "type": "boolean"
+          },
+          "disableStopSubscription": {
+            "title": "Disablestopsubscription",
+            "type": "boolean"
+          },
+          "payment_target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WidgetPaymentTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "presentation": {
+            "enum": [
+              "account",
+              "payment"
+            ],
+            "title": "Presentation",
+            "type": "string"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "sdk_url": {
+            "title": "Sdk Url",
+            "type": "string"
+          },
+          "serviceBaseUrl": {
+            "title": "Servicebaseurl",
+            "type": "string"
+          },
+          "widget_origin": {
+            "title": "Widget Origin",
+            "type": "string"
+          }
+        },
+        "required": [
+          "presentation",
+          "credential",
+          "widget_origin",
+          "sdk_url",
+          "serviceBaseUrl",
+          "disableCreateSubscription",
+          "disableEditSubscription",
+          "disableStopSubscription",
+          "disableAutopayments",
+          "disablePayments",
+          "disableInvoiceGeneration",
+          "request_id"
+        ],
+        "title": "WidgetBootstrapResponse",
+        "type": "object"
+      },
+      "WidgetPaymentTarget": {
+        "properties": {
+          "agreement_reference": {
+            "title": "Agreement Reference",
+            "type": "string"
+          },
+          "purchase_intent_id": {
+            "format": "uuid",
+            "title": "Purchase Intent Id",
+            "type": "string"
+          },
+          "seller_reference": {
+            "title": "Seller Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purchase_intent_id",
+          "agreement_reference",
+          "seller_reference"
+        ],
+        "title": "WidgetPaymentTarget",
         "type": "object"
       }
     }
@@ -1179,6 +1715,65 @@
         ]
       }
     },
+    "/api/billing/widget-bootstrap": {
+      "post": {
+        "operationId": "widget_bootstrap_api_billing_widget_bootstrap_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WidgetBootstrapRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WidgetBootstrapResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Widget Bootstrap",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
     "/api/catalog/products": {
       "get": {
         "operationId": "list_products_api_catalog_products_get",
@@ -1371,6 +1966,389 @@
         "summary": "List Required Documents",
         "tags": [
           "legal"
+        ]
+      }
+    },
+    "/api/purchase-intents": {
+      "get": {
+        "operationId": "account_purchases_api_purchase_intents_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountPurchasesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Account Purchases",
+        "tags": [
+          "purchases"
+        ]
+      },
+      "post": {
+        "operationId": "confirm_api_purchase_intents_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseIntentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm",
+        "tags": [
+          "purchases"
+        ]
+      }
+    },
+    "/api/purchase-intents/current": {
+      "get": {
+        "operationId": "current_api_purchase_intents_current_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentPurchaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Current",
+        "tags": [
+          "purchases"
+        ]
+      }
+    },
+    "/api/purchase-intents/{purchase_id}": {
+      "get": {
+        "operationId": "status_api_purchase_intents__purchase_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "purchase_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Purchase Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseIntentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Status",
+        "tags": [
+          "purchases"
+        ]
+      }
+    },
+    "/api/purchase-intents/{purchase_id}/advance": {
+      "post": {
+        "operationId": "advance_api_purchase_intents__purchase_id__advance_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "purchase_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Purchase Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseIntentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Advance",
+        "tags": [
+          "purchases"
+        ]
+      }
+    },
+    "/api/purchases/review": {
+      "post": {
+        "operationId": "review_api_purchases_review_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review",
+        "tags": [
+          "purchases"
         ]
       }
     }

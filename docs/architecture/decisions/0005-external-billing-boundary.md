@@ -48,12 +48,24 @@ target or turn External Billing into a direct payment-provider integration.
   for provider-dependent production semantics, Widget/LBX production behavior,
   and launch.
 
-## Implementation status, 2026-10-23
+
+**Later ANY-709 decisions:** [ADR 0006](0006-any-709-ticket-decisions.md)
+recognizes only the dated C1-C4 decisions in ANY-504 and the implementation
+results in ANY-709. Apply those exact exceptions before affected baseline rules;
+the accepted specification bodies are preserved. This does not replace the
+ownership decision above or authorize additional departures.
+
+## Implementation status, 2026-10-26
 
 The retained implementation described in the original context and decision
-has since been physically removed. ANY-664 now supplies restricted immutable
-mapping publication and DB-only catalog browsing; purchases and paid access
-remain future work. See the current [architecture](../../../ARCHITECTURE.md).
+has since been physically removed. ANY-664 supplied restricted v1 publication/DB-only browsing. ANY-709 Step 1
+now supplies normal LBX configuration, direct links and source-backed current
+offers. ANY-709 Step 3 now implements accepted-purchase APIs, held scopes,
+financial preparation/GET-only recovery and verified payment bootstrap. Focused
+synthetic tests and the local development migration have passed; real purchase/
+payment QA remains NOT_RUN. Step 4 browser Buy/Continue/Manage and the shared
+payment-capable Widget are implemented; targeted synthetic tests PASS and real payment acceptance
+remains NOT_RUN. Paid access remains future work. See the current [architecture](../../../ARCHITECTURE.md).
 The retained wording records the decision's transition history and does not
 assert that executable direct-provider code still exists.
 

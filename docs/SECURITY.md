@@ -91,8 +91,12 @@ need, security treatment, and retention.
 
 - Validate HTTP, environment, webhook, and database-boundary data.
 - Verify authenticity at every external billing or payment Integration before
-  trusting external state. No billing integration is currently active; every
-  future integration must preserve this invariant.
+  trusting external state. ANY-709 implements real source reads and an explicit
+  account Widget bootstrap. Step 3 implements accepted-purchase preparation and
+  point-verified payment presentation; automated checks and recorded owner
+  intended-agreement test-payment QA passed. Independent final review remains
+  pending. Paid-access
+  derivation remains deferred.
 - Treat request IDs and external billing or payment metadata as untrusted input
   with length and character limits.
 - Store session tokens only as hashes.
@@ -103,6 +107,64 @@ need, security treatment, and retention.
 - Paid access changes only from authenticated, validated authoritative billing
   facts normalized through the local transition path. Browser returns are
   informational and never authoritative.
+
+## Account Widget credentials (ANY-709 Step 2)
+
+Only explicit authenticated POST after verified email may allocate the single
+customer slot. Before users POST, the permanent operation, opaque outer key,
+send fence, per-attempt two-hour deadline and coalesced recovery work are committed.
+Under customer decision C3 recognized by
+[ADR 0006](architecture/decisions/0006-any-709-ticket-decisions.md), each explicit open uses a
+bounded discover/create/recover cycle. Temporary failures wait with backoff within
+the existing request deadline. A finite active-send lease protects sends; each
+later claim requires fresh successful empty discovery in the same slot/operation.
+A saved receipt must be resolved by point proof. Email-uniqueness rejection
+permits GET recovery only for the rest of the opening; ambiguous identity, failed
+discovery, authorization and permanent validation errors never authorize CREATE.
+The selected customer policy relies on LBX email uniqueness; agreement and
+subscription retries remain stricter. Unresolved integration errors are
+reported once through the sanitized Sentry boundary. No fake
+PurchaseIntent, subscription, name, password repair or agreement is created for
+account viewing. Proven provider IDs are unique within the connection scope.
+
+Every open point-checks Server `user_id`/original `outer_id`, checks Client API
+readiness and rechecks the Portal session after I/O. Only then is the fresh
+HS256 type-7 credential returned with no-store. Technical login/password exist
+only in the one outbound request; JWTs and credentials never enter durable
+recovery evidence, browser storage, logs or URLs. The SDK runs in a disposable
+opaque-origin frame with a CSP restricted to the validated configured provider
+origin. Logout/unmount removes Portal-held SDK/token memory.
+
+These local lifecycle controls do not revoke a copied provider JWT. LBX's accepted
+72h `iat` behavior and provider-owned Client API permissions remain unchanged;
+presentation flags are not ACLs. Account-view flags disable purchasing/payment.
+Step 3 payment presentation requires owned original acceptance plus fresh concrete
+subscription/customer/seller/agreement readback, followed by auth and fence rechecks.
+It enables only the payment presentation flag; subscription create/edit, autopay,
+invoice and stop controls stay disabled. Financial CREATE never inherits the
+customer later-open retry policy, and UNKNOWN keeps its hold and original +2h
+deadline. No operation or Widget outcome grants paid access.
+Account viewing has no catalog, price, seller-agreement or subscription prerequisite.
+
+Step 4 uses one disposable SDK lifecycle for account and payment views. Opening
+another presentation destroys the previous host; product/user changes, logout,
+close and late-response guards prevent local credential reuse. Only proven
+payment presentation permits sandboxed forms, acquiring popups that can leave
+the sandbox, and user-activated navigation. Account viewing retains its stricter
+sandbox. These browser capabilities enable provider payment UX, do not establish
+ACLs or paid access, and require real-method human acceptance. Widget close reads
+local status only; the UI explicitly awaits authoritative payment verification.
+
+SDK `render()` returning is not readiness proof. The isolated host accepts the
+existing `lbx-widget` READY message only from its actual nested window at the
+configured provider origin. Its bounded startup deadline remains active until
+that message; host/script/readiness failures remove the frame and show the
+correlated request ID. The console and optional Sentry receive only fixed
+operation/stage, a closed failure reason and a validated request ID. The Sentry
+sanitizer discards raw messages, request data, URLs, breadcrumbs and user fields.
+No third-party frame document is inspected. READY establishes only startup
+readiness, not client-data, payment, subscription or access authority. Once ready,
+no loading timer may interrupt an active checkout.
 
 ## High-risk review paths
 
@@ -149,3 +211,31 @@ Remove the `brace-expansion` override once every parent that requires the 1.x
 line resolves `1.1.18` or newer without it. In both cases, regenerate the
 lockfile and confirm that npm audit and the Trivy filesystem scan remain free of
 Critical and fixable High findings before removing the override.
+
+## ANY-709 analyzer adjudication, PR 150
+
+Sonar issue `AaF3I2LPjkGs2B7KgoeF` (`typescript:S2819`) flags the SDK host's
+`postMessage` target `*`. This specific use is a false positive: the receiver is
+an exact Portal-created `data:` frame with an opaque origin. The
+[Window.postMessage contract](https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage)
+requires `*` for such receivers. The window message carries a fixed handshake
+and transferred private port, never the JWT. The host accepts only its parent,
+removes the window listener before loading the configured remote SDK and receives
+the JWT over the dedicated port. The host URL/HTML contains no credential.
+Changing the target to the vendor HTTPS origin breaks this opaque-frame handshake;
+loading the SDK on the Portal origin removes the intended isolation. Component
+coverage verifies the actual window/port payloads, listener ordering and teardown.
+The documented `NOSONAR` exception is confined to this handshake line because
+scanner administration is not authenticated in this session. It addresses this
+false positive without disabling the rule or excluding the file from analysis.
+
+CodeQL alert 5 (`py/clear-text-logging-sensitive-data`) flags `print(output)` in
+`apps/api/tests/support/v1_cli.py`. This is a retained test-support CLI, excluded
+from the production image. Output is deliberately normalized mapping evidence
+(commercial IDs, references, operator reason), not configuration, raw provider
+responses, credentials or customer PII. The existing PostgreSQL CLI test checks
+password/token/PII canaries in dry-run, publish and query output. Operator-provided
+reason text must remain nonsecret; it has the same authorized input/DB boundary.
+Keep the useful output. Alert 5 was dismissed as false positive on 2026-10-27,
+with the rationale retained in GitHub and here.
+These are independent findings; neither proves real-method Widget acceptance.

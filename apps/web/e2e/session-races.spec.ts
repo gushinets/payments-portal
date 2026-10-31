@@ -3,6 +3,7 @@ import ruMessages from "../src/messages/ru.json";
 
 test.beforeEach(async ({ context }) => {
   await context.route("**/api/catalog/products", (route) => route.fulfill({ json: { products: [] } }));
+  await context.route("**/api/purchase-intents", (route) => route.fulfill({ json: { purchases: [], next_cursor: null } }));
 });
 
 const key = "anytoolai_session_token_v1";

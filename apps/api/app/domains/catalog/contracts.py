@@ -5,8 +5,13 @@ from datetime import datetime
 from enum import StrEnum
 
 
+# Portal admission bound for product identities selected from Kernel.
+MAX_PRODUCT_ID_LENGTH = 1024
+
+
 class SourceProvenance(StrEnum):
-    # No configuration flag can assert real producer conformance in this slice.
+    # A configured endpoint is not a claim of real producer conformance.
+    CONFIGURED_SOURCE = "CONFIGURED_SOURCE"
     SIMULATED = "SIMULATED"
 
 

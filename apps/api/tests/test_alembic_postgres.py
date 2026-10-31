@@ -10,13 +10,14 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import inspect, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine, URL
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 
 from apps.api.tests.support.postgres import alembic_test_config, reset_public_schema
 
 
 BASELINE_REVISION = "20260924_0001"
-HEAD_REVISION = "20261001_0002"
+EMAIL_VERIFICATION_REVISION = "20261001_0002"
+HEAD_REVISION = "20261029_0003"
 
 SURVIVOR_TABLES = {
     "regions",
@@ -35,9 +36,11 @@ TARGET_TABLES = {
     "capability_manifest_projections",
     "external_billing_catalog_projections",
     "commercial_mapping_revisions",
+    "commercial_product_heads",
     "external_billing_customers",
     "purchase_intents",
     "external_create_operations",
+    "billing_purchase_scope_holds",
     "billing_product_access_scopes",
     "external_subscriptions",
     "billing_state_observations",
@@ -86,6 +89,9 @@ EXPECTED_COLUMNS = {
         "region",
         "email",
         "email_normalized",
+        "first_name",
+        "surname",
+        "patronymic",
         "email_verified_at",
         "status",
         "last_login_at",
@@ -209,12 +215,20 @@ EXPECTED_COLUMNS = {
         "published_at",
         "published_by_principal",
     },
+    "commercial_product_heads": {
+        "external_billing_account_id",
+        "product_id",
+        "mapping_revision_id",
+        "revision_number",
+        "provider_origin",
+    },
     "external_billing_customers": {
         "customer_id",
         "external_billing_account_id",
         "user_id",
         "billing_customer_key",
         "provider_customer_id",
+        "provider_origin",
         "binding_state",
         "binding_updated_at",
         "created_at",
@@ -237,13 +251,16 @@ EXPECTED_COLUMNS = {
         "state_updated_at",
         "resolved_at",
     },
+    "billing_purchase_scope_holds": {"user_id", "product_id", "external_billing_account_id", "purchase_intent_id"},
     "external_create_operations": {
+        "external_billing_account_id",
         "create_operation_id",
         "operation_kind",
         "customer_id",
         "purchase_intent_id",
         "request_correlation_key",
         "operation_state",
+        "send_fence",
         "unknown_since",
         "unknown_recovery_deadline_at",
         "recovery_hint_schema_version",
@@ -341,6 +358,7 @@ EXPECTED_COLUMNS = {
         "payload_document",
         "priority",
         "next_attempt_at",
+        "active_recovery_deadline_at",
         "attempt_count",
         "work_state",
         "lease_owner",
@@ -396,6 +414,10 @@ EXPECTED_CHECKS = {
         "ck_commercial_mapping_revisions_revision_positive",
         "ck_commercial_mapping_revisions_schema_nonempty",
     },
+    "commercial_product_heads": {
+        "ck_commercial_product_heads_revision_positive",
+        "ck_commercial_product_heads_product_nonempty",
+    },
     "external_billing_customers": {
         "ck_external_billing_customers_key_nonempty",
         "ck_external_billing_customers_binding_state",
@@ -407,6 +429,7 @@ EXPECTED_CHECKS = {
         "ck_purchase_intents_state",
     },
     "external_create_operations": {
+        "ck_financial_operation_account",
         "ck_external_create_operations_purchase_requirement",
         "ck_external_create_operations_kind",
         "ck_external_create_operations_correlation_nonempty",
@@ -471,10 +494,13 @@ EXPECTED_UNIQUE_CONSTRAINTS = {
         "uq_commercial_mapping_revisions_id_account_offer",
         "uq_commercial_mapping_revisions_account_offer_revision",
     },
+    "commercial_product_heads": {"uq_commercial_product_heads_origin_product"},
     "external_billing_customers": {
         "uq_external_billing_customers_id_account_user",
         "uq_external_billing_customers_account_user",
         "uq_external_billing_customers_billing_customer_key",
+        "uq_billing_customers_provider",
+        "uq_billing_customers_id_account",
     },
     "purchase_intents": {
         "uq_purchase_intents_client_idempotency",
@@ -482,11 +508,14 @@ EXPECTED_UNIQUE_CONSTRAINTS = {
         "uq_purchase_intents_id_account_user_product",
         "uq_purchase_intents_full_scope",
     },
+    "billing_purchase_scope_holds": {"uq_purchase_hold_intent"},
     "billing_product_access_scopes": {
         "uq_billing_product_access_scopes_id_user_product",
         "uq_billing_product_access_scopes_user_product",
     },
     "external_subscriptions": {
+        "uq_subscription_provider",
+        "uq_subscription_agreement",
         "uq_external_subscriptions_id_product",
         "uq_external_subscriptions_id_user_product",
         "uq_external_subscriptions_id_account_user_product",
@@ -573,6 +602,7 @@ EXPECTED_INDEXES = {
     },
     "external_create_operations": {
         "uq_external_create_operations_unresolved_customer",
+        "uq_external_create_operations_customer_identity",
         "ix_external_create_operations_customer_state",
         "ix_external_create_operations_purchase",
         "ix_external_create_operations_correlation",
@@ -630,6 +660,7 @@ EXPECTED_INDEXES = {
         "ix_billing_work_items_kind_state_due",
         "ix_billing_work_items_scope",
         "ix_billing_work_items_coalescing_key",
+        "uq_billing_work_items_create_recovery",
         "ix_billing_work_items_priority_retry",
         "ix_billing_work_items_lease_expiry",
         "ix_billing_work_items_claim_scan",
@@ -702,17 +733,34 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         script = ScriptDirectory.from_config(config)
         assert script.get_heads() == [HEAD_REVISION]
         assert script.get_bases() == [BASELINE_REVISION]
-        assert [item.revision for item in script.walk_revisions()] == [HEAD_REVISION, BASELINE_REVISION]
+        assert [item.revision for item in script.walk_revisions()] == [
+            HEAD_REVISION,
+            EMAIL_VERIFICATION_REVISION,
+            BASELINE_REVISION,
+        ]
         command.upgrade(config, "head")
 
     assert tuple(logging.getLogger().handlers) == handlers
-    assert len(APPLICATION_TABLES) == 25
+    assert len(APPLICATION_TABLES) == 27
     assert _public_table_names(postgres_engine) == APPLICATION_TABLES | {"alembic_version"}
     assert LEGACY_TABLES.isdisjoint(_public_table_names(postgres_engine))
     with postgres_engine.connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == HEAD_REVISION
 
     inspector = inspect(postgres_engine)
+    assert inspector.get_pk_constraint("commercial_product_heads")["constrained_columns"] == [
+        "external_billing_account_id",
+        "product_id",
+    ]
+    assert {column["name"] for column in inspector.get_columns("commercial_product_heads") if column["nullable"]} == {
+        "provider_origin"
+    }
+    assert {
+        constraint["name"]: constraint["column_names"]
+        for constraint in inspector.get_unique_constraints("commercial_product_heads")
+    } == {
+        "uq_commercial_product_heads_origin_product": ["provider_origin", "product_id"],
+    }
     for table_name, expected_columns in EXPECTED_COLUMNS.items():
         assert {column["name"] for column in inspector.get_columns(table_name)} == expected_columns
     for table_name, expected_checks in EXPECTED_CHECKS.items():
@@ -759,6 +807,7 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         for foreign_key in inspector.get_foreign_keys(table_name)
     }
     required_restrict_foreign_keys = {
+        "fk_commercial_product_heads_mapping_scope",
         "fk_auth_sessions_user_scope",
         "fk_magic_link_tokens_user_scope",
         "fk_document_versions_legal_entity_scope",
@@ -769,6 +818,8 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         "fk_purchase_intents_mapping_scope",
         "fk_purchase_intents_legal_evidence",
         "fk_external_create_operations_purchase_customer",
+        "fk_create_operation_account",
+        "fk_purchase_hold_scope",
         "fk_billing_product_access_scopes_primary_subscription",
         "fk_external_subscriptions_customer_scope",
         "fk_external_subscriptions_purchase_provenance",
@@ -789,6 +840,12 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         for foreign_key in inspector.get_foreign_keys(table_name)
     }
     assert all(foreign_key_ondelete[name] == "RESTRICT" for name in required_restrict_foreign_keys)
+    assert all_foreign_keys["fk_commercial_product_heads_mapping_scope"] == (
+        "commercial_product_heads",
+        ("mapping_revision_id", "external_billing_account_id"),
+        "commercial_mapping_revisions",
+        ("mapping_revision_id", "external_billing_account_id"),
+    )
     assert all_foreign_keys["fk_billing_product_access_scopes_primary_subscription"] == (
         "billing_product_access_scopes",
         ("primary_subscription_id", "user_id", "product_id"),
@@ -910,6 +967,114 @@ def test_survivor_scope_constraints_reject_cross_contour_references(migrated_dat
                 "'10000000-0000-4000-8000-000000000001')"
             )
         )
+
+
+def test_product_head_constraints_reject_invalid_scope_cas_and_duplicate_origin(migrated_database: Engine) -> None:
+    with migrated_database.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO commercial_mapping_revisions "
+                "(mapping_revision_id, external_billing_account_id, billing_offer_id, revision_number, manifest_version, "
+                "catalog_digest, mapping_schema_version, mapping_document, published_at, published_by_principal) VALUES "
+                "('10000000-0000-4000-8000-000000000020', 'scope-one', 'offer-one', 1, 'manifest', "
+                "'digest', 'product-link-v2', '{}'::jsonb, now(), 'os-euid:1'), "
+                "('10000000-0000-4000-8000-000000000021', 'scope-two', 'offer-two', 1, 'manifest', "
+                "'digest', 'product-link-v2', '{}'::jsonb, now(), 'os-euid:1')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO commercial_product_heads "
+                "(external_billing_account_id, product_id, mapping_revision_id, revision_number, provider_origin) VALUES "
+                "('scope-one', 'product', '10000000-0000-4000-8000-000000000020', 1, 'https://billing.test')"
+            )
+        )
+    mapping_rows = text("SELECT * FROM commercial_mapping_revisions ORDER BY mapping_revision_id")
+    head_rows = text("SELECT * FROM commercial_product_heads ORDER BY external_billing_account_id, product_id")
+    with migrated_database.connect() as connection:
+        original_mappings = connection.execute(mapping_rows).mappings().all()
+        original_heads = connection.execute(head_rows).mappings().all()
+
+    # The FK is checked independently of the immutable-history DELETE trigger.
+    (foreign_key,) = inspect(migrated_database).get_foreign_keys("commercial_product_heads")
+    assert foreign_key["name"] == "fk_commercial_product_heads_mapping_scope"
+    assert foreign_key["constrained_columns"] == ["mapping_revision_id", "external_billing_account_id"]
+    assert foreign_key["referred_table"] == "commercial_mapping_revisions"
+    assert foreign_key["referred_columns"] == ["mapping_revision_id", "external_billing_account_id"]
+    assert foreign_key["options"]["ondelete"] == "RESTRICT"
+    invalid = [
+        ("scope-one", "product", "10000000-0000-4000-8000-000000000020", 2, None, "commercial_product_heads_pkey"),
+        (
+            "scope-one",
+            " ",
+            "10000000-0000-4000-8000-000000000020",
+            1,
+            None,
+            "ck_commercial_product_heads_product_nonempty",
+        ),
+        (
+            "scope-one",
+            "other",
+            "10000000-0000-4000-8000-000000000020",
+            0,
+            None,
+            "ck_commercial_product_heads_revision_positive",
+        ),
+        (
+            "scope-two",
+            "other",
+            "10000000-0000-4000-8000-000000000020",
+            1,
+            None,
+            "fk_commercial_product_heads_mapping_scope",
+        ),
+        (
+            "scope-one",
+            "other",
+            "10000000-0000-4000-8000-000000000099",
+            1,
+            None,
+            "fk_commercial_product_heads_mapping_scope",
+        ),
+        (
+            "scope-two",
+            "product",
+            "10000000-0000-4000-8000-000000000021",
+            1,
+            "https://billing.test",
+            "uq_commercial_product_heads_origin_product",
+        ),
+    ]
+    for account, product, revision_id, revision, origin, constraint in invalid:
+        with pytest.raises(IntegrityError) as error, migrated_database.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO commercial_product_heads "
+                    "(external_billing_account_id, product_id, mapping_revision_id, revision_number, provider_origin) "
+                    "VALUES (:account, :product, :revision_id, :revision, :origin)"
+                ),
+                {
+                    "account": account,
+                    "product": product,
+                    "revision_id": revision_id,
+                    "revision": revision,
+                    "origin": origin,
+                },
+            )
+        assert error.value.orig.diag.constraint_name == constraint
+    # Both referenced and unreferenced revisions are immutable; refusal is not
+    # evidence of which FK would fire if this independent protection were absent.
+    for account in ("scope-one", "scope-two"):
+        with pytest.raises(ProgrammingError) as error, migrated_database.begin() as connection:
+            connection.execute(
+                text("DELETE FROM commercial_mapping_revisions WHERE external_billing_account_id = :account"),
+                {"account": account},
+            )
+        assert error.value.orig.sqlstate == "P0001"
+        assert error.value.orig.diag.message_primary == "commercial mapping revisions are immutable"
+        with migrated_database.connect() as connection:
+            assert connection.execute(mapping_rows).mappings().all() == original_mappings
+            assert connection.execute(head_rows).mappings().all() == original_heads
 
 
 def test_email_verification_migration_clears_false_timestamp_without_revoking_session(

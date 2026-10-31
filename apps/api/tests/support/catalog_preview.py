@@ -27,15 +27,19 @@ from app.infrastructure.operator_preflight import operator_preflight_lock
 from scripts import repo
 
 if TYPE_CHECKING:
-    from app.core.settings import Settings
+    from apps.api.tests.support.commercial_mappings import HistoricalOperatorSettings as Settings
     from app.domains.catalog.publication import PublicationResult
 
 
 def publish_simulated_preview(
     runtime: Mapping[str, str], *, operator: Settings, expected_previous_revision: int
 ) -> PublicationResult:
-    from app.composition import mapping_operator
-    from app.composition.mapping_operator import account_billing_date, authorize_operator, fresh_mapping_evaluation
+    from apps.api.tests.support import v1_mapping_operator as mapping_operator
+    from apps.api.tests.support.v1_mapping_operator import (
+        account_billing_date,
+        authorize_operator,
+        fresh_mapping_evaluation,
+    )
     from app.core.settings import AppEnv
     from app.domains.catalog.publication import publish_mapping
 
@@ -123,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
         # and operator authorization; never invent a UID allowlist here.
         for name, value in repo.direct_api_environment().items():
             os.environ.setdefault(name, value)
-        from app.core.settings import Settings
+        from apps.api.tests.support.commercial_mappings import HistoricalOperatorSettings as Settings
 
         result = publish_simulated_preview(
             runtime, operator=Settings(), expected_previous_revision=arguments.expected_previous_revision

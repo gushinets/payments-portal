@@ -41,7 +41,10 @@
       "passwordPlaceholder": "Enter your password",
       "newPasswordPlaceholder": "12–128 characters",
       "passwordConfirmLabel": "Repeat password",
-      "passwordConfirmPlaceholder": "Enter the password again"
+      "passwordConfirmPlaceholder": "Enter the password again",
+      "firstNameLabel": "First name (optional)",
+      "surnameLabel": "Surname (optional)",
+      "patronymicLabel": "Patronymic (optional)"
     },
     "passwordRequirements": {
       "label": "Password requirements",
@@ -144,8 +147,8 @@
       "emailUnverified": "Email not verified"
     },
     "products": {
-      "title": "Products",
-      "description": "Published products and their saved terms. Subscription, access and usage information will be available later.",
+      "title": "My products",
+      "description": "Your accepted purchases. Check payment and subscription status in billing.",
       "detailAction": "View product details",
       "state": {
         "commercial": {
@@ -163,7 +166,14 @@
       },
       "action": {
         "description": "Open the product information page."
-      }
+      },
+      "allProducts": "All products",
+      "loading": "Loading your products…",
+      "empty": "No accepted purchases yet. Choose a product in the catalog.",
+      "unavailable": "Your purchases could not be loaded. You can open billing separately.",
+      "loadMore": "Load more",
+      "prepared": "Subscription prepared",
+      "pending": "Purchase preparation is incomplete"
     }
   },
   "PasswordReset": {
@@ -239,7 +249,7 @@
     "eyebrow": "AI tools",
     "hero": {
       "heading": "AI tools for <em>everyday work</em>",
-      "description": "Explore published AI tools and their saved terms. Choose a tool for your task.",
+      "description": "Explore enabled AI tools and open details for current terms. Choose a tool for your task.",
       "primaryAction": "Open account",
       "secondaryAction": "Explore tools"
     },
@@ -251,18 +261,23 @@
     }
   },
   "CatalogPreview": {
-    "loading": "Loading approved offer previews…",
-    "empty": "No approved offer previews are available.",
-    "failed": "Offer previews are unavailable. Try again.",
+    "loading": "Loading products…",
+    "empty": "No enabled products are available.",
+    "failed": "Products or current offers are unavailable. Try again.",
     "retry": "Try again",
-    "notFound": "No approved offer preview was found for this product.",
+    "notFound": "This product is unavailable.",
     "ambiguous": "Unavailable: more than one approved offer exists for this product.",
-    "simulated": "SIMULATED — test preview only",
-    "unverified": "Approved terms — current availability unverified",
-    "previewNote": "Stored terms are shown for reference. Purchasing is unavailable; this preview does not grant access.",
+    "simulated": "Technical product source: development mock",
+    "unverified": "Current LBX offer — subject to confirmation",
+    "previewNote": "Current billing values are shown. Purchase terms require separate confirmation; viewing an offer does not grant access.",
+    "detailsRequired": "Open details to check the current offer.",
+    "unmapped": "Purchasing is unavailable: no billing offer is linked.",
+    "unsupported": "Purchasing is unavailable: these offer conditions are not supported.",
+    "incomplete": "Purchasing is unavailable: the current offer could not be fully verified.",
+    "quantity": "Commercial service quantity",
     "productTitle": "Product",
     "fallback": "This product is identified by its canonical ID. Additional product information is not available yet.",
-    "details": "View offer preview",
+    "details": "View details",
     "recurring": "Recurring charge",
     "connection": "Separate connection charge",
     "period": "Billing period",
@@ -273,7 +288,10 @@
     "prepaid": "Prepaid",
     "paymentUnspecified": "See the approved terms",
     "tax": "Tax treatment",
-    "taxValues": { "included": "Included in the amount", "not_applicable": "Not applicable" },
+    "taxValues": {
+      "included": "Included in the amount",
+      "not_applicable": "Not applicable"
+    },
     "periodAnchors": {
       "calendar_month": "By calendar month",
       "instance_start": "From the instance start",
@@ -290,7 +308,7 @@
     "page": {
       "eyebrow": "Catalog",
       "title": "AI utilities",
-      "description": "Browse stored approved offer terms. Current availability is unverified."
+      "description": "Explore enabled products and open details for current billing values."
     },
     "signInAction": "Open account",
     "backToCatalog": "Back to products",
@@ -379,5 +397,87 @@
     "versioningHelp": "The document is published in a separate versioned file.",
     "revision": "Revision: {version}",
     "tableAccessibilityLabel": "Scrollable legal document table"
+  },
+  "Billing": {
+    "title": "Billing details",
+    "description": "One billing account for all your products. Select a purchase for payment; its agreement and seller are verified before opening.",
+    "open": "Open billing",
+    "refresh": "Refresh billing",
+    "refreshHint": "After completing payment, refresh billing to see your current balance and payment history.",
+    "close": "Close billing",
+    "loading": "Opening billing…",
+    "frameTitle": "Billing account",
+    "verificationRequired": "Verify your email before opening billing.",
+    "requestId": "Request ID: {id}",
+    "errors": {
+      "session": "Sign in again to open billing.",
+      "verification": "Verify your email first.",
+      "identity": "The billing identity needs operator review. Contact support.",
+      "pending": "Account creation may still be completing. Reopen billing to check safely.",
+      "review": "The account needs operator review. Its identity remains reserved.",
+      "serverAuth": "The billing service rejected the server credentials. Contact support.",
+      "rejected": "The billing service rejected the request. Contact support.",
+      "response": "The billing service returned an invalid response. Contact support.",
+      "client": "Your billing account is not ready to open yet. Contact support; reopening will reuse this account.",
+      "configuration": "Billing configuration is incomplete. Contact support.",
+      "unavailable": "Billing is temporarily unavailable. Try opening it again.",
+      "sdk": "The billing widget could not load. Reopen billing to try again.",
+      "termsChanged": "The offer or required documents changed. Review and accept the current terms again.",
+      "purchaseConflict": "The original purchase or binding needs review. Check its saved status and contact support.",
+      "notPrepared": "The purchase is not proven ready for payment. Check saved status or continue recovery.",
+      "consent": "The original legal acceptance could not be verified. Contact support.",
+      "offer": "The current offer is unavailable or unsupported. Try reviewing it later.",
+      "financialPending": "The financial operation is unresolved. Check the original purchase or continue recovery; do not start a replacement."
+    },
+    "paymentTarget": "Pay only the intended agreement {agreement}, seller {seller}.",
+    "paymentTargetNote": "This is a customer-wide billing view. Select the stated agreement in the widget; no product filter is applied.",
+    "selectedPurchase": "Selected purchase",
+    "accountView": "View account without selecting a purchase",
+    "selectionUnavailable": "The selected purchase could not be verified. Select it from the list or open the product page.",
+    "purchaseOption": "{product} · purchase {id}",
+    "selectedProduct": "Selected product: {product}",
+    "preparationRequired": "Complete purchase preparation on the product page first."
+  },
+  "Purchase": {
+    "title": "Product billing",
+    "loading": "Loading your purchase…",
+    "guest": "Sign in to review and buy this product. Public terms remain available.",
+    "signIn": "Sign in or register",
+    "sessionFailed": "Your session could not be verified. Purchase state is unknown.",
+    "retry": "Retry",
+    "verification": "Verify your email before buying or opening billing.",
+    "verifyAction": "Open account and verify email",
+    "buy": "Buy",
+    "refresh": "Check saved status",
+    "working": "Preparing your purchase…",
+    "unknown": "Purchase state is unavailable. Check again before starting a purchase.",
+    "reviewTitle": "Review before buying",
+    "draftLegal": "These legal documents are drafts and have not been legally approved.",
+    "consents": "Required consents",
+    "confirm": "Accept terms and buy",
+    "retryConfirm": "Retry the same confirmation",
+    "confirmationUncertain": "Confirmation may have completed. Check saved status or retry this same confirmation; its accepted terms will not change.",
+    "continue": "Continue",
+    "recover": "Continue recovery",
+    "manage": "Manage subscription",
+    "termsChanged": "Terms changed before preparation. Review the current offer and consent again.",
+    "pending": "Preparation is unresolved. Continue with this purchase; no replacement will be created.",
+    "reviewRequired": "This purchase needs review. Keep its reference when contacting support.",
+    "reference": "Purchase reference: {id}",
+    "acceptedTerms": "Originally accepted terms",
+    "awaitingVerification": "Payment status is awaiting authoritative verification. Checking saved status reads Portal records only; it does not refresh billing facts.",
+    "accessDeferred": "Payment and product access are separate. Paid-access delivery and usage/quota will be implemented in later stages; this screen does not confirm activation.",
+    "fullFunding": "Full funding is required.",
+    "fundingUnspecified": "Funding requirements are not specified.",
+    "states": {
+      "created": "Purchase accepted. Continue preparation.",
+      "preparing": "Preparation is in progress. Continue to check safely.",
+      "awaiting_external_result": "The billing outcome is unknown. The original purchase remains reserved.",
+      "linked": "Subscription prepared",
+      "resolved_no_external_effect": "This purchase was resolved without an external effect.",
+      "failed_before_external_effect": "This purchase stopped before any financial creation.",
+      "manual_review": "The purchase needs recovery or operator review."
+    },
+    "managedInAccount": "Payment and subscription management are available in your account."
   }
 }

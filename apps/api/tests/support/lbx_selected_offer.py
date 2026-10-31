@@ -12,22 +12,28 @@ import httpx
 
 from app.integrations.lbx.client import API_PATH
 from app.integrations.lbx.offer_inputs import SelectedOfferInputs, SelectedOfferRequest
-from apps.api.tests.support.lbx import SERVICE, TARIFF, fixture_response
+from apps.api.tests.support.lbx import ACCOUNT, SERVICE, TARIFF, fixture_response
 
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures/lbx/selected_offer"
 
 
 def simulated_selection() -> SelectedOfferRequest:
-    return SelectedOfferRequest.model_validate_json((FIXTURES / "selection.json").read_bytes())
+    return SelectedOfferRequest.model_validate_json(
+        (FIXTURES / "selection.json").read_text().replace("simulated-ru-lbx-account", ACCOUNT)
+    )
 
 
 def simulated_inputs() -> SelectedOfferInputs:
-    return SelectedOfferInputs.model_validate_json((FIXTURES / "inputs.json").read_bytes())
+    return SelectedOfferInputs.model_validate_json(
+        (FIXTURES / "inputs.json").read_text().replace("simulated-ru-lbx-account", ACCOUNT)
+    )
 
 
 class SelectedOfferRecording:
-    def __init__(self) -> None:
+    def __init__(self, *, tariff_id: int = TARIFF, tariff_service_id: int = SERVICE) -> None:
+        self.tariff_id = tariff_id
+        self.tariff_service_id = tariff_service_id
         self.bodies = {
             name: (FIXTURES / f"{name}.json").read_bytes() for name in ("tariff", "periods", "services", "prices")
         }
@@ -54,10 +60,10 @@ class SelectedOfferRecording:
         if suffix == "/auth":
             return fixture_response("auth")
         name = {
-            f"/tariffs/{TARIFF}": "tariff",
-            f"/tariffs/{TARIFF}/periods": "periods",
-            f"/tariffs/{TARIFF}/services": "services",
-            f"/tariffs/{TARIFF}/services/{SERVICE}/prices": "prices",
+            f"/tariffs/{self.tariff_id}": "tariff",
+            f"/tariffs/{self.tariff_id}/periods": "periods",
+            f"/tariffs/{self.tariff_id}/services": "services",
+            f"/tariffs/{self.tariff_id}/services/{self.tariff_service_id}/prices": "prices",
         }[suffix]
         self.counts[name] = self.counts.get(name, 0) + 1
         body = self.reread_bodies.get(name, self.bodies[name]) if self.counts[name] > 1 else self.bodies[name]

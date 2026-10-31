@@ -1,13 +1,16 @@
 import { ArrowLeft } from "lucide-react";
-import { getTranslations } from "next-intl/server";
+import { NextIntlClientProvider } from "next-intl";
+import { getMessages, getTranslations } from "next-intl/server";
 
 import { Link } from "@/i18n/navigation";
+import { ProductBilling } from "@/features/billing";
 
 import { CatalogPreview } from "./CatalogPreview";
 
 export async function ProductDetail({ productId }: { productId: string }) {
   const t = await getTranslations("Catalog");
   const preview = await getTranslations("CatalogPreview");
+  const messages = await getMessages();
   return (
     <article className="page-section compact product-detail">
       <Link className="nav-link product-back-link" href="/products">
@@ -19,8 +22,9 @@ export async function ProductDetail({ productId }: { productId: string }) {
           <h1 className="section-title product-detail-title">{preview("productTitle")}</h1>
           <p className="catalog-product-id">{productId}</p>
           <p className="hero-copy">{preview("fallback")}</p>
-          <Link className="btn-secondary" href="/account">{t("signInAction")}</Link>
-          <p className="product-action-note">{t("detail.accountNote")}</p>
+          <NextIntlClientProvider messages={{ Billing: messages.Billing, Purchase: messages.Purchase, CatalogPreview: messages.CatalogPreview }}>
+            <ProductBilling productId={productId} />
+          </NextIntlClientProvider>
         </div>
         <CatalogPreview productId={productId} />
       </div>

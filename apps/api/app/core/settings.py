@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import json
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import quote, urlsplit
 
 from dotenv import load_dotenv
@@ -35,6 +38,16 @@ class AppEnv(StrEnum):
     DEVELOPMENT = "development"
     TEST = "test"
     PRODUCTION = "production"
+
+
+@dataclass(frozen=True)
+class LbxCurrencyMapping:
+    """The supported provider money contract; no exchange or implicit ID meaning."""
+
+    provider_currency_id: int
+    iso_currency: Literal["RUB"] = "RUB"
+    units: Literal["major"] = "major"
+    scale: Literal[2] = 2
 
 
 class Settings(BaseSettings):
@@ -72,6 +85,7 @@ class Settings(BaseSettings):
     sentry_release: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
     kernel_base_url: str = ""
     kernel_service_token: SecretStr = SecretStr("")
+    kernel_mock_enabled: bool = False
     # Application policy, in seconds/bytes/operations; not a source-provider SLA.
     preflight_total_timeout_seconds: float = Field(default=10.0, gt=0, le=120, allow_inf_nan=False)
     preflight_cleanup_timeout_seconds: float = Field(default=0.25, gt=0, le=5, allow_inf_nan=False)
@@ -83,9 +97,12 @@ class Settings(BaseSettings):
     kernel_max_retries: int = Field(default=1, ge=0, le=2)
     kernel_retry_delay_seconds: float = Field(default=0.1, ge=0, le=5, allow_inf_nan=False)
     lbx_base_url: str = ""
-    lbx_external_billing_account_id: str = ""
     lbx_server_username: SecretStr = SecretStr("")
     lbx_server_password: SecretStr = SecretStr("")
+    lbx_widget_signing_secret: SecretStr = SecretStr("")
+    lbx_seller_organization_id: str = ""
+    lbx_currency_id: str = "1"
+    lbx_currency: str = "RUB"
     lbx_connect_timeout_seconds: float = Field(default=1.0, gt=0, le=30, allow_inf_nan=False)
     lbx_read_timeout_seconds: float = Field(default=2.0, gt=0, le=30, allow_inf_nan=False)
     lbx_max_response_bytes: int = Field(default=524288, ge=1024, le=1048576)
@@ -93,12 +110,6 @@ class Settings(BaseSettings):
     lbx_max_get_attempts: int = Field(default=5, ge=1, le=8)
     lbx_retry_delay_seconds: float = Field(default=0.1, ge=0, le=5, allow_inf_nan=False)
     lbx_max_retry_delay_seconds: float = Field(default=2.0, ge=0, le=5, allow_inf_nan=False)
-    # CLI execution identity; no default principal, wildcard or human attribution.
-    mapping_operator_uids: tuple[Annotated[int, Field(strict=True, ge=0)], ...] = ()
-    # Independent of source credentials so saved evidence remains queryable offline.
-    mapping_account_id: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
-    mapping_approval_file: Path | None = None
-    mapping_source_inputs_file: Path | None = None
     # Shared trusted local path for ALL operator processes in this deployment.
     # Required by dry-run/publish only; query and the HTTP API do not use it.
     mapping_operator_lock_file: Path | None = None
@@ -191,6 +202,8 @@ class Settings(BaseSettings):
     def require_safe_kernel_configuration(self) -> Settings:
         if self.preflight_cleanup_timeout_seconds >= self.preflight_total_timeout_seconds:
             raise ValueError("preflight cleanup reserve must be shorter than the total timeout")
+        if self.kernel_mock_enabled and self.app_env == AppEnv.PRODUCTION:
+            raise ValueError("Kernel mock requires development/test")
         token = self.kernel_service_token.get_secret_value()
         if not self.kernel_base_url and not token:
             return self
@@ -217,28 +230,86 @@ class Settings(BaseSettings):
             raise ValueError("KERNEL_SERVICE_TOKEN must be a nonempty printable service token without whitespace")
         if self.app_env == AppEnv.PRODUCTION:
             validate_production_public_url(self.kernel_base_url, "KERNEL_BASE_URL")
-            raise ValueError(
-                "provisional Kernel sources require development/test; real producer conformance is deferred"
-            )
+            if parsed.hostname == "kernel-mock" or parsed.hostname.startswith("kernel-mock."):
+                raise ValueError("Kernel mock requires development/test")
         return self
 
-    @model_validator(mode="after")
-    def require_safe_lbx_configuration(self) -> Settings:
+    @property
+    def lbx_configuration_error(self) -> str | None:
+        """Server API readiness only; partial billing config cannot break auth.
+
+        Return field names/codes only. Do not attach input values or credentials.
+        """
         username = self.lbx_server_username.get_secret_value()
         password = self.lbx_server_password.get_secret_value()
-        configured = (self.lbx_base_url, self.lbx_external_billing_account_id, username, password)
+        configured = (
+            self.lbx_base_url,
+            username,
+            password,
+        )
         if not any(configured):
-            return self
+            return "lbx_not_configured"
         if not all(configured):
-            raise ValueError("LBX origin, billing account and server credentials must be configured together")
+            return "lbx_connection_fields_required"
+        if not self.lbx_provider_origin:
+            return "lbx_base_url_invalid"
+        if ":" in username or any(ord(char) < 32 or ord(char) == 127 for char in username + password):
+            return "lbx_server_credentials_invalid"
+        if self.app_env == AppEnv.PRODUCTION:
+            try:
+                validate_production_public_url(self.lbx_base_url, "LBX_BASE_URL")
+            except ValueError:
+                return "lbx_base_url_requires_public_https"
+        return None
+
+    @property
+    def lbx_widget_configuration_error(self) -> str | None:
+        """Account bootstrap readiness; no offer/calendar/seller dependency."""
+        if self.lbx_configuration_error is not None:
+            return self.lbx_configuration_error
+        if not self.lbx_widget_signing_secret.get_secret_value():
+            return "lbx_widget_signing_secret_required"
+        return None
+
+    @property
+    def lbx_purchase_configuration_error(self) -> str | None:
+        """Product-bound preparation readiness; account viewing remains independent."""
+        if self.lbx_widget_configuration_error is not None:
+            return self.lbx_widget_configuration_error
+        seller = self.lbx_seller_organization_id
+        if not seller:
+            return "lbx_seller_organization_id_required"
+        if not seller.isascii() or not seller.isdecimal() or not seller.lstrip("0"):
+            return "lbx_seller_organization_id_invalid"
+        return None
+
+    @property
+    def lbx_currency_mapping(self) -> LbxCurrencyMapping | None:
+        currency_id = self.lbx_currency_id
+        if (
+            self.lbx_currency != "RUB"
+            or not currency_id.isascii()
+            or not currency_id.isdecimal()
+            or not currency_id.lstrip("0")
+        ):
+            return None
+        try:
+            return LbxCurrencyMapping(provider_currency_id=int(currency_id))
+        except ValueError:
+            return None
+
+    @property
+    def lbx_provider_origin(self) -> str:
+        """Canonical trusted origin without credentials, path or default port."""
         try:
             parsed = urlsplit(self.lbx_base_url)
             port = parsed.port
-        except ValueError:
-            raise ValueError("LBX_BASE_URL must be an HTTP(S) origin") from None
+            hostname = (parsed.hostname or "").encode("idna").decode("ascii").lower()
+        except (ValueError, UnicodeError):
+            return ""
         if (
             parsed.scheme not in {"http", "https"}
-            or not parsed.hostname
+            or not hostname
             or parsed.username is not None
             or parsed.password is not None
             or parsed.path not in {"", "/"}
@@ -247,18 +318,39 @@ class Settings(BaseSettings):
             or any(char.isspace() or ord(char) < 33 for char in self.lbx_base_url)
             or port == 0
         ):
-            raise ValueError("LBX_BASE_URL must be an HTTP(S) origin without credentials or query")
-        if (
-            not self.lbx_external_billing_account_id.strip()
-            or self.lbx_external_billing_account_id != self.lbx_external_billing_account_id.strip()
-            or any(ord(char) < 33 or ord(char) == 127 for char in self.lbx_external_billing_account_id)
-            or ":" in username
-            or any(ord(char) < 32 or ord(char) == 127 for char in username + password)
-        ):
-            raise ValueError("LBX account and server credentials have invalid syntax")
-        if self.app_env == AppEnv.PRODUCTION:
-            validate_production_public_url(self.lbx_base_url, "LBX_BASE_URL")
-        return self
+            return ""
+        if ":" in hostname:
+            hostname = f"[{hostname}]"
+        suffix = "" if port is None or (parsed.scheme, port) in {("http", 80), ("https", 443)} else f":{port}"
+        return f"{parsed.scheme}://{hostname}{suffix}"
+
+    @property
+    def lbx_external_billing_account_id(self) -> str:
+        """One provider origin in the existing deployment scope, independent of credentials.
+
+        Proven historical storage scopes can be retained by the product-head
+        resolver. No immutable row is relabelled to this fresh-deployment ID.
+        """
+        if not self.lbx_provider_origin:
+            return ""
+        identity = json.dumps(
+            [self.instance_tenant_id, self.instance_region, self.lbx_provider_origin], separators=(",", ":")
+        )
+        return "lbx-connection:v2:" + hashlib.sha256(identity.encode()).hexdigest()
+
+    @property
+    def lbx_legacy_credential_scope(self) -> str | None:
+        """Recognize the previous derivation only for these exact credentials/origin.
+
+        This is compatibility evidence, never the identity of a new connection.
+        Publication retains the proven origin on its mutable head so subsequent
+        username rotation no longer depends on this legacy derivation.
+        """
+        username = self.lbx_server_username.get_secret_value()
+        if not self.lbx_provider_origin or not username:
+            return None
+        identity = json.dumps([self.lbx_provider_origin, username], separators=(",", ":"))
+        return "lbx-connection:v1:" + hashlib.sha256(identity.encode()).hexdigest()
 
 
 def _load_settings_env_file(settings_file: Path | str = Path(__file__)) -> str | None:

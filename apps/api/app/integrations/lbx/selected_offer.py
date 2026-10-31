@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, replace
 from datetime import date
 from decimal import Decimal
-from typing import NoReturn, TypeVar
 
 from app.domains.catalog.commercial_offer import (
     CommercialEvidenceBasis,
@@ -27,9 +26,11 @@ from app.domains.catalog.commercial_offer import (
     canonical_document,
     commercial_digest,
 )
+from app.domains.catalog.product_link import ProductLinkRequest
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.client import LbxRead, LbxServerClient
-from app.integrations.lbx.dto import LbxServicePrice, LbxTariff, LbxTariffPeriod, LbxTariffService
+from app.integrations.lbx.discounts import selected_discounts
+from app.integrations.lbx.dto import LbxInlinePrice, LbxServicePrice, LbxTariff, LbxTariffPeriod, LbxTariffService
 from app.integrations.lbx.errors import LbxError
 from app.integrations.lbx.offer_inputs import (
     REQUIRED_POLICY_FIELDS,
@@ -39,11 +40,17 @@ from app.integrations.lbx.offer_inputs import (
     SelectedPolicyEvidence,
 )
 from app.integrations.lbx.offer_provenance import selected_offer_provenance
+from app.integrations.lbx.offer_values import (
+    MAX_MONEY_SCALE,
+    _exact,
+    _incomplete,
+    _minor_units,
+    _multiply,
+    _quantity_bounds,
+    _required,
+)
 
 
-# Finite representation limits, not provider monetary precision or SLAs.
-MAX_EXACT_DIGITS = 256
-MAX_MONEY_SCALE = 36
 PERIOD_UNITS = {1: "day", 2: "week", 3: "month", 4: "year"}
 PERIOD_ANCHORS = {0: "calendar_month", 1: "instance_start", 2: "first_instance_start"}
 _TARIFF_FLAGS = (
@@ -73,51 +80,6 @@ _SERVICE_FLAGS = (
     "payment_object",
     "hidden_for_user",
 )
-T = TypeVar("T")
-
-
-def _incomplete(reason: str) -> NoReturn:
-    raise SelectedOfferRefused(OfferRefusalKind.INCOMPLETE, reason)
-
-
-def _required(value: T | None, reason: str) -> T:
-    if value is None:
-        _incomplete(reason)
-    assert value is not None
-    return value
-
-
-def _exact(value: Decimal | None, reason: str) -> Decimal:
-    result = _required(value, reason)
-    if not isinstance(result, Decimal) or not result.is_finite():
-        _incomplete(reason)
-    parts = result.as_tuple()
-    if len(parts.digits) > MAX_EXACT_DIGITS or abs(int(parts.exponent)) > MAX_EXACT_DIGITS:
-        _incomplete("numeric_representation_unsupported")
-    return result
-
-
-def _minor_units(value: Decimal, scale: int) -> int:
-    """Check exact divisibility without quantize(), float or Decimal context."""
-    value = _exact(value, "money_invalid")
-    parts = value.as_tuple()
-    coefficient = int("".join(str(digit) for digit in parts.digits))
-    exponent = int(parts.exponent) + scale
-    if exponent >= 0:
-        units = coefficient * 10**exponent
-    else:
-        units, remainder = divmod(coefficient, 10**-exponent)
-        if remainder:
-            _incomplete("money_scale_mismatch")
-    return -units if parts.sign else units
-
-
-def _multiply(left: Decimal, right: Decimal) -> Decimal:
-    """Exact product even when source digits exceed the default context's 28."""
-    a, b = left.as_tuple(), right.as_tuple()
-    coefficient = int("".join(map(str, a.digits))) * int("".join(map(str, b.digits)))
-    result = Decimal((a.sign ^ b.sign, tuple(map(int, str(coefficient))), int(a.exponent) + int(b.exponent)))
-    return _exact(result, "money_invalid")
 
 
 @dataclass(frozen=True)
@@ -131,7 +93,7 @@ class SelectedReadSet:
 
 
 async def _read_selected(
-    client: LbxServerClient, selection: SelectedOfferRequest, budget: PreflightBudget
+    client: LbxServerClient, selection: SelectedOfferRequest | ProductLinkRequest, budget: PreflightBudget
 ) -> SelectedReadSet:
     # Each read uses the same nonrenewable caller budget; no nested run().
     tariff = await client.get_tariff(tariff_id=selection.tariff_id, budget=budget)
@@ -219,28 +181,35 @@ def _validate_configuration(
     return policy, references
 
 
-def _applicable_price(
-    prices: list[LbxServicePrice], period: LbxTariffPeriod, effective_on: date, budget: PreflightBudget
-) -> tuple[LbxServicePrice, date | None]:
+def _price_start(price: LbxServicePrice | LbxInlinePrice) -> date:
+    return _required(
+        price.start_date if isinstance(price, LbxServicePrice) else price.price_start_date, "price_start_unknown"
+    )
+
+
+def _applicable_price[Price: (LbxServicePrice, LbxInlinePrice)](
+    prices: list[Price], period: LbxTariffPeriod, effective_on: date, budget: PreflightBudget
+) -> tuple[Price, date | None]:
     relevant = [row for row in prices if row.period_id == period.period_id]
     for row in relevant:
         budget.check()
-        _required(row.start_date, "price_start_unknown")
-        if (row.period_type, row.period_length) != (period.period_type, period.period_length):
-            _incomplete("price_period_conflict")
-    relevant.sort(key=lambda row: _required(row.start_date, "price_start_unknown"))
-    if len({row.start_date for row in relevant}) != len(relevant):
-        _incomplete("price_applicability_ambiguous")
-    for index, row in enumerate(relevant):
-        following = relevant[index + 1].start_date if index + 1 < len(relevant) else None
-        if row.next_change_date is not None and row.next_change_date != following:
-            _incomplete("price_schedule_gap_or_overlap")
-    applicable = [row for row in relevant if _required(row.start_date, "price_start_unknown") <= effective_on]
+        _price_start(row)
+    applicable = [row for row in relevant if _price_start(row) <= effective_on]
     if not applicable:
         _incomplete("applicable_price_missing")
-    row = applicable[-1]
-    index = relevant.index(row)
-    until = relevant[index + 1].start_date if index + 1 < len(relevant) else None
+    start = max(_price_start(row) for row in applicable)
+    candidates = [row for row in applicable if _price_start(row) == start]
+    if len(candidates) != 1:
+        _incomplete("price_applicability_ambiguous")
+    row = candidates[0]
+    if isinstance(row, LbxServicePrice) and (row.period_type, row.period_length) != (
+        period.period_type,
+        period.period_length,
+    ):
+        _incomplete("price_period_conflict")
+    until = min((_price_start(price) for price in relevant if _price_start(price) > start), default=None)
+    if isinstance(row, LbxServicePrice) and row.next_change_date is not None and row.next_change_date != until:
+        _incomplete("price_schedule_gap_or_overlap")
     return row, until
 
 
@@ -334,15 +303,7 @@ def normalize_selected_offer(
             _incomplete("inline_effective_price_conflict")
     if inline[0].price_start_date != price.start_date:
         _incomplete("inline_effective_date_conflict")
-    discounts = [
-        row for row in _required(service.discounts, "discounts_unknown") if row.period_id == selection.period_id
-    ]
-    if len(discounts) > 1:
-        _incomplete("discounts_ambiguous")
-    discount_rows = _required(discounts[0].discounts, "discounts_unknown") if discounts else []
-    for discount in discount_rows:
-        for field in ("count", "new_price", "new_bulk_price", "rate"):
-            _required(getattr(discount, field), "discount_terms_unknown")
+    discount_rows = selected_discounts(service, inline[0])
     currency = _required(inputs.currency, "currency_evidence_missing")
     if tariff.currency_id != currency.currency_id:
         _incomplete("currency_identity_mismatch")
@@ -371,8 +332,7 @@ def normalize_selected_offer(
     )
     for amount in (recurring, connection, total_recurring, total_connection):
         _minor_units(amount, scale)
-    if service.min_multiplicator > service.max_multiplicator:
-        _incomplete("commercial_bounds_invalid")
+    minimum, maximum = _quantity_bounds(service)
     # All mandatory facts are now known. No catch-all pricing engine.
     unsupported = (
         (service.enabled_by_default != 1, "selected_component_not_default"),
@@ -396,7 +356,7 @@ def normalize_selected_offer(
         (policy.historical_applicability != "pinned_effective_terms", "historical_profile_unsupported"),
         (policy.connection_charge_basis not in {"per_service_unit", "once"}, "connection_profile_unsupported"),
         (
-            quantity <= 0 or not service.min_multiplicator <= quantity <= service.max_multiplicator,
+            quantity <= 0 or not minimum <= quantity <= maximum,
             "commercial_quantity_out_of_bounds",
         ),
         (recurring <= 0 or connection < 0, "price_profile_unsupported"),
@@ -413,9 +373,7 @@ def normalize_selected_offer(
             price.start_date,
             effective_until,
         ),
-        quantity=CommercialQuantity(
-            "commercial_service", quantity, service.min_multiplicator, service.max_multiplicator
-        ),
+        quantity=CommercialQuantity("commercial_service", quantity, minimum, maximum),
         policy=CommercialPolicy(
             policy.tax_treatment,
             "none",

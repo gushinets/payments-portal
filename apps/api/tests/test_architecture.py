@@ -17,10 +17,12 @@ from app.models import (
     AccessInvalidationOutbox,
     AuthSession,
     BillingProductAccessScope,
+    BillingPurchaseScopeHold,
     BillingStateObservation,
     BillingWorkItem,
     CapabilityManifestProjection,
     CommercialMappingRevision,
+    CommercialProductHead,
     CountryRegionRule,
     DocumentAcceptance,
     DocumentVersion,
@@ -989,10 +991,12 @@ def test_canonical_orm_contains_step_3_survivors_and_step_4_target_models() -> N
         CapabilityManifestProjection,
         ExternalBillingCatalogProjection,
         CommercialMappingRevision,
+        CommercialProductHead,
         ExternalBillingCustomer,
         PurchaseIntent,
         ExternalCreateOperation,
         BillingProductAccessScope,
+        BillingPurchaseScopeHold,
         ExternalSubscription,
         BillingStateObservation,
         PurchasedAllowance,
@@ -1003,7 +1007,7 @@ def test_canonical_orm_contains_step_3_survivors_and_step_4_target_models() -> N
         AccessInvalidationOutbox,
     )
 
-    assert len(Base.metadata.tables) == 25
+    assert len(Base.metadata.tables) == 27
     assert set(Base.metadata.tables) == {model.__tablename__ for model in retained_models}
 
 

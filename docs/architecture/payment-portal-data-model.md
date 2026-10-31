@@ -1,21 +1,62 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last verified: 2026-10-02
+Last updated: 2026-10-29 (one consolidated ANY-709 migration, including active recovery windows)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 (head)
+20260924_0001 -> 20261001_0002 -> 20261029_0003 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
 `20261001_0002_clear_false_email_verification` is a data-only forward migration
 that clears predecessor registration-time `users.email_verified_at` values,
-because those timestamps did not prove mailbox ownership. The chain has one
-current head. This document is authoritative for the implemented SQLAlchemy
+because those timestamps did not prove mailbox ownership.
+`20261029_0003_normal_billing` consolidates all ANY-709 branch-local
+operations into one forward migration after main's unchanged head. It adds one
+small current-link pointer table, nullable provider-origin provenance and unique
+`(provider_origin, product_id)` without backfilling or rewriting legacy mappings.
+It also adds optional FIO, nullable customer origin, provider-ID uniqueness,
+permanent customer-operation identity, send fencing and coalesced recovery-work
+uniqueness. It neither guesses identity/origin nor creates provider objects.
+It adds the purchase hold, scoped permanent financial identities/bindings and
+immutable financial-send evidence. It backfills operation scope from its existing
+customer and holds nonterminal purchases; ambiguous old holds/bindings fail the
+upgrade without deletion or arbitrary adoption. It adds the explicit financial
+`unverified` state. Clean and populated test upgrades have passed. The earlier
+purchase-preparation schema was applied as the original four-revision chain to
+the local development database under explicit owner authorization on 2026-10-27;
+existing application row counts were preserved. This historical application does
+not assert application of the final `20261029_0003` revision. Consolidation
+retains every upgrade/downgrade operation. The
+owner requested consecutive numbering after the initial consolidation: an
+existing fully upgraded `20261027_0006` schema must be verified before changing
+only its revision label to the then-current `20261027_0003`; its DDL must not be replayed.
+This local transition completed under explicit owner authorization after an exact
+schema comparison and protected backup; all rows in 27 application tables were
+preserved and normal `upgrade head` passed afterward.
+The final single migration also includes the former
+`20261028_0004_financial_recovery_window`: nullable
+`billing_work_items.active_recovery_deadline_at`, without rewriting existing rows.
+NULL retains the original immutable financial deadline. Only a new fenced send
+permitted by `proven_not_sent` establishes a fresh two-hour recovery window.
+Upgrade operations are the exact concatenation of the former `0003` and `0004`;
+downgrade executes `0004`'s inverse before `0003`'s inverse.
+
+Both old `20261027_0003` and `20261028_0004` are retired revision IDs; normal
+`upgrade head` rejects them without replaying DDL or silently skipping changes.
+The former `0003` may lack the active-window column. Such databases must first
+finish the old chain at `20261028_0004` using checkout `afb46c5`, then verify the
+complete schema, retain a protected backup and change only the revision label
+to the new `20261029_0003`. An old `0004` database needs the same verified label
+transition, with no DDL replay or row rewrite. Retired earlier revisions must
+follow their original upgrade path first; see the
+[migration runbook](../engineering/ANY-709-billing-runbook.md#consolidated-any-709-migration).
+No automatic compatibility stamp is performed. The chain has one current head.
+This document is authoritative for the implemented SQLAlchemy
 table inventory and physical persistence rules; the generated column-level
 artifact remains `docs/generated/db-schema.md`.
 
@@ -30,14 +71,17 @@ narrowly supersedes source-catalog mirroring/new-sale TTL; it requires no schema
 change. Subscription trust, reconciliation and AccessSnapshot are unchanged.
 
 The schema is a provider-independent storage baseline. Its presence does not
-mean provider integration, purchase orchestration, reconciliation workers,
-paid-access derivation, or Kernel invalidation delivery is implemented.
+itself establish runtime acceptance. ANY-709 Step 3 implements purchase preparation
+with focused synthetic tests passing and real purchase/payment QA pending; workers, paid-access derivation and Kernel
+invalidation delivery remain future work.
 
 ## Physical baseline
 
-A fresh database has exactly 25 application tables: ten retained
-identity/session/legal tables and fifteen target external-billing persistence
-tables. Alembic has two revisions in one linear chain and one current head.
+A fresh database has exactly 27 application tables: ten retained
+identity/session/legal tables, fifteen original external-billing persistence
+tables, one current product-link pointer and one purchase mutex. Alembic has
+three revisions in one linear chain and one current head; only the last revision
+belongs to ANY-709.
 
 There is no Portal-owned product, plan, order, payment, refund, subscription,
 entitlement, trial, provider-account, or direct-payment webhook table. There is
@@ -60,8 +104,10 @@ to a Portal-managed routing catalog.
 | `capability_manifest_projections` | Inert schema slot | Former complete Kernel manifest projection; no runtime reader/writer under live-source admission. |
 | `external_billing_catalog_projections` | Inert schema slot | Former External Billing catalog projection; no runtime reader/writer under live-source admission. |
 | `commercial_mapping_revisions` | Mapping | Immutable published mapping revisions that pin manifest and catalog evidence. |
+| `commercial_product_heads` | Mapping | One current immutable revision per connection/product; product CAS sequence across offer retargets, no price catalog. |
 | `external_billing_customers` | Purchase | Portal-owned binding from a user to an opaque External Billing customer identity. |
 | `purchase_intents` | Purchase | Durable purchase orchestration state with immutable accepted commercial/legal evidence. |
+| `billing_purchase_scope_holds` | Purchase | Unique user/product hold pointing to the accepted intent, independent of paid-access primary selection. |
 | `external_create_operations` | Recovery | Durable external-create attempt and unknown-outcome recovery state. |
 | `billing_product_access_scopes` | Reconciliation | One user/product access scope and its selected primary external subscription. |
 | `external_subscriptions` | Reconciliation | Normalized external-subscription projection with lifecycle and access statuses. |
@@ -131,7 +177,8 @@ document-version material.
 account. Their schema/version/timestamp/JSON columns remain physical storage
 only. Both tables are inert: no startup/periodic synchronization or admission
 reader is planned under the accepted amendment. Publication/new purchase read
-sources live. Catalog browsing uses immutable approved mappings in PostgreSQL.
+sources live. ANY-709 discovery reads enabled Kernel products and selected
+current LBX values; PostgreSQL retains immutable links/history.
 
 `commercial_mapping_revisions` is append-only publication evidence. A revision
 is unique within `(external_billing_account_id, billing_offer_id)`, has a
@@ -139,18 +186,43 @@ positive `revision_number`, and pins manifest/catalog versions and digest plus
 the typed mapping document and publishing principal. PostgreSQL triggers
 prevent updates and deletes.
 
-ANY-664 uses `catalog_version=NULL` and `catalog_digest` as the explicitly
+Historical v1 ANY-664 uses `catalog_version=NULL` and `catalog_digest` as the explicitly
 scoped `selected_offer` evidence digest in `mapping_document`, not an account
 catalog snapshot. That evidence includes the complete default-assigned service
 composition and source provenance. Technical/commercial/legal approval versions
 are pinned; changed commercial terms require new legal approval, while a purely
 technical change does not. No existing revisions are rewritten.
 
+ANY-709 v2 uses `mapping_schema_version=product-link-v2`; its `catalog_digest`
+is explicitly the **link identity digest**, not a price or whole-catalog digest.
+The versioned document pins connection scope, selected Kernel product and LBX
+service/tariff/period/quantity, independent source provenance, manifest evidence
+and operator audit. It contains no price, approval certificates or invented
+technical allowance. `commercial_product_heads` has primary key
+`(external_billing_account_id, product_id)`, a restrictive composite FK to the
+immutable revision in the same account, and a positive product revision counter.
+Nullable `provider_origin` records only a proven canonical origin. Its unique
+pair with product ID prevents two current heads for the same provider/product
+under different historical storage scopes. It is not an account registry.
+New scope IDs depend on origin and deployment, not credentials. A recognized
+old credential-derived scope is retained, with its origin recorded only by an
+authorized publish; immutable documents/FKs are untouched. Rotation after this
+one-time binding preserves query/publication. Unknown or ambiguous old real
+scopes fail explicitly rather than adopting external IDs for another provider.
+Offer history numbering remains independent. Product lock/CAS protects first
+publication and cross-offer retargeting; v1 rows are not auto-selected. Equal
+link identity does not append on ordinary price changes. Accepted historical
+rows and dependent purchase/legal keys remain unchanged.
+
 ## Purchase and external-create tables
 
 `external_billing_customers` permits exactly one binding per billing account
 and Portal user and a globally unique non-empty `billing_customer_key`. Its
-closed binding states are `unbound`, `bound`, and `identity_conflict`.
+closed binding states are `unbound`, `bound`, and `identity_conflict`. ANY-709
+Step 2 adds nullable proven `provider_origin` and a unique account/provider ID
+pair (NULL remains allowed). No legacy origin is guessed. `users.first_name`,
+`surname` and `patronymic` are independent nullable strings bounded to 100
+characters; existing users receive no fabricated names.
 
 `purchase_intents` ties one user/customer/account/product/offer to a published
 mapping revision, exact legal acceptance event, accepted commercial
@@ -164,9 +236,36 @@ fields immutable.
 create work. Customer creation has no purchase intent; agreement and
 subscription creation require one. Unknown timestamps are paired, the
 PostgreSQL deadline is exactly two hours after `unknown_since`, and recovery
-hint schema/document values are paired. One unresolved customer-create
-operation is allowed per customer. Operation-state vocabulary and recovery
-behavior remain owned by later runtime steps.
+hint schema/document values are paired. ANY-709 Step 2 permanently limits
+customer create to one operation per customer, including after resolution.
+Nullable `send_fence` records the current owner; `pending`, `possible_send`,
+`unknown`, `proven_not_sent`, `bound` and `manual_review` use the canonical Python
+vocabulary over TEXT storage. The customer send claim atomically records its fence, per-attempt
+two-hour deadline and one coalesced `external_create_recovery` work item. Its
+existing paired lease fields protect active account-customer sends, and
+`attempt_count` counts claimed attempts. Under the owner's 2026-10-28 amendment,
+bounded same-opening recovery or a later explicit open can claim a retry after
+fresh successful empty discovery and completion/expiry of the active lease,
+retaining the same operation/key. A saved
+receipt or identity conflict prevents another POST; point proof binds only against
+the current fence. Financial operations have a unique intent/kind identity and a unique permanent
+account/kind/provider-object binding. Their account/customer composite FK prevents
+cross-connection ownership. Financial evidence guards prevent deletion, identity
+changes, deadline/request replacement and resetting a possibly sent operation to
+pending. A completed typed no-send result may persist `proven_not_sent`; a later
+explicit advance claims the same immutable request/key/history with a fresh fence
+and reused work item. Its new send has an independent two-hour active recovery
+deadline on that work item; the original operation deadline stays immutable.
+UNKNOWN, empty GET and deadline expiry never authorize this
+transition or a replay. Customer retry semantics remain separate. No background
+worker is enabled.
+
+`billing_purchase_scope_holds` has `(user_id, product_id)` as its primary key,
+a unique intent and a composite FK to its exact purchase scope. A linked unpaid
+subscription keeps this hold without TTL. Step 3 releases only a purchase whose
+accepted terms changed before any financial operation could have been sent, under
+the same locks as send claims. Other release needs trustworthy audited proof; no
+operator force-release command exists.
 
 ## Reconciliation and access tables
 
@@ -181,8 +280,14 @@ authoritative-read freshness, reconciliation lease/fencing state, and the
 latest observation. Closed provider-neutral status vocabularies are:
 
 - lifecycle: `active`, `inactive`, `ended`;
-- financial access: `allowed`, `blocked`;
+- financial access: `allowed`, `blocked`, `unverified`;
 - commercial access: `eligible`, `ineligible`.
+
+Account/provider subscription and agreement IDs are each unique, preserving the
+dedicated agreement binding. Initial Step 3 preparation records `unverified`
+financial status and an immediately expired projection, plus normalized effective
+terms and nullable/sentinel calendar observations. It creates no access-primary,
+paid state, grant or allowance, and never extends paid trust on Manage.
 
 `billing_state_observations` stores evidence whose core fields are immutable.
 Its closed kinds are
@@ -217,7 +322,10 @@ It never stores authorization material, card/payment fields, or a raw provider
 payload, and receipt alone never grants access.
 
 `billing_work_items` stores open work/scope/state vocabularies, bounded typed
-payloads, priority, due time, attempt count, and paired lease owner/expiry. It
+payloads, priority, due time, attempt count, paired lease owner/expiry and nullable
+`active_recovery_deadline_at` for the current financial send. The active deadline
+is independent of mutable retry scheduling and changes only in the locked,
+fenced financial send claim; GET recovery does not renew it. It
 is scheduling state, not commercial or access authority. Exact work kinds,
 state transitions and coalescing rules are intentionally deferred.
 
@@ -232,7 +340,7 @@ Closed text-backed enums are defined only in `app.models.enums`:
 - identity/legal: `RegionStatus`, `UserStatus`, `MagicLinkPurpose`,
   `LegalEntityStatus`, `LegalEntityType`, `AcceptanceKind`;
 - purchase: `ExternalBillingCustomerBindingState`, `PurchaseIntentState`,
-  `ExternalCreateOperationKind`;
+  `ExternalCreateOperationKind`, `ExternalCreateOperationState`;
 - reconciliation: `ExternalSubscriptionLifecycleStatus`,
   `ExternalSubscriptionFinancialAccessStatus`,
   `ExternalSubscriptionCommercialAccessStatus`,

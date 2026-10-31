@@ -11,10 +11,11 @@ export async function generateMetadata(): Promise<Metadata> {
   return createLocalizedMetadata(await getCurrentRouteLocale(), "/account");
 }
 
-export default async function AccountPage() {
-  const [messages, locale] = await Promise.all([
+export default async function AccountPage({ searchParams }: { searchParams: Promise<{ purchase?: string | string[] }> }) {
+  const [messages, locale, query] = await Promise.all([
     getMessages(),
-    getCurrentRouteLocale()
+    getCurrentRouteLocale(),
+    searchParams
   ]);
 
   return (
@@ -22,11 +23,12 @@ export default async function AccountPage() {
       messages={{
         Auth: messages.Auth,
         Account: messages.Account,
-        CatalogPreview: messages.CatalogPreview,
+        Billing: messages.Billing,
+        Purchase: messages.Purchase,
         EmailVerification: messages.EmailVerification
       }}
     >
-      <AccountClient languageTag={LANGUAGE_TAG_BY_ROUTE_LOCALE[locale]} />
+      <AccountClient languageTag={LANGUAGE_TAG_BY_ROUTE_LOCALE[locale]} initialPurchaseId={typeof query.purchase === "string" ? query.purchase : undefined} />
     </NextIntlClientProvider>
   );
 }

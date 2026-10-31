@@ -19,6 +19,7 @@ import tempfile
 import tomllib
 import urllib.parse
 import urllib.request
+import uuid
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Callable, Iterable
@@ -253,17 +254,48 @@ def runtime_caddy_port(config: RuntimeConfig) -> int:
     return config.otlp_http_port + 1000
 
 
+def dotenv_value(value: str, line_number: int) -> str:
+    """Decode one line without expansion or an API-environment dependency."""
+    if not value.startswith(("'", '"')):
+        return re.split(r"\s+#", value, maxsplit=1)[0].rstrip()
+    quote = value[0]
+    pattern = (
+        r"'((?:\\'|[^'])*)'\s*(?:#.*)?"
+        if quote == "'"
+        else r'"((?:\\"|[^"])*)"\s*(?:#.*)?'
+    )
+    match = re.fullmatch(pattern, value)
+    if match is None:
+        raise HarnessError(f"Invalid dotenv quoting at line {line_number}")
+    escapes = {
+        "\\": "\\",
+        "'": "'",
+        '"': '"',
+        "a": "\a",
+        "b": "\b",
+        "f": "\f",
+        "n": "\n",
+        "r": "\r",
+        "t": "\t",
+        "v": "\v",
+    }
+    escape_pattern = r"\\([\\'])" if quote == "'" else r"""\\([\\'"abfnrtv])"""
+    return re.sub(escape_pattern, lambda item: escapes[item[1]], match[1])
+
+
 def read_dotenv(path: Path = ROOT / ".env") -> dict[str, str]:
     if not path.exists():
         return {}
 
     values: dict[str, str] = {}
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
+    for line_number, raw_line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        values[key.strip()] = value.strip().strip("'\"")
+        values[key.strip()] = dotenv_value(value.strip(), line_number)
     return values
 
 
@@ -423,7 +455,6 @@ def write_runtime(config: RuntimeConfig) -> None:
         "APP_ENV": "development",
         "INSTANCE_TENANT_ID": LOCAL_INSTANCE_TENANT_ID,
         "INSTANCE_REGION": LOCAL_INSTANCE_REGION,
-        "MAPPING_ACCOUNT_ID": os.environ.get("MAPPING_ACCOUNT_ID", local_env.get("MAPPING_ACCOUNT_ID", "")),
         "POSTGRES_DB": config.database_name,
         "POSTGRES_USER": "anytoolai",
         "POSTGRES_PASSWORD": "anytoolai-local-only",
@@ -455,16 +486,33 @@ def write_runtime(config: RuntimeConfig) -> None:
         "OTEL_EXPORTER_OTLP_ENDPOINT": "http://observability:4318",
         "OTEL_SERVICE_NAME": "payment-portal-api",
     }
+    # Normal private connection values pass through independently of the mock.
+    # Keep them out of runtime.json/doctor/stdout and the public web environment.
+    for name in (
+        "KERNEL_BASE_URL", "KERNEL_SERVICE_TOKEN",
+        "LBX_BASE_URL", "LBX_SERVER_USERNAME", "LBX_SERVER_PASSWORD",
+        "LBX_WIDGET_SIGNING_SECRET", "LBX_SELLER_ORGANIZATION_ID",
+        "LBX_CURRENCY_ID", "LBX_CURRENCY",
+        "LBX_CONNECT_TIMEOUT_SECONDS", "LBX_READ_TIMEOUT_SECONDS",
+        "LBX_MAX_RESPONSE_BYTES", "LBX_MAX_GET_ATTEMPTS",
+        "LBX_RETRY_DELAY_SECONDS", "LBX_MAX_RETRY_DELAY_SECONDS",
+        "MAPPING_OPERATOR_LOCK_FILE",
+    ):
+        value = os.environ.get(name, local_env.get(name, ""))
+        if "\n" in value or "\r" in value:
+            raise HarnessError(f"{name} must be a single-line value")
+        if value:
+            values[name] = value
+    lock_directory = HARNESS_DIR / "operator"
+    lock_directory.mkdir(exist_ok=True, mode=0o700)
+    protect_private_directory(lock_directory)
+    values.setdefault("MAPPING_OPERATOR_LOCK_FILE", "/run/payments-portal/operator.lock")
     if kernel_mock_enabled():
-        # Only the explicitly selected development override consumes these.
-        # Preserve the protected runtime.env writer; never print credentials.
+        values["KERNEL_MOCK_ENABLED"] = "1"
         for name in (
             "KERNEL_MOCK_TOKEN",
-            "KERNEL_SERVICE_TOKEN",
-            "KERNEL_BASE_URL",
             "KERNEL_MOCK_SCENARIO",
             "KERNEL_MOCK_DELAY_SECONDS",
-            "MAPPING_OPERATOR_UIDS",
         ):
             value = os.environ.get(name, local_env.get(name, ""))
             if "\n" in value or "\r" in value:
@@ -473,8 +521,33 @@ def write_runtime(config: RuntimeConfig) -> None:
                 values[name] = value
     write_protected_runtime_env_file(
         RUNTIME_ENV,
-        "".join(f"{key}={value}\n" for key, value in values.items()),
+        "".join(f"{key}={quote_runtime_value(value)}\n" for key, value in values.items()),
     )
+
+
+def quote_runtime_value(value: str) -> str:
+    # Compose dotenv has its own escape grammar: JSON emits unsupported \u
+    # escapes for controls such as vertical tab, silently changing signing keys.
+    escapes = {
+        "\\": r"\\",
+        '"': r"\"",
+        "$": "$$",
+        "\a": r"\a",
+        "\b": r"\b",
+        "\t": r"\t",
+        "\v": r"\v",
+        "\f": r"\f",
+    }
+    if any(ord(char) < 32 and char not in escapes for char in value):
+        raise HarnessError("Unsupported control character in runtime configuration")
+    if any(char in "$#'\\\"" or char.isspace() or ord(char) < 32 for char in value):
+        return '"' + "".join(escapes.get(char, char) for char in value) + '"'
+    return value
+
+
+def unquote_runtime_value(value: str) -> str:
+    # Read the same Compose-compatible syntax that the writer produces.
+    return dotenv_value(value, 0).replace("$$", "$")
 
 
 def kernel_mock_enabled() -> bool:
@@ -3161,6 +3234,8 @@ def direct_api_environment(*, environ: dict[str, str] | None = None) -> dict[str
     defaults.setdefault("APP_PUBLIC_BASE_URL", "http://localhost:3000")
     defaults.setdefault("CORS_ALLOW_ORIGINS", defaults.get("APP_PUBLIC_BASE_URL", "http://localhost:3000"))
     defaults.setdefault("SKIP_LEGAL_SEED", "true")
+    if defaults.get("MAPPING_OPERATOR_LOCK_FILE") == "/run/payments-portal/operator.lock":
+        defaults["MAPPING_OPERATOR_LOCK_FILE"] = str(HARNESS_DIR / "operator" / "operator.lock")
     return defaults
 
 
@@ -3178,6 +3253,48 @@ def cmd_dev_api(_: argparse.Namespace) -> None:
         ],
         env=direct_api_environment(),
     )
+
+
+def cmd_billing_customer(args: argparse.Namespace) -> None:
+    environment = direct_api_environment()
+    environment["PYTHONPATH"] = os.pathsep.join(
+        value
+        for value in (str(ROOT / "apps/api"), environment.get("PYTHONPATH", ""))
+        if value
+    )
+    command = [
+        sys.executable,
+        "-m",
+        "app.cli.billing_customers",
+        args.action,
+        "--user-id",
+        str(args.user_id),
+    ]
+    result = subprocess.run(command, cwd=ROOT, env=environment, check=False)
+    raise SystemExit(result.returncode)
+
+
+def cmd_billing_purchase(args: argparse.Namespace) -> None:
+    environment = direct_api_environment()
+    environment["PYTHONPATH"] = os.pathsep.join(
+        value for value in (str(ROOT / "apps/api"), environment.get("PYTHONPATH", "")) if value
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "app.cli.billing_purchases",
+            args.action,
+            "--user-id",
+            str(args.user_id),
+            "--purchase-id",
+            str(args.purchase_id),
+        ],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+    )
+    raise SystemExit(result.returncode)
 
 
 def cmd_migrate_api(_: argparse.Namespace) -> None:
@@ -3322,7 +3439,7 @@ def read_runtime_env() -> dict[str, str]:
     for line in RUNTIME_ENV.read_text(encoding="utf-8").splitlines():
         if line and not line.startswith("#") and "=" in line:
             key, value = line.split("=", 1)
-            values[key] = value
+            values[key] = unquote_runtime_value(value)
     return values
 
 
@@ -3392,6 +3509,19 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--fast", action="store_true")
     check.set_defaults(func=cmd_check)
     sub.add_parser("dev-api").set_defaults(func=cmd_dev_api)
+    customer = sub.add_parser(
+        "billing-customer", help="Read-only billing customer diagnosis"
+    )
+    customer.add_argument("action", choices=("diagnose",))
+    customer.add_argument("--user-id", type=uuid.UUID, required=True)
+    customer.set_defaults(func=cmd_billing_customer)
+    purchase = sub.add_parser(
+        "billing-purchase", help="Financial inspect and GET-only recovery"
+    )
+    purchase.add_argument("action", choices=("inspect", "recover"))
+    purchase.add_argument("--user-id", type=uuid.UUID, required=True)
+    purchase.add_argument("--purchase-id", type=uuid.UUID, required=True)
+    purchase.set_defaults(func=cmd_billing_purchase)
     sub.add_parser("sync-api").set_defaults(func=cmd_sync_api)
     sub.add_parser("lock-api").set_defaults(func=cmd_lock_api)
     sub.add_parser("check-api-lock").set_defaults(func=cmd_check_api_lock)
@@ -3424,6 +3554,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def reexec_in_repository_venv_if_required() -> None:
     if len(sys.argv) < 2 or sys.argv[1] not in {
+        "billing-customer",
+        "billing-purchase",
         "check",
         "check-api-lock",
         "coverage",

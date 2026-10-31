@@ -5,11 +5,17 @@ from typing import Annotated
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.core.settings import settings
+from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.errors import InvalidAuthSessionError
 from app.domains.identity.services.auth import authenticate_session
 from app.models import AuthSession, User
+
+
+def get_session_factory() -> SessionFactory:
+    """Pass a factory, never a request Session, to resource-owning worker units."""
+    return SessionLocal
 
 
 def get_current_session(

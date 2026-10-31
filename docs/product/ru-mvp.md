@@ -1,22 +1,33 @@
 # RU AnyToolAI Portal — As-Built 4F Handoff
 
 Status: authoritative implemented-product specification and deferred-step handoff
-Last updated: 2026-10-22
+Last updated: 2026-10-27
 
 The surface established by ANY-636 4F is a product-centric AnyToolAI Portal:
 public product-first home, catalog/discovery, per-product pages,
 presentation-only pricing navigation, direct account/auth entry, and an
-authenticated cabinet whose primary content is one card per current product.
+authenticated cabinet whose primary content is brief cards for the user’s held
+accepted purchases, plus one shared billing Widget and a full-catalog link.
 Identity facts are compact supporting content. The repository remains
-pre-production and provider-independent. Purchase/Widget, billing lifecycle,
-confirmed paid-access projection and actual usage/quota are not implemented.
+pre-production. ANY-709 Step 2 adds optional FIO and explicit verified-email
+account-only Widget viewing with one durable customer, verified on the test stand.
+No offer/subscription is needed to view that account. ANY-709 Steps 3–4 implement
+accepted purchases, request-driven preparation/recovery and localized
+Buy/Continue/Manage/payment Widget in the existing detail/cabinet slots. Step 4
+targeted component/boundary/desktop/mobile synthetic tests PASS. The owner completed
+the real intended-agreement Widget/YooKassa test payment, corroborated by source
+and history evidence. Independent final review remains pending; billing workers,
+paid access and usage/quota are deferred. See the
+[current ANY-709 acceptance ledger](../exec-plans/completed/ANY-709-implementation-plan.md#current-acceptance-and-final-review).
 ANY-664 Step 6 now supplies published products and approved immutable commercial
 terms through the Portal catalog API. Home, catalog, product detail and the
-cabinet use Kernel `product_id` from the immutable mapping; browsing reads
-PostgreSQL without live Kernel/LBX calls. Genuine conformance and production
-enablement remain gated. Each published account product retains independent
-unknown-access and unavailable-usage states for Steps 9–10; public pages omit
-these account-only statuses. Published terms do not grant access or promise
+cabinet use Kernel `product_id`. ANY-709 listing discovers enabled Kernel products;
+selected details/review read current LBX offers. PostgreSQL retains immutable
+links and accepted history. Genuine conformance and production
+enablement remain gated. The cabinet reads owned accepted purchase history from
+PostgreSQL independently of catalog availability; unfinished purchases remain
+visible for continuation. Access and usage remain deferred to Steps 9–10.
+Published terms do not grant access or promise
 current sellability.
 
 This handoff preserves the completed ANY-636 implementation through Step 13,
@@ -42,8 +53,8 @@ confirmation through the separate Region Resolver remains planned.
 | Route | Implemented purpose |
 | --- | --- |
 | `/[locale]` | Product-first home with account entry, collection and current-product discovery |
-| `/[locale]/products` | Published products and stored approved terms from the Portal catalog API |
-| `/[locale]/products/[product_id]` | Kernel product identity and immutable approved offer terms through the Portal API |
+| `/[locale]/products` | Enabled Kernel products through the Portal catalog API |
+| `/[locale]/products/[product_id]` | Current LBX offer plus independent authenticated review/Buy/Continue/Manage |
 | `/[locale]/pricing` | Localized presentation-only not-ready state and home/products navigation |
 | `/[locale]/account` | Direct sign-in/registration entry and product-centric authenticated cabinet |
 | `/[locale]/forgot-password` | Password-reset email request |
@@ -107,10 +118,13 @@ the mockup's remote CSS import.
   calls and displays no offers, prices, tariff names, billing periods,
   sellability, subscription/provider state or purchase controls.
 - The authenticated cabinet places compact email/verification/logout context
-  in a supporting rail and both product cards in the primary workspace. Each
-  card has commercial, access and usage/quota slots plus an action area whose
-  current action opens the local product detail page. Responsive layouts stack
-  the supporting context, cards and product-detail content on narrow screens.
+  in a supporting rail. The primary workspace has one wide Widget, explicit
+  purchase selection, and brief owned-purchase cards linking to product details.
+  Product pages retain offer/review/consent/preparation; a prepared purchase shows
+  “Subscription prepared” and links to `/account?purchase=<id>#billing`. The cabinet
+  verifies the selected purchase before payment and displays its product plus
+  proven agreement/seller. No catalog product is shown as owned without a held
+  accepted purchase. Responsive layouts stack the rail and workspace.
 
 Mockup demo prices (`0/490/990 ₽`), providers such as CloudPayments, plan and
 subscription values, renewal/payment controls, usage (`320/500`, `3/10`),
@@ -125,22 +139,26 @@ documents remain drafts.
 ## Primary journey and account states
 
 1. The user opens the product-first home or catalog. Product cards open a local
-   product detail page; home and product account CTAs open `/[locale]/account`.
+   product detail page. The home account CTA and signed-out product purchase
+   entry open `/[locale]/account`; authenticated product pages show purchase and
+   preparation controls, with account navigation retained in the header.
    Public Pricing navigation opens only the presentation placeholder.
 2. A signed-out user signs in or registers directly on `/[locale]/account`
    through the existing `AuthForm`. The header sign-in modal remains available.
 3. Registration requires explicit, initially unchecked personal-data and offer
    confirmations using generated canonical RU acceptance text and legal links.
-4. The authenticated cabinet leads with published product cards and their
-   per-product state/action slots. Supporting account context renders the
+4. The authenticated cabinet shows one billing workspace and brief cards for
+   the user's held accepted purchases, including resumable unfinished purchases,
+   with detail and full-catalog links. Supporting account context renders the
    returned email and `email_verified` fact, offers verification/resend when
    needed, and provides logout.
 5. A user can request a password-reset email, replace the password through the
    existing reset flow, and complete authenticated email verification.
-6. Each published product shows its stored approved commercial terms, including
-   duration and period anchor. Account access is unknown and usage/quota data
-   is unavailable. No purchase/checkout CTA,
-   product-execution URL, plan badge or usage progress is invented.
+6. Each enabled, linked product shows current source-backed commercial terms.
+   ANY-709 adds explicit review/consent, Buy/Continue/Manage and verified payment
+   Widget opening; accepted terms and purchase history remain immutable in
+   PostgreSQL. Account access is unverified and usage/quota data is unavailable.
+   No product-execution URL, plan badge or usage progress is invented.
 
 Account state is frontend component state: loading, signed out, session error
 with retry, or authenticated. Missing or expired sessions lead to the direct
@@ -169,9 +187,9 @@ names and ownership decisions.
 | Registration, sign-in, logout, verification, recovery | Portal; existing generated auth contracts and shared auth transport/forms | Reuse now; no billing/access inference |
 | Legal pages, links, registration acceptance | Portal identity/legal boundary and canonical RU legal source; existing legal runtime and generated legal assets | Preserve now; legal documents remain drafts |
 | Product discovery and detail content | Portal catalog API and generated contracts over approved immutable mappings; Kernel owns `product_id` | ANY-664 replaces historical static 4F discovery; locale catalogs own surrounding UI copy |
-| Technical capability manifest and commercial catalog, tariffs, prices, periods, sellability | Kernel owns technical identity/capabilities; External Billing owns commercial truth; Portal stores immutable approved bindings/terms | ANY-664 implements Step 6 source reads, restricted mapping publication and DB-only browsing; genuine enablement remains gated and current sellability is not promised |
-| Purchase/checkout/Widget entry | External Billing with Portal orchestration; no current runtime source | No purchase CTA or runtime; deferred to ANY-504 Step 7 |
-| Subscription/billing state | External Billing; no current authoritative source | Unknown/unavailable; deferred to ANY-504 Steps 6–8 |
+| Technical capability manifest and commercial catalog, tariffs, prices, periods, sellability | Kernel owns technical identity/capabilities; External Billing owns commercial truth; Portal stores immutable approved bindings/terms | ANY-664 delivered historical v1 source reads/publication. ANY-709 Step 1 adds direct links, enabled-product discovery and live selected offers; genuine Kernel enablement remains gated; ANY-709 now supplies purchase admission |
+| Purchase/payment Widget entry | External Billing with Portal orchestration and generated Step 3 contracts | ANY-709 implements Buy/Continue/Manage, review/consent and verified payment presentation; automated checks and recorded owner test-payment QA passed; independent final review pending |
+| Subscription/billing state | Step 3 prepared-subscription proof, held intent and original accepted history | Preparation is not payment verification; local GETs show saved state only; operating observations remain Step 8 |
 | Provider reconciliation/recovery | Portal boundary over authoritative External Billing facts; no current runtime source | Deferred to ANY-504 Step 8 |
 | Confirmed paid-access state and delivery | Portal provider-neutral projection from authoritative facts; no current runtime source | Unknown/not ready; deferred to ANY-504 Step 9 |
 | Actual usage and remaining quota | Platform Kernel; no current runtime source | Unavailable; integration deferred to ANY-504 Step 10 |
@@ -187,7 +205,8 @@ launch remain gated on Phase 0 PASS under ANY-504, with evidence owned by
 ANY-634. This handoff adds no provider semantics or later-step implementation.
 Historical 4F changed no backend behavior, persistence, migrations, or
 contracts. ANY-664 adds the Step 6 producer for immutable mapping revisions;
-purchase, reconciliation, access and usage remain later-step work.
+ANY-709 adds purchase UI/preparation. Operating reconciliation, access and usage
+remain later-step work. See the [single billing runbook](../engineering/ANY-709-billing-runbook.md).
 
 ### Stable integration surfaces for parent ANY-504 Steps 6–10
 
@@ -203,8 +222,10 @@ business facts. Their owning steps must supply authoritative data/actions:
    remains a placeholder; commercial truth stays with External Billing.
 2. **Step 7 — purchase/Widget:** populate the existing per-product action areas
    and relevant offer presentation with approved purchase entry and Widget
-   orchestration. Account/detail navigation currently remains the safe action;
-   Step 6 facts alone do not implement purchase or confer paid access.
+   orchestration. ANY-709 implements these controls with original-intent
+   recovery and customer-wide payment presentation. Step 6 facts alone do not
+   implement purchase or confer paid access. Owner test-payment acceptance is
+   recorded for the intended agreement; independent final review remains pending.
 3. **Step 8 — reconciliation/recovery:** populate relevant commercial/status
    slots and action feedback with authoritative reconciled state and recovery
    behavior. UI returns, callbacks, webhooks and outbound success are signals,
@@ -218,7 +239,8 @@ business facts. Their owning steps must supply authoritative data/actions:
    durable usage and quota enforcement; no guessed zero, allowance or progress
    value may fill a missing source.
 
-Steps 7–10 and genuine Step 6 enablement remain deferred parent-program work.
+Steps 8–10 and genuine Kernel producer enablement remain deferred parent-program work;
+Step 7 implementation/payment QA awaits independent review and merge approval.
 Provider-dependent semantics and launch retain the Phase 0 gates. No step may
 treat an unavailable source as “no subscription”, “no access”, a default/free
 plan or `0/N` usage.

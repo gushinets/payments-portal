@@ -22,16 +22,18 @@ from fastapi.testclient import TestClient
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.cli import commercial_mappings as cli
+from apps.api.tests.support import v1_cli as cli
 from app.composition.sources import source_resources
 from app.core import database
 from app.core.database import get_db
 from app.core.errors import AppError
-from app.core.settings import AppEnv, Settings
+from app.core.settings import AppEnv
+from apps.api.tests.support.commercial_mappings import HistoricalOperatorSettings as Settings
 from app.domains.catalog import router as catalog_http
 from app.domains.catalog.mapping_evidence import MappingDocument, MappingRefused
 from app.domains.catalog.publication import publish_mapping
 from app.infrastructure.preflight import PreflightSaturated
+from app.http.dependencies import get_session_factory
 from app.main import create_app
 from apps.api.tests.support import kernel_walkthrough as walkthrough
 from apps.api.tests.support.commercial_mappings import SIMULATED_OFFER_ID, SIMULATED_UID, operator_settings
@@ -97,7 +99,8 @@ def test_fresh_http_publication_faults_outage_restart_and_recovery(
         with postgres_session_factory() as session:
             yield session
 
-    app.dependency_overrides[get_db] = db
+    monkeypatch.setitem(app.dependency_overrides, get_db, db)
+    monkeypatch.setitem(app.dependency_overrides, get_session_factory, lambda: postgres_session_factory)
     proposal = tmp_path / "proposal.json"
     publish = cli.parser().parse_args(["publish", "--proposal", str(proposal), "--expected-previous-revision", "0"])
     query = cli.parser().parse_args(["query", "--offer-id", SIMULATED_OFFER_ID])
@@ -148,6 +151,7 @@ def test_fresh_http_publication_faults_outage_restart_and_recovery(
             return json.loads(captured.out)
 
         monkeypatch.setattr(catalog_http, "settings", configuration)
+        monkeypatch.setattr("app.main.settings", configuration)
         preview = run_operator(["dry-run", "--proposal", str(proposal)])
         first = run_operator(["publish", "--proposal", str(proposal), "--expected-previous-revision", "0"])
         assert not preview["persisted"] and first["persisted"] and first["inserted"]
@@ -160,8 +164,8 @@ def test_fresh_http_publication_faults_outage_restart_and_recovery(
         assert saved["billing_offer_id"] == first["billing_offer_id"] == SIMULATED_OFFER_ID
         assert saved["operator_audit"]["execution_principal"] == f"os-euid:{SIMULATED_UID}"
         with TestClient(app, raise_server_exceptions=False) as client:
-            # Lifespan's source owner uses no startup HTTP; catalog uses DB only.
-            assert client.get("/api/catalog/products/proposal_ai").json()["availability"] == "SIMULATED_PREVIEW"
+            # Legacy history is not promoted to a current product head.
+            assert client.get("/api/catalog/products/proposal_ai").json()["availability"] == "UNMAPPED"
             for scenario, code in (
                 (Scenario.DISABLED_PRODUCT, "selected_product_disabled"),
                 (Scenario.MISSING_PRODUCT, "selected_product_missing"),
@@ -177,7 +181,13 @@ def test_fresh_http_publication_faults_outage_restart_and_recovery(
                 with pytest.raises(AppError, match=code):
                     walkthrough.execute(publish, configuration)
                 assert json.loads(walkthrough.execute(query, configuration))["document"] == saved["document"]
-                assert client.get("/api/catalog/products/proposal_ai").status_code == 200
+                assert client.get("/api/catalog/products/proposal_ai").status_code == (
+                    404
+                    if scenario in {Scenario.DISABLED_PRODUCT, Scenario.MISSING_PRODUCT}
+                    else 200
+                    if scenario in {Scenario.DISABLED_METRIC, Scenario.MISSING_METRIC}
+                    else 503
+                )
             server.config = MockConfig(app_env="test", token=TOKEN, scenario=Scenario.TIMEOUT, delay_seconds=0.2)
 
             async def slow_saturation() -> None:
@@ -195,7 +205,7 @@ def test_fresh_http_publication_faults_outage_restart_and_recovery(
                                     raise AssertionError("full source owner admitted more work")
                             queried = json.loads(walkthrough.execute(query, configuration))
                             assert queried["document"] == saved["document"]
-                            assert client.get("/api/catalog/products/proposal_ai").status_code == 200
+                            assert client.get("/api/catalog/products/proposal_ai").status_code == 503
                         finally:
                             with pytest.raises(AppError):
                                 await pending
@@ -216,7 +226,7 @@ def test_fresh_http_publication_faults_outage_restart_and_recovery(
     with TestClient(app) as restarted:
         assert restarted.get("/api/health/live").status_code == 200
         assert restarted.get("/api/health/ready").status_code == 200
-        assert restarted.get("/api/catalog/products/proposal_ai").status_code == 200
+        assert restarted.get("/api/catalog/products/proposal_ai").status_code == 503
 
 
 def test_independent_http_target_switch_changes_only_url_and_credentials(
@@ -273,7 +283,8 @@ def test_independent_http_target_switch_changes_only_url_and_credentials(
         with postgres_session_factory() as session:
             yield session
 
-    app.dependency_overrides[get_db] = db
+    monkeypatch.setitem(app.dependency_overrides, get_db, db)
+    monkeypatch.setitem(app.dependency_overrides, get_session_factory, lambda: postgres_session_factory)
     production = operator_settings(
         app_env=AppEnv.PRODUCTION,
         app_public_base_url="https://portal.example.com",
@@ -287,5 +298,5 @@ def test_independent_http_target_switch_changes_only_url_and_credentials(
     )
     monkeypatch.setattr(catalog_http, "settings", production)
     with TestClient(app) as client:
-        assert client.get("/api/catalog/products").json() == {"products": []}
-        assert client.get("/api/catalog/products/proposal_ai").status_code == 404
+        assert client.get("/api/catalog/products").status_code == 503
+        assert client.get("/api/catalog/products/proposal_ai").status_code == 503

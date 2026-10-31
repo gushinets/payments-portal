@@ -9,6 +9,9 @@ RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
+# The pinned Debian base supplies system tzdata for both runtime targets.
+RUN python -c 'from zoneinfo import ZoneInfo; ZoneInfo("Europe/Moscow")'
+
 WORKDIR /app
 
 FROM ghcr.io/astral-sh/uv:0.12.7@sha256:95f2aa1fe59274951cfe9b0cbc7972e879ff1004bc8945d130a32eb0dbd85945 AS uv-source
@@ -44,7 +47,8 @@ FROM base AS production
 COPY --from=production-dependencies /opt/api-venv /opt/api-venv
 
 RUN groupadd --system app \
-    && useradd --system --gid app --home-dir /app --no-create-home app
+    && useradd --system --gid app --home-dir /app --no-create-home app \
+    && install -d -o app -g app -m 0700 /run/payments-portal
 
 COPY apps/api/alembic.ini ./apps/api/alembic.ini
 COPY apps/api/alembic ./apps/api/alembic

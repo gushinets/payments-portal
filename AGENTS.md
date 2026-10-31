@@ -17,11 +17,18 @@ document that applies to the current task.
 - For all new billing work, follow this target authority chain in order:
   1. [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md)
      — the canonical external-billing ownership and precedence decision;
-  2. [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md)
+  2. [ADR 0006](docs/architecture/decisions/0006-any-709-ticket-decisions.md)
+     — recognizes only the dated ANY-504 C1-C4 decisions and ANY-709 result
+     record; apply those precise exceptions before the affected baseline rules.
+  3. [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md)
      — the accepted commercial boundary and implementation baseline;
-  3. [Portal ↔ Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
+  4. [Portal ↔ Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
      — the accepted paid-access and quota wire-contract baseline.
-  4. [Live-source commercial admission amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md) — **accepted** by the owner on 2026-10-20; narrowly supersedes the baselines' source-catalog mirroring/new-sale TTL. Publication/new purchase use live Kernel/LBX reads; approved immutable terms and catalog browsing use PostgreSQL. Subscription trust and AccessSnapshot unchanged.
+  5. [Live-source commercial admission amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
+     — accepted on 2026-10-20; narrow source-catalog/new-sale supersession.
+     The baseline bodies are preserved; ADR 0006 links the later ANY-709
+     linking/account/recovery decisions. Subscription trust and AccessSnapshot
+     remain unchanged; see [the runbook](docs/engineering/ANY-709-billing-runbook.md).
 - [docs/PRODUCT.md](docs/PRODUCT.md) — current product scope.
 - [docs/architecture/contours.md](docs/architecture/contours.md) — contour
   isolation and country membership.
@@ -33,7 +40,7 @@ document that applies to the current task.
 - [docs/architecture/billing-authority.md](docs/architecture/billing-authority.md)
   — historical/superseded reference only; not current-state or target authority.
 - [docs/architecture/payment-portal-data-model.md](docs/architecture/payment-portal-data-model.md)
-  — authoritative current as-built clean 25-table schema reference.
+  — authoritative current as-built 27-table schema reference.
 - Superseded billing ADRs and retained billing execution plans are historical or
   migration references only. They do not define new target behavior.
 - [docs/product/ru-mvp.md](docs/product/ru-mvp.md) — implemented `ru` journey
@@ -87,9 +94,9 @@ cross-repository change workflow under the sources of truth above.
 - Do not restore CloudPayments/direct-provider runtime or the removed Portal-
   owned `Product`, `Plan`, `Order`, `Payment`, `Subscription`, `Entitlement`,
   or trial authority.
-- Legacy documents cannot override ADR 0005, the accepted design baselines or
-  the live-source amendment's narrow supersession. Do not add periodic source-
-  catalog mirrors or catalog-age admission; browsing uses stored approved terms.
+- Legacy documents cannot override ADR 0005, the accepted design baselines,
+  the live-source amendment or the precise decisions recognized by ADR 0006.
+  Do not add periodic source-catalog mirrors or catalog-age admission; ANY-709 browsing discovers enabled Kernel products and reads selected current LBX offers; immutable history stays in PostgreSQL.
 - Provider-independent clean pre-production cleanup may precede Phase 0.
   Provider-dependent LBX production semantics, paid-access derivation, Widget
   behavior, and launch remain gated on Phase 0 PASS under `ANY-504`.

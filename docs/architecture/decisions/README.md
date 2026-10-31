@@ -16,3 +16,5 @@ and superseded decision links.
   — superseded for new billing development by ADR 0005
 - [0005. External billing boundary](0005-external-billing-boundary.md) — target
   billing authority and normative implementation-baseline entry point
+- [0006. Preserve billing baselines and recognize ANY-709 ticket decisions](0006-any-709-ticket-decisions.md)
+  — exact dated C1-C4 exceptions and result/evidence locations

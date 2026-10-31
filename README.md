@@ -7,7 +7,7 @@ Each production deployment serves one contour (compliance zone). This
 repository currently implements the `ru` contour; route locale does not select
 a contour.
 
-It contains a Next.js web application, a FastAPI identity/legal API, PostgreSQL
+It contains a Next.js web application, a FastAPI identity/legal/purchase-preparation API, PostgreSQL
 persistence, and the clean provider-neutral external-billing storage baseline.
 The former CloudPayments/direct-provider runtime and Portal-owned catalog,
 order, payment, subscription, entitlement, and trial architecture have been
@@ -16,14 +16,23 @@ paid-access boundary, but its runtime implementation remains future program
 work. Platform Kernel code is maintained in the separate
 [anytoolai-platform](https://github.com/gushinets/anytoolai-platform) repository.
 
-The repository remains pre-production and provider-independent on the current
-ANY-636 4F surface. All thirteen ANY-636 steps are marked `done` in the
+The repository remains pre-production on the surface established by ANY-636 4F. All thirteen ANY-636 steps are marked `done` in the
 [completed plan](docs/exec-plans/completed/ANY-636-implementation-plan.md).
-External Billing/provider runtime, commercial
-catalog, purchase/Widget, confirmed paid access, and actual usage/quota
-integration are not implemented. There are no production direct-provider
+ANY-709 Step 1 adds real source reads, direct links and current offers; Step 2
+adds explicit verified-email customer-only Widget viewing, verified on the test
+stand. Step 3 adds accepted-purchase APIs, financial preparation/recovery
+and verified payment bootstrap, with focused synthetic tests passing and the local
+development migration applied. Step 4 implements localized Buy/Continue/Manage, explicit
+review/consent and the shared payment-capable Widget lifecycle. Step 4 targeted component/boundary/desktop/mobile synthetic tests PASS;
+the owner completed the intended-agreement Widget/YooKassa test payment.
+Independent final review remains pending; the
+[current acceptance ledger](docs/exec-plans/completed/ANY-709-implementation-plan.md#current-acceptance-and-final-review)
+records evidence and limits. Confirmed paid access
+and actual usage/quota integration remain deferred. There are no production direct-provider
 subscribers or subscriptions to migrate. The fifteen target billing tables
-start empty and no current application behavior populates them.
+start empty; the link and explicit customer paths now populate their owned
+records. Step 3 can prepare an accepted subscription through the API without
+granting paid access; see the [billing runbook](docs/engineering/ANY-709-billing-runbook.md#purchase-api-and-financial-recovery-step-3).
 For target billing work, follow [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md),
 the accepted [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md),
 and the accepted
@@ -318,10 +327,19 @@ repository. No direct-provider runtime exists in this repository.
   real Kernel producer delivery and conformance remain future enablement gates.
 - The owner-approved [live-source admission amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
   requires live Kernel/LBX checks for offer publication and each new purchase,
-  without periodic source-catalog mirrors. Approved immutable offer terms are
-  stored and browsed from PostgreSQL without source requests. Paid-access,
+  without periodic source-catalog mirrors. ANY-709 Step 1 now uses direct versioned product links, source-backed Kernel
+  discovery and selected current LBX offers. Immutable links/history stay in
+  PostgreSQL; ordinary repricing needs no link republication. See the
+  [normal LBX runbook](docs/engineering/ANY-709-billing-runbook.md). Paid-access,
   subscription trust/reconciliation and AccessSnapshot rules are unchanged.
-- Purchase/Widget, billing state, paid-access state, and usage/quota remain
-  unavailable until their owning external-billing/Kernel integration steps;
+- Account-only Widget viewing uses the real configured SDK after explicit open,
+  verified email, paired customer identity and Client readiness. It requires no
+  product price or subscription; see the runbook for human acceptance.
+- Step 3 APIs can prepare purchases and authorize verified payment presentation;
+  automated checks, the local development migration and recorded owner
+  purchase/payment QA have passed. Step 4 browser Buy/Continue/Manage and SDK
+  readiness/error handling are implemented and tested; independent final review
+  remains pending. Paid-access state and usage/quota await their
+  owning external-billing/Kernel integration steps;
   provider-dependent work remains subject to Phase 0 gates.
 - Legal documents are drafts until reviewed and approved by counsel.

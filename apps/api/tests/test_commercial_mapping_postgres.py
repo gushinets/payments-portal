@@ -17,9 +17,9 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.cli import commercial_mappings as cli
-from app.composition import mapping_operator
-from app.composition.mapping_operator import FreshMappingEvaluation, fresh_mapping_evaluation
+from apps.api.tests.support import v1_cli as cli
+from apps.api.tests.support import v1_mapping_operator as mapping_operator
+from apps.api.tests.support.v1_mapping_operator import FreshMappingEvaluation, fresh_mapping_evaluation
 from app.core.settings import AppEnv, Settings
 from app.domains.catalog.mapping_evidence import MappingDocument, MappingRefused
 from app.domains.catalog.publication import (

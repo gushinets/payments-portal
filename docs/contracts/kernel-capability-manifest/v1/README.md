@@ -105,12 +105,16 @@ stability. The mock generates a current timestamp for each response while
 retaining the same version for the same semantics.
 
 Keep simulation metadata outside the Kernel response schema. These artifacts
-are SIMULATED by provenance; a future mapping that uses any simulated source,
+are SIMULATED by provenance. The historical ANY-664 v1 rule was that a mapping using any simulated source,
 metric or approval must mark its entire versioned evidence SIMULATED. Real
 publication/admission and production catalog reads must reject/exclude such
 revisions, including after changing source URLs. A configuration change does
 not upgrade a simulated revision into real approval. No mapping/runtime
-implementation is added in Step 1.
+implementation was added in that original ANY-664 Step 1. ANY-709 v2 product
+links now preserve separate Kernel/LBX provenance; current source-backed catalog
+reads do not grant access or approve sales. Changing a URL does not rewrite a
+retained v1 or v2 revision. See the
+[normal connection/link runbook](../../../engineering/lbx-product-links.md).
 
 ## Standalone mock and startup scenarios
 
@@ -272,8 +276,10 @@ Real Kernel producer delivery, production paid registry/release/quantity,
 service-auth/scope deployment and actual producer conformance remain future
 enablement gates. A compatible endpoint can later replace the mock through
 URL/credentials; incompatible wire/hash/auth requires explicit Integration
-boundary alignment first. Portal currently refuses configured provisional
-Kernel sources in production; separate reviewed enablement is also required.
+boundary alignment first. ANY-709 Step 1 permits ordinary configured HTTPS
+connections as CONFIGURED_SOURCE without claiming producer conformance. Explicit
+`KERNEL_MOCK_ENABLED` stays development/test-only and SIMULATED even after URL
+changes. Separate reviewed real producer conformance/launch approval is required.
 No production sale or paid execution is authorized
 by a local mock demonstration.
 

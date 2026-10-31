@@ -18,6 +18,26 @@ beforeEach(() => {
 });
 
 describe("frontend Sentry boundary", () => {
+  it.each([false, true])("correlates safe Widget failure metadata with remote reporting enabled=%s", async (enabled) => {
+    vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", enabled ? enabledDsn : "");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { reportBillingWidgetFailure, sanitizeSentryEvent } = await import("@/shared/observability/sentry");
+    reportBillingWidgetFailure("request-123", "ready_timeout");
+    const tags = { service: "payment-portal-web", operation: "billing_widget_load", stage: "widget_load", request_id: "request-123", reason: "ready_timeout" };
+    expect(warn).toHaveBeenCalledExactlyOnceWith("billing_widget_load_failed", tags);
+    expect(sentry.captureException).toHaveBeenCalledTimes(enabled ? 1 : 0);
+    if (enabled) expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), { tags });
+    const sanitized = sanitizeSentryEvent({
+      type: undefined, message: "private-sdk-error", tags: { ...tags, raw: "private-token" },
+      request: { url: "https://billing.test/?token=private-token" }, user: { email: "private@example.com" },
+      extra: { token: "private-token" }, breadcrumbs: [{ message: "private-token" }]
+    });
+    expect(sanitized).toEqual({ type: undefined, message: "Billing Widget failed to load", tags });
+    expect(JSON.stringify(sanitized)).not.toContain("private");
+    expect(sanitizeSentryEvent({ type: undefined, tags: { operation: "billing_widget_load", request_id: "private@example.com", reason: "raw provider text" } }).tags).toEqual({ ...tags, request_id: "unavailable", reason: "sdk_failed" });
+    warn.mockRestore();
+  });
+
   it("does not initialize or capture when the DSN is missing", async () => {
     vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", "   ");
 

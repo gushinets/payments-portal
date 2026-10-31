@@ -43,7 +43,14 @@ def kernel_settings(**overrides: Any) -> Settings:
     values.update(
         kernel_base_url="http://kernel-client.test",
         kernel_service_token=TOKEN,
+        kernel_mock_enabled=overrides.get("app_env") != "production",
         kernel_max_retries=0,
+        # Kernel-only cases must not inherit a developer's real billing pool.
+        lbx_base_url="",
+        lbx_server_username="",
+        lbx_server_password="",
+        lbx_widget_signing_secret="",
+        lbx_seller_organization_id="",
     )
     values.update(overrides)
     return Settings(_env_file=None, **values)
