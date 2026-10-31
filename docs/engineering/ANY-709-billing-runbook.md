@@ -11,6 +11,13 @@ owns current outcomes. Historical authoring NOT_RUN entries below are explicitly
 checkpoint evidence, not the current acceptance status. Paid access and launch
 remain later program steps; independent review is not replaced by author QA.
 
+Contract decisions and baseline preservation are defined by
+[ADR 0006](../architecture/decisions/0006-any-709-ticket-decisions.md): the dated
+ANY-504 C1-C4 entries own the narrow exceptions; ANY-709 owns results and
+verification. The accepted September/October specification bodies retain their
+PR-base content. This runbook describes implemented behavior under those
+explicit decisions, not new contract exceptions.
+
 ## Connection and deployment
 
 Server API reads and product linking require only `LBX_BASE_URL` (HTTP(S)
@@ -526,7 +533,7 @@ SELECT count(*) FROM external_subscriptions;
 After first open: one scoped customer, one permanent customer operation with
 NULL purchase ID, one recovery item committed before any POST, no Portal-created
 purchase/subscription. Proven binding completes its recovery item and clears its
-active-send lease. The owner-approved 2026-10-28 policy permits bounded
+active-send lease. Customer decision C3 permits bounded
 same-opening recovery and later explicit opens to claim a retry after fresh
 successful empty discovery when the previous attempt has finished or its finite
 lease has expired, including old UNKNOWN/manual-review

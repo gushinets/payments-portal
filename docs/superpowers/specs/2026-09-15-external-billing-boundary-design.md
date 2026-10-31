@@ -9,18 +9,6 @@ supersedes source-catalog mirroring and the 24h new-sale catalog TTL only.
 The relevant sections below reflect that decision. Paid-access derivation,
 AccessSnapshot, subscription reconciliation and trust deadlines are unchanged.
 
-**ANY-709 Step 1 owner-approved correction (2026-10-26):** direct versioned
-product links replace mandatory proposal/approval/source-policy files and manual
-account-ID inputs. A link pins product/tariff/service/period/quantity and source
-provenance, not a historical publication price or an invented technical quota.
-Catalog listing discovers enabled Kernel products; selected details read current
-LBX values. PostgreSQL retains immutable v1 history, v2 link revisions/current
-product heads and future accepted purchase snapshots. Price changes do not
-require relinking. No approval/price fallback authorizes a sale. Purchase-time
-exact acceptance, effective-subscription readback, recovery, paid-access/trust
-and AccessSnapshot rules are unchanged. Implementation/testing status and normal
-operator setup are in the [Step 1 runbook](../../engineering/lbx-product-links.md).
-
 ## Goal
 
 Redesign Payments Portal around a strict bounded-context split:
@@ -367,12 +355,8 @@ showed that remapping `users.outer_id` could cause an old type-6 JWT
 to resolve a different customer. B3's original provider FAIL remains
 recorded; **do not mint type 6** as a production fallback.
 
-ANY-709 account-view authorization amendment: before every Widget mint, Portal
-independently verifies its current session, confirmed email and customer identity.
-Customer/account viewing does not require a product link, current offer, purchase
-intent or subscription; it uses the non-purchasing presentation. Payment
-presentation additionally requires the specific owned purchase/subscription
-acceptance and current readback gates below. Both presentations perform an authoritative Server GET
+Before every Widget mint, Portal independently verifies its session and
+legal/purchase/security gates and performs an authoritative Server GET
 establishing both `users.user_id == provider_customer_id` **and**
 `users.outer_id == billing_customer_key` for the intended customer.
 The browser chooses none of these identifiers or claims. Email, phone,
@@ -502,26 +486,15 @@ uniqueness, non-payment customer/agreement/subscription preparation, discovery,
 reconciliation, mappings, entitlements, allowances, and Kernel access delivery.
 
 There is no persistent checkout/session abstraction around Widget. Widget mint is
-a separate fail-closed authorization decision. Under the approved ANY-709
-account-view amendment, a fresh type-7 Client JWT with `iat=now` may be minted
-for non-purchasing account viewing only when all of these hold:
+a separate fail-closed authorization decision. A fresh LBX Client JWT (whose provider-enforced replay window may be
+72 hours) may be minted only when all of these hold:
 
 ```text
-authenticated Portal session, rechecked after asynchronous I/O
-verified Portal email
-proven Portal <-> LBX customer mapping, including original outer key
-no customer identity_conflict or unresolved customer-create uncertainty
-bounded Client API readiness check
-```
-
-No product link, current price, PurchaseIntent, agreement or subscription is a
-prerequisite for that account presentation. Purchase conflicts do not block
-independently proven customer viewing. Payment-capable presentation additionally
-requires all of the original purchase predicates:
-
-```text
-exact owned target subscription is proven and linked
-no unresolved purchase-create UNKNOWN/AMBIGUOUS state
+authenticated Portal session
+verified Portal <-> LBX customer mapping
+billing_customer_key has no identity_conflict
+exact target subscription is proven and linked
+no unresolved external-create UNKNOWN/AMBIGUOUS state
 latest required material verification == COMPLETE_MATCH
 no prepared-commercial mismatch or commercial_terms_conflict
 ```
@@ -530,25 +503,22 @@ The Phase 0 E B4/B5 provider-security model is explicitly accepted for RU MVP
 in ANY-634: no separate LBX Client API ACL PASS, further security approval,
 or Portal-owned JWT revocation/proxy is a Widget-mint prerequisite. This
 acceptance does not waive the independent Portal-side predicates above or
-establish that untested LBX Client API mutations are denied. Both presentations
-use the same customer-wide provider credential. Account presentation disables
-purchases/payments in the UI; these flags are not provider-side ACLs.
+establish that untested LBX Client API mutations are denied.
 
 `COMPLETE_MISMATCH`, `INCOMPLETE`, `commercial_terms_conflict`,
-prepared-commercial mismatch or purchase-create uncertainty forbid payment
-presentation. Customer-create uncertainty/ambiguous customer correlation or
-`identity_conflict` forbid both presentations. Existing paid access may survive
-a transient `INCOMPLETE` only inside its ordinary prior LKG trust lease; that
-does not authorize a new payment credential.
+prepared-commercial mismatch, unresolved create uncertainty, ambiguous
+correlation, or `identity_conflict` therefore forbid mint. Existing paid access
+may still survive a transient `INCOMPLETE` only inside the ordinary prior LKG
+trust lease, but that does not authorize a new Widget credential.
 
 When mint is allowed:
 
 ```text
 authenticated Portal request
  -> reload current Portal state
- -> verify customer identity/readiness and applicable presentation predicates
- -> recheck Portal session
- -> return fresh type-7 JWT and server-owned presentation flags with no-store
+ -> verify current customer/subscription/commercial predicates
+ -> mint fresh type-7 LBX Widget JWT with iat=now
+ -> return Widget bootstrap data
 ```
 
 If the cabinet cannot be opened, Portal returns a derived `billing_not_ready` or
@@ -605,9 +575,8 @@ a fallback. Source HTTP completes outside the short PostgreSQL transaction.
 Portal does not maintain periodically refreshed Kernel/LBX catalog copies.
 The former startup/five-minute sync and `new_sales_projection_max_age = 24h`
 permission are retired, without a replacement TTL. PostgreSQL stores approved
-immutable mapping history/accepted purchase evidence. Under the ANY-709 Step 1
-correction, listing reads enabled Kernel products once and selected detail reads
-current LBX values; these read-only operations do not grant access.
+immutable mapping terms/evidence for DB-only catalog browsing; viewing those
+terms makes no new LBX/Kernel request and does not prove current sellability.
 Existing-operation retry/recovery follows the amendment's separate rules.
 Admission failure does not revoke existing pins, grants or allowances or alter
 subscription trust, reconciliation or AccessSnapshot caching.
@@ -658,11 +627,12 @@ from automatic composition. Missing or ambiguous evidence refuses publication;
 default composition and provenance participate in the stored evidence digest.
 This is a Portal admission rule, not a change to LBX tariffs or cabinet actions.
 
-Historical v1 publications retain their approval-version evidence unchanged.
-Current v2 links contain only the association and provenance; repricing does not
-require approval files or relinking. Future purchase consent must freeze exact
-accepted commercial/legal terms and effective readback must compare that snapshot.
-This correction does not approve new legal text or create technical allowances.
+Changed normalized commercial terms, including price, billing period, payment
+obligations and renewal/cancellation rules, require a new legal approval version
+through the existing approval files. Existing technical/commercial reapproval
+checks and immutable reference/revision hashes still apply. Technical or
+evidence changes alone with unchanged commercial terms do not require new legal
+approval. No approval UI or legal integration is implied.
 
 ### Purchase-time snapshot
 
@@ -692,7 +662,7 @@ part of the user-facing commercial fingerprint.
 The accepted fingerprint is reconstructed from the approved authoritative read
 set during:
 
-- prepared-state verification before payment-capable Widget can open;
+- prepared-state verification before Widget can open;
 - first read that would produce paid access;
 - every later access-relevant/renewal read.
 
@@ -811,53 +781,6 @@ provider recovery hints
 bound provider object id when proven
 ```
 
-### Owner-approved bounded account-customer recovery amendment (2026-10-28)
-
-For customer bootstrap, the owner approved bounded discover/create/recover within
-each authenticated, verified-email explicit opening. This replaces the 2026-10-27
-one-POST-per-opening limit and narrowly supersedes the customer part of the
-UNKNOWN policy below; agreement/subscription creation and paid-access trust do
-not change. UNKNOWN records uncertainty, not permanent refusal of customer
-recovery. The selected retry policy relies on LBX email uniqueness; it is not a
-provider-proven absence predicate, native CREATE idempotency or a newly verified
-provider guarantee.
-
-`ensure_customer` is the single shared application use case and the sole consumer
-of LBX customer CREATE. It point-verifies an existing binding/receipt first, or
-searches by original opaque key and email. Email is candidate discovery only;
-binding still requires the unchanged original key plus canonical provider ID.
-Successful complete empty discovery permits a fenced customer POST. A temporary
-CREATE failure is followed by GET search/point proof and, when still absent,
-another claim after bounded backoff with jitter. Every attempt reuses the same
-slot, operation, opaque key and opening's email. A failed GET never means absence
-and permits only another GET. A saved CREATE ID or binding permits point reads
-only. Email-uniqueness rejection switches the rest of that opening to GET-only
-recovery. Identity conflicts, authorization errors and permanent validation
-failures stop; a failed CREATE still gets recovery before a permanent refusal is
-returned. A proven customer is bound and viewing continues.
-
-One existing nonrenewable request budget includes discovery, every CREATE,
-backoff, readback and cleanup. Deadline exhaustion retains the operation and
-returns a safe temporary pending result for a later explicit opening. There is
-no infinite HTTP loop or new background worker. Only unresolved failures are
-reported once to Sentry at the HTTP boundary.
-
-A completed failed attempt releases only its active-send lease. The same opening
-or a later explicit opening repeats discovery and may claim another attempt in the same permanent
-customer slot/operation, including legacy UNKNOWN/manual-review rows. An active
-lease prevents concurrent sends; crash/cancel/protected source cleanup retains a
-finite lease of the request's configured total timeout plus cleanup timeout.
-Every new attempt compares the prior fence, records a new fence, increments the
-existing work attempt count and sets its own paired two-hour recovery deadline.
-A saved CREATE receipt prevents another POST until its identity is resolved.
-Identity conflict, ambiguous matches, source outages and incomplete/invalid
-searches never authorize creation or email-only adoption. Existing reviews remain
-as evidence and are resolved by successful paired binding, not deleted on retry.
-
-No customer, key, Portal user or operation is deleted/reallocated for recovery.
-This does not guarantee exactly-once provider execution after an ambiguous send;
-LBX uniqueness enforcement and fresh discovery remain part of the selected policy.
-
 For any of these create operations, timeout, lost response, HTTP 500/ambiguous
 provider error after mutation may have happened, or zero recovery matches do not
 prove absence. The common UNKNOWN behavior is:
@@ -870,20 +793,9 @@ never auto-release on zero matches
 unknown_recovery_deadline_at = unknown_since + 2h   # fixed MVP constant
 ```
 
-The owner-approved 2026-10-28 financial recovery correction preserves that first
-send deadline as immutable history. Positive completed `PROVEN_NOT_SENT` evidence
-alone may permit a later explicit send of the same command/key with a new fence.
-That newly permitted send receives its own fixed two-hour active recovery window
-on the coalesced work item, separate from retry scheduling. Inline recovery and
-overdue scans use the active window; GETs never extend it and UNKNOWN never
-authorizes a new financial CREATE. Existing work without an active window retains
-the original deadline. This correction grants neither paid access nor automatic
-scope release.
-
 The affected scope is the external-customer slot for customer create and the
-purchase/product flow for agreement or subscription create. Customer uncertainty
-blocks both Widget presentations; purchase uncertainty blocks payment presentation.
-Any independent create that would duplicate the unresolved object remains blocked.
+purchase/product flow for agreement or subscription create. Widget mint and any
+independent create that would duplicate the unresolved object remain blocked.
 
 When UNKNOWN is first created, Portal durably schedules one escalation work item
 for the fixed two-hour deadline. Before the deadline, safe read-only recovery runs
@@ -1410,12 +1322,8 @@ not provider-side ACLs. B4 proved `exp` non-enforcement on a real type-7
 Widget; old-token survival after remint was tested with type-6 Client API
 JWTs, not independently with type 7. The vendor-confirmed 72h-`iat` window is explicitly accepted for RU MVP (2026-10-14), not described as a short-lived or revocable credential. B5 proved an identity write with type 6;
 production type-7 identity writes and other mutation ACLs remain UNKNOWN. The observed/UNKNOWN LBX Client API permissions are accepted as provider-owned for RU MVP; no additional Portal-owned ACL subsystem, Provider ACL PASS or separate B4/B5 security approval is required. Active `identity_conflict`,
-customer-create uncertainty prevents all minting. Incomplete/mismatching
-commercial verification or purchase-create uncertainty prevents payment
-presentation; customer-only viewing may remain available when its own identity
-is proven. ANY-709 Step 2 implements only that account presentation, with Client
-API readiness and a fresh post-I/O session check. The provider JWT remains
-customer-wide; UI restrictions do not prevent direct Client API writes.
+unresolved external-create uncertainty, or incomplete/mismatching commercial
+verification prevents mint.
 
 Portal<->Kernel internal APIs require TLS, trusted-service authentication, and
 tenant/region scope. A regional contour never reads/writes another contour's

@@ -1,7 +1,7 @@
 # Documentation Index
 
 Status: authoritative index
-Last verified: 2026-09-25
+Last verified: 2026-10-31
 
 Start with the smallest document that matches the task.
 
@@ -12,6 +12,8 @@ Start with the smallest document that matches the task.
   boundary design, then the accepted Portal-Kernel access-contract design.
   The accepted live-source amendment narrowly supersedes their source-catalog
   mirroring/new-sale TTL requirements; paid-access rules are unchanged.
+  ADR 0006 recognizes only the dated ANY-504 C1-C4 exceptions and the ANY-709
+  result record; apply those precise exceptions before affected baseline rules.
   Retained billing documents cannot override that target authority chain.
 - `ARCHITECTURE.md` is the factual current-state map and records clearly
   labelled target or transitional constraints where needed.
@@ -23,8 +25,9 @@ Start with the smallest document that matches the task.
 - `CODING_CONVENTIONS.md` is the ratchet for new and changed code.
 - `AGENTS.md` files provide concise working instructions and navigation; their
   instruction precedence is defined by the root guide.
-- Linear issues and execution plans define temporary implementation scope, not
-  permanent architecture authority.
+- Ordinary Linear issue text and execution plans define implementation scope.
+  Only the fixed dated decision section explicitly recognized by ADR 0006
+  supplies the ANY-709 contract exceptions; reports and checkboxes do not.
 
 ## Product and design
 
@@ -41,9 +44,10 @@ Start with the smallest document that matches the task.
 ### Target billing architecture (follow in order)
 
 1. [ADR 0005: External billing boundary](architecture/decisions/0005-external-billing-boundary.md)
-2. [External Billing Boundary Design](superpowers/specs/2026-09-15-external-billing-boundary-design.md)
-3. [Portal ↔ Kernel Access Contract Design](superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
-4. [Accepted live-source commercial admission amendment](superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md) — owner confirmation on 2026-10-20 in ANY-664 / PR #139; narrow source-read/admission supersession, paid trust unchanged.
+2. [ADR 0006: ANY-709 ticket decisions](architecture/decisions/0006-any-709-ticket-decisions.md) — apply the exact dated C1-C4 exceptions in ANY-504 before affected baseline clauses; ANY-709 owns results.
+3. [External Billing Boundary Design](superpowers/specs/2026-09-15-external-billing-boundary-design.md)
+4. [Portal ↔ Kernel Access Contract Design](superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
+5. [Accepted live-source commercial admission amendment](superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md) — owner confirmation on 2026-10-20 in ANY-664 / PR #139; narrow source-read/admission supersession, paid trust unchanged. Both specification bodies retain their PR-base content.
 
 ### Implementation handoffs and references
 

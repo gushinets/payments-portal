@@ -49,17 +49,11 @@ target or turn External Billing into a direct payment-provider integration.
   and launch.
 
 
-**ANY-709 Step 1 owner-approved correction (2026-10-26):** direct versioned
-product links replace mandatory proposal/approval/source-policy files and manual
-account-ID inputs. A link pins product/tariff/service/period/quantity and source
-provenance, not a historical publication price or an invented technical quota.
-Catalog listing discovers enabled Kernel products; selected details read current
-LBX values. PostgreSQL retains immutable v1 history, v2 link revisions/current
-product heads and future accepted purchase snapshots. Price changes do not
-require relinking. No approval/price fallback authorizes a sale. Purchase-time
-exact acceptance, effective-subscription readback, recovery, paid-access/trust
-and AccessSnapshot rules are unchanged. Implementation/testing status and normal
-operator setup are in the [Step 1 runbook](../../engineering/ANY-709-billing-runbook.md).
+**Later ANY-709 decisions:** [ADR 0006](0006-any-709-ticket-decisions.md)
+recognizes only the dated C1-C4 decisions in ANY-504 and the implementation
+results in ANY-709. Apply those exact exceptions before affected baseline rules;
+the accepted specification bodies are preserved. This does not replace the
+ownership decision above or authorize additional departures.
 
 ## Implementation status, 2026-10-26
 

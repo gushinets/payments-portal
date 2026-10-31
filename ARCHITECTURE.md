@@ -75,6 +75,10 @@ and the accepted
 [Portal <-> Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
 The owner-approved [live-source admission amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
 narrowly supersedes those baselines' source-catalog mirroring/new-sale TTL.
+[ADR 0006](docs/architecture/decisions/0006-any-709-ticket-decisions.md)
+recognizes the exact dated ANY-504 C1-C4 exceptions and ANY-709 results. Apply
+those decisions before the affected baseline clauses; the following describes
+the current implementation, while the accepted specification bodies stay intact.
 Each publication and genuinely new purchase requires live Kernel and complete
 selected-offer LBX reads. ANY-709 Step 1 separates immutable product links from transient current offers
 and immutable accepted purchase snapshots. PostgreSQL retains links/history. Catalog
@@ -111,7 +115,9 @@ CREATE, binds only paired point proof, and retries temporary customer failures
 with backoff within one nonrenewable opening deadline. Failed GETs never permit
 CREATE; saved IDs and email-uniqueness rejection allow GET recovery only. A finite
 active-send lease protects sends; each later claim needs fresh discovery under
-the owner's 2026-10-28 customer amendment. Unresolved failures are reported once
+the customer policy recorded as C3 through
+[ADR 0006](docs/architecture/decisions/0006-any-709-ticket-decisions.md).
+Unresolved failures are reported once
 to Sentry. Unresolved customer ambiguity and other blocking review reasons
 remain blocking under the customer lock. Read-only recovery may resolve customer
 outcome-unknown escalation or a separately evidenced key mismatch for the same

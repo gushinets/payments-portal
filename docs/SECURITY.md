@@ -113,7 +113,8 @@ need, security treatment, and retention.
 Only explicit authenticated POST after verified email may allocate the single
 customer slot. Before users POST, the permanent operation, opaque outer key,
 send fence, per-attempt two-hour deadline and coalesced recovery work are committed.
-Under the owner-approved 2026-10-28 customer amendment, each explicit open uses a
+Under customer decision C3 recognized by
+[ADR 0006](architecture/decisions/0006-any-709-ticket-decisions.md), each explicit open uses a
 bounded discover/create/recover cycle. Temporary failures wait with backoff within
 the existing request deadline. A finite active-send lease protects sends; each
 later claim requires fresh successful empty discovery in the same slot/operation.

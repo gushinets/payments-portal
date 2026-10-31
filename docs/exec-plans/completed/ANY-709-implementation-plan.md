@@ -5,6 +5,51 @@ Completed: 2026-10-27
 Program: ANY-504, Step 7
 Issue: [ANY-709](https://linear.app/paveldik/issue/ANY-709)
 
+## Baseline specification restoration and ticket decisions, 2026-10-31
+
+Owner-authorized documentation-only follow-up on runtime head `754501b`.
+Restore both changed accepted specifications from PR base `ace7c277`; retain
+implemented behavior and record why each departure was selected in ANY-504 and
+what was delivered/verified in ANY-709. A short ADR recognizes that exact dated
+decision section so unchanged baseline text cannot silently undo the decisions.
+
+- [x] Restore the September external-billing design and October live-source
+  amendment byte-for-byte from the PR base, preserving all earlier accepted
+  Phase 0, canonical-ID and paid-access facts.
+- [x] Prepare decision C1-C4 records with before/after, rationale, precise scope,
+  preserved invariants, evidence and the conditional LBX email-uniqueness risk.
+  Do not promote that provider assumption to a new verified guarantee.
+- [x] Update authority navigation and current operational references. Preserve
+  the rest of the tickets and historical verification reports unchanged.
+- [x] Verify documentation and unchanged runtime scope; update/read back both
+  tickets and create a separate commit, retaining the existing runtime fix.
+
+Verification and delivery:
+
+- Both changed specifications and the untouched Portal-Kernel specification
+  are byte-identical to PR base `ace7c277`. The cumulative PR diff has no files
+  under `docs/superpowers/specs`. Only Markdown changed from runtime `754501b`.
+- Added the dated C1-C4 section to ANY-504 and implementation/result section to
+  ANY-709. Readback verified the new text (allowing Linear's issue/link/list
+  formatting), the entire prior description and unchanged issue status. No
+  historical text, completion checkbox, assignment or title was changed.
+- `npm run docs:check`, `npm run architecture:check` and all 194 focused
+  repository-documentation tests passed. New canonical `npm run check:fast`
+  passed: 1,542 fast API, 385 component and 38 boundary tests, generated
+  freshness, documentation, architecture, Ruff and web lint/typecheck.
+  Logs: `/tmp/pr150-doc-restoration-focused.log` and
+  `/tmp/pr150-doc-restoration-fast.log`.
+- The completed full canonical check on `754501b` remains the evidence for the
+  unchanged runtime, 406 PostgreSQL cases and production build. PostgreSQL,
+  production build and browser E2E were not repeated for this Markdown-only
+  change. No new live-provider or provider-uniqueness claim is made.
+- ADR 0006 and the navigation recognize only this fixed dated ticket section;
+  ordinary issue text cannot silently override the baselines. Current runbook
+  and security behavior remain linked to the explicit decisions. No application,
+  migration, dependency, generated, legal or paid-access implementation changes.
+- Delivery is one new documentation commit on `754501b`, preserving the runtime
+  fix and prior history. The concurrent ANY-765/ANY-715 worktrees are untouched.
+
 ## Customer conflict recovery follow-up, revised 2026-10-31
 
 Owner-authorized revision of the last commit for
@@ -44,8 +89,9 @@ Implementation:
   possible-send record after source I/O. Existing UNKNOWN/recover-only guards
   still precede it. The original lock order and held scopes are preserved;
   conflict cannot retroactively cancel an already claimed provider command.
-- The September specification is byte-identical to parent `8a3732c`; earlier
-  approved amendments remain. Architecture/runbook explain the narrower policy.
+- At runtime checkpoint `754501b`, the September specification was
+  byte-identical to parent `8a3732c`; earlier approved amendments remained.
+  The later documentation-only follow-up above restores the PR-base bodies. Architecture/runbook explain the narrower policy.
   There is no new operator reconciliation/force-bind workflow.
 
 Verification:

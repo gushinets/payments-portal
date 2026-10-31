@@ -7,18 +7,6 @@
 
 **Portal execution scope correction, 2026-10-15:** the separately approved ANY-664 owner decision makes all ticket implementation Portal-only: one typed HTTP client, specification-derived provisional contract/independent fixtures and a separate optional development mock now. Real Kernel producer delivery, paid registry/release approvals, deployment auth/scope and actual-producer conformance are future real-enablement gates, not prerequisites for completing this Portal ticket. The 2026-10-20 architecture approval does not approve production sales or change any subscription/access safeguard. Remote Linear/PR wording is not updated by this repository edit.
 
-**ANY-709 Step 1 owner-approved correction (2026-10-26):** direct versioned
-product links replace mandatory proposal/approval/source-policy files and manual
-account-ID inputs. A link pins product/tariff/service/period/quantity and source
-provenance, not a historical publication price or an invented technical quota.
-Catalog listing discovers enabled Kernel products; selected details read current
-LBX values. PostgreSQL retains immutable v1 history, v2 link revisions/current
-product heads and future accepted purchase snapshots. Price changes do not
-require relinking. No approval/price fallback authorizes a sale. Purchase-time
-exact acceptance, effective-subscription readback, recovery, paid-access/trust
-and AccessSnapshot rules are unchanged. Implementation/testing status and normal
-operator setup are in the [Step 1 runbook](../../engineering/lbx-product-links.md).
-
 ## 1. Decision in one paragraph
 
 **Do not continuously mirror the current LBX tariff catalog or the Platform Kernel capability registry into Payments Portal PostgreSQL.** Fetch the relevant, complete, authoritative data **live via private server-to-server APIs** whenever an operator publishes a commercial offer and whenever a customer starts a new purchase. A failed, incomplete, stale-assumed or unverifiable read blocks that new operation. Persist only the approved, immutable offer-to-capability terms and evidence, customer/provider identity and purchase/recovery state, and the authoritative subscription-derived facts needed to keep *already paid* access working safely during temporary LBX failure. Kernel continues to own products, technical metrics and actual usage; Portal continues to own grants/allowances, revisioned paid-access decisions and delivery to Kernel. No offline/new sale, automatic repricing or automatic renewal is invented.
@@ -59,7 +47,7 @@ The prior accepted specs remain authoritative outside this narrow supersession. 
 
 ## 3. Why change: real benefit versus cost
 
-**Superseded design's benefit:** Portal could serve a recently checked product/offer catalog without querying upstream on every request, and new commercial admission could continue during a bounded upstream outage. The original amendment retained DB-only browsing; ANY-709 Step 1 replaces public browsing with source-backed discovery/current offers, without outage admission.
+**Superseded design's benefit:** Portal could serve a recently checked product/offer catalog without querying upstream on every request, and new commercial admission could continue during a bounded upstream outage. The accepted strategy retains DB-only browsing of approved terms, without outage admission.
 
 **Why this is a poor default for this MVP:**
 1. **Offline purchase is not a usable product guarantee.** Creating the LBX customer/agreement/subscription, checking accepted terms and opening the LBX Widget still require LBX. A locally “sellable” catalog does not make checkout possible when billing is down.
@@ -75,7 +63,7 @@ The prior accepted specs remain authoritative outside this narrow supersession. 
 | Authority / data | Portal durable state | Purpose and owner |
 | --- | --- | --- |
 | LBX current **whole tariff catalog** (all tariffs/services/prices) | **No active copy**, no periodic `external_billing_catalog_projections` writer/reader | Fetch relevant selected-offer dependencies live for new commercial actions |
-| LBX **link / current offer / accepted purchase** | v2 link identity/audit in immutable mapping revisions and one current product pointer; transient current LBX values; immutable exact accepted purchase terms in the later purchase snapshot. Retain v1 evidence unchanged | Separate association from current price and user consent; no historical-price catalog fallback |
+| LBX **approved offer terms** | **Yes**, in append-only `commercial_mapping_revisions.mapping_document` plus source identifiers, relevant read-set digest/version, exact amount/currency/period/policy, material legal/commercial fingerprint and audit | Show last *approved* offer; compare new live facts with what customer will accept; preserve history |
 | LBX verified **customer identity binding** | **Yes**, `external_billing_customers` and existing durable binding invariants (Step 7) | Unambiguous user ↔ provider identity, safe recovery |
 | LBX **purchase preparation/create outcome** | **Yes**, `PurchaseIntent`, operation/recovery records and pinned accepted terms (Step 7–8) | Prevent duplicate/unknown external creates; recover and audit |
 | LBX **subscription and relevant agreement/cycle/paid status** | **Yes**, authoritative normalized subscription facts, verification timestamps/trust deadline, allowance/cycle linkage (Steps 8–9) | Preserve bounded, read-only *existing paid access* through transient provider failure |
@@ -87,42 +75,34 @@ The prior accepted specs remain authoritative outside this narrow supersession. 
 
 The two existing projection SQLAlchemy models/tables are **inert schema slots, not current catalog authority**. ANY-664 leaves them unused; no migration is required for this correction. Any later retirement requires a separate narrow verified migration. Do not add background writers or new-sale consumers for those tables. Do not drop customer, subscription, mapping, grant or recovery data.
 
-The existing `CommercialMappingRevision` shape may be reused. For historical v1 evidence, its named `catalog_digest` has an **explicit documented scope**: the complete, normalized, relevant selected-offer read set (with account/source provenance), **not** a claim of an atomically complete LBX account snapshot. Store a separate `offer_material_digest` and `digest_scope=selected_offer` in versioned mapping evidence, or rename/restructure fields through a narrow migration if that makes the distinction clearer. Never silently reinterpret an account-wide digest as a selected-offer digest. `manifest_version` is producer version evidence, not approval to skip checking current `enabled`. Unrelated products/tariffs changing must not alone reprice or invalidate the selected offer.
+The existing `CommercialMappingRevision` shape may be reused. Its currently named `catalog_digest` must have an **explicit documented scope**: the complete, normalized, relevant selected-offer read set (with account/source provenance), **not** a claim of an atomically complete LBX account snapshot. Store a separate `offer_material_digest` and `digest_scope=selected_offer` in versioned mapping evidence, or rename/restructure fields through a narrow migration if that makes the distinction clearer. Never silently reinterpret an account-wide digest as a selected-offer digest. `manifest_version` is producer version evidence, not approval to skip checking current `enabled`. Unrelated products/tariffs changing must not alone reprice or invalidate the selected offer.
 
 ## 5. Operational flows
 
-### 5.1 Current catalog browsing (ANY-709 Step 1 correction)
+### 5.1 Catalog browsing (read-only, no live availability promise)
 
-1. List enabled technical products with one bounded authenticated Kernel read;
-   no mapping or optional marketing field is required for discovery.
-2. Selected detail reads the current product head from PostgreSQL, closes DB
-   resources, then reads/normalizes the complete relevant live LBX composition,
-   period and effective price under the same bounded operation budget.
-3. Unmapped products have no invented price. Unsupported/incomplete offers and
-   source outages are explicit, no-store outcomes. No per-page LBX fan-out,
-   periodic mirrors, historical-price fallback or paid-access grant is implied.
+1. Browser calls **Portal-owned safe read endpoints**, never LBX Server API or Kernel internal endpoints.
+2. Portal reads operator-approved immutable offer terms and the explicitly mapped real Kernel `product_id` from its DB. The UI may show the **last approved** price, currency, period, fixed allowance and product presentation.
+3. Distinguish **`PUBLISHED`** (approved historical/current offer description) from **`SELLABLE`** (the current operation passed live admission). A stored mapping alone **never** proves `SELLABLE`. When live availability has not been checked for this operation, display an honest “subject to confirmation”/unverified availability state, not a promise that checkout will work or that the shown price is unchanged at LBX.
+4. An unsupported, unpublished, disputed or historically invalidated offer is shown as unavailable, without an active purchase CTA. A public “Continue / check availability” action may start Step 7's live admission; it is **not** a completed sale.
+5. If Portal itself is down, frontend shows a safe unavailable/error state. Do not fall back to hard-coded prices, fictional Kernel IDs or mock authority.
 
-### 5.2 Current direct product linking (ANY-709 Step 1 correction)
+**No LBX or Kernel request is required for each anonymous page view.** That would add unnecessary traffic; only new commercial decisions have mandatory live reads.
 
-An authorized OS principal supplies product/tariff/service/period IDs and an
-explicit supported commercial quantity to one normal CLI. Connection scope is
-resolved by the server from the trusted origin/username, never a password or
-browser/locale input. Validate the enabled product and complete selected LBX
-reads. Do not query catalog organizations: seller belongs to the later actual
-purchase agreement. No approval/proposal/source-policy files or technical
-allowance are required to link an access product.
+### 5.2 Operator publishes or revises an offer (ANY-664 Step 6)
 
-Retain one current product pointer with product-scoped lock/CAS, including
-cross-offer retargets. Append versioned v2 link revisions without rewriting v1
-history/dependent pins. Identical link identity remains a no-op through ordinary
-price changes. Current offers are transient LBX facts; future accepted purchases
-are immutable exact consent. The whole-catalog projection slots remain inert.
+1. Authorized operator selects the real configured RU LBX account, provider tariff, supported service/component and period, and a real Kernel product/metric plus approved fixed integer technical allowance and commercial/legal terms.
+2. Portal issues a live, authenticated, authorized complete Kernel manifest GET for the correct tenant/region. Validate schema, semantic digest/version, uniqueness and reference integrity. Selected product and metric must exist, be enabled and belong together. Never infer a paid metric from guest quota settings.
+3. Portal issues live, scoped LBX Server API GETs for the **selected tariff and all material dependencies**: current tariff membership, relevant periods/components/services and effective-dated service/connection prices and all needed discount/tax/prepaid/blocking/policy and historical applicability evidence. A complete relevant selection is required; enumerating every unrelated account tariff is **not** a requirement. If the verified API cannot establish complete relevant membership or authoritative commercial meaning, refuse publication as `INCOMPLETE`/`NOT_SELLABLE` — do not fabricate a field, currency scale, an atomic LBX snapshot or a default value.
+4. Losslessly normalize source money (exact Decimal / integer minor units; account-confirmed currency/unit/scale). Verify approved one-component fixed-periodic prepaid MVP profile; LBX service `multiplicator` is a commercial unit, **not** the Kernel allowance quantity. Compute deterministic relevant read-set digest and approved customer-visible commercial fingerprint.
+5. Before committing, reject changed/unsupported/currently disabled sources, missing approval or conflicting revisions. Persist the new **append-only** `CommercialMappingRevision` with full selected-offer accepted semantics, provider/source provenance and read timestamp, scoped fingerprints/digests, authenticated publisher and reason. Network calls occur **outside** the short PostgreSQL business transaction; recheck local expected revision/concurrent publication inside it.
+6. Repeating a publication with exactly the same verified source evidence and approved terms is idempotent. A changed material offer, price/policy, metric, allowance or terms requires a separately approved **new revision**. Old revisions remain queryable and unchanged.
 
-Both bounded reads validate complete tariff service membership and explicit
-`enabled_by_default` flags. The selected service must be the sole default;
-optional services are excluded. Missing/ambiguous evidence refuses the offer.
-The old v1 approval-file rules remain historical-format validation only. They
-are not admission gates for current links or a reason to republish on price changes.
+A standalone “periodic catalog refresh” is **not** an alternative to these live publish checks.
+
+**Complete LBX default composition:** both `dry-run` and `publish` inspect the already fetched complete service list of the selected tariff. Each row must have unique, correct tariff membership and an explicit `enabled_by_default` of `0` or `1`. The selected mandatory service must have `1`; another default-assigned service refuses Portal publication with `selected_offer_additional_default_components_unsupported`. Missing/unknown flags or ambiguous membership fail closed. Services with `0` are optional and do not join the automatic composition. The sorted default-component identities and their source provenance are part of immutable selected evidence and its digest; each bounded reread must satisfy this rule. This changes no LBX tariff or customer action in the LBX cabinet.
+
+**Approval versions:** the existing independently controlled approval files pin technical, commercial and legal references/revisions/content hashes. A change in normalized commercial terms (price, billing period, payment obligations, renewal or cancellation rules) requires a new **legal approval version**, in addition to the existing commercial/technical checks. Reusing the old legal approval refuses publication with `mapping_legal_reapproval_required`, even when commercial approval has advanced. A technical-only or source-evidence-only change that leaves those terms unchanged does not require new legal approval. The existing prohibition on rewriting the same approval reference/revision remains. No approval UI, legal-team integration or change to customer legal documents is introduced.
 
 ### 5.3 New purchase, retry and recovery are three **different** operations (ANY-504 Steps 7–8)
 
@@ -134,9 +114,7 @@ are not admission gates for current links or a reason to republish on price chan
 2. Only for a genuine new operation: perform a **fresh, bounded** authenticated complete Kernel manifest read and complete relevant LBX selected-offer read set; validate enabled identities, exact amount/currency/scale, material tariff/period/policy, approved mapping revision and accepted terms. A failure, material change or unavailable source means **no new PurchaseIntent and no external CREATE**. A previous successful preflight on a different purchase is not reusable.
 3. Commit **one** PurchaseIntent, its *unchanging* accepted snapshot, idempotency identity and the unique `(user_id, product_id)` reservation in a short transaction with a concurrency/expected-revision guard. If another request reserved the scope first, use B or return a stable scope-occupied result; never create a second intent.
 4. Before each actual non-money external customer/agreement/subscription CREATE, persist its outbound-create operation identity/correlation and safe attempt state. No provider HTTP happens inside a DB transaction. Unknown CREATE semantics are preserved; provider-side `POST` idempotency is **not assumed**.
-5. After a proven create/link, **point-read and validate the actual subscription-specific** owner/agreement, services, `multiplicator`, effective prices, total, currency, period and material policies against the *pinned accepted snapshot* before payment-capable Widget mint or any paid grant. Customer-only viewing
-   follows the ANY-709 account authorization amendment and requires no accepted
-   subscription. Provider catalog price changes alone do not reprice an existing accepted subscription.
+5. After a proven create/link, **point-read and validate the actual subscription-specific** owner/agreement, services, `multiplicator`, effective prices, total, currency, period and material policies against the *pinned accepted snapshot* before Widget mint or any paid grant. Provider catalog price changes alone do not reprice an existing accepted subscription.
 
 **B. Repeated public request (same idempotency key or occupied business scope):**
 
@@ -148,9 +126,7 @@ are not admission gates for current links or a reason to republish on price chan
 **C. Recovery after a provider request may have succeeded (including timeout, dropped response or restart):**
 
 1. Durable outbound-create evidence drives recovery for customer/agreement/subscription. If the request may have been sent, persist `UNKNOWN`/`awaiting_external_result`, **keep the PurchaseIntent, accepted terms and business scope held**. Never interpret a timeout as proof no external object was created; never blindly re-send the provider CREATE.
-2. Use the documented **read-only point-read/discovery/correlation + authoritative owner/account/agreement/material-terms verification** to link the one proven external object. `outer_id` is only a nonunique discovery hint; canonical subscription identity is the proven provider subscription ID. Multiple candidates/missing proof remain `UNKNOWN`, with no payment Widget or grant.
-   Customer identity uncertainty also blocks account-only Widget mint; purchase-only
-   uncertainty does not block independently proven customer viewing.
+2. Use the documented **read-only point-read/discovery/correlation + authoritative owner/account/agreement/material-terms verification** to link the one proven external object. `outer_id` is only a nonunique discovery hint; canonical subscription identity is the proven provider subscription ID. Multiple candidates/missing proof remain `UNKNOWN`, with no Widget or grant.
 3. If LBX is down, return `preparing/not_ready/recovery_pending` (use existing normalized statuses) and keep the operation durable; continue bounded background recovery when possible without using **new-sale admission capacity**. The existing ~2h unresolved-create **manual-review escalation** is not a license to release the scope or try another CREATE. Only authoritative evidence of *no external effect* or audited safe resolution can release/finish the scope; after terminal/safe release, a **separate** newly accepted purchase may use current prices.
 4. Recovery never re-pins the fingerprint, mutates the accepted snapshot, starts a second PurchaseIntent, grants paid access from an outbound-success flag or treats today's unrelated catalog repricing as the old subscription's accepted price. Preserve exact accepted terms across outage and restart.
 
@@ -208,8 +184,7 @@ Reason names are conceptual and may map to existing safe API conventions. Never 
 - No runtime readers/writers for `capability_manifest_projections` or `external_billing_catalog_projections`; ANY-664 leaves these schema slots inert. Later physical retirement is separate work. Do not add Redis or a new catalog/mirror DB to replace them.
 
 **ANY-504 later steps must deliver (not Step 6 coding):**
-- Step 7 separate **new purchase / same-key retry / recovery** paths: live purchase-time checks only for genuine new admission; one scope-held idempotent `PurchaseIntent` with immutable accepted terms; no duplicate provider CREATE; durable UNKNOWN discovery; payment Widget only after actual accepted subscription-term verification;
-  customer-only viewing uses verified identity/readiness without a subscription. Preserve bounded preflight and paid-access resource isolation.
+- Step 7 separate **new purchase / same-key retry / recovery** paths: live purchase-time checks only for genuine new admission; one scope-held idempotent `PurchaseIntent` with immutable accepted terms; no duplicate provider CREATE; durable UNKNOWN discovery; Widget only after actual accepted subscription-term verification. Preserve bounded preflight and paid-access resource isolation.
 - Step 8 proven customer/subscription state, discovery/webhook/normal+urgent reconciliation, UNKNOWN create recovery and finite **6h** subscription trust, with protected reconciliation capacity under new-sale overload.
 - Step 9 grants/allowances and immutable access revisions/invalidation; Step 10 Kernel snapshot consumption/paid quota enforcement; Step 11 true E2E and launch gates.
 - No Step 6 CLI/UI/mock may pretend that future Steps 7–11 already authorize payments or paid execution.
