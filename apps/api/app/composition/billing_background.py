@@ -93,7 +93,7 @@ async def _inventory_customer(
     if point.outer_id is None:
         raise LbxResponseInvalid()
     if str(point.user_id) != current.provider_id or point.outer_id != current.outer_key:
-        await delegate(record_customer_conflict, factory, current, claim)
+        await delegate(record_customer_conflict, factory, current, claim, provider_id=str(point.user_id))
         raise LbxScopeMismatch()
     rows = await client.discover_subscriptions(user_id=int(current.provider_id), budget=budget)
     tariffs = {purchase.accepted.selection.tariff_id for purchase in purchases}

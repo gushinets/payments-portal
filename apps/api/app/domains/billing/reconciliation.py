@@ -243,7 +243,12 @@ def apply_reconciliation(
         conflict = None
         customer_conflict = "customer_identity_conflict" in proof.reasons
         if customer_conflict:
-            mark_customer_identity_conflict(db, customer, customer_op)
+            mark_customer_identity_conflict(
+                db,
+                customer,
+                customer_op,
+                provider_id=subject.customer.provider_id if "customer_original_key_mismatch" in proof.reasons else None,
+            )
         if proof.identity == IdentityProof.CONFLICT and (
             not customer_conflict or "subscription_identity_conflict" in proof.reasons
         ):

@@ -146,12 +146,14 @@ def test_billing_subscription_reconciliation_unknown_or_incomplete(change: dict)
     assert not proof.complete and proof.financial is None
 
 
-@pytest.mark.parametrize("kind", ["customer", "agreement", "seller", "subscription"])
+@pytest.mark.parametrize("kind", ["customer", "customer_id", "agreement", "seller", "subscription"])
 def test_billing_subscription_reconciliation_ownership_conflicts(kind: str) -> None:
     subject = subject_factory()
     user, agreement, point = user_factory(), agreement_factory(), subscription_factory()
     if kind == "customer":
         user = user.model_copy(update={"outer_id": "foreign"})
+    elif kind == "customer_id":
+        user = user.model_copy(update={"user_id": 999, "outer_id": "foreign"})
     elif kind == "agreement":
         agreement = agreement.model_copy(update={"user_id": 999})
     elif kind == "seller":
@@ -167,6 +169,7 @@ def test_billing_subscription_reconciliation_ownership_conflicts(kind: str) -> N
         subscription=point.model_copy(update={"total_price": None}),
     )
     assert proof.identity == IdentityProof.CONFLICT and proof.financial is None
+    assert ("customer_original_key_mismatch" in proof.reasons) == (kind == "customer")
 
 
 def test_billing_subscription_reconciliation_negative_independent_of_terms_and_sale_flags() -> None:

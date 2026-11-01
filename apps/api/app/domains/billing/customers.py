@@ -330,12 +330,14 @@ def finish_customer_attempt(factory: SessionFactory, expected: CustomerOpen) -> 
 
 
 def mark_customer_identity_conflict(
-    db: Session, customer: ExternalBillingCustomer, operation: ExternalCreateOperation
+    db: Session,
+    customer: ExternalBillingCustomer,
+    operation: ExternalCreateOperation,
+    *,
+    provider_id: str | None = None,
 ) -> None:
-    """Caller owns the transaction; record a conflict requiring controlled review."""
-    customer.binding_state = Binding.IDENTITY_CONFLICT
-    operation.send_fence = uuid4()
-    record_customer_review(db, operation, "customer_identity_conflict")
+    """Caller owns the transaction; preserve only proven original-ID recovery."""
+    record_customer_conflict(db, customer, operation, provider_id=provider_id, ambiguous=False)
 
 
 def apply_customer_read(
