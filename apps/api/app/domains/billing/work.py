@@ -12,7 +12,6 @@ from app.domains.billing.customers import lock_user
 from app.domains.billing.work_contracts import WorkClaim, WorkLane
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
-from app.domains.purchases import service
 from app.infrastructure.persistence.billing_work import coalesce
 from app.infrastructure.queries import billing_reconciliation, billing_work as queries, purchases
 from app.models import (
@@ -21,7 +20,6 @@ from app.models import (
     BillingWorkItem,
     ExternalSubscription,
     ExternalSubscriptionFinancialAccessStatus as Financial,
-    ExternalCreateOperationKind as OperationKind,
 )
 
 RECONCILIATION = "subscription_reconciliation"
@@ -69,71 +67,22 @@ def enroll_subscription(db: Session, subscription: ExternalSubscription, *, hint
 def enroll_batch(factory: SessionFactory, configuration: Settings) -> int:
     """Committed missing set is the progress marker; no offset/cursor or HTTP."""
     with factory() as db:
-        ids = queries.missing_subscriptions(
+        subscriptions = queries.missing_subscriptions(
             db,
             configuration.lbx_external_billing_account_id,
             configuration.instance_tenant_id,
             configuration.instance_region,
             configuration.billing_worker_scan_batch_size,
         )
-        for identity in ids:
-            subject = queries.enrollment_subject(db, identity)
-            if subject is None:
-                continue
-            sub, purchase, customer, customer_op = subject
-            operations = purchases.operations(db, purchase.purchase_intent_id)
-            held = purchases.hold(db, sub.user_id, sub.product_id)
-            try:
-                evidence = service.accepted(purchase)
-                service._verify_original_consent(db, purchase, evidence)
-                valid = (
-                    (
-                        purchase.user_id,
-                        purchase.product_id,
-                        purchase.customer_id,
-                        purchase.mapping_revision_id,
-                        purchase.external_billing_account_id,
-                    )
-                    == (
-                        sub.user_id,
-                        sub.product_id,
-                        sub.customer_id,
-                        sub.mapping_revision_id,
-                        sub.external_billing_account_id,
-                    )
-                    and customer.user_id == sub.user_id
-                    and customer.external_billing_account_id == sub.external_billing_account_id
-                    and customer.provider_customer_id is not None
-                    and customer_op is not None
-                    and customer_op.bound_external_object_id == customer.provider_customer_id
-                    and customer_op.request_correlation_key == customer.billing_customer_key
-                    and customer.provider_origin == evidence.provider_origin == configuration.lbx_provider_origin
-                    and held is not None
-                    and held.purchase_intent_id == purchase.purchase_intent_id
-                    and all(
-                        any(op.operation_kind == kind and op.bound_external_object_id == binding for op in operations)
-                        for kind, binding in (
-                            (OperationKind.AGREEMENT, sub.external_agreement_id),
-                            (OperationKind.SUBSCRIPTION, sub.external_subscription_id),
-                        )
-                    )
-                )
-            except (ValueError, service.PurchaseRefused):
-                valid = False
+        for sub in subscriptions:
             enroll_subscription(db, sub)
-            if not valid:
-                # Quarantine one malformed historical subject; it leaves the missing
-                # set and cannot turn a bad first batch into a hot loop.
-                row = queries.by_key(db, RECONCILIATION, key(sub))
-                row.work_state = "invalid"
-                row.last_error_classification = "subscription_provenance_unproven"
         deadlines = queries.missing_deadlines(
             db, configuration.lbx_external_billing_account_id, configuration.billing_worker_scan_batch_size
         )
         for sub in deadlines:
             schedule_reconciliation(db, sub, None, complete=False)
         db.commit()
-        return max(len(ids), len(deadlines))
+        return max(len(subscriptions), len(deadlines))
 
 
 def ensure_sweep(factory: SessionFactory, configuration: Settings) -> None:

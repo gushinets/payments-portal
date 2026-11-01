@@ -200,7 +200,15 @@ class BillingWorker:
                         work.retry_work,
                         self.factory,
                         claim,
-                        invalid=error.code == "subscription_not_found",
+                        invalid=claim.kind == work.RECONCILIATION
+                        and error.code
+                        in {
+                            "subscription_not_found",
+                            "subscription_provenance_unproven",
+                            "purchase_history_unproven",
+                            "purchase_consent_unproven",
+                            "purchase_scope_released",
+                        },
                         error=error.code,
                     )
                     if not saved:
