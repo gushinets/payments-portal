@@ -45,11 +45,13 @@ ANY-664 implemented restricted v1 publication and DB-only browsing. ANY-709
 Step 1 now implements direct versioned links, one current product pointer,
 enabled-product discovery and current selected LBX offers. Kernel wire semantics
 and the pinned peer observation above are unchanged; no fresh peer inspection
-or real producer conformance is claimed. ANY-709 also implements accepted
-purchases, request-driven preparation/recovery and the cabinet Widget. Source
-projection slots remain inert. Subscription reconciliation workers, paid-access
-derivation and actual cabinet usage/quota remain later work. Preparation grants
-no access and the peer evidence pins above are unchanged.
+or real producer conformance is claimed. Source projection slots remain inert.
+ANY-709 implements purchase orchestration; ANY-715 implements subscription
+reconciliation and GET-only recovery without Kernel calls. Paid-access derivation
+and actual cabinet usage remain later work; stored approved terms do not promise
+current sellability. See the [billing operations guide](../engineering/ANY-715-billing-operations.md)
+for current Step 8 behavior and the Step 9/10 handoff; no Kernel wire contract
+or peer-verification status changes with this implementation.
 
 Evidence: [publication](https://github.com/gushinets/payments-portal/blob/79dc3f4d204aec4ac9552e3d1da3481553cc8aef/apps/api/app/domains/catalog/publication.py),
 [typed client](https://github.com/gushinets/payments-portal/blob/79dc3f4d204aec4ac9552e3d1da3481553cc8aef/apps/api/app/integrations/kernel/client.py),

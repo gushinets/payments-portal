@@ -121,10 +121,11 @@ database lifecycle.
   callback, webhook, outbound request success, or payment state alone is not
   access authority. Direct product links, live catalog reads, account Widget,
   accepted purchases and request-driven financial preparation/recovery are
-  implemented. ANY-715 Steps 1–4 implement embedded reconciliation/recovery and
-  default-disabled authenticated durable webhook hints. Paid-access derivation
-  remains future work; real webhook authentication/delivery is an enablement
-  gate. See the [runbook](../../docs/engineering/ANY-709-billing-runbook.md).
+  implemented. ANY-715 Steps 1–5 implement embedded reconciliation/recovery,
+  default-disabled authenticated durable webhook hints and audited operator
+  controls; see [billing operations](../../docs/engineering/ANY-715-billing-operations.md).
+  Paid-access derivation remains future work; real webhook authentication/delivery
+  is an enablement gate. See the [runbook](../../docs/engineering/ANY-709-billing-runbook.md).
 - Never log authentication tokens, authorization headers, secrets, card fields,
   or unredacted webhook bodies.
 - Legal acceptance records are append-only.

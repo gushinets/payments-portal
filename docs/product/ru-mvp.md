@@ -1,7 +1,7 @@
 # RU AnyToolAI Portal — As-Built 4F Handoff
 
 Status: authoritative implemented-product specification and deferred-step handoff
-Last updated: 2026-10-27
+Last updated: 2026-11-01
 
 The surface established by ANY-636 4F is a product-centric AnyToolAI Portal:
 public product-first home, catalog/discovery, per-product pages,
@@ -12,8 +12,9 @@ Identity facts are compact supporting content. The repository remains
 pre-production. ANY-709 adds optional FIO, explicit verified-email account
 Widget viewing without an offer/subscription, immutable purchase consent and
 request-driven preparation/recovery. Buy/Continue/Manage uses one shared cabinet
-Widget with fresh original-purchase proof. Billing workers, paid access and
-actual usage/quota remain later work; delivery and acceptance evidence are in
+Widget with fresh original-purchase proof. ANY-715 adds embedded subscription
+reconciliation, GET-only recovery and audited operations; paid access and actual
+usage/quota remain later work. Delivery and acceptance evidence are in
 [ANY-709](https://linear.app/paveldik/issue/ANY-709).
 ANY-664's v1 publication/DB-only catalog is historical. Current listing discovers
 enabled Kernel products; details/review read selected live LBX offers.
@@ -181,13 +182,13 @@ names and ownership decisions.
 | Product discovery and detail content | Portal API discovers enabled Kernel products and reads selected live LBX offers; PostgreSQL retains links/history | Kernel owns `product_id`; locale catalogs own surrounding UI copy |
 | Technical capability manifest and commercial catalog, tariffs, prices, periods, sellability | Kernel owns technical identity/capabilities; External Billing owns commercial truth; Portal stores immutable approved bindings/terms | ANY-664 delivered historical v1 source reads/publication. ANY-709 Step 1 adds direct links, enabled-product discovery and live selected offers; genuine Kernel enablement remains gated; ANY-709 now supplies purchase admission |
 | Purchase/payment Widget entry | External Billing with Portal orchestration and generated contracts | ANY-709 implements Buy/Continue/Manage, review/consent and fresh verified payment presentation |
-| Subscription/billing state | Step 3 prepared-subscription proof, held intent and original accepted history | Preparation is not payment verification; local GETs show saved state only; operating observations remain Step 8 |
-| Provider reconciliation/recovery | Request-driven GET recovery exists for customer/financial creation | Background reconciliation, scheduling and webhooks remain ANY-504 Step 8 |
+| Subscription/billing state | Step 7 preparation/history plus ANY-715 authoritative normalized observations with finite source trust | Preparation is not payment verification; reconciliation facts are not paid grants; no new UI state contract is claimed |
+| Provider reconciliation/recovery | ANY-715 embedded polling, GET-only recovery/inventory and provider-free deadlines over authoritative External Billing reads | Step 8 implemented; real LBX verification NOT_RUN; webhooks DISABLED/POLLING-ONLY |
 | Confirmed paid-access state and delivery | Portal provider-neutral projection from authoritative facts; no current runtime source | Unknown/not ready; deferred to ANY-504 Step 9 |
 | Actual usage and remaining quota | Platform Kernel; no current runtime source | Unavailable; integration deferred to ANY-504 Step 10 |
 
-The Portal owns identity/legal now and the later anti-corruption, projection,
-reconciliation, recovery, and paid-access delivery boundary. External Billing
+The Portal owns identity/legal, the billing anti-corruption, observation/projection,
+reconciliation and recovery boundary, and future paid-access delivery. External Billing
 owns commercial truth and lifecycle. Platform Kernel owns technical product and
 metric identity, durable actual usage, and quota enforcement. Workflow
 execution and artifacts also remain outside this repository.
@@ -197,8 +198,10 @@ launch remain gated on Phase 0 PASS under ANY-504, with evidence owned by
 ANY-634. This handoff adds no provider semantics or later-step implementation.
 Historical 4F changed no backend behavior, persistence, migrations, or
 contracts. ANY-664 adds the Step 6 producer for immutable mapping revisions;
-ANY-709 adds purchase UI/preparation. Operating reconciliation, access and usage
-remain later-step work. See the [single billing runbook](../engineering/ANY-709-billing-runbook.md).
+ANY-709 adds purchase UI/preparation; ANY-715 adds operating reconciliation/recovery.
+Access and usage remain later-step work. See the
+[purchase runbook](../engineering/ANY-709-billing-runbook.md) and
+[current billing operations guide](../engineering/ANY-715-billing-operations.md).
 
 ### Stable integration surfaces for parent ANY-504 Steps 6–10
 
@@ -218,9 +221,10 @@ business facts. Their owning steps must supply authoritative data/actions:
    orchestration. ANY-709 implements these controls with original-intent
    recovery and customer-wide payment presentation. Step 6 facts alone do not
    implement purchase or confer paid access. Delivery evidence belongs to ANY-709.
-3. **Step 8 — reconciliation/recovery:** populate relevant commercial/status
-   slots and action feedback with authoritative reconciled state and recovery
-   behavior. UI returns, callbacks, webhooks and outbound success are signals,
+3. **Step 8 — reconciliation/recovery:** ANY-715 supplies persisted authoritative
+   facts, recovery and operator diagnostics. It does not add a public status UI
+   contract or paid-access display. Future UI consumers must use the owning API
+   contract. UI returns, callbacks, webhooks and outbound success are signals,
    not commercial or paid-access authority.
 4. **Step 9 — paid access:** populate each product's access slot from the
    provider-neutral confirmed projection and its accepted authoritative-fact
@@ -231,7 +235,7 @@ business facts. Their owning steps must supply authoritative data/actions:
    durable usage and quota enforcement; no guessed zero, allowance or progress
    value may fill a missing source.
 
-Steps 8–10 and genuine Kernel producer enablement remain later program work.
+Steps 9–10 and genuine Kernel producer enablement remain later program work.
 Step 7 acceptance and review status are recorded in ANY-709.
 Provider-dependent semantics and launch retain the Phase 0 gates. No step may
 treat an unavailable source as “no subscription”, “no access”, a default/free

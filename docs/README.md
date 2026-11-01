@@ -1,7 +1,7 @@
 # Documentation Index
 
 Status: authoritative index
-Last verified: 2026-11-01
+Last updated: 2026-11-01
 
 Start with the smallest document that matches the task.
 
@@ -50,6 +50,10 @@ Start with the smallest document that matches the task.
 
 ### Implementation handoffs and references
 
+- [ANY-715 completed implementation plan](exec-plans/completed/ANY-715-implementation-plan.md)
+  — original approved plan preserved verbatim, dated approved amendments and
+  concise delivery/handoff record; local verification and real integration
+  checkpoints remain separate
 - [ANY-709 implementation plan and delivery record](exec-plans/completed/ANY-709-implementation-plan.md)
   — Steps 1-4 DONE as implementation milestones; dated source/verification
   evidence, the accepted cabinet layout and open final-review follow-ups.
@@ -101,6 +105,8 @@ Start with the smallest document that matches the task.
 - [Security](SECURITY.md)
 - [Quality score](QUALITY_SCORE.md)
 - [Execution plans](exec-plans/README.md)
+- [ANY-715 billing operations](engineering/ANY-715-billing-operations.md) — current reconciliation/recovery, webhook setup/gate/rollback, audited operator controls, monitoring and Step 9 handoff.
+- [ANY-715 QA execution](engineering/ANY-715-qa-report.md) — P0/P1 scenario evidence, same-tariff product isolation and separately recorded real integration checkpoints.
 
 ## Legal
 
@@ -111,5 +117,3 @@ Start with the smallest document that matches the task.
 
 - [Database schema](generated/db-schema.md)
 - [OpenAPI snapshot](generated/openapi.json)
-
-- [ANY-715 billing operations](engineering/ANY-715-billing-operations.md) — Steps 1–5 authoritative proof, embedded polling/recovery, optional webhook setup/gate/rollback, audited operator controls, monitoring and Step 9 handoff.
