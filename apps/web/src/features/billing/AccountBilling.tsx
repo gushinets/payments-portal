@@ -90,7 +90,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
         <label htmlFor="billing-purchase">{b("selectedPurchase")}</label>
         <select id="billing-purchase" value={selection?.purchase_intent_id ?? selectedId ?? ""} disabled={selectionState.status === "loading"} onChange={(event) => choose(event.target.value)}>
           <option value="">{b("accountView")}</option>
-          {selectionBlocked && selectedId && !selection && <option value={selectedId}>{b("selectionUnavailable")}</option>}
+          {selectionBlocked && selectedId && !selection && <option value={selectedId}>{selectionState.status === "loading" ? p("loading") : b("selectionUnavailable")}</option>}
           {options.map((item) => <option key={item.purchase_intent_id} value={item.purchase_intent_id}>{b("purchaseOption", { product: item.product_id, id: item.purchase_intent_id })}</option>)}
         </select>
         {selectionState.status === "loading" && <p role="status">{p("loading")}</p>}

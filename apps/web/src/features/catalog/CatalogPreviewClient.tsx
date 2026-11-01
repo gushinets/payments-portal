@@ -77,11 +77,13 @@ export function CatalogPreviewClient({
   productId,
   headingLevel = 2,
   accountStatuses,
-  billingUser
+  billingUser,
+  onOfferAvailability
 }: {
   productId?: string;
   headingLevel?: 2 | 3;
   billingUser?: SessionUserResponse;
+  onOfferAvailability?: (available: boolean) => void;
   accountStatuses?: {
     [slot in "access" | "usage"]: { label: string; description: string };
   };
@@ -94,6 +96,7 @@ export function CatalogPreviewClient({
 
   useEffect(() => {
     let current = true;
+    onOfferAvailability?.(false);
     const request = productId === undefined
       ? getCatalogProducts().then((response) => response.products)
       : getCatalogProduct(productId).then((product) => [product]);
@@ -102,6 +105,7 @@ export function CatalogPreviewClient({
         if (current) {
           setLoadedId(productId);
           setState({ kind: "ready", products });
+          onOfferAvailability?.(products[0]?.availability === "CURRENT_OFFER");
         }
       },
       (error: unknown) => {
@@ -114,7 +118,7 @@ export function CatalogPreviewClient({
       }
     );
     return () => { current = false; };
-  }, [productId, attempt]);
+  }, [productId, attempt, onOfferAvailability]);
 
   const ProductHeading = headingLevel === 2 ? "h2" : "h3";
   const visible: PreviewState = loadedId === productId ? state : { kind: "loading" };
@@ -152,7 +156,7 @@ export function CatalogPreviewClient({
                   ))}
                 </dl>
               )}
-              {billingUser && <ProductBilling productId={product.product_id} user={billingUser} headingLevel={4} />}
+              {billingUser && <ProductBilling productId={product.product_id} offerAvailable={product.availability === "CURRENT_OFFER"} user={billingUser} headingLevel={4} />}
               {productId === undefined && (
                 <div className="tool-card-bottom">
                   <Link className="tool-detail-action" href={`/products/${encodeURIComponent(product.product_id)}`}>

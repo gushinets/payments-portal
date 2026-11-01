@@ -281,6 +281,8 @@ class Settings(BaseSettings):
             return "lbx_seller_organization_id_required"
         if not seller.isascii() or not seller.isdecimal() or not seller.lstrip("0"):
             return "lbx_seller_organization_id_invalid"
+        if self.lbx_currency_mapping is None:
+            return "lbx_currency_invalid"
         return None
 
     @property

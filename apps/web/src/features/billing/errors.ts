@@ -52,6 +52,9 @@ export function billingErrorKey(error: unknown): BillingErrorKey {
     case "lbx_base_url_invalid":
     case "lbx_base_url_requires_public_https":
     case "lbx_server_credentials_invalid":
+    case "lbx_currency_invalid":
+    case "lbx_seller_organization_id_required":
+    case "lbx_seller_organization_id_invalid":
     case "lbx_widget_signing_secret_required": return "configuration";
     default: return error instanceof ApiError && error.status === 401 ? "session" : "unavailable";
   }

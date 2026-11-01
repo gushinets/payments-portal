@@ -352,6 +352,17 @@ def test_widget_and_purchase_readiness_are_independent_of_catalog_applicability(
     assert no_password.lbx_purchase_configuration_error == "lbx_connection_fields_required"
 
 
+@pytest.mark.parametrize(
+    "overrides",
+    [{"lbx_currency": "rub"}, {"lbx_currency": "USD"}, {"lbx_currency_id": "abc"}, {"lbx_currency_id": "0"}],
+)
+def test_invalid_currency_blocks_purchase_configuration_but_not_account_view(overrides: dict[str, str]) -> None:
+    configuration = lbx_settings(lbx_seller_organization_id="21", **overrides)
+    assert configuration.lbx_configuration_error is None
+    assert configuration.lbx_widget_configuration_error is None
+    assert configuration.lbx_purchase_configuration_error == "lbx_currency_invalid"
+
+
 async def test_close_owns_transport_and_closed_client_refuses_new_work() -> None:
     class Transport(httpx.MockTransport):
         closed = False

@@ -4,11 +4,13 @@ Status: current operational reference for the ANY-709 implementation.
 
 [ADR 0005](../architecture/decisions/0005-external-billing-boundary.md) points to
 accepted contracts and the exact dated C1-C4 decisions in
-[ANY-504](https://linear.app/paveldik/issue/ANY-504). Implementation results,
+[ANY-504](https://linear.app/paveldik/issue/ANY-504), and owns the accepted
+1 November point-resource identity decision. Implementation results,
 review fixes and acceptance evidence belong to
 [ANY-709](https://linear.app/paveldik/issue/ANY-709).
-The [initial plan](../exec-plans/completed/ANY-709-implementation-plan.md) is
-preserved as historical planning input, not current execution instructions.
+The [implementation plan and delivery record](../exec-plans/completed/ANY-709-implementation-plan.md)
+tracks completed milestones and review dispositions, with the original proposal
+linked as historical input.
 This guide supplies commands and recovery procedures, not additional exceptions.
 
 ## Connection and deployment

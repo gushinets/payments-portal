@@ -3,7 +3,8 @@
 Status: DONE - implementation Steps 1-4 delivered; final PR acceptance IN REVIEW
 Implementation completed: 2026-10-27
 Last reconciled: 2026-11-01
-Reviewed code checkpoint: `6288733a59897590a6813b532b281e358763c730`
+Runtime baseline: `6288733a59897590a6813b532b281e358763c730`
+Review corrections: 2026-11-01, recorded below
 Program: ANY-504, Step 7
 Issue: [ANY-709](https://linear.app/paveldik/issue/ANY-709)
 Delivery: [PR #150](https://github.com/gushinets/payments-portal/pull/150)
@@ -31,7 +32,8 @@ consent, bindings and financial operation identities remain in PostgreSQL.
 
 Follow [ADR 0005](../../architecture/decisions/0005-external-billing-boundary.md)
 and its dated C1-C4 decisions in [ANY-504](https://linear.app/paveldik/issue/ANY-504)
-for normative ownership and precise supersessions. This tracker records delivery;
+plus its 1 November point-resource identity decision for normative ownership and
+precise supersessions. This tracker records delivery;
 it does not amend the accepted specification bodies or create provider guarantees.
 The [billing runbook](../../engineering/ANY-709-billing-runbook.md) owns current
 setup, publication, diagnosis, recovery, migration and verification commands.
@@ -137,7 +139,7 @@ decision; no new payment permission or architectural exception follows from it.
 Relevant checks include [purchase UI](../../../apps/web/tests/components/any709-step4.test.tsx),
 [cabinet UI](../../../apps/web/tests/components/any709-cabinet.test.tsx) and
 [desktop/mobile journeys](../../../apps/web/e2e/any709-purchase.spec.ts).
-Known concurrent-opening and recovery-message defects remain explicit follow-ups.
+The concurrent-opening and recovery-message corrections are recorded below.
 
 ## What changed in the plan and why
 
@@ -185,7 +187,7 @@ current automated checks and final PR acceptance are not interchangeable.
 
 - **Implementation Steps 1-4: DONE.** Delivery milestones are recorded above.
   Remaining review corrections do not reset every stage to its original TODO.
-- **Current automated regression: PASS at the reviewed code checkpoint.**
+- **Historical automated regression: PASS at `6288733`.**
   [CI run 41278718094](https://github.com/gushinets/payments-portal/actions/runs/41278718094)
   checked out merge-test commit `258602bf9dfd3b1d8b154cedc53b5aebc66f6492`, combining
   head `6288733` with base `ace7c27`. Observed job logs record 1,540 fast API,
@@ -209,47 +211,85 @@ current automated checks and final PR acceptance are not interchangeable.
   See "Owner payment evidence and cabinet refresh, 2026-10-27" in
   [the retained delivery record](https://github.com/gushinets/payments-portal/blob/2442e4631cadab5acd79300d5fb36911a73c2107/docs/exec-plans/completed/ANY-709-implementation-plan.md).
   No later documentation change repeats that payment or certifies settlement.
-- **Final PR acceptance: IN REVIEW.** Runtime follow-ups below, independent
-  review disposition and human merge approval remain open. Green CI does not
+- **Final PR acceptance: IN REVIEW.** Independent review of the corrections
+  below and human merge approval remain open. Green CI does not
   clear a newly reproduced scenario automatically.
 - **Paid access/Kernel enforcement and launch: DEFERRED.** Later ANY-504 steps
   own them; real Kernel producer conformance is ANY-711. No production rollout,
   legal approval, fresh provider-uniqueness PASS or new payment is claimed here.
 
-## Open review follow-ups at 6288733
+## Review dispositions - 2026-11-01
 
-These were not fixed by the status reconciliation. They remain separate from
-the completed implementation milestones and must be resolved or explicitly
-dispositioned before final acceptance:
+The status reconciliation did not change runtime behavior. This follow-up fixes
+the seven confirmed runtime/UI issues and records the two declined changes;
+final independent acceptance remains separate from implementation milestones.
 
-- [ ] **Definitively unsellable original selection:** a never-sent purchase can
-  retain its hold after tariff archive/product disable. Preserve transient and
-  unknown-effect safety while providing the proven no-effect exit.
+- [x] **Definitively unsellable original selection:** tariff archive, disabled
+  product and unsupported composition use the existing fenced terms-change
+  transition. Financially unsent purchases release the hold for new consent;
+  prior financial effects retain it for review. Incomplete/unavailable source
+  reads remain retryable without release.
   [Review thread](https://github.com/gushinets/payments-portal/pull/150#discussion_r4434901437).
-- [ ] **Concurrent healthy payment opens:** same-binding reproof rotates the
-  admission fence and can reject the other window. Preserve actual conflict and
-  stale-admission protection while making healthy reopening work.
+- [x] **Concurrent healthy payment opens:** re-observing the same BOUND financial
+  identity preserves its fence and still records subscription observations.
+  Actual transitions and owner/seller conflicts retain admission protection.
   [Review thread](https://github.com/gushinets/payments-portal/pull/150#discussion_r4434901442).
-- [ ] **Recovered confirmation with a stale support error:** an existing held
-  purchase is found, but the original conflict is still displayed. Preserve real
-  idempotency-meaning conflicts and distinguish failed recovery.
+- [x] **Recovered confirmation with a stale support error:** successful owned
+  purchase recovery returns without the old conflict or an automatic advance.
+  A failed/empty inspection preserves the original conflict and request ID.
   [Review thread](https://github.com/gushinets/payments-portal/pull/150#discussion_r4434901452).
-- [ ] **Small UI/diagnostic triage:** known-unavailable Buy, loading selector text,
-  currency-configuration diagnosis and bounded customer-row contention. Their
-  impact and fix scope are separate from financial correctness; changing an error
-  code alone does not persist a receipt that failed to commit.
-- [ ] **Timing hardening decision:** near-expiry authentication can produce a
-  refused financial POST and GET-only uncertainty. No production frequency or
-  guaranteed request-lifetime margin has been established. Do not silently turn
-  an optional margin into permission to replay an uncertain financial command.
-- [ ] **Point-resource self-ID review disposition:** the owner-directed removal
-  and [published explanation](https://github.com/gushinets/payments-portal/pull/150#discussion_r4434832544)
-  rely on point-endpoint resource selection and retain binding/ownership/original
-  key proof. The reviewer still disputes the requirement interpretation. This
-  tracker does not restore the guards or declare that discussion resolved.
+- [x] **Four small UI/diagnostic corrections:** new Buy shares the existing
+  preview's current-offer readiness; DB-only Continue/Manage remains independent
+  of catalog failure. Deep-link selection shows a neutral loading option.
+  Invalid operator currency is a purchase-configuration error, without gating
+  account viewing. Customer-row `55P03` becomes bounded `billing_busy` 503 through
+  the existing application boundary; other database failures still propagate.
+  Error classification alone does not guarantee persistence of an uncommitted
+  receipt, and no new retry loop was added.
+- [x] **Timing hardening triaged, no change:** near-expiry authentication can
+  produce a refused financial POST and GET-only uncertainty. Production frequency
+  and a guaranteed request-lifetime margin remain unproven. An optional safety
+  margin is not a required P2 correction; financial UNKNOWN remains GET-only.
+- [x] **Point-resource self-ID decision:** the owner explicitly accepted the
+  point-endpoint selection boundary in [ADR 0005](../../architecture/decisions/0005-external-billing-boundary.md)
+  at `22399f4`. The redundant response-ID-to-URL guards remain removed. Schema,
+  original key, retained binding, relationship and final admission checks remain.
+- [x] **Detail-page Widget triaged, no second Widget:** the 27 October cabinet
+  layout decision above remains the accepted result. Product pages keep
+  review/preparation and cabinet links; account-only viewing remains available
+  in the cabinet independently of any purchase.
 - [x] **Plan/evidence reconciliation:** implementation milestones and dated
   records restored here. Historical proposal statuses no longer masquerade as
   current delivery status; the accepted cabinet layout is visible again.
+
+### Correction verification
+
+- 1,549 fast API, 394 component and 38 web-boundary tests passed. Final focused
+  UI regressions passed all 85 cases. Typecheck, lint, Ruff, architecture,
+  generation freshness and documentation checks passed; the documentation suite
+  passed 194 cases.
+- The complete PostgreSQL run passed 417 of 418 cases, including all 12 new
+  follow-up regressions. The existing uncertain-receipt-commit case exhausted its
+  0.6-second opening deadline. Its claim and receipt variants both passed in an
+  unchanged isolated rerun (2 passed). The complete run is not reported as a
+  clean PASS. Logs: `/tmp/any709-review-fixes/postgres-all.log` and
+  `/tmp/any709-review-fixes/uncertain-commit-rerun.log`.
+- The initial `npm run check` passed its pre-build stages, then Turbopack refused
+  dependencies symlinked outside this worktree. Copying the same installed
+  dependencies into the worktree allowed the normal production build to pass.
+  Its completed stages and separately run PostgreSQL suite are recorded above;
+  no successful end-to-end canonical invocation is claimed.
+- All 16 ANY-709 browser cases passed on the final production build in desktop
+  and mobile Chromium, including unavailable Buy, DB-only continuation, one
+  payment Widget, UNKNOWN recovery and session disposal. Screenshots were
+  inspected; axe found no critical/serious violations. Log and artifacts:
+  `/tmp/any709-review-fixes/browser.log` and
+  `/tmp/any709-review-fixes/browser-results/`.
+- Local Next.js 16.3.1 / Vitest 3.2.7 / Vite 7.3.6 differ from the lockfile's
+  16.4.2 / 4.1.12 / 7.3.7; React 19.2.8 matches. These are local results, not a
+  current-head locked CI PASS. External HTTP/SDK boundaries were synthetic;
+  PostgreSQL was disposable and loopback-only. No live LBX write/payment,
+  real-Kernel acceptance, deployment or merge was performed.
 
 For future corrections, append the changed scenario, outcome, checked commit and
 verification limits to the appropriate record. Operational procedures stay in

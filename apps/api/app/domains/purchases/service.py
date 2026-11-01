@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.core.settings import Settings
 from app.core.time import utc_now
 from app.domains.billing.contracts import CustomerOpen
-from app.domains.billing.customers import authenticate, lock_user, reserve_customer_in_transaction
+from app.domains.billing.customers import authenticate, lock_customer, lock_user, reserve_customer_in_transaction
 from app.domains.catalog.link_publication import StoredProductLink, require_offer_product_owner
 from app.domains.catalog.product_link import CurrentOffer
 from app.domains.catalog.publication import SessionFactory
@@ -39,7 +39,6 @@ from app.domains.purchases.contracts import (
 )
 from app.infrastructure.queries.billing_customers import (
     customer_operation,
-    lock_customer,
     recovery_work,
     open_customer_reviews,
     diagnostic_user,

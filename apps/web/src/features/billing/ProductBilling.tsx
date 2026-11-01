@@ -16,15 +16,15 @@ type PurchaseState =
   | { kind: "review"; review: PurchaseReviewResponse; key: string; selected: string[]; submitted: boolean }
   | { kind: "purchase"; purchase: PurchaseIntentResponse };
 type Failure = { message: BillingErrorKey; requestId: string };
-type ProductBillingProps = { productId: string; user?: SessionUserResponse; headingLevel?: 2 | 4 };
+type ProductBillingProps = { productId: string; offerAvailable: boolean; user?: SessionUserResponse; headingLevel?: 2 | 4 };
 
-export function ProductBilling({ productId, user, headingLevel = 2 }: ProductBillingProps) {
+export function ProductBilling({ productId, offerAvailable, user, headingLevel = 2 }: ProductBillingProps) {
   return user
-    ? <PurchasePanel key={`${user.user_id}:${productId}`} productId={productId} user={user} headingLevel={headingLevel} />
-    : <ProductSession key={productId} productId={productId} headingLevel={headingLevel} />;
+    ? <PurchasePanel key={`${user.user_id}:${productId}`} productId={productId} offerAvailable={offerAvailable} user={user} headingLevel={headingLevel} />
+    : <ProductSession key={productId} productId={productId} offerAvailable={offerAvailable} headingLevel={headingLevel} />;
 }
 
-function ProductSession({ productId, headingLevel }: { productId: string; headingLevel: 2 | 4 }) {
+function ProductSession({ productId, offerAvailable, headingLevel }: { productId: string; offerAvailable: boolean; headingLevel: 2 | 4 }) {
   const t = useTranslations("Purchase");
   const [session, setSession] = useState<{ kind: "loading" | "guest" | "failed" } | { kind: "user"; user: SessionUserResponse }>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -52,7 +52,7 @@ function ProductSession({ productId, headingLevel }: { productId: string; headin
     void load();
     return () => { active = false; unsubscribe(); };
   }, [attempt]);
-  if (session.kind === "user") return <PurchasePanel key={session.user.user_id} productId={productId} user={session.user} headingLevel={headingLevel} />;
+  if (session.kind === "user") return <PurchasePanel key={session.user.user_id} productId={productId} offerAvailable={offerAvailable} user={session.user} headingLevel={headingLevel} />;
   return <section className="purchase-panel" aria-label={t("title")}>
     {session.kind === "loading" ? <p role="status">{t("loading")}</p> : <>
       <p role={session.kind === "failed" ? "alert" : undefined}>{t(session.kind === "guest" ? "guest" : "sessionFailed")}</p>
@@ -62,7 +62,7 @@ function ProductSession({ productId, headingLevel }: { productId: string; headin
   </section>;
 }
 
-function PurchasePanel({ productId, user, headingLevel }: { productId: string; user: SessionUserResponse; headingLevel: 2 | 4 }) {
+function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { productId: string; offerAvailable: boolean; user: SessionUserResponse; headingLevel: 2 | 4 }) {
   const t = useTranslations("Purchase");
   const b = useTranslations("Billing");
   const [state, setState] = useState<PurchaseState>({ kind: "loading" });
@@ -185,8 +185,13 @@ function PurchasePanel({ productId, user, headingLevel }: { productId: string; u
           // Definitive refusal before pin: a new explicit review/consent is needed.
           setState({ kind: "none" });
         } else if (current() && ["purchase_scope_occupied", "purchase_idempotency_conflict"].includes(apiErrorCode(error) ?? "")) {
-          const existing = await currentPurchase(token, productId, id);
-          if (current() && existing.purchase) setState({ kind: "purchase", purchase: existing.purchase });
+          try {
+            const existing = await currentPurchase(token, productId, id);
+            if (current() && existing.purchase) {
+              setState({ kind: "purchase", purchase: existing.purchase });
+              return;
+            }
+          } catch { /* Preserve the original conflict and request ID if inspection fails. */ }
         } else if (current() && !(error instanceof ApiError)) {
           // Recover an accepted intent from a lost response, without a second POST.
           // An empty/failed GET retains the frozen confirmation and its original key.
@@ -221,7 +226,7 @@ function PurchasePanel({ productId, user, headingLevel }: { productId: string; u
       <Link className="btn-secondary" href="/account">{t("verifyAction")}</Link>
     </> : <>
       <div className="purchase-actions">
-        {(state.kind === "none" || released) && <button className="btn-primary" type="button" disabled={working} onClick={() => void review()}>{t("buy")}</button>}
+        {(state.kind === "none" || released) && <button className="btn-primary" type="button" disabled={working || !offerAvailable} onClick={() => void review()}>{t("buy")}</button>}
         {(state.kind === "unavailable" || state.kind === "review" || purchase) && <button className="btn-secondary" type="button" disabled={working} onClick={() => void refresh()}>{t("refresh")}</button>}
       </div>
       {state.kind === "loading" && <p role="status">{t("loading")}</p>}

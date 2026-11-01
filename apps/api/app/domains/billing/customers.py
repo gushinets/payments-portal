@@ -24,10 +24,10 @@ from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.errors import InvalidAuthSessionError
 from app.domains.identity.services.auth import as_utc, authenticate_session
 from app.infrastructure.queries.billing_customers import (
-    BillingUserLockBusy,
+    BillingRowLockBusy,
     customer_operation,
     customer_slot,
-    lock_customer,
+    lock_customer as lock_storage_customer,
     lock_user as lock_storage_user,
     overdue_customer_ids,
     recovery_work,
@@ -50,7 +50,14 @@ CUSTOMER_RECEIPT_SCHEMA = "customer-create-receipt:v1"
 def lock_user(db: Session, user_id: UUID) -> User:
     try:
         return lock_storage_user(db, user_id)
-    except BillingUserLockBusy:
+    except BillingRowLockBusy:
+        raise BillingRefused("billing_busy", 503) from None
+
+
+def lock_customer(db: Session, customer_id: UUID) -> ExternalBillingCustomer:
+    try:
+        return lock_storage_customer(db, customer_id)
+    except BillingRowLockBusy:
         raise BillingRefused("billing_busy", 503) from None
 
 

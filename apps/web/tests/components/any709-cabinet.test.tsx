@@ -24,6 +24,16 @@ const open = () => fireEvent.click(screen.getByRole("button", { name: ru.Billing
 const selector = () => screen.getByRole("combobox", { name: ru.Billing.selectedPurchase });
 const payloads = () => bootstrap.mock.calls.map(([init]) => JSON.parse(init.body));
 
+it("shows a neutral selected-purchase placeholder while its deep link is loading", async () => {
+  list.mockImplementationOnce(() => new Promise<Response>(() => {}));
+  status.mockImplementationOnce(() => new Promise<Response>(() => {}));
+  renderCabinet(first.purchase_intent_id);
+  expect(selector()).toBeDisabled();
+  expect(screen.getByRole("option", { name: ru.Purchase.loading })).toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: ru.Billing.selectionUnavailable })).not.toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
 beforeEach(() => {
   window.localStorage.clear();
   window.localStorage.setItem(sessionStorageKey, "synthetic-portal-session");

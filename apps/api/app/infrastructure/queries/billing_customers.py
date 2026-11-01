@@ -25,8 +25,8 @@ CUSTOMER_LOCK_TIMEOUT_MS = 1000
 CUSTOMER_STATEMENT_TIMEOUT_MS = 2000
 
 
-class BillingUserLockBusy(Exception):
-    """The bounded user-row lock could not be acquired in this transaction."""
+class BillingRowLockBusy(Exception):
+    """A bounded user/customer row lock could not be acquired."""
 
 
 def _bound_transaction(db: Session) -> None:
@@ -50,7 +50,7 @@ def lock_user(db: Session, user_id: UUID) -> User:
         ).one()
     except DBAPIError as error:
         if getattr(error.orig, "sqlstate", None) == "55P03":
-            raise BillingUserLockBusy from error
+            raise BillingRowLockBusy from error
         raise
 
 
@@ -195,9 +195,14 @@ def overdue_customer_ids(db: Session, now: datetime, limit: int) -> tuple[UUID, 
 
 def lock_customer(db: Session, customer_id: UUID) -> ExternalBillingCustomer:
     _bound_transaction(db)
-    return db.scalars(
-        select(ExternalBillingCustomer).where(ExternalBillingCustomer.customer_id == customer_id).with_for_update()
-    ).one()
+    try:
+        return db.scalars(
+            select(ExternalBillingCustomer).where(ExternalBillingCustomer.customer_id == customer_id).with_for_update()
+        ).one()
+    except DBAPIError as error:
+        if getattr(error.orig, "sqlstate", None) == "55P03":
+            raise BillingRowLockBusy from error
+        raise
 
 
 def open_customer_reviews(db: Session, operation_id: UUID) -> list[ManualReviewCase]:

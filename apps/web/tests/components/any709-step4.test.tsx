@@ -1,10 +1,12 @@
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProductBilling } from "@/features/billing";
+import { ProductDetailContent } from "@/features/catalog/ProductDetailContent";
 import type { PurchaseIntentResponse } from "@/generated/api-contracts/types.gen";
 import ru from "@/messages/ru.json";
 import { sessionStorageKey } from "@/shared/api/auth";
 import { purchaseReview, purchaseUser, savedPurchase, widgetResponse } from "../fixtures/purchase";
+import { simulatedProduct } from "../fixtures/catalog";
 import { renderWithIntl } from "../setup/render-with-intl";
 
 const { mount, dispose } = vi.hoisted(() => ({ mount: vi.fn(), dispose: vi.fn() }));
@@ -17,11 +19,86 @@ const review = vi.fn();
 const confirm = vi.fn();
 const advance = vi.fn();
 const bootstrap = vi.fn();
+const catalog = vi.fn();
 const json = (payload: unknown, status = 200) => Response.json(payload, { status });
 
 function renderProduct(user = purchaseUser) {
-  return renderWithIntl(<ProductBilling productId="proposal_ai" user={user} />, { locale: "ru", messages });
+  return renderWithIntl(<ProductBilling productId="proposal_ai" offerAvailable user={user} />, { locale: "ru", messages });
 }
+
+it("recovers a concurrent confirmation without a false support warning or another advance", async () => {
+  confirm.mockImplementationOnce(async () => {
+    owned = { ...savedPurchase, state: "created" };
+    return json({ detail: { code: "purchase_scope_occupied", request_id: "original-conflict" } }, 409);
+  });
+  renderProduct();
+  await accept();
+  expect(await screen.findByRole("button", { name: ru.Purchase.continue })).toBeVisible();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(advance).not.toHaveBeenCalled();
+});
+
+it("preserves the original conflict when the recovery lookup fails", async () => {
+  let lookupFails = false;
+  const ordinaryFetch = fetcher.getMockImplementation()!;
+  fetcher.mockImplementation(async (input, init) => {
+    if (lookupFails && new URL(String(input)).pathname === "/api/purchase-intents/current") {
+      return json({ detail: { code: "billing_session_required", request_id: "lookup-failure" } }, 401);
+    }
+    return ordinaryFetch(input, init);
+  });
+  confirm.mockImplementationOnce(async () => {
+    lookupFails = true;
+    return json({ detail: { code: "purchase_scope_occupied", request_id: "original-conflict" } }, 409);
+  });
+  renderProduct();
+  await accept();
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(ru.Billing.errors.purchaseConflict);
+  expect(alert).toHaveTextContent("original-conflict");
+  expect(alert).not.toHaveTextContent("lookup-failure");
+  expect(advance).not.toHaveBeenCalled();
+});
+
+it("reports invalid currency configuration without blaming the offer source", async () => {
+  review.mockResolvedValueOnce(json({ detail: { code: "lbx_currency_invalid", request_id: "currency-config" } }, 503));
+  renderProduct();
+  fireEvent.click(await screen.findByRole("button", { name: ru.Purchase.buy }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.errors.configuration);
+  expect(confirm).not.toHaveBeenCalled();
+});
+
+it.each(["UNMAPPED", "OFFER_INCOMPLETE", "OFFER_UNSUPPORTED"] as const)(
+  "disables new Buy for %s using the same offer read as its preview", async (availability) => {
+    catalog.mockResolvedValueOnce(json({ ...simulatedProduct, availability, offer: null }));
+    renderWithIntl(<ProductDetailContent productId="proposal_ai">{null}</ProductDetailContent>, { locale: "ru", messages });
+    expect(await screen.findByRole("button", { name: ru.Purchase.buy })).toBeDisabled();
+    await waitFor(() => expect(catalog).toHaveBeenCalledTimes(1));
+    expect(review).not.toHaveBeenCalled();
+  }
+);
+
+it("enables new Buy after the current offer loads", async () => {
+  let resolve!: (response: Response) => void;
+  catalog.mockImplementationOnce(() => new Promise<Response>((done) => { resolve = done; }));
+  renderWithIntl(<ProductDetailContent productId="proposal_ai">{null}</ProductDetailContent>, { locale: "ru", messages });
+  expect(await screen.findByRole("button", { name: ru.Purchase.buy })).toBeDisabled();
+  resolve(json(simulatedProduct));
+  await waitFor(() => expect(screen.getByRole("button", { name: ru.Purchase.buy })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: ru.Purchase.buy }));
+  expect(await screen.findByRole("checkbox")).toBeVisible();
+});
+
+it.each(["created", "linked"] as const)("keeps existing %s purchase usable when the catalog is down", async (state) => {
+  owned = { ...savedPurchase, state };
+  catalog.mockResolvedValueOnce(json({ detail: { code: "catalog_unavailable" } }, 503));
+  renderWithIntl(<ProductDetailContent productId="proposal_ai">{null}</ProductDetailContent>, { locale: "ru", messages });
+  const action = state === "linked"
+    ? await screen.findByRole("link", { name: ru.Purchase.manage })
+    : await screen.findByRole("button", { name: ru.Purchase.continue });
+  expect(action).toBeVisible();
+  expect(action).not.toBeDisabled();
+});
 async function accept() {
   fireEvent.click(await screen.findByRole("button", { name: ru.Purchase.buy }));
   fireEvent.click(await screen.findByRole("checkbox"));
@@ -33,6 +110,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   window.localStorage.setItem(sessionStorageKey, "synthetic-portal-session");
   owned = null;
+  catalog.mockReset().mockImplementation(async () => json(simulatedProduct));
   review.mockReset().mockImplementation(async () => json(purchaseReview));
   confirm.mockReset().mockImplementation(async () => {
     owned = { ...savedPurchase, state: "created" };
@@ -44,6 +122,7 @@ beforeEach(() => {
   dispose.mockReset();
   fetcher.mockReset().mockImplementation(async (input, init) => {
     const path = new URL(String(input)).pathname;
+    if (path === "/api/catalog/products/proposal_ai") return catalog();
     if (path === "/api/auth/session") return json({ authenticated: true, user: purchaseUser });
     if (path === "/api/purchase-intents/current") return json({ purchase: owned });
     if (path === "/api/purchases/review") return review(init);
@@ -60,7 +139,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe("ANY-709 Step 4 purchase journey", () => {
   it("keeps guests read-only and verifies email before personal requests", async () => {
     window.localStorage.clear();
-    const guest = renderWithIntl(<ProductBilling productId="proposal_ai" />, { locale: "ru", messages });
+    const guest = renderWithIntl(<ProductBilling productId="proposal_ai" offerAvailable />, { locale: "ru", messages });
     expect(await screen.findByRole("link", { name: ru.Purchase.signIn })).toHaveAttribute("href", "/ru/account");
     expect(fetcher).not.toHaveBeenCalled();
     guest.unmount();

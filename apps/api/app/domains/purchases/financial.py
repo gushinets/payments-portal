@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.settings import Settings
 from app.core.time import utc_now
 from app.domains.billing.customer_reviews import customer_admission_reviews
-from app.domains.billing.customers import authenticate
+from app.domains.billing.customers import authenticate, lock_customer
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases.contracts import (
@@ -27,7 +27,6 @@ from app.domains.purchases.service import _locked, _operation, read_purchase
 from app.infrastructure.queries import purchases as queries
 from app.infrastructure.queries.billing_customers import (
     customer_operation,
-    lock_customer,
     recovery_work,
     open_customer_reviews,
 )
@@ -305,10 +304,14 @@ def _bind_financial(
                 for case in open_customer_reviews(db, op.create_operation_id)
             ):
                 raise PurchaseRefused("purchase_review_required", 409)
+        already_bound = op.operation_state == State.BOUND
         op.bound_external_object_id = str(provider_id)
         op.operation_state = State.BOUND
         op.resolved_at = op.resolved_at or utc_now()
-        op.send_fence = uuid4()
+        # Re-observing the same proven binding must not invalidate another
+        # healthy Widget opening. Actual binding/state transitions still fence.
+        if not already_bound:
+            op.send_fence = uuid4()
         work = recovery_work(db, op.create_operation_id)
         if work:
             work.work_state = "done"

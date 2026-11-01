@@ -16,7 +16,8 @@ from app.domains.billing.contracts import BillingAccountFailure, CustomerOpen
 from app.domains.billing.customers import reserve_customer, recheck_widget_session
 from app.domains.catalog.link_publication import StoredProductLink
 from app.domains.catalog.product_link import CurrentOffer, current_offer_fingerprint
-from app.domains.catalog.preview import require_enabled_product
+from app.domains.catalog.preview import CatalogProductNotFound, require_enabled_product
+from app.domains.catalog.commercial_offer import OfferRefusalKind, SelectedOfferRefused
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases.contracts import (
     FinancialOperation,
@@ -59,8 +60,8 @@ async def review_purchase(
 
 
 def _configured_seller(configuration: Settings) -> None:
-    if configuration.lbx_purchase_configuration_error is not None:
-        raise PurchaseRefused("purchase_billing_not_configured", 503)
+    if error := configuration.lbx_purchase_configuration_error:
+        raise PurchaseRefused(error, 503)
 
 
 async def confirm_purchase(
@@ -111,10 +112,19 @@ async def _live_original(
         await run_in_threadpool(financial.changed_unsent_terms, factory, purchase)
         return False
     manifest = await sources.require_kernel().fetch_manifest(budget=budget)
-    require_enabled_product(manifest, purchase.accepted.selection.product_id)
-    offer = await read_current_offer(
-        sources.require_lbx(), selection=purchase.accepted.selection, configuration=configuration, budget=budget
-    )
+    try:
+        require_enabled_product(manifest, purchase.accepted.selection.product_id)
+        offer = await read_current_offer(
+            sources.require_lbx(), selection=purchase.accepted.selection, configuration=configuration, budget=budget
+        )
+    except CatalogProductNotFound:
+        await run_in_threadpool(financial.changed_unsent_terms, factory, purchase)
+        return False
+    except SelectedOfferRefused as error:
+        if error.kind != OfferRefusalKind.NOT_SELLABLE:
+            raise
+        await run_in_threadpool(financial.changed_unsent_terms, factory, purchase)
+        return False
     # Recompute from immutable historical fields under the current comparison
     # contract and the same canonical connection scope as the fresh offer.
     # Historical account FKs and accepted digests remain unchanged.

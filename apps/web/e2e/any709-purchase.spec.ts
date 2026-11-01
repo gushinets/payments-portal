@@ -88,6 +88,28 @@ async function openProduct(page: Page) {
   return page.getByRole("region", { name: ru.Purchase.title });
 }
 
+test("unavailable offers disable new Buy while saved purchases remain resumable", async ({ page }, testInfo) => {
+  const state = await syntheticBilling(page);
+  await page.route("**/api/catalog/products/proposal_ai", (route) => route.fulfill(state.catalogUnavailable
+    ? { status: 503, json: { detail: { code: "catalog_unavailable" } } }
+    : { json: { ...simulatedProduct, availability: "UNMAPPED", offer: null } }));
+  const panel = await openProduct(page);
+  await expect(panel.getByRole("button", { name: ru.Purchase.buy, exact: true })).toBeDisabled();
+  await expect(page.getByText(ru.CatalogPreview.unmapped)).toBeVisible();
+  expect(state.confirmations).toEqual([]);
+  expect(state.bootstraps).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath("unavailable-buy.png"), fullPage: true });
+  const accessibility = await new AxeBuilder({ page }).analyze();
+  expect(accessibility.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
+  state.owned = { ...savedPurchase, state: "created" };
+  state.catalogUnavailable = true;
+  await page.reload();
+  await panel.getByRole("button", { name: ru.Purchase.continue, exact: true }).click();
+  await expect(panel.getByRole("link", { name: ru.Purchase.manage })).toBeVisible();
+  expect(state.advances).toBe(1);
+  expect(state.confirmations).toEqual([]);
+});
+
 test("guest sees read-only details and a sign-in prompt", async ({ page }) => {
   const state = await syntheticBilling(page, false);
   const panel = await openProduct(page);
