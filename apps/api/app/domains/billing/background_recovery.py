@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.settings import Settings
 from app.domains.billing import customers, work
 from app.domains.billing.contracts import BillingRefused, CustomerOpen
+from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
@@ -64,7 +65,10 @@ def enroll_operation(db: Session, operation: ExternalCreateOperation, account: s
 
 def repair_batch(factory: SessionFactory, configuration: Settings) -> int:
     with factory() as db:
-        identities = [op.create_operation_id for op in queries.missing_operations(db, configuration)]
+        identities = [
+            op.create_operation_id
+            for op in queries.missing_operations(db, configuration, account=connection_account(db, configuration))
+        ]
     repaired = 0
     for identity in identities:
         try:
@@ -75,7 +79,7 @@ def repair_batch(factory: SessionFactory, configuration: Settings) -> int:
             # Another local flow owns the user; the next sweep retries the same
             # original missing set. No no-send/result evidence is manufactured.
     with factory() as db:
-        inventory = queries.missing_inventory(db, configuration)
+        inventory = queries.missing_inventory(db, configuration, account=connection_account(db, configuration))
         now = as_utc(billing_reconciliation.database_now(db))
         for customer in inventory:
             coalesce(
@@ -109,7 +113,10 @@ def _repair_operation(factory: SessionFactory, configuration: Settings, identity
         db.refresh(op)
         if op.operation_state not in {State.POSSIBLE_SEND, State.UNKNOWN, State.MANUAL_REVIEW}:
             return False
-        valid = customer.provider_origin == configuration.lbx_provider_origin
+        valid = (
+            customer.provider_origin == configuration.lbx_provider_origin
+            and customer.external_billing_account_id == connection_account(db, configuration)
+        )
         try:
             if op.operation_kind == Kind.CUSTOMER:
                 customers._receipt_id(op)
@@ -134,12 +141,12 @@ def _repair_operation(factory: SessionFactory, configuration: Settings, identity
         if row.work_state in {"done", "completed"}:
             row.work_state = "pending"
             row.next_attempt_at = now
-        enroll_operation(db, op, configuration.lbx_external_billing_account_id)
+        enroll_operation(db, op, customer.external_billing_account_id)
         if not valid:
             row.work_state = "invalid"
             row.priority = 1
             row.last_error_classification = "billing_recovery_unproven"
-            deadline = work_queries.by_key(db, DEADLINE, f"{configuration.lbx_external_billing_account_id}:{identity}")
+            deadline = work_queries.by_key(db, DEADLINE, f"{customer.external_billing_account_id}:{identity}")
             deadline.work_state = "invalid"
             deadline.last_error_classification = "billing_recovery_unproven"
         db.commit()
@@ -156,7 +163,7 @@ def subject(
         op, customer = found
         user = db.get(User, customer.user_id)
         if (
-            customer.external_billing_account_id != configuration.lbx_external_billing_account_id
+            customer.external_billing_account_id != connection_account(db, configuration)
             or customer.provider_origin != configuration.lbx_provider_origin
             or user is None
             or (user.tenant_id, user.region) != (configuration.instance_tenant_id, configuration.instance_region)
@@ -182,7 +189,7 @@ def customer_snapshot(
 ) -> tuple[CustomerOpen, tuple[Purchase, ...]]:
     with factory() as db:
         customer = queries.customer(db, identity)
-        if customer is None or customer.external_billing_account_id != configuration.lbx_external_billing_account_id:
+        if customer is None or customer.external_billing_account_id != connection_account(db, configuration):
             raise BillingRefused("billing_identity_unproven", 409)
         user = db.get(User, customer.user_id)
         if user is None or (user.tenant_id, user.region) != (

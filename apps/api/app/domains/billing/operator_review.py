@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
 from app.domains.billing.customers import lock_user
+from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.operator_contracts import (
     RESOLUTION_SCHEMA,
     OriginalOperationProof,
@@ -251,7 +252,7 @@ def prepare_resolution(
             or customer_op.request_correlation_key != customer.billing_customer_key
             or customer.provider_origin != purchase.accepted.provider_origin
             or customer.provider_origin != configuration.lbx_provider_origin
-            or purchase.account_id != configuration.lbx_external_billing_account_id
+            or purchase.account_id != connection_account(db, configuration)
         ):
             raise PurchaseRefused("billing_identity_unproven", 409)
         service._verify_original_consent(db, row, purchase.accepted)

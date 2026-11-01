@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.customers import lock_user
+from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.work_contracts import WorkClaim, WorkLane
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
@@ -67,18 +68,17 @@ def enroll_subscription(db: Session, subscription: ExternalSubscription, *, hint
 def enroll_batch(factory: SessionFactory, configuration: Settings) -> int:
     """Committed missing set is the progress marker; no offset/cursor or HTTP."""
     with factory() as db:
+        account = connection_account(db, configuration)
         subscriptions = queries.missing_subscriptions(
             db,
-            configuration.lbx_external_billing_account_id,
+            account,
             configuration.instance_tenant_id,
             configuration.instance_region,
             configuration.billing_worker_scan_batch_size,
         )
         for sub in subscriptions:
             enroll_subscription(db, sub)
-        deadlines = queries.missing_deadlines(
-            db, configuration.lbx_external_billing_account_id, configuration.billing_worker_scan_batch_size
-        )
+        deadlines = queries.missing_deadlines(db, account, configuration.billing_worker_scan_batch_size)
         for sub in deadlines:
             schedule_reconciliation(db, sub, None, complete=False)
         db.commit()
@@ -87,6 +87,8 @@ def enroll_batch(factory: SessionFactory, configuration: Settings) -> int:
 
 def ensure_sweep(factory: SessionFactory, configuration: Settings) -> None:
     with factory() as db:
+        # Stable deployment/origin key: the first proven storage scope can
+        # appear after startup. Sweeps resolve that scope anew on each batch.
         coalesce(
             db,
             kind=SWEEP,
@@ -111,7 +113,8 @@ def claim_work(factory: SessionFactory, configuration: Settings, lane: WorkLane)
             else (RECONCILIATION, "external_create_recovery", "customer_inventory"),
             now,
             urgent=None if lane == WorkLane.LOCAL else lane == WorkLane.URGENT,
-            account=configuration.lbx_external_billing_account_id,
+            account=connection_account(db, configuration),
+            sweep_key=configuration.lbx_external_billing_account_id,
             trust_urgent_before=now + URGENT_TRUST_WINDOW,
         )
         if row is None:
@@ -324,4 +327,6 @@ def expire_trust(factory: SessionFactory, claim: WorkClaim) -> None:
 
 def inspect_backlog(factory: SessionFactory, configuration: Settings) -> tuple[int, datetime | None, int]:
     with factory() as db:
-        return queries.backlog(db, configuration.lbx_external_billing_account_id)
+        return queries.backlog(
+            db, connection_account(db, configuration), sweep_key=configuration.lbx_external_billing_account_id
+        )

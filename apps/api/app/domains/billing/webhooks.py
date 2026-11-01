@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from app.core.settings import Settings
 from app.domains.billing import work
+from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.webhook_contracts import CORRELATION_SCHEMA, RECEIPT_SCHEMA, HintReceipt, SubscriptionHint
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
@@ -14,8 +15,8 @@ from app.models import ExternalBillingCustomerBindingState, ExternalBillingWebho
 
 
 def receive_hint(factory: SessionFactory, configuration: Settings, hint: SubscriptionHint) -> HintReceipt:
-    account = configuration.lbx_external_billing_account_id
     with factory() as db:
+        account = connection_account(db, configuration)
         now = as_utc(billing_reconciliation.database_now(db))
         subject = billing_webhooks.subscription_for_hint(
             db,

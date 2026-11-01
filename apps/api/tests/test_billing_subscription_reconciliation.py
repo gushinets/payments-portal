@@ -81,6 +81,29 @@ def test_billing_subscription_reconciliation_commercial(change: dict, classifica
     assert proof.identity == IdentityProof.MATCH
 
 
+@pytest.mark.parametrize("same_origin", [False, True])
+def test_billing_subscription_reconciliation_retained_storage_scope_requires_current_origin(same_origin: bool) -> None:
+    subject = subject_factory()
+    tariff = tariff_factory(subject)
+    purchase = replace(
+        subject.purchase,
+        account_id="retained-historical-account",
+        accepted=subject.purchase.accepted
+        if same_origin
+        else subject.purchase.accepted.model_copy(update={"provider_origin": "https://foreign.test"}),
+    )
+    proof = normalize_subscription(
+        replace(subject, purchase=purchase),
+        step1_settings(),
+        user=user_factory(),
+        agreement=agreement_factory(),
+        tariff=tariff,
+        subscription=subscription_factory(),
+    )
+    assert proof.complete is same_origin
+    assert (proof.identity == IdentityProof.MATCH) is same_origin
+
+
 @pytest.mark.parametrize("field,value", [("price", 15), ("multiplicator", 2), ("tariff_service_id", 1002)])
 @pytest.mark.parametrize("missing", [None, "total_price", "period_length"])
 def test_billing_subscription_reconciliation_effective_drift(field: str, value: int, missing: str | None) -> None:

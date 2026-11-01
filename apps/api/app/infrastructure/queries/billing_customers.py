@@ -113,15 +113,15 @@ def connection_accounts(db: Session, origin: str) -> set[str]:
     """
     return set(
         db.scalars(
-            select(CommercialProductHead.external_billing_account_id).where(
-                CommercialProductHead.provider_origin == origin
-            )
+            select(CommercialProductHead.external_billing_account_id)
+            .where(CommercialProductHead.provider_origin == origin)
+            .distinct()
         )
     ) | set(
         db.scalars(
-            select(ExternalBillingCustomer.external_billing_account_id).where(
-                ExternalBillingCustomer.provider_origin == origin
-            )
+            select(ExternalBillingCustomer.external_billing_account_id)
+            .where(ExternalBillingCustomer.provider_origin == origin)
+            .distinct()
         )
     )
 
