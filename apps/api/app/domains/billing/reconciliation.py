@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 
 from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused, CustomerOpen
-from app.domains.billing.customers import lock_user, mark_customer_identity_conflict
+from app.domains.billing.customers import lock_customer, lock_user, mark_customer_identity_conflict
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.reconciliation_contracts import (
     RECONCILIATION_SCHEMA,
@@ -20,7 +20,7 @@ from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
 from app.infrastructure.queries import billing_reconciliation as queries, purchases
 from app.infrastructure.persistence.billing_webhooks import mark_processed
-from app.infrastructure.queries.billing_customers import lock_customer, customer_operation, open_customer_reviews
+from app.infrastructure.queries.billing_customers import customer_operation, open_customer_reviews
 from app.domains.billing.work import schedule_reconciliation, verify_claim
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.operator_contracts import ReviewResolution

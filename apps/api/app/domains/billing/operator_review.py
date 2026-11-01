@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
-from app.domains.billing.customers import lock_user
+from app.domains.billing.customers import lock_customer, lock_user
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.operator_contracts import (
     RESOLUTION_SCHEMA,
@@ -22,7 +22,7 @@ from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
 from app.domains.purchases.contracts import FinancialOperation, Purchase, PurchaseRefused
 from app.infrastructure.queries import billing_operator as queries, billing_reconciliation, purchases
-from app.infrastructure.queries.billing_customers import customer_operation, lock_customer, recovery_work
+from app.infrastructure.queries.billing_customers import customer_operation, recovery_work
 from app.models import (
     ExternalBillingCustomerBindingState as Binding,
     ExternalCreateOperation,

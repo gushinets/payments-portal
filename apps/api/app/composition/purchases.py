@@ -10,6 +10,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.composition.billing import ensure_customer
 from app.composition.catalog import catalog_preview
+from app.composition.purchase_offer import live_original, require_configured_seller
 from app.composition.purchase_recovery import recover_financial as recover_financial
 from app.composition.purchase_observation import prepared_subscription_observation
 from app.composition.sources import SourceResources
@@ -19,9 +20,7 @@ from app.domains.billing.contracts import BillingAccountFailure, CustomerOpen
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.customers import reserve_customer, recheck_widget_session
 from app.domains.catalog.link_publication import StoredProductLink
-from app.domains.catalog.product_link import CurrentOffer, current_offer_fingerprint
-from app.domains.catalog.preview import CatalogProductNotFound, require_enabled_product
-from app.domains.catalog.commercial_offer import OfferRefusalKind, SelectedOfferRefused
+from app.domains.catalog.product_link import CurrentOffer
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases.contracts import (
     FinancialOperation,
@@ -36,7 +35,7 @@ from app.domains.purchases.inventory import other_inventory_purchase
 from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from app.integrations.lbx._transport import customer_diagnostics
 from app.integrations.lbx.client import LbxServerClient
-from app.integrations.lbx.current_offer import current_billing_date, read_current_offer
+from app.integrations.lbx.current_offer import current_billing_date
 from app.integrations.lbx.errors import LbxCreateNotSent, LbxError, LbxScopeMismatch, LbxResponseInvalid
 from app.integrations.lbx.financial import (
     Agreement,
@@ -58,18 +57,13 @@ async def review_purchase(
     sources: SourceResources, configuration: Settings, *, factory: SessionFactory, token: str, product_id: str
 ) -> tuple[StoredProductLink, CurrentOffer, tuple[LegalEvidence, ...]]:
     await run_in_threadpool(service.authenticate_user, factory, configuration, token)
-    _configured_seller(configuration)
+    require_configured_seller(configuration)
     products = await catalog_preview(sources, configuration, session_factory=factory, product_id=product_id)
     product = products[0]
     if product.link is None or product.offer is None:
         raise PurchaseRefused("purchase_offer_unavailable", 409)
     documents = await run_in_threadpool(service.read_legal, factory, configuration, token)
     return product.link, product.offer, documents
-
-
-def _configured_seller(configuration: Settings) -> None:
-    if error := configuration.lbx_purchase_configuration_error:
-        raise PurchaseRefused(error, 503)
 
 
 async def confirm_purchase(
@@ -104,43 +98,6 @@ def _connection(purchase: Purchase, configuration: Settings) -> None:
         raise PurchaseRefused("purchase_billing_not_configured", 503)
     if purchase.accepted.provider_origin != configuration.lbx_provider_origin:
         raise PurchaseRefused("billing_connection_conflict", 409)
-
-
-async def _live_original(
-    sources: SourceResources,
-    configuration: Settings,
-    purchase: Purchase,
-    factory: SessionFactory,
-    *,
-    budget: PreflightBudget,
-) -> bool:
-    # One total deadline spans customer ensure, original-offer checks and financial I/O.
-    _configured_seller(configuration)
-    if purchase.accepted.seller_id != int(configuration.lbx_seller_organization_id):
-        await run_in_threadpool(financial.changed_unsent_terms, factory, purchase)
-        return False
-    manifest = await sources.require_kernel().fetch_manifest(budget=budget)
-    try:
-        require_enabled_product(manifest, purchase.accepted.selection.product_id)
-        offer = await read_current_offer(
-            sources.require_lbx(), selection=purchase.accepted.selection, configuration=configuration, budget=budget
-        )
-    except CatalogProductNotFound:
-        await run_in_threadpool(financial.changed_unsent_terms, factory, purchase)
-        return False
-    except SelectedOfferRefused as error:
-        if error.kind != OfferRefusalKind.NOT_SELLABLE:
-            raise
-        await run_in_threadpool(financial.changed_unsent_terms, factory, purchase)
-        return False
-    # Recompute immutable historical fields under the current comparison and
-    # connection scope. Historical account FKs and accepted digests stay unchanged.
-    if offer.fingerprint != current_offer_fingerprint(
-        configuration.lbx_external_billing_account_id, purchase.accepted.selection, purchase.accepted.offer
-    ):
-        await run_in_threadpool(financial.changed_unsent_terms, factory, purchase)
-        return False
-    return True
 
 
 async def _inventory(
@@ -354,7 +311,7 @@ async def _prepare(
                 continue
             if recover_only or purchase.state == PurchaseIntentState.MANUAL_REVIEW:
                 break
-            if not await _live_original(sources, configuration, purchase, factory, budget=budget):
+            if not await live_original(sources, configuration, purchase, factory, budget=budget):
                 break
             try:
                 # A bound agreement does not prove current subscription admission,
