@@ -166,10 +166,7 @@ class LbxServerClient:
 
     async def get_user(self, *, user_id: int, budget: PreflightBudget) -> LbxUser:
         _require_identity(user_id)
-        result = await self._read(f"/users/{user_id}", LbxEnvelope[LbxUser], budget=budget)
-        if result.user_id != user_id:
-            raise LbxScopeMismatch()
-        return result
+        return await self._read(f"/users/{user_id}", LbxEnvelope[LbxUser], budget=budget)
 
     async def discover_users(self, *, outer_id: str, budget: PreflightBudget) -> tuple[int, ...]:
         if not outer_id or len(outer_id) > 256 or any(not 33 <= ord(c) <= 126 for c in outer_id):

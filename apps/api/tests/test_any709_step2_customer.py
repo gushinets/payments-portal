@@ -16,7 +16,7 @@ from pydantic import ValidationError
 from app.composition.sources import source_resources
 from app.domains.identity.router import RegisterRequest
 from app.integrations.lbx.customer import NewCustomer, sign_widget_jwt
-from app.integrations.lbx.errors import LbxError, LbxResponseInvalid, LbxScopeMismatch
+from app.integrations.lbx.errors import LbxError, LbxResponseInvalid
 from apps.api.tests.support.any709_step1 import step1_settings
 
 
@@ -186,22 +186,15 @@ def test_any709_step2_possible_post_is_never_replayed(status: int, body: dict) -
     assert sends == ["POST"]
 
 
-@pytest.mark.parametrize(
-    "row,exception",
-    [
-        ({"user_id": 346, "outer_id": "opaque"}, LbxScopeMismatch),
-        ({"outer_id": "opaque"}, LbxResponseInvalid),
-    ],
-)
-def test_any709_step2_invalid_user_read(row: dict, exception: type[LbxError]) -> None:
+def test_any709_step2_user_read_requires_identity() -> None:
     def transport(request: httpx.Request) -> httpx.Response:
-        body = {"token": "server", "expires_in": 600} if request.url.path.endswith("/auth") else row
+        body = {"token": "server", "expires_in": 600} if request.url.path.endswith("/auth") else {"outer_id": "opaque"}
         return httpx.Response(200, json={"code": 200, "response": body})
 
     async def scenario() -> None:
         async with source_resources(step1_settings(), lbx_transport=httpx.MockTransport(transport)) as sources:
             async with sources.billing.operation() as budget:
-                with pytest.raises(exception):
+                with pytest.raises(LbxResponseInvalid):
                     await sources.lbx.get_user(user_id=345, budget=budget)
 
     asyncio.run(scenario())

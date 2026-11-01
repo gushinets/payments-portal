@@ -127,8 +127,9 @@ recovery evidence or purchase snapshots and does not affect retries/deadlines.
 `errors.py` contains safe `AppError` subclasses. `LbxNotConfigured` and
 `LbxClosed` indicate resource misuse/absence; `LbxAuthenticationFailed` is
 unauthorized auth or persistent GET 401; `LbxScopeForbidden` is 403;
-`LbxScopeMismatch` rejects invalid requested or mismatched returned identities;
-`LbxResponseInvalid` rejects malformed/enlarged/unsupported envelopes and
+`LbxScopeMismatch` rejects invalid requested identities and out-of-scope catalog,
+discovery or financial responses; `LbxResponseInvalid` rejects
+malformed/enlarged/unsupported envelopes and
 payloads; `LbxRateLimited`, `LbxUnavailable`, `LbxTimeout` classify exhausted
 transient reads; `LbxAttemptsExhausted` refuses further exchanges when the total
 limit is spent between successful auth and the next GET. Shared
@@ -139,6 +140,13 @@ Errors contain no provider response body, URL, credentials or raw exception.
 I/O/close context, including debug response headers and raw transport errors.
 Other tasks keep their logger settings and diagnostics. No raw body or header
 is emitted by this Integration.
+
+For customer point reads, LBX selects the customer through
+`GET /users/{user_id}` and the Integration decodes the `LbxUser` wire schema.
+There is no separate response-ID-to-URL equality check. The shared customer
+application flow verifies point proof against the persisted binding and original
+`outer_id`; those binding invariants remain authoritative for Widget and purchase
+admission.
 
 Existing `ExternalCreateOperationKind` already defines customer, agreement and
 subscription operation identities in `app.models`; no speculative parallel

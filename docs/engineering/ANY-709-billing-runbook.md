@@ -241,6 +241,10 @@ The shared customer ensure retains one local slot/operation/original key across
 products and openings. A known receipt/canonical `user_id` uses paired point
 proof with the unchanged original `outer_id`, never another CREATE. Email is
 only candidate search, not ownership proof. The Portal never PATCHes that key.
+The LBX point endpoint selects the requested customer; Portal does not impose a
+separate equality check between the response ID and the ID in the URL. The shared
+customer flow checks the decoded proof against the retained binding and original
+key.
 
 Customer decision C3 permits bounded discover/create/recover with backoff inside
 a nonrenewable opening budget. A later claim requires fresh successful complete
@@ -251,9 +255,10 @@ prevention depends on LBX enforcing email uniqueness across repeated/concurrent
 creates.** Local fencing and an unchanged key do not prove an earlier POST had
 no effect; this is not native provider idempotency or unconditional exactly-once.
 
-Unresolved ambiguity, an unproven first mismatch, another canonical ID, Client
-scope mismatch or provider-ID collision remains blocking across openings.
-Shorter listings cannot settle it; merely closing a case does not clear binding
+Unresolved discovery ambiguity, an original-key mismatch before binding, a
+conflict with the retained customer binding, Client scope mismatch or provider-ID
+collision remains blocking across openings. Shorter listings cannot settle it;
+merely closing a case does not clear binding
 conflict. Only a separately evidenced original-key mismatch for the same proven
 ID permits read-only recovery of that original ID/key pair, under the current
 fence and with no other blocking cause. Legacy untyped conflicts are not guessed.
