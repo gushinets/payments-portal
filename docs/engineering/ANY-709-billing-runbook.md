@@ -335,8 +335,7 @@ For API inspection use the authenticated verified owner's session:
 The backend owns Widget presentation, payment target and action flags. The
 frontend consumes that successful typed response without rechecking those
 business decisions. URL/HTML safety, iframe message source/origin and stale
-session checks retain their separate browser responsibilities. See
-[justified defensive checks](CODING_CONVENTIONS.md#justified-defensive-checks).
+session checks retain their separate browser responsibilities.
 
 Point proof uses canonical subscription/agreement/customer IDs, accepted seller,
 tariff/period, fixed-service effective price and quantity/total. Today's catalog

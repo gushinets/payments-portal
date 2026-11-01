@@ -148,7 +148,7 @@ customer flow still verifies the persisted binding and original `outer_id`;
 financial proof still checks owner, seller and accepted effective terms.
 `LbxRead` context comes from this client's configuration, request arguments and
 UTC clock; it is not a second provider scope assertion to revalidate in current
-offer normalization. See [justified defensive checks](../../../../../docs/engineering/CODING_CONVENTIONS.md#justified-defensive-checks).
+offer normalization.
 
 Existing `ExternalCreateOperationKind` already defines customer, agreement and
 subscription operation identities in `app.models`; no speculative parallel
