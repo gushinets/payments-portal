@@ -9,7 +9,9 @@ from app.domains.catalog.publication import SessionFactory
 from app.infrastructure.queries import billing_background, billing_customers, purchases
 
 
-def record_customer_conflict(factory: SessionFactory, expected: CustomerOpen, claim: WorkClaim | None) -> None:
+def record_customer_conflict(
+    factory: SessionFactory, expected: CustomerOpen, claim: WorkClaim | None, *, provider_id: str | None = None
+) -> None:
     with factory() as db:
         initial = billing_background.customer(db, expected.customer_id)
         lock_user(db, initial.user_id)
@@ -36,5 +38,5 @@ def record_customer_conflict(factory: SessionFactory, expected: CustomerOpen, cl
             from app.domains.billing.work import verify_claim
 
             verify_claim(db, claim)
-        mark_customer_identity_conflict(db, customer, operation)
+        mark_customer_identity_conflict(db, customer, operation, provider_id=provider_id)
         db.commit()

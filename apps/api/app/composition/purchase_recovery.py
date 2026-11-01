@@ -47,7 +47,7 @@ async def recover_financial(
         if point.outer_id is None:
             raise LbxResponseInvalid()
         if str(point.user_id) != current.provider_id or point.outer_id != current.outer_key:
-            await delegate(record_customer_conflict, factory, current, work_claim)
+            await delegate(record_customer_conflict, factory, current, work_claim, provider_id=str(point.user_id))
             raise LbxScopeMismatch()
         for kind in (Kind.AGREEMENT, Kind.SUBSCRIPTION):
             purchase = await delegate(service.read_purchase, factory, user_id, purchase_id)

@@ -113,6 +113,8 @@ def normalize_subscription(
                 or (user.outer_id is not None and user.outer_id != subject.customer.outer_key)
             )
             reasons.append("customer_identity_conflict" if customer_conflict else "subscription_identity_conflict")
+            if customer_conflict and user.user_id == int(subject.customer.provider_id):
+                reasons.append("customer_original_key_mismatch")
             if any(value is not None and value != wanted for value, wanted in pairs[2 if user else 0 :]):
                 reasons.append("subscription_identity_conflict")
         elif len(pairs) == 8 and all(value is not None for value, _ in pairs):
