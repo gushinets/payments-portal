@@ -48,7 +48,7 @@ target or turn External Billing into a direct payment-provider integration.
   for provider-dependent production semantics, Widget/LBX production behavior,
   and launch.
 
-**Dated ANY-709 decisions:** only C1-C4 in **"Accepted ANY-709 contract decisions
+**Dated ANY-709 decisions:** C1-C4 in **"Accepted ANY-709 contract decisions
 — 2026-10-31"** in [ANY-504](https://linear.app/paveldik/issue/ANY-504) override the
 baseline clauses they explicitly identify. That section owns exact scope,
 rationale, retained guarantees and evidence limits; the accepted specification
@@ -56,6 +56,42 @@ bodies are preserved. Ownership above and every other clause remain in force.
 [ANY-709](https://linear.app/paveldik/issue/ANY-709), section **"ANY-709 result and
 contract deviations — 2026-10-31"**, owns results and verification. Ordinary issue
 text, reports, passing tests and checkboxes do not create further exceptions.
+The additional owner decision below has only the stated point-read scope.
+
+### Accepted point-resource identity decision - 2026-11-01
+
+The owner explicitly accepts authenticated LBX point endpoints as the resource
+selection boundary for `GET /users/{id}`, `/tariffs/{id}`, `/agreements/{id}`
+and `/subscriptions/{id}`. Portal validates the wire schema once in the
+Integration and relies on the point URL to select the requested canonical
+resource. A second comparison of the response's self-ID with the URL ID is not
+required and must not be restored solely to defend against a hypothetical
+violation of that endpoint's resource-selection contract.
+
+This resolves the P1 discussion in [PR #150](https://github.com/gushinets/payments-portal/pull/150#discussion_r4434768469).
+No observed LBX response, documented provider limitation or independently
+reachable Portal scenario has established such a selection violation. A mock
+returning an unrelated resource demonstrates that injected assumption, not a
+required production guard. This is an accepted integration assumption, not a
+new claim that provider conformance was tested.
+
+Precise precedence: the September design's Phase 0 E canonical
+`users.user_id == provider_customer_id` proof and canonical subscription
+readback requirements are satisfied by the authenticated canonical point lookup
+together with the retained identity/relationship proof. They do not require a
+separate returned-self-ID-versus-requested-ID assertion. The same selection
+rule applies to tariff and agreement point reads. The accepted specification
+bodies remain unchanged.
+
+Original customer-key proof, retained canonical bindings, ambiguity handling,
+customer/agreement ownership, seller, subscription agreement/tariff/composition,
+effective terms, session/email/contour checks, Client readiness and final
+session/fence admission remain required. Discovery and CREATE receipts remain
+candidates until point proof; an existing binding cannot be replaced by a
+different canonical ID. This decision does not remove relationship checks or
+permit financial replay, paid access or production launch. Concrete evidence
+that a supported point endpoint selects another resource requires a targeted
+reassessment of this assumption.
 
 ## Implementation status
 
