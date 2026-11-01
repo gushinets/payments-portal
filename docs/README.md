@@ -50,12 +50,11 @@ Start with the smallest document that matches the task.
 
 ### Implementation handoffs and references
 
-- [ANY-709 original implementation plan](exec-plans/completed/ANY-709-implementation-plan.md)
-  — initial 2026-10-26 planning proposal, restored byte-for-byte from `2a0ae3f`.
-  This is historical input, including its original execution restrictions and
-  unverified assumptions; it is not current execution instructions or evidence
-  that the proposal was approved. Later decisions/results are in
-  [ANY-504](https://linear.app/paveldik/issue/ANY-504) and
+- [ANY-709 implementation plan and delivery record](exec-plans/completed/ANY-709-implementation-plan.md)
+  — Steps 1-4 DONE as implementation milestones; dated source/verification
+  evidence, the accepted cabinet layout and open final-review follow-ups.
+  The original proposal remains in Git. Normative dated C1-C4 decisions are in
+  [ANY-504](https://linear.app/paveldik/issue/ANY-504); ticket acceptance remains in
   [ANY-709](https://linear.app/paveldik/issue/ANY-709).
 - [ANY-664 completed implementation plan](exec-plans/completed/ANY-664-implementation-plan.md)
   — all eight Portal steps DONE; implementation-commit CI evidence, retained
