@@ -3,7 +3,7 @@
 from uuid import UUID
 
 from app.domains.billing.contracts import BillingRefused, CustomerOpen
-from app.domains.billing.customers import lock_user, mark_customer_identity_conflict
+from app.domains.billing.customers import lock_customer, lock_user, mark_customer_identity_conflict
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.catalog.publication import SessionFactory
 from app.infrastructure.queries import billing_background, billing_customers, purchases
@@ -26,7 +26,7 @@ def record_customer_conflict(
             if operation.purchase_intent_id is not None:
                 purchases.owned(db, initial.user_id, operation.purchase_intent_id, lock=True)
                 purchases.operations(db, operation.purchase_intent_id, lock=True)
-        customer = billing_customers.lock_customer(db, expected.customer_id)
+        customer = lock_customer(db, expected.customer_id)
         operation = billing_customers.customer_operation(db, expected.customer_id)
         if (
             operation is None

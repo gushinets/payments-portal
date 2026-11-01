@@ -335,14 +335,11 @@ def _bind_financial(
                 for case in open_customer_reviews(db, op.create_operation_id)
             ):
                 raise PurchaseRefused("purchase_review_required", 409)
-        already_bound = op.operation_state == State.BOUND
+        if op.operation_state != State.BOUND:  # Re-observation preserves healthy Widget fences.
+            op.send_fence = uuid4()
         op.bound_external_object_id = str(provider_id)
         op.operation_state = State.BOUND
         op.resolved_at = op.resolved_at or utc_now()
-        # Re-observing the same proven binding must not invalidate another
-        # healthy Widget opening. Actual binding/state transitions still fence.
-        if not already_bound:
-            op.send_fence = uuid4()
         work = recovery_work(db, op.create_operation_id)
         if work:
             if work_claim is not None:
