@@ -300,7 +300,7 @@ for (const authenticated of [false, true]) {
       } else {
         const purchase = main.getByRole("region", { name: ruMessages.Purchase.title });
         if (authenticated) {
-          await expect(purchase.getByRole("button", { name: ruMessages.Purchase.buy, exact: true })).toBeEnabled();
+          await expect(purchase.getByRole("button", { name: ruMessages.Purchase.buy, exact: true })).toBeDisabled();
           await expect(purchase.getByRole("button", { name: ruMessages.Billing.open, exact: true })).toHaveCount(0);
           accountAction = page.getByRole("navigation", { name: ruMessages.Navigation.mainAriaLabel })
             .getByRole("link", { name: `${email} ${ruMessages.Auth.header.accountArea}`, exact: true });

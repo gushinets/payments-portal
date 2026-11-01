@@ -494,5 +494,7 @@ def recheck_payment_purchase(factory: SessionFactory, configuration: Settings, t
         row = _locked(db, expected)
         _verify_original_consent(db, row, expected.accepted)
         current = _snapshot(db, row)
-        if current.state != IntentState.LINKED or current.operations != expected.operations:
+        if current.state != IntentState.LINKED or tuple(op.admission_snapshot() for op in current.operations) != tuple(
+            op.admission_snapshot() for op in expected.operations
+        ):
             raise PurchaseRefused("purchase_not_prepared", 409)

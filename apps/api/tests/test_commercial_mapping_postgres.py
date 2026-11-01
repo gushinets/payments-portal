@@ -53,6 +53,7 @@ from apps.api.tests.support.lbx_selected_offer import SelectedOfferRecording, si
 
 
 pytestmark = [pytest.mark.postgres, pytest.mark.anyio, pytest.mark.usefixtures("mapping_clock")]
+CONCURRENT_PUBLICATION_LOCK_TIMEOUT_SECONDS = 2
 
 
 @pytest.fixture
@@ -60,14 +61,20 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
-def publish(factory: sessionmaker[Session], fresh: FreshMappingEvaluation, *, previous: int = 0) -> PublicationResult:
+def publish(
+    factory: sessionmaker[Session],
+    fresh: FreshMappingEvaluation,
+    *,
+    previous: int = 0,
+    lock_timeout_seconds: float = 0.2,
+) -> PublicationResult:
     return publish_mapping(
         factory,
         evaluation=fresh.document,
         expected_previous_revision=previous,
         deadline=fresh.deadline,
         evidence_valid_until=fresh.evidence_valid_until,
-        lock_timeout_seconds=0.2,
+        lock_timeout_seconds=lock_timeout_seconds,
         allow_simulated=True,
     )
 
@@ -341,7 +348,9 @@ async def test_competing_first_publishers_are_serialized_and_deterministic(
     def contender(fresh: FreshMappingEvaluation) -> PublicationResult | MappingRevisionConflict:
         barrier.wait(timeout=2)
         try:
-            return publish(postgres_session_factory, fresh)
+            return publish(
+                postgres_session_factory, fresh, lock_timeout_seconds=CONCURRENT_PUBLICATION_LOCK_TIMEOUT_SECONDS
+            )
         except MappingRevisionConflict as conflict:
             return conflict
 
@@ -713,7 +722,13 @@ async def test_competing_publications_cannot_reassign_a_historical_pin(
     def contender(fresh: FreshMappingEvaluation) -> PublicationResult | MappingRefused:
         barrier.wait(timeout=2)
         try:
-            return publish(postgres_session_factory, fresh, previous=2)
+            # This checks pin integrity/CAS, not the separately covered busy path.
+            return publish(
+                postgres_session_factory,
+                fresh,
+                previous=2,
+                lock_timeout_seconds=CONCURRENT_PUBLICATION_LOCK_TIMEOUT_SECONDS,
+            )
         except MappingRefused as refusal:
             return refusal
 

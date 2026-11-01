@@ -142,19 +142,27 @@ async def test_temporary_offer_failure_retains_same_unsent_purchase(
         assert resumed.id == purchase.id and resumed.state.value == "linked"
 
 
-@pytest.mark.parametrize("conflict", [False, True])
-async def test_concurrent_widget_opens_preserve_binding_but_reject_real_conflict(
+@pytest.mark.parametrize("other_open", ["healthy", "transient", "conflict"])
+async def test_concurrent_widget_opens_ignore_diagnostics_but_reject_real_conflict(
     migrated_database: Engine,
     postgres_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
-    conflict: bool,
+    other_open: str,
 ) -> None:
     factory, config = postgres_session_factory, step1_settings()
     transport = setup_purchase(factory)
+    transient = False
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if transient and request.method == "GET" and request.url.path.endswith("/agreements/456"):
+            transport.requests.append(request)
+            raise httpx.ReadTimeout("Synthetic temporary read timeout", request=request)
+        return transport.respond(request)
+
     async with source_resources(
         config,
         kernel_transport=httpx.MockTransport(transport.kernel),
-        lbx_transport=httpx.MockTransport(transport.respond),
+        lbx_transport=httpx.MockTransport(respond),
     ) as sources:
         purchase = await accept(sources, factory)
         prepared = await purchases.advance_purchase(
@@ -176,7 +184,7 @@ async def test_concurrent_widget_opens_preserve_binding_but_reject_real_conflict
         )
         try:
             await asyncio.wait_for(entered.wait(), 10)
-            if conflict:
+            if other_open == "conflict":
                 transport.agreements[0]["organization_id"] = 99
                 with pytest.raises(AppError):
                     await bootstrap_account(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
@@ -184,11 +192,25 @@ async def test_concurrent_widget_opens_preserve_binding_but_reject_real_conflict
                 with pytest.raises(AppError):
                     await first
             else:
-                second = await bootstrap_account(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+                if other_open == "transient":
+                    transient = True
+                    with pytest.raises(AppError, match="purchase_not_prepared"):
+                        await bootstrap_account(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+                    failed = service.read_purchase(factory, purchase.user_id, purchase.id)
+                    assert failed.operations[0].last_failure_code is not None
+                    assert [(op.state, op.bound_id, op.fence) for op in failed.operations] == [
+                        (op.state, op.bound_id, op.fence) for op in prepared.operations
+                    ]
+                else:
+                    second = await bootstrap_account(
+                        sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id
+                    )
+                    assert second.purchase_id == purchase.id
                 release.set()
-                assert second.purchase_id == (await first).purchase_id == purchase.id
+                assert (await first).purchase_id == purchase.id
                 retained = service.read_purchase(factory, purchase.user_id, purchase.id)
-                assert retained.operations == prepared.operations
+                if other_open == "healthy":
+                    assert retained.operations == prepared.operations
             assert transport.creates("/agreements") == transport.creates("/subscriptions") == 1
         finally:
             release.set()

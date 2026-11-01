@@ -291,6 +291,40 @@ final independent acceptance remains separate from implementation milestones.
   PostgreSQL was disposable and loopback-only. No live LBX write/payment,
   real-Kernel acceptance, deployment or merge was performed.
 
+### Follow-up review of `71ad993`
+
+- Final payment admission now excludes only `last_failure` and
+  `last_failure_code` from operation equality. All other operation fields,
+  including identity, state, canonical binding and fence, remain compared;
+  session, consent, held scope and LINKED checks remain in place. A successful
+  opener survives another opener's temporary GET timeout, while the failing
+  request is still refused and a real seller conflict still blocks both.
+- The generic RU account-navigation browser scenario keeps its empty/404 catalog
+  fixture and correctly expects disabled Buy. Positive current-offer/purchase
+  behavior remains covered by the dedicated ANY-709 journey.
+- The retained v1 concurrent-publication tests use a two-second bounded lock
+  allowance when checking serialization, CAS and immutable approval pins. Their
+  source-operation deadlines remain authoritative. The separate busy/deadline
+  test retains the 0.2-second allowance; no application timeout or retry policy
+  changes. The required valid publication, rejected conflicting publication and
+  stored-history assertions are unchanged.
+- Verification on the follow-up changes based on `71ad993`: full local
+  `npm run check` PASS, including 1,549 fast API, 419 PostgreSQL, 394 component
+  and 38 web-boundary tests, documentation/generated freshness, architecture,
+  Ruff, web lint and the Turbopack production build. All seven focused
+  concurrency/publication checks passed. The earlier short receipt-deadline
+  scenario also passed in this full run; the predecessor's failure record above
+  remains historical. Log: `/tmp/any709-final-followups/check.log`.
+- Twenty production-page browser cases passed on desktop/mobile Chromium:
+  the dedicated ANY-709 purchase journeys and all four authenticated/guest
+  account-navigation cases. Browser requests to source boundaries were
+  synthetic. Report: `/tmp/any709-final-followups/browser-results.json`;
+  artifacts: `/tmp/any709-final-followups/browser-results/`. The complete browser
+  suite was not rerun locally. PostgreSQL was disposable and loopback-only.
+  Local dependency versions retain the differences recorded above; these
+  results do not claim a locked current-head CI PASS. No live LBX write/payment,
+  deployment or merge was performed.
+
 For future corrections, append the changed scenario, outcome, checked commit and
 verification limits to the appropriate record. Operational procedures stay in
 the runbook. Detailed predecessor logs remain available in Git; they do not need
