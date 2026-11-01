@@ -24,10 +24,9 @@ def operation_subject(db: Session, identity: UUID) -> tuple[ExternalCreateOperat
     ).first()
 
 
-def missing_operations(db: Session, configuration: Settings) -> list[ExternalCreateOperation]:
+def missing_operations(db: Session, configuration: Settings, *, account: str) -> list[ExternalCreateOperation]:
     op = ExternalCreateOperation
     customer = ExternalBillingCustomer
-    account = configuration.lbx_external_billing_account_id
     recovery = exists().where(
         BillingWorkItem.work_kind == "external_create_recovery",
         BillingWorkItem.coalescing_key == func.cast(op.create_operation_id, Text),
@@ -59,12 +58,11 @@ def missing_operations(db: Session, configuration: Settings) -> list[ExternalCre
     )
 
 
-def missing_inventory(db: Session, configuration: Settings) -> list[ExternalBillingCustomer]:
+def missing_inventory(db: Session, configuration: Settings, *, account: str) -> list[ExternalBillingCustomer]:
     customer = ExternalBillingCustomer
     enrolled = exists().where(
         BillingWorkItem.work_kind == "customer_inventory",
-        BillingWorkItem.coalescing_key
-        == configuration.lbx_external_billing_account_id + ":" + func.cast(customer.customer_id, Text),
+        BillingWorkItem.coalescing_key == account + ":" + func.cast(customer.customer_id, Text),
         BillingWorkItem.work_state.in_(("pending", "running", "invalid")),
     )
     return list(
@@ -72,7 +70,7 @@ def missing_inventory(db: Session, configuration: Settings) -> list[ExternalBill
             select(customer)
             .join(User, User.id == customer.user_id)
             .where(
-                customer.external_billing_account_id == configuration.lbx_external_billing_account_id,
+                customer.external_billing_account_id == account,
                 customer.provider_customer_id.is_not(None),
                 User.tenant_id == configuration.instance_tenant_id,
                 User.region == configuration.instance_region,

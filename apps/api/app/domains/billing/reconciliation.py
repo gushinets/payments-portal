@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused, CustomerOpen
 from app.domains.billing.customers import lock_user, mark_customer_identity_conflict
+from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.reconciliation_contracts import (
     RECONCILIATION_SCHEMA,
     CommercialProof,
@@ -75,7 +76,7 @@ def claim_reconciliation(
             or customer_op.request_correlation_key != customer.billing_customer_key
             or customer.provider_origin != evidence.provider_origin
             or evidence.provider_origin != configuration.lbx_provider_origin
-            or row.external_billing_account_id != configuration.lbx_external_billing_account_id
+            or row.external_billing_account_id != connection_account(db, configuration)
             or agreement is None
             or not agreement.bound_external_object_id
             or subscription_op is None

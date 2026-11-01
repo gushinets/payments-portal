@@ -49,6 +49,16 @@ history. Effective subscription prices are compared with the original accepted
 snapshot. Missing policy or currency proof cannot establish positive trust.
 No balances, payments, charges or settlement reconstruction decide usability.
 
+Worker claims, backfill, inventory, recovery, webhook correlation and audited
+operator resolutions reuse the origin-backed account resolver from customer
+admission. A proven historical storage account remains unchanged, including
+after credentials rotate; a new origin-derived ID is only the fallback before
+any binding is proven. Unproven aliases and foreign origins are excluded, and
+multiple proven accounts refuse as `billing_connection_conflict`. LBX read
+metadata identifies the current configured HTTP origin, independently of the
+purchase's retained storage ID. The enrollment sweep keeps its stable deployment
+key and resolves storage scope per batch, including the first proof after startup.
+
 ## State and finite trust
 
 Commercial evidence is `COMPLETE_MATCH`, `COMPLETE_MISMATCH` or `INCOMPLETE`.
