@@ -80,7 +80,8 @@ def expired_unknown(factory: sessionmaker[Session]) -> None:
         operation = db.scalar(select(ExternalCreateOperation))
         operation.unknown_since = utc_now() - timedelta(hours=3)
         operation.unknown_recovery_deadline_at = operation.unknown_since + timedelta(hours=2)
-        db.scalar(select(BillingWorkItem)).lease_expires_at = utc_now() - timedelta(seconds=1)
+        work = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == "external_create_recovery"))
+        work.lease_expires_at = utc_now() - timedelta(seconds=1)
         db.commit()
     assert escalate_overdue_customers(factory) == 1
 
@@ -209,7 +210,8 @@ async def test_customer_unknown_review_still_recovers_with_paired_proof(
         review = db.scalar(select(ManualReviewCase))
         assert review.reason_code == UNKNOWN_REVIEW and review.case_state == "resolved"
         assert review.resolved_by_principal == "system:customer-point-read"
-        assert db.scalar(select(BillingWorkItem)).work_state == "done"
+        work = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == "external_create_recovery"))
+        assert work.work_state == "done"
 
 
 @pytest.mark.parametrize("reconciled", [False, True])
@@ -339,16 +341,16 @@ async def test_conflict_during_inventory_read_prevents_new_financial_send(
     monkeypatch.setattr("app.integrations.lbx.current_offer.utc_now", lambda: datetime(2026, 10, 27, 12, tzinfo=UTC))
     transport = setup_purchase(factory)
     entered, release = asyncio.Event(), asyncio.Event()
-    reads = 0
 
     async def respond(request: httpx.Request) -> httpx.Response:
-        nonlocal reads
         if request.method == "GET" and request.url.path.endswith("/subscriptions"):
-            if "agreement_id" not in json.loads(request.content):
-                reads += 1
-                if reads == inventory_read:
-                    entered.set()
-                    await release.wait()
+            # Inventory may reread for stability; synchronize on the financial phase.
+            if (
+                "agreement_id" not in json.loads(request.content)
+                and transport.creates("/agreements") == inventory_read - 1
+            ):
+                entered.set()
+                await release.wait()
         return transport.respond(request)
 
     async with source_resources(
