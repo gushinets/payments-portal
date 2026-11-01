@@ -1,9 +1,14 @@
 # ANY-715 billing operations
 
-Status: Steps 1–5 shared reconciliation, embedded polling, recovery, inventory, optional webhook hints and audited operations implemented; final verification recorded in the plan.
-Updated: 2026-10-29.
+Status: implemented operations guide; real LBX/webhook enablement remains unverified.
+Updated: 2026-11-01.
 Issue: [ANY-715](https://linear.app/paveldik/issue/ANY-715).
-Scope: [implementation plan](../exec-plans/active/ANY-715-implementation-plan.md), Steps 1–5.
+Scope: [completed implementation plan](../exec-plans/completed/ANY-715-implementation-plan.md), Steps 1–5.
+
+Use this guide for current operational commands and behavior, the completed plan
+for delivery history, and the [QA report](ANY-715-qa-report.md) for final local
+verification and remaining integration gates. Architectural authority remains
+ADR 0005 and the accepted designs/amendment in the repository guide.
 
 ## Shared proof and original history
 
@@ -328,7 +333,7 @@ complete reread applied, never a payment, access grant or event-version match.
 
 The [official manual setup guide](https://docs.lbxbilling.ru/api/webhooks/set_webhooks/)
 and [event examples](https://docs.lbxbilling.ru/api/webhooks/list_webhooks/)
-were checked on 2026-10-28. The guide documents URL, token, event selection and
+were rechecked on 2026-11-01. The guide documents URL, token, event selection and
 an optional retry switch; it does not establish the actual authentication header
 name/value format for this account. No configuration API is assumed.
 
@@ -361,11 +366,12 @@ name/value format for this account. No configuration API is assumed.
 
 ### Real enablement checklist and rollback
 
-As of 2026-10-28 the gate is **NOT_RUN**, with **DISABLED/POLLING-ONLY** required.
-Synthetic HTTP/PostgreSQL coverage is separate from this gate: 38 fast webhook
-cases and 10 PostgreSQL webhook cases PASS, including failure after commit,
-concurrent claims/hints and polling-only convergence. The full canonical check
-also passes; browser E2E was skipped by the harness. Authorized owner QA
+The real gate remains **NOT_RUN**, with **DISABLED/POLLING-ONLY** required.
+Synthetic HTTP/PostgreSQL coverage is separate from this gate and includes
+failure after commit, concurrent claims/hints, all six supported events and
+polling-only convergence. Current results and the substituted API/Widget browser
+regression are recorded in the [QA report](ANY-715-qa-report.md); its interrupted
+canonical run is not an unqualified full-check PASS. Authorized owner QA
 must record date, environment and sanitized local delivery/work/observation IDs for:
 
 - Real correct-header delivery accepted; missing/incorrect secret rejected before
@@ -460,7 +466,7 @@ calendar completeness, original purchase/link/legal references and unchanged
 trust on incomplete proof. Do not export payloads, credentials, contact fields,
 customer keys or authorization data. Synthetic outputs are reproducible through
 the `billing_subscription_reconciliation` fast/PostgreSQL test selection in the
-plan's shared harness recipe. Real untouched renewal and provider-to-Portal-to-Kernel
+repository's API test harness. Real untouched renewal and provider-to-Portal-to-Kernel
 acceptance remain separate enablement gates.
 
 ## Privileged purchase operations
@@ -468,8 +474,10 @@ acceptance remain separate enablement gates.
 All actions use the existing trusted deployment/OS access boundary and resolve
 `os-euid:<uid>` through `resolve_operator_principal()`. An unavailable OS identity
 refuses execution. There is no operator role, admin HTTP API or provider-ID
-input. Keep the existing `billing-customer diagnose --user-id <portal-user-uuid>`
-for separate customer diagnostics and original-key restoration policy.
+input. `billing-customer diagnose --user-id <portal-user-uuid>` is read-only
+customer inspection; it does not restore a key or resolve a review. For the
+narrow original-key recovery through an explicit account opening, see
+[customer diagnosis and recovery](ANY-709-billing-runbook.md#customer-diagnosis-cli).
 
 Invoke `.venv/bin/python scripts/repo.py billing-purchase <action>` with both
 `--user-id <portal-user-uuid>` and `--purchase-id <purchase-intent-uuid>`.
@@ -639,11 +647,13 @@ calendar design. Step 11 owns real paid-access/natural-renewal and launch QA.
 No operator action, observation, webhook, successful CREATE or Widget event
 independently grants access. Automated evidence remains **SIMULATED**; real
 read-only LBX and real webhook gates must be recorded separately below and in the
-implementation record. Production migration and browser E2E are separate checks.
+implementation record. Production migration and real provider/browser acceptance
+remain separate from the completed local browser regression.
 
 2026-10-29 checkpoint: **NOT_RUN / LBX_NOT_CONFIGURED**. The local configured
 read-only check exited before source or database writes; no actual provider read
 PASS is claimed. Real webhook authentication/delivery is also NOT_RUN and the
-required mode remains **DISABLED/POLLING-ONLY**. See the Step 5 implementation
-record for final automated counts and logs; simulated proofs cannot satisfy
-either real integration checkpoint.
+required mode remains **DISABLED/POLLING-ONLY**. The subsequent
+[QA report](ANY-715-qa-report.md) retains these real integration gates and records
+final local counts, reruns and browser-test limits; simulated proofs cannot
+satisfy either real integration checkpoint.
