@@ -104,7 +104,7 @@ def _repair_operation(factory: SessionFactory, configuration: Settings, identity
         op, customer = found
         customers.lock_user(db, customer.user_id)
         if op.operation_kind == Kind.CUSTOMER:
-            billing_customers.lock_customer(db, customer.customer_id)
+            customers.lock_customer(db, customer.customer_id)
             op = billing_customers.customer_operation(db, customer.customer_id)
         else:
             row = purchases.owned(db, customer.user_id, op.purchase_intent_id, lock=True)
@@ -228,7 +228,7 @@ def finish_recovery(factory: SessionFactory, claim: WorkClaim) -> None:
             service._locked(db, purchase)
             purchases.operations(db, purchase.id, lock=True)
         else:
-            billing_customers.lock_customer(db, customer.customer_id)
+            customers.lock_customer(db, customer.customer_id)
             billing_customers.customer_operation(db, customer.customer_id)
         db.refresh(op)
         queue = billing_customers.recovery_work(db, op.create_operation_id)
@@ -261,7 +261,7 @@ def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> None:
         op, customer = found
         customers.lock_user(db, customer.user_id)
         if op.operation_kind == Kind.CUSTOMER:
-            billing_customers.lock_customer(db, customer.customer_id)
+            customers.lock_customer(db, customer.customer_id)
             op = billing_customers.customer_operation(db, customer.customer_id)
             purchase = None
         else:

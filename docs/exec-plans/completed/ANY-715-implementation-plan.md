@@ -208,8 +208,56 @@ database or real provider was mutated.
 At final remote-ref verification, ANY-709 had independently advanced to
 `71ad993e843f7910626d6a9f40ce2b8a67494f1e`. The evidence above covers the reviewed
 ANY-715 source based on `6288733`; it does not claim verification of that newer
-base. Integrating it requires separate resolution of the purchase-composition
-and documentation-index conflicts and affected verification.
+base. Its integration and verification are recorded separately below.
+
+## 2026-11-01 — Rebase onto updated ANY-709
+
+At the owner's request, replay all 16 ANY-715 commits from published `8b35a65`
+onto origin/ANY-709 `71ad993e843f7910626d6a9f40ce2b8a67494f1e`. Preserve a local
+pre-rebase safety branch. Resolve the documentation-index conflict by retaining
+both tasks' delivery entries. Resolve the purchase-composition conflict by
+retaining ANY-709's unavailable-offer handling and ANY-715's bounded per-attempt
+inventory reuse. The approved plan snapshot remains byte-for-byte unchanged.
+
+Integration verification exposed a semantic conflict: ANY-715's reconciliation
+claim/apply still called the storage customer lock directly, bypassing ANY-709's
+new `billing_busy` translation. Both real PostgreSQL contention cases failed
+with the internal storage exception. Reuse the Application lock in reconciliation,
+recovery, conflict recording and operator review. The regressions require a
+durable retry without changing facts, followed by successful recovery after the
+finite leases expire. A first rerun exposed a test-only lease-pair constraint
+violation, corrected before final verification.
+
+The combined purchase-composition and financial modules exceeded the repository
+line limit. Move the original-offer check into `composition/purchase_offer.py`
+and retarget the existing terms-race test to that owner. Keep equivalent binding
+fencing by rotating only before an actual transition to BOUND; repeated proof
+preserves healthy Widget fences. No new mechanism or limit exception is added.
+
+Verification on the combined source:
+
+- `npm run check:fast` passed: 1,689 fast API, 394 component and 38 web boundary
+  tests, plus Python/web lint, architecture, documentation and generated freshness.
+- The final focused PostgreSQL selection passed all 34 cases covering the new
+  contention regression, ANY-709 review follow-ups, original-offer races and
+  ANY-715 retained-scope recovery/operator/webhook paths.
+- The first complete-check attempt stopped at the unchanged
+  `test_two_http_consumers_cannot_each_take_a_full_new_budget`: its first
+  70 ms simulated HTTP call consumed the 130 ms shared deadline before a second
+  call started. All other 1,688 fast cases passed; the same test passed both the
+  earlier fast suite and its isolated rerun (1 PASS in 0.88s). No source or test
+  timeout was changed.
+- The unchanged-source complete-check retry exited 0: all 1,689 fast API and
+  600 PostgreSQL cases passed, with 394 component and 38 web boundary tests,
+  production build, lint, architecture, documentation and generated freshness.
+  The PostgreSQL partition took 1,492.45s. Source/test hashes stayed unchanged
+  throughout final verification.
+- Browser E2E was skipped by the canonical command because `RUN_E2E` was not
+  enabled. Real LBX and webhook delivery were not run; the existing polling-only
+  and integration/launch gates remain open. Only the worktree's disposable test
+  database was used and its test server was stopped after verification.
+
+Local logs and result XML are retained under `.harness/any715-rebase-20261101/`.
 
 ## Verification and remaining checkpoints
 

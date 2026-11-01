@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.composition import purchases
+from app.composition import purchase_offer, purchases
 from app.composition.billing import bootstrap_account
 from app.composition.sources import source_resources
 from app.core.settings import Settings
@@ -55,7 +55,7 @@ async def test_stale_price_read_preserves_concurrently_linked_purchase(
         return transport.respond(request)
 
     entered, release = asyncio.Event(), asyncio.Event()
-    original_read = purchases.read_current_offer
+    original_read = purchase_offer.read_current_offer
 
     async def delayed_read(
         client: LbxServerClient, *, selection: ProductLinkRequest, configuration: Settings, budget: PreflightBudget
@@ -65,7 +65,7 @@ async def test_stale_price_read_preserves_concurrently_linked_purchase(
             await release.wait()
         return await original_read(client, selection=selection, configuration=configuration, budget=budget)
 
-    monkeypatch.setattr(purchases, "read_current_offer", delayed_read)
+    monkeypatch.setattr(purchase_offer, "read_current_offer", delayed_read)
     async with source_resources(
         config, kernel_transport=httpx.MockTransport(transport.kernel), lbx_transport=httpx.MockTransport(respond)
     ) as sources:
