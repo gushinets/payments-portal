@@ -237,16 +237,6 @@ it("refuses released purchase deep links while retaining owned history separatel
   expect(bootstrap).not.toHaveBeenCalled();
 });
 
-it("cannot mount payment for a different target returned by bootstrap", async () => {
-  bootstrap.mockResolvedValue(json({ ...widgetResponse(true), payment_target: { ...widgetResponse(true).payment_target, purchase_intent_id: second.purchase_intent_id } }));
-  renderCabinet(first.purchase_intent_id);
-  await waitFor(() => expect(screen.getByRole("button", { name: ru.Billing.open })).toBeEnabled());
-  open();
-  expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.errors.sdk);
-  expect(mount).not.toHaveBeenCalled();
-});
-
-
 it.each(["inventory", "deep-link"])("retains a safe server request ID for %s failures and clears it after recovery", async (source) => {
   const correlation = "synthetic-cabinet-correlation";
   const failure = json({ detail: { code: "unavailable", request_id: correlation, private: "private-detail" } }, 503);

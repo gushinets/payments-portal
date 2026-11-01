@@ -84,9 +84,6 @@ export function useBillingWidget(userId: string, emailVerified: boolean) {
         }
       };
       try {
-        if (purchaseId ? response.presentation !== "payment" || response.payment_target?.purchase_intent_id !== purchaseId : response.presentation !== "account") {
-          throw new Error("widget_target_refused");
-        }
         dispose.current = mountOfficialWidget(node.current, response, t("frameTitle"), operation.isCurrent, sdkFailure);
         setState({ status: "open", target: response.payment_target ?? null });
       } catch {

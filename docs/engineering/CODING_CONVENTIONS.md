@@ -1,7 +1,7 @@
 # Coding Conventions
 
 Status: authoritative
-Last verified: 2026-09-29
+Last verified: 2026-11-01
 
 How to write **new and changed** code so types, states, and trust boundaries
 stay explicit. This is not a backlog and not a mass-migration plan.
@@ -60,6 +60,49 @@ boundary validation.
    when converting it, recovering safely, or adding necessary context.
    Unhandled exceptions are logged once at the system boundary without raw
    inputs or secrets.
+
+### Justified defensive checks
+
+For a new guard, identify the invariant, its owner and a reachable failure at
+that boundary. Requirements, documented provider behavior, actual callers or
+writers, concurrency and credible untrusted input can justify it. A synthetic
+fixture exercises a case; it does not by itself establish that a provider can
+produce it or that a new permanent block is required. Security checks do not
+need a prior production incident to have a valid threat model.
+
+Keep contract selection, wire validation and business proof distinct:
+
+- LBX point endpoints select the requested user, tariff, agreement or
+  subscription. Decode their wire schemas without a second comparison of the
+  returned object ID to the ID in the URL. Continue proving the customer's
+  original key/binding and the agreement/subscription's owner, seller and
+  accepted effective terms.
+- Successful Portal Widget responses follow the shared API trust boundary.
+  The backend owns presentation, payment target and action flags; the frontend
+  consumes them without another business-policy validator. URL/HTML handling,
+  iframe message origin/source checks and session freshness have different
+  responsibilities and remain required.
+- Metadata constructed by the same in-process client, such as `LbxRead`'s
+  requested IDs, configured account and UTC observation time, is local context,
+  not an independent provider attestation. Do not revalidate that constructor's
+  output as another external boundary.
+- Bound resources where work is performed. Do not turn a bounded list query
+  into an unrelated business quota: a financial claim uses its user/product
+  hold, not the total count of the user's other held purchases. Bounded remote
+  inventory proof, admission backpressure and deadlines remain required.
+
+These decisions apply to the named paths, not to every similar-looking guard
+elsewhere in the repository.
+
+Before removing a guard, trace all relevant entrypoints and writers and show
+where its necessary invariant remains enforced. A passing happy path or absence
+of recorded failures alone is insufficient. Preserve authorization, tenant and
+object ownership, boundary schema validation, immutable consent, exact money,
+UNKNOWN/no-blind-retry, locks/fences and post-I/O freshness checks. A repeat
+after mutable state or an `await` may protect a new decision; similar syntax
+does not make it redundant. Keep error handling proportional to its evidence;
+a schema or transport failure alone does not prove that a persisted customer
+binding changed.
 
 ## API / Python
 

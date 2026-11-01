@@ -320,6 +320,7 @@ For API inspection use the authenticated verified owner's session:
    financial send, including subscription continuation after proven no-send.
    Incomplete inventory stays pending; an unproven competitor requires review.
    Another point-proven original Portal purchase may remain admissible.
+   The number of other held Portal purchases is not a separate admission quota.
 4. `GET /api/purchase-intents/current?product_id=<product>` and
    `GET /api/purchase-intents/<id>` read owned local history without CREATE or
    catalog calls. Authenticated `GET /api/purchase-intents` lists held purchases
@@ -330,6 +331,12 @@ For API inspection use the authenticated verified owner's session:
    only payments are enabled among action flags. Empty-body account viewing
    stays independent. The customer-wide SDK has no product/agreement ACL or
    automatic selection: the user selects the displayed intended agreement.
+
+The backend owns Widget presentation, payment target and action flags. The
+frontend consumes that successful typed response without rechecking those
+business decisions. URL/HTML safety, iframe message source/origin and stale
+session checks retain their separate browser responsibilities. See
+[justified defensive checks](CODING_CONVENTIONS.md#justified-defensive-checks).
 
 Point proof uses canonical subscription/agreement/customer IDs, accepted seller,
 tariff/period, fixed-service effective price and quantity/total. Today's catalog

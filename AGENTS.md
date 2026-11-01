@@ -48,7 +48,9 @@ document that applies to the current task.
 - [docs/engineering/AGENT_WORKFLOW.md](docs/engineering/AGENT_WORKFLOW.md) —
   required delivery and evidence loop.
 - [docs/engineering/CODING_CONVENTIONS.md](docs/engineering/CODING_CONVENTIONS.md)
-  — coding conventions for new and changed code.
+  — coding conventions for new and changed code, including
+  [justified defensive checks](docs/engineering/CODING_CONVENTIONS.md#justified-defensive-checks)
+  for guard additions and simplification reviews.
 - [docs/exec-plans](docs/exec-plans/) — active plans, completed plans, and debt.
 
 ## Neighboring project

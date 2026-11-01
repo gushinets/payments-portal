@@ -130,8 +130,6 @@ class LbxServerClient:
     async def get_tariff(self, *, tariff_id: int, budget: PreflightBudget) -> LbxRead[LbxTariff]:
         _require_identity(tariff_id)
         result = await self._read(f"/tariffs/{tariff_id}", LbxEnvelope[LbxTariff], budget=budget)
-        if result.tariff_id != tariff_id:
-            raise LbxScopeMismatch()
         return self._scoped(result, tariff_id=tariff_id)
 
     async def list_tariff_periods(self, *, tariff_id: int, budget: PreflightBudget) -> LbxRead[list[LbxTariffPeriod]]:
@@ -266,10 +264,7 @@ class LbxServerClient:
 
     async def get_agreement(self, *, agreement_id: int, budget: PreflightBudget) -> Agreement:
         _require_identity(agreement_id)
-        point = await self._read(f"/agreements/{agreement_id}", LbxEnvelope[Agreement], budget=budget)
-        if point.agreement_id != agreement_id:
-            raise LbxScopeMismatch()
-        return point
+        return await self._read(f"/agreements/{agreement_id}", LbxEnvelope[Agreement], budget=budget)
 
     async def discover_agreements(self, *, user_id: int, number: str, budget: PreflightBudget) -> tuple[int, ...]:
         _require_identity(user_id)
@@ -290,10 +285,7 @@ class LbxServerClient:
 
     async def get_subscription(self, *, subscription_id: int, budget: PreflightBudget) -> Subscription:
         _require_identity(subscription_id)
-        point = await self._read(f"/subscriptions/{subscription_id}", LbxEnvelope[Subscription], budget=budget)
-        if point.subscription_id != subscription_id:
-            raise LbxScopeMismatch()
-        return point
+        return await self._read(f"/subscriptions/{subscription_id}", LbxEnvelope[Subscription], budget=budget)
 
     async def discover_subscriptions(
         self, *, user_id: int, budget: PreflightBudget, agreement_id: int | None = None

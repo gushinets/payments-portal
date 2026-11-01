@@ -62,15 +62,6 @@ def normalize_current_offer(
 ) -> CurrentOffer:
     budget.check()
     tariff = reads.tariff.value
-    for read in (reads.tariff, reads.periods, reads.services, reads.prices):
-        if (
-            read.external_billing_account_id != configuration.lbx_external_billing_account_id
-            or read.tariff_id != selection.tariff_id
-            or read.observed_at.utcoffset() is None
-        ):
-            _incomplete("source_scope_mismatch")
-    if tariff.tariff_id != selection.tariff_id or reads.prices.tariff_service_id != selection.tariff_service_id:
-        _incomplete("source_scope_mismatch")
     periods = [row for row in reads.periods.value if row.period_id == selection.period_id]
     services = [row for row in reads.services.value if row.tariff_service_id == selection.tariff_service_id]
     if len(periods) != 1 or len({row.period_id for row in reads.periods.value}) != len(reads.periods.value):

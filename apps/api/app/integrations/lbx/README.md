@@ -141,12 +141,14 @@ I/O/close context, including debug response headers and raw transport errors.
 Other tasks keep their logger settings and diagnostics. No raw body or header
 is emitted by this Integration.
 
-For customer point reads, LBX selects the customer through
-`GET /users/{user_id}` and the Integration decodes the `LbxUser` wire schema.
-There is no separate response-ID-to-URL equality check. The shared customer
-application flow verifies point proof against the persisted binding and original
-`outer_id`; those binding invariants remain authoritative for Widget and purchase
-admission.
+For point reads, LBX selects the requested user, tariff, agreement or subscription
+through its resource URL and the Integration decodes the corresponding wire
+schema. There is no separate response-ID-to-URL equality check. The shared
+customer flow still verifies the persisted binding and original `outer_id`;
+financial proof still checks owner, seller and accepted effective terms.
+`LbxRead` context comes from this client's configuration, request arguments and
+UTC clock; it is not a second provider scope assertion to revalidate in current
+offer normalization. See [justified defensive checks](../../../../../docs/engineering/CODING_CONVENTIONS.md#justified-defensive-checks).
 
 Existing `ExternalCreateOperationKind` already defines customer, agreement and
 subscription operation identities in `app.models`; no speculative parallel

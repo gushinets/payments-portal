@@ -207,23 +207,21 @@ async def test_invalid_selected_id_makes_no_http_request(tariff_id: Any) -> None
                 await client.get_tariff(tariff_id=tariff_id, budget=budget)
 
 
-@pytest.mark.parametrize("suffix", ["/tariffs", f"/tariffs/{TARIFF}", f"/tariffs/{TARIFF}/services"])
+@pytest.mark.parametrize("suffix", ["/tariffs", f"/tariffs/{TARIFF}/services"])
 async def test_wrong_tariff_scope_is_refused(suffix: str) -> None:
     def respond(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/auth"):
             return fixture_response("auth")
         item = {"tariff_id": 999, "tariff_service_id": SERVICE} if suffix.endswith("services") else {"tariff_id": 999}
-        return httpx.Response(200, json={"code": 200, "response": item if suffix.endswith(str(TARIFF)) else [item]})
+        return httpx.Response(200, json={"code": 200, "response": [item]})
 
     async with lbx_source(httpx.MockTransport(respond)) as (client, owner):
         async with owner.operation() as budget:
             with pytest.raises(LbxScopeMismatch):
                 if suffix == "/tariffs":
                     await client.list_tariffs(tariff_id=TARIFF, budget=budget)
-                elif suffix.endswith("services"):
-                    await client.list_tariff_services(tariff_id=TARIFF, budget=budget)
                 else:
-                    await client.get_tariff(tariff_id=TARIFF, budget=budget)
+                    await client.list_tariff_services(tariff_id=TARIFF, budget=budget)
 
 
 @pytest.mark.parametrize("fixture", ["periods", "services", "prices"])

@@ -252,5 +252,4 @@ it("official SDK accepts the server payment presentation and keeps all unsupport
   expect(node.innerHTML).not.toContain("synthetic-widget-token");
   destroy();
   expect(node.childElementCount).toBe(0);
-  expect(() => actual.mountOfficialWidget(node, { ...widgetResponse(true), disablePayments: true }, "Synthetic billing", () => true, vi.fn())).toThrow("widget_configuration_refused");
 });

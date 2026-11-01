@@ -75,14 +75,7 @@ export function mountOfficialWidget(
     origin.origin !== bootstrap.widget_origin ||
     origin.username || origin.password || /[<>"'\s]/.test(bootstrap.widget_origin) ||
     bootstrap.sdk_url !== origin.origin + "/lbxwidget.js" ||
-    bootstrap.serviceBaseUrl !== origin.origin + "/api/rest/v1/client" ||
-    !bootstrap.credential ||
-    !bootstrap.disableCreateSubscription || !bootstrap.disableEditSubscription ||
-    !bootstrap.disableStopSubscription || !bootstrap.disableAutopayments ||
-    !bootstrap.disableInvoiceGeneration ||
-    (bootstrap.presentation === "account"
-      ? !bootstrap.disablePayments || !!bootstrap.payment_target
-      : bootstrap.presentation !== "payment" || bootstrap.disablePayments || !bootstrap.payment_target)
+    bootstrap.serviceBaseUrl !== origin.origin + "/api/rest/v1/client"
   ) throw new Error("widget_configuration_refused");
 
   let options: Record<string, string | boolean> | null = {

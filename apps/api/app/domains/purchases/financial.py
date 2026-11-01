@@ -94,10 +94,6 @@ def claim_financial(
             or work.payload_document.get("candidate_id") is not None
         ):
             raise PurchaseRefused("purchase_history_unproven", 409)
-        # Business uniqueness is the locked user/product hold, not the tariff.
-        others = queries.other_held_purchases(db, purchase.user_id, purchase.id)
-        if len(others) >= queries.MAX_HELD_PURCHASES:
-            raise PurchaseRefused("purchase_scope_occupied", 409)
         if operation.operation_kind == Kind.SUBSCRIPTION and not any(
             op.operation_kind == Kind.AGREEMENT and op.operation_state == State.BOUND for op in operations
         ):

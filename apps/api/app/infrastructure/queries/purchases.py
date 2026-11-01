@@ -24,9 +24,6 @@ from app.models import (
 )
 
 
-MAX_HELD_PURCHASES = 100
-
-
 def account_purchases(db: Session, user_id: UUID, *, after: UUID | None, limit: int) -> list[PurchaseIntent]:
     query = (
         select(PurchaseIntent)
@@ -129,20 +126,6 @@ def original_consent(
             )
             .limit(limit)
         ).tuples()
-    )
-
-
-def other_held_purchases(db: Session, user_id: UUID, purchase_id: UUID) -> list[PurchaseIntent]:
-    return list(
-        db.scalars(
-            select(PurchaseIntent)
-            .join(
-                BillingPurchaseScopeHold,
-                BillingPurchaseScopeHold.purchase_intent_id == PurchaseIntent.purchase_intent_id,
-            )
-            .where(PurchaseIntent.user_id == user_id, PurchaseIntent.purchase_intent_id != purchase_id)
-            .limit(MAX_HELD_PURCHASES)
-        )
     )
 
 
