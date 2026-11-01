@@ -48,10 +48,10 @@ narrowly supersedes source-catalog mirroring/new-sale TTL; it requires no schema
 change. Subscription trust, reconciliation and AccessSnapshot are unchanged.
 
 The schema is a provider-independent storage baseline. Its presence does not
-itself establish runtime acceptance. ANY-709 Step 3 implements purchase preparation
-and request-driven recovery. ANY-715 Steps 1–2 add shared reconciliation and
-embedded durable polling; paid-access derivation and Kernel invalidation delivery
-remain future work.
+itself establish runtime acceptance. ANY-709 implements purchase preparation
+and request-driven recovery. ANY-715 adds shared reconciliation, embedded durable
+polling and audited operations; paid-access derivation and Kernel invalidation
+delivery remain future work.
 
 ## Physical baseline
 
@@ -275,7 +275,8 @@ proof anchors at most six hours of source trust to read-set start; incomplete
 attempts preserve the existing deadline and complete support, while decisive
 owned negative/conflict evidence reduces usability. Subsequent preparation
 cannot overwrite monitored facts. All resulting access revisions remain null.
-There is no schema change or automatic worker in this step; see the
+Step 1 alone added no DDL or worker; Steps 2–5 supply the running worker and
+operations described below. See the
 [operations runbook](../engineering/ANY-715-billing-operations.md).
 
 `billing_state_observations` stores evidence whose core fields are immutable.

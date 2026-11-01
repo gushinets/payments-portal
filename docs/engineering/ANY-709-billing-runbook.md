@@ -403,6 +403,9 @@ deadline covering body consumption; identity/local purchase GETs use five
 seconds. A lost confirm/advance reply triggers one local inspection, retaining
 its original key/purchase; no POST repeats automatically. Pending/error UI keeps
 a safe request ID. Local status is not an LBX refresh or paid verification.
+ANY-715 now supplies persisted observation/reconciliation facts and operator
+diagnostics; it does not add a new public billing-status UI contract. See the
+[billing operations guide](ANY-715-billing-operations.md).
 
 SDK `render()` is not readiness. The isolated host waits up to 20 seconds for
 `lbx-widget` READY from the exact nested window at the configured provider origin.
@@ -438,6 +441,10 @@ to recover a UI or provider failure.
 
 ## Step 8 integration handoff
 
+This section records the Step 7 boundary handed to ANY-715. Step 8 is now
+implemented; use the [billing operations guide](ANY-715-billing-operations.md)
+for the running worker, optional webhook receiver and audited commands.
+
 ANY-715/ANY-765 must carry the origin-scope and customer-conflict fixes together.
 Use existing owner functions, not duplicated admission logic:
 
@@ -468,11 +475,14 @@ Use existing owner functions, not duplicated admission logic:
   domain `escalate_overdue_customers`/`escalate_overdue_financial` are bounded
   callable escalation. Financial limit is 1..100 due operations. Reuse coalesced
   `external_create_recovery` work and active deadlines, retaining source/recovery
-  capacity separation. No scheduler runs in ANY-709.
+  capacity separation. ANY-709 itself introduced no scheduler; ANY-715 now supplies the embedded
+  GET-only worker with isolated normal/urgent capacity.
 - `prepared-subscription:v1` observations are `preparation_only` /
   `not_paid_verified`, with `paid_verified=false`; no paid trust is extended.
-  Workers/webhooks/reconciliation belong to Step 8; paid access and Kernel
-  delivery/usage belong to later steps. Preparation is not their implementation.
+  ANY-715 implements Step 8 workers/webhooks/reconciliation, with webhooks
+  DISABLED/POLLING-ONLY pending real enablement. Paid AccessSnapshot,
+  AccessInvalidation and Kernel delivery/usage remain Steps 9–10. Preparation
+  grants no paid access.
 
 ## Verification commands
 

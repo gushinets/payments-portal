@@ -89,8 +89,8 @@ been removed. ANY-664 provides source reads, restricted immutable mapping
 publication and historical DB-only browsing. ANY-709 Step 1 now adds direct
 links and source-backed discovery/current offers; genuine Kernel conformance and sales
 remain gated. ANY-709 implements purchase preparation and browser Buy/Continue/
-Manage. Reconciliation workers and
-paid-access producers remain later work. See the
+Manage. ANY-715 implements contour-local embedded reconciliation/recovery and
+default-disabled webhook hints; paid-access producers remain later work. See the
 [as-built RU Portal 4F handoff](../product/ru-mvp.md).
 
 Planned, not implemented:
@@ -146,7 +146,9 @@ Portal-owned checkout/order/payment/subscription/entitlement authority. The
 clean target persistence baseline is contour-local. Only immutable offer
 publication was the original producer. ANY-709 adds immutable purchase consent,
 request-driven preparation/recovery and payment UI.
-Operating reconciliation and paid-access lifecycle remain later work. AnyToolAI Portal is not yet a production billing service.
+ANY-715 implements operating reconciliation/recovery and audited controls in the
+configured contour; real LBX/webhook enablement remains unverified. Paid-access
+derivation remains later work. AnyToolAI Portal is not yet a production billing service.
 
 The long-term production target requires contour enablement/deployment
 configuration to select one concrete external-billing integration. Target

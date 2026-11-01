@@ -1,7 +1,7 @@
 # AnyToolAI Portal Architecture
 
 Status: authoritative current-state map
-Last updated: 2026-10-22
+Last updated: 2026-11-01
 
 ## System boundary
 
@@ -106,11 +106,11 @@ revalidates it and pins exact terms and append-only legal evidence. See the [nor
 Paid-access derivation, subscription reconciliation/trust and AccessSnapshot
 deadlines are unchanged.
 External Billing owns commercial billing truth and lifecycle. The AnyToolAI
-Portal owns the implemented identity and legal acceptance flows and the later
-external-billing anti-corruption/projection/reconciliation/recovery boundary
-and provider-neutral paid-access projection and delivery. Platform Kernel owns
-technical product and metric vocabulary, durable actual usage, and quota
-enforcement.
+Portal owns implemented identity/legal acceptance and the external-billing
+anti-corruption, subscription observation/projection, reconciliation and recovery
+boundary, plus future provider-neutral paid-access projection and delivery.
+Platform Kernel owns technical product and metric vocabulary, durable actual
+usage, and quota enforcement.
 
 The component historically named “Payments Portal” in those accepted records
 maps to the Portal backend boundary implemented here. ADR 0005 and the accepted
@@ -173,7 +173,8 @@ See the [Step 3 runbook](docs/engineering/ANY-709-billing-runbook.md#purchase-ap
 - **Catalog admission and billing persistence** — live source validation,
   direct immutable product links with one current product head and live catalog reads;
   accepted purchase evidence and fenced request-driven preparation/recovery are
-  implemented. Reconciliation workers, paid-access derivation and invalidation
+  implemented. ANY-715 adds embedded reconciliation/recovery, durable webhook
+  hints and audited operator resolutions. Paid-access derivation and invalidation
   delivery remain later stages.
 - **Presentation** — locale-prefixed product-first home, catalog,
   product detail pages, pricing placeholder, direct account/auth entry,
@@ -217,7 +218,9 @@ link to product details; incomplete accepted purchases remain resumable. Product
 details own review, consent and preparation. Prepared purchases link to
 `/account?purchase=<id>#billing`; the cabinet owns one wide disposable Widget.
 Every payment entry uses the same original-purchase bootstrap and fresh proof.
-Payment/access reconciliation and usage remain deferred to Steps 8–10.
+ANY-715 reconciles subscription facts and recovers uncertain operations in the
+background. Confirmed paid-access derivation and actual usage/quota remain
+deferred to Steps 9–10; the cabinet does not present Step 8 facts as paid access.
 
 `/pricing` and public Pricing navigation are presentation-only: localized
 metadata, an honest unavailable/not-ready state and home/products links. The
@@ -238,8 +241,8 @@ The transitional pre-production `/{locale}/auth-checkout` and
 `/{locale}/payment-result` routes were removed without redirects or compatibility
 routes because they have no production compatibility obligation. This does not
 set a permanent rule for future production route changes. The durable
-[RU Portal 4F handoff](docs/product/ru-mvp.md) records the data ownership and
-deferred ANY-504 Steps 6–10.
+[RU Portal 4F handoff](docs/product/ru-mvp.md) records current data ownership,
+implemented Steps 6–8 and the remaining Steps 9–10 handoff.
 
 ## Locale runtime and public routing
 
@@ -485,8 +488,8 @@ commercial behavior:
 - external create operations preserve uncertain outcomes for safe recovery;
 - webhook delivery rows preserve bounded/redacted evidence, not authority;
 - work items are scheduling state, not business truth;
-- normalized subscription/observation/allowance rows support later
-  reconciliation;
+- subscription and observation rows have ANY-715 reconciliation writers;
+  allowance production remains Step 9 work;
 - paid-access state and the invalidation outbox support later provider-neutral
   access delivery.
 

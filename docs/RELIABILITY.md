@@ -1,7 +1,7 @@
 # Reliability Requirements
 
 Status: authoritative operational requirements; target external-billing semantics delegated
-Last verified: 2026-09-24
+Last updated: 2026-11-01
 
 ## Target external-billing authority
 
@@ -77,9 +77,10 @@ transaction.
 
 Current transaction boundaries are documented in
 [ARCHITECTURE.md](../ARCHITECTURE.md#current-transaction-map): identity/legal,
-product-link publication, accepted purchases and fenced financial preparation
-have current writers. Worker reconciliation and paid-access delivery remain
-later work.
+product-link publication, accepted purchases, fenced financial preparation,
+worker reconciliation, webhook receipt and audited operator resolution have
+current writers. Paid-access derivation and invalidation delivery remain later
+work.
 
 Future database retry decisions use these semantics:
 
