@@ -12,8 +12,6 @@ from app.models import (
     ExternalSubscription,
     ExternalBillingCustomer,
     ExternalCreateOperation,
-    ExternalCreateOperationKind,
-    PurchaseIntent,
     User,
 )
 
@@ -73,7 +71,9 @@ def claimable(
     )
 
 
-def missing_subscriptions(db: Session, account: str, tenant: str, region: str, limit: int) -> list[UUID]:
+def missing_subscriptions(
+    db: Session, account: str, tenant: str, region: str, limit: int
+) -> list[ExternalSubscription]:
     enrolled = exists().where(
         BillingWorkItem.work_kind == "subscription_reconciliation",
         BillingWorkItem.coalescing_key == account + ":" + func.cast(ExternalSubscription.subscription_id, Text),
@@ -81,7 +81,7 @@ def missing_subscriptions(db: Session, account: str, tenant: str, region: str, l
     )
     return list(
         db.scalars(
-            select(ExternalSubscription.subscription_id)
+            select(ExternalSubscription)
             .join(User, User.id == ExternalSubscription.user_id)
             .where(
                 ExternalSubscription.external_billing_account_id == account,
@@ -96,22 +96,6 @@ def missing_subscriptions(db: Session, account: str, tenant: str, region: str, l
             .limit(limit)
         )
     )
-
-
-def enrollment_subject(
-    db: Session, identity: UUID
-) -> tuple[ExternalSubscription, PurchaseIntent, ExternalBillingCustomer, ExternalCreateOperation | None] | None:
-    return db.execute(
-        select(ExternalSubscription, PurchaseIntent, ExternalBillingCustomer, ExternalCreateOperation)
-        .join(PurchaseIntent, PurchaseIntent.purchase_intent_id == ExternalSubscription.purchase_intent_id)
-        .join(ExternalBillingCustomer, ExternalBillingCustomer.customer_id == ExternalSubscription.customer_id)
-        .outerjoin(
-            ExternalCreateOperation,
-            (ExternalCreateOperation.customer_id == ExternalBillingCustomer.customer_id)
-            & (ExternalCreateOperation.operation_kind == ExternalCreateOperationKind.CUSTOMER),
-        )
-        .where(ExternalSubscription.subscription_id == identity)
-    ).first()
 
 
 def by_key(db: Session, kind: str, key: str) -> BillingWorkItem | None:

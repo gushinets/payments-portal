@@ -117,6 +117,47 @@ intermediate step narratives and repeated test-run transcripts are omitted from
 this summary; prior revisions remain in Git. Final evidence and any failed
 canonical invocation remain explicitly classified in the QA report.
 
+## 2026-11-01 — Simplicity review follow-up
+
+The owner requested revalidation and one separate corrective commit for two
+simplicity findings against baseline `ec4869b`. Both findings were confirmed
+and the following changes implemented:
+
+1. Reuse successful subscription/agreement point reads within one customer
+   inventory attempt. Preserve per-purchase original ownership/terms checks,
+   bounded input and the final membership reread; retain no reads across attempts.
+2. Keep subscription backfill limited to scoped missing-work enrollment. Use the
+   shared pre-I/O reconciliation claim for provenance validation and quarantine
+   permanent refusals through the existing fenced queue writer. Recoverable
+   customer identity state, contention and stale attempts must remain retryable.
+3. Verify request counts, fresh reads on subsequent attempts, all-product conflict
+   handling, malformed-history quarantine and customer identity recovery with
+   focused PostgreSQL tests, then run the broadest supported canonical checks.
+
+Cached candidate checks explicitly retain the existing I/O deadline. The expired
+budget regression failed before that guard and passed after it; a live-budget
+control uses the same cached points without HTTP or database reads.
+
+No schema, paid-access, CREATE, webhook or public API expansion was introduced.
+Verification uses disposable PostgreSQL and **SIMULATED** LBX responses:
+
+- Five initial regression assertions failed before the fixes; the final six
+  PostgreSQL regression cases passed, including original-customer recovery.
+- `npm run check` completed successfully: 1,677 fast API, 571 PostgreSQL,
+  384 component and 38 web boundary tests, production build, lint, architecture,
+  documentation and generated freshness. This run started before the final
+  cached-deadline guard; it is not a single run against the final source version.
+- After that last guard, the final `npm run check:fast` passed with 1,678 fast
+  API tests. The 75 focused fast tests and all 73 inventory/purchase PostgreSQL
+  cases also passed on the final application/test source.
+- The earlier fast run with inherited Kernel mock settings had four unrelated
+  configuration failures. Successful canonical runs clear external development
+  source settings only in their child environment. An initial 300-second
+  PostgreSQL selection was interrupted and is not counted as passing evidence.
+- Local logs and result XML are retained under the ignored
+  `.harness/any715-simplicity-20261101/` directory. Browser E2E and real LBX/webhook
+  integration were not run; existing enablement and launch gates remain open.
+
 ## Verification and remaining checkpoints
 
 The 2026-10-30 baseline `07556e4` had a complete canonical PASS. The subsequent

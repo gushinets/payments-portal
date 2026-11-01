@@ -39,6 +39,7 @@ from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.current_offer import current_billing_date, read_current_offer
 from app.integrations.lbx.errors import LbxCreateNotSent, LbxError, LbxScopeMismatch, LbxResponseInvalid
 from app.integrations.lbx.financial import (
+    Agreement,
     NewAgreement,
     NewSubscription,
     Subscription,
@@ -132,9 +133,8 @@ async def _live_original(
             raise
         await run_in_threadpool(financial.changed_unsent_terms, factory, purchase)
         return False
-    # Recompute from immutable historical fields under the current comparison
-    # contract and the same canonical connection scope as the fresh offer.
-    # Historical account FKs and accepted digests remain unchanged.
+    # Recompute immutable historical fields under the current comparison and
+    # connection scope. Historical account FKs and accepted digests stay unchanged.
     if offer.fingerprint != current_offer_fingerprint(
         configuration.lbx_external_billing_account_id, purchase.accepted.selection, purchase.accepted.offer
     ):
@@ -152,25 +152,34 @@ async def _inventory(
     budget: PreflightBudget,
     delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
     inventory: tuple[Subscription, ...] | None = None,
+    subscription_points: dict[int, Subscription] | None = None,
+    agreement_points: dict[int, Agreement] | None = None,
 ) -> None:
-    rows = (
-        inventory
-        if inventory is not None
-        else await client.discover_subscriptions(user_id=int(customer.provider_id), budget=budget)
-    )
+    subscription_points = {} if subscription_points is None else subscription_points
+    agreement_points = {} if agreement_points is None else agreement_points
+    rows = inventory
+    if rows is None:
+        rows = await client.discover_subscriptions(user_id=int(customer.provider_id), budget=budget)
     relevant = [row for row in rows if row.tariff_id == purchase.accepted.selection.tariff_id]
     if len(relevant) > MAX_RELEVANT_SUBSCRIPTIONS:
         raise PurchaseInventoryIncomplete()
     own = _operation(purchase, Kind.SUBSCRIPTION).bound_id
     for candidate in relevant:
-        point = await client.get_subscription(subscription_id=candidate.subscription_id, budget=budget)
+        budget.check()
+        point = subscription_points.get(candidate.subscription_id)
+        if point is None:
+            point = await client.get_subscription(subscription_id=candidate.subscription_id, budget=budget)
+            subscription_points[candidate.subscription_id] = point
         if (point.subscription_id, point.agreement_id, point.tariff_id) != (
             candidate.subscription_id,
             candidate.agreement_id,
             candidate.tariff_id,
         ):
             raise PurchaseRefused("purchase_inventory_incomplete", 409)
-        agreement = await client.get_agreement(agreement_id=point.agreement_id, budget=budget)
+        agreement = agreement_points.get(point.agreement_id)
+        if agreement is None:
+            agreement = await client.get_agreement(agreement_id=point.agreement_id, budget=budget)
+            agreement_points[point.agreement_id] = agreement
         if agreement.user_id != int(customer.provider_id):
             raise LbxScopeMismatch()
         try:

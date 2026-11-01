@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
@@ -285,11 +286,33 @@ async def test_billing_background_recovery_two_products_same_tariff_isolated(
         == State.BOUND
     )
     recovery.repair_batch(factory, step1_settings())
+    inventory_start = len(transport.requests)
     assert await worker.tick(WorkLane.NORMAL)
     inventory = job(factory, recovery.INVENTORY, target.customer_id)
     assert inventory.last_error_classification is None
     assert (
         (datetime.now(UTC) + timedelta(hours=4)) < inventory.next_attempt_at <= (datetime.now(UTC) + timedelta(hours=6))
+    )
+    assert Counter(request.url.path for request in transport.requests[inventory_start:]) == {
+        "/api/rest/v1/users/345": 1,
+        "/api/rest/v1/subscriptions": 2,
+        "/api/rest/v1/subscriptions/567": 1,
+        "/api/rest/v1/subscriptions/568": 1,
+        "/api/rest/v1/agreements/456": 1,
+        "/api/rest/v1/agreements/457": 1,
+    }
+    # A later attempt must reread effective terms, even when its discovery
+    # membership is unchanged. Successful reads never survive the attempt.
+    transport.subscriptions[0]["services"][0]["price"] = 101
+    transport.subscriptions[0]["total_price"] = 101
+    with factory() as db:
+        db.get(BillingWorkItem, inventory.work_item_id).next_attempt_at = datetime.now(UTC) - timedelta(seconds=1)
+        db.commit()
+    next_attempt = len(transport.requests)
+    assert await worker.tick(WorkLane.NORMAL)
+    assert job(factory, recovery.INVENTORY, target.customer_id).last_error_classification == "inventory_conflict"
+    assert (
+        sum(request.url.path == "/api/rest/v1/subscriptions/567" for request in transport.requests[next_attempt:]) == 1
     )
     assert all(req.method == "GET" for req in transport.requests[count:])
     await worker.aclose()

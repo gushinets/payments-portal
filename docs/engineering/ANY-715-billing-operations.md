@@ -158,8 +158,11 @@ selects the missing set by subscription ID (no offset/cursor), commits at most
 100 enrollments, yields to other tasks and continues until empty. Restart repeats
 from missing work. Existing pending/running work, including future jobs and
 expired leases awaiting reclaim, is already enrolled; completed recurring jobs
-reactivate. Malformed historical provenance is isolated as `invalid` with a
-bounded reason, without provider calls or repeatedly failing the first batch.
+reactivate. Enrollment does not duplicate provenance validation: the shared
+reconciliation claim checks it before provider I/O. Permanent history, consent,
+scope or binding failures are isolated as `invalid` through the fenced queue
+writer, without provider calls or reenrollment. Recoverable customer identity
+state and local contention remain retryable.
 Missing source-trust expiry jobs are repaired locally as well. Step 3 also repairs missing customer inventory, urgent recovery and independent
 create-deadline jobs in bounded batches. Existing customer active-send leases,
 future recurring schedules and completed no-send records remain protected.
@@ -241,6 +244,10 @@ most 20 relevant candidates under one worker I/O budget. Capped, duplicate,
 unstable or partial results are incomplete, never absence. Two bounded inventory
 lists detect observed membership drift; they do not establish an atomic snapshot
 or a provider visibility SLA. Point reads must agree with discovery identities.
+Successful subscription/agreement point reads are shared across product checks
+within one attempt; every later attempt reads LBX again. Each purchase still
+requires its original ownership and accepted-term proof. Cached candidate
+checks enforce the same I/O deadline.
 
 A tariff is not product identity. `proposal_ai` and `brief_decoder` may share
 one tariff/service/period for the same customer/account only with separate
