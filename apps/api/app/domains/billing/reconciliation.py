@@ -69,10 +69,8 @@ def claim_reconciliation(
         agreement = next((op for op in operations if op.operation_kind == Kind.AGREEMENT), None)
         subscription_op = next((op for op in operations if op.operation_kind == Kind.SUBSCRIPTION), None)
         if (
-            customer.binding_state != Binding.BOUND
-            or not customer.provider_customer_id
+            not customer.provider_customer_id
             or customer_op is None
-            or customer_op.operation_state != State.BOUND
             or customer_op.bound_external_object_id != customer.provider_customer_id
             or customer_op.request_correlation_key != customer.billing_customer_key
             or customer.provider_origin != evidence.provider_origin
@@ -84,6 +82,10 @@ def claim_reconciliation(
             or not subscription_op.bound_external_object_id
         ):
             raise BillingRefused("subscription_provenance_unproven", 409)
+        if customer.binding_state != Binding.BOUND or customer_op.operation_state != State.BOUND:
+            # Original-customer recovery may restore these states without
+            # changing the subscription's permanent provenance. Keep polling.
+            raise BillingRefused("billing_identity_unproven", 409)
         for provider_id in (
             customer.provider_customer_id,
             agreement.bound_external_object_id,

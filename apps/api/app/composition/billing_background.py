@@ -17,6 +17,7 @@ from app.domains.purchases.contracts import PurchaseRefused
 from app.infrastructure.preflight import PreflightAdmission, PreflightBudget
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.errors import LbxScopeMismatch, LbxResponseInvalid
+from app.integrations.lbx.financial import Agreement, Subscription
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State
 
 
@@ -102,9 +103,23 @@ async def _inventory_customer(
         return
     conflicts = []
     incomplete = False
+    # Share successful reads only within this attempt; each purchase still
+    # requires its own original ownership and accepted-term proof.
+    subscription_points: dict[int, Subscription] = {}
+    agreement_points: dict[int, Agreement] = {}
     for purchase in purchases:
         try:
-            await _inventory(client, purchase, current, factory, budget=budget, delegate=delegate, inventory=rows)
+            await _inventory(
+                client,
+                purchase,
+                current,
+                factory,
+                budget=budget,
+                delegate=delegate,
+                inventory=rows,
+                subscription_points=subscription_points,
+                agreement_points=agreement_points,
+            )
         except (LbxScopeMismatch, PurchaseRefused) as error:
             budget.check()
             conflict = isinstance(error, LbxScopeMismatch) or error.code == "purchase_existing_subscription_review"

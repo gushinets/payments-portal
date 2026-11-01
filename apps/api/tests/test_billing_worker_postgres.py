@@ -702,23 +702,82 @@ async def test_billing_worker_link_and_sweep_interleave_without_partial_enrollme
     assert work.enroll_batch(factory, step1_settings()) == 0
 
 
+@pytest.mark.parametrize("corruption", ["origin", "hold", "operation"])
 async def test_billing_worker_quarantines_malformed_history_without_hot_loop(
     scenario: tuple,
     postgres_session_factory: sessionmaker[Session],
+    corruption: str,
 ) -> None:
-    from app.models import ExternalBillingCustomer
+    from app.models import BillingPurchaseScopeHold, ExternalBillingCustomer, ExternalCreateOperation
 
-    _, _, purchase = scenario
+    transport, sources, purchase = scenario
     factory = postgres_session_factory
     with factory() as db:
-        db.get(ExternalBillingCustomer, purchase.customer_id).provider_origin = None
+        if corruption == "origin":
+            db.get(ExternalBillingCustomer, purchase.customer_id).provider_origin = None
+        elif corruption == "hold":
+            db.execute(delete(BillingPurchaseScopeHold))
+        else:
+            customer_op = db.scalar(
+                select(ExternalCreateOperation).where(ExternalCreateOperation.operation_kind == Kind.CUSTOMER)
+            )
+            customer_op.bound_external_object_id = "999"
         db.execute(delete(BillingWorkItem).where(BillingWorkItem.work_kind == work.RECONCILIATION))
         db.commit()
     assert work.enroll_batch(factory, step1_settings()) == 1
     assert work.enroll_batch(factory, step1_settings()) == 0
+    assert jobs(factory)[0].work_state == "pending"
+    count = len(transport.requests)
+    worker = BillingWorker(step1_settings(), factory, sources.require_lbx())
+    try:
+        assert await worker.tick(WorkLane.URGENT)
+        assert worker.last_progress_at is not None and worker.last_verified_subscription_at is None
+        assert worker.failures == 0
+    finally:
+        await worker.aclose()
+    assert len(transport.requests) == count
     assert jobs(factory)[0].work_state == "invalid"
     assert work.inspect_backlog(factory, step1_settings())[2] == 1
+    assert work.enroll_batch(factory, step1_settings()) == 0
     assert work.claim_work(factory, step1_settings(), WorkLane.URGENT) is None
+
+
+async def test_billing_worker_retries_backfilled_subscription_after_original_customer_recovery(
+    scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    from app.domains.billing import customers
+
+    transport, sources, purchase = scenario
+    factory, config = postgres_session_factory, step1_settings()
+    current = customers.reserve_customer(factory, config, TOKEN)
+    with pytest.raises(BillingRefused, match="billing_identity_conflict"):
+        customers.apply_customer_read(factory, current, provider_id=current.provider_id, outer_key="wrong-key")
+    with factory() as db:
+        db.execute(delete(BillingWorkItem).where(BillingWorkItem.work_kind == work.RECONCILIATION))
+        db.commit()
+    assert work.enroll_batch(factory, config) == 1
+    before, count = subs(factory)[0], len(transport.requests)
+    worker = BillingWorker(config, factory, sources.require_lbx())
+    try:
+        assert await worker.tick(WorkLane.URGENT)
+        pending = jobs(factory)[0]
+        assert pending.work_state == "pending" and pending.last_error_classification == "billing_identity_unproven"
+        assert len(transport.requests) == count
+        assert subs(factory)[0].latest_observation_id == before.latest_observation_id
+        recovering = customers.reserve_customer(factory, config, TOKEN)
+        customers.apply_customer_read(factory, recovering, provider_id=current.provider_id, outer_key=current.outer_key)
+        with factory() as db:
+            db.get(BillingWorkItem, pending.work_item_id).next_attempt_at = datetime.now(UTC) - timedelta(seconds=1)
+            db.commit()
+        assert await worker.tick(WorkLane.URGENT)
+        assert jobs(factory)[0].last_error_classification is None
+        assert subs(factory)[0].latest_observation_id != before.latest_observation_id
+        assert worker.last_verified_subscription_at is not None and worker.failures == 0
+        assert all(request.method == "GET" for request in transport.requests[count:])
+        assert service.read_purchase(factory, purchase.user_id, purchase.id).held
+    finally:
+        await worker.aclose()
 
 
 async def test_billing_worker_current_subscription_fence_still_requires_queue_owner(
