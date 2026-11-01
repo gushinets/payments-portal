@@ -16,8 +16,8 @@ navigation, direct auth entry, and an authenticated cabinet led by the user’s
 held accepted purchases. Brief cards link to product details and the full
 catalog remains one link away. Identity/verification/logout context supports
 one wide billing Widget with an explicit purchase selection. Account/session/email-verification,
-password-recovery and legal-acceptance flows remain implemented. Published
-immutable commercial terms are displayed; paid access remains unknown and
+password-recovery and legal-acceptance flows remain implemented. Current offers
+come from LBX; accepted purchase terms remain immutable. Paid access is unknown and
 actual usage/quota unavailable. The repository remains pre-production on the
 surface established by ANY-636 4F. ANY-664 adds
 historical read-only source clients and controlled immutable offer publication.
@@ -25,15 +25,12 @@ ANY-709 Step 1 adds direct versioned links and source-backed catalog/current
 offers; genuine
 Kernel conformance and sales remain gated. There are no production direct-
 provider subscribers or subscriptions to migrate.
-ANY-709 Step 2 adds independently optional FIO and explicit verified-email
-account-only Widget viewing, verified on the test stand. One durable customer is
-shared across products. This action needs no offer or subscription and does not
-authorize purchases or paid access. ANY-709 Steps 3–4 add immutable purchase
-consent, fenced preparation/recovery and localized Buy/Continue/Manage with a
-verified payment-capable Widget. Automated checks and the recorded owner
-intended-agreement Widget/YooKassa test payment passed; independent final review
-remains pending. Paid access is deferred. See the
-[current acceptance ledger](exec-plans/completed/ANY-709-implementation-plan.md#current-acceptance-and-final-review).
+ANY-709 adds independently optional FIO and explicit verified-email account
+Widget viewing with one shared customer. It requires no offer/subscription and
+grants no paid access. Immutable purchase consent, request-driven preparation/
+recovery and Buy/Continue/Manage use verified payment presentation in the cabinet.
+Delivery and acceptance evidence are in
+[ANY-709](https://linear.app/paveldik/issue/ANY-709).
 
 The former CloudPayments/direct-provider implementation and Portal-owned
 catalog/order/payment/subscription/entitlement runtime have been physically
@@ -102,9 +99,10 @@ only their source-read/admission strategy.
 - Versioned `ru` legal-document metadata and append-only acceptance evidence.
 - One clean PostgreSQL first-install schema with configured-contour and legal
   bootstrap.
-- Ten retained identity/session/legal tables and fifteen provider-neutral target
-  external-billing persistence tables, empty after bootstrap. Restricted
-  publication appends mapping revisions; source-catalog projection slots are inert.
+- Twenty-seven application tables: ten identity/session/legal, fifteen original
+  target billing tables, a current product-link pointer and a purchase hold.
+  Billing tables start empty; explicit publication/customer/purchase flows own
+  their writes. Source-catalog projection slots are inert.
 - Static guards preventing restoration of the deleted direct-provider runtime,
   legacy Portal commercial/access schema, and `external_billing_accounts`.
 
@@ -129,8 +127,7 @@ trust boundary under ANY-541.
 - Genuine enablement of ANY-504 Step 6's live-source clients and immutable
   approved offer mappings, subject to real Kernel/LBX and approval gates.
   ANY-664 records the historical Step 6 baseline. ANY-709 implements live catalog
-  browsing and Step 7 purchase/payment UI with recorded owner payment QA complete
-  and independent final review pending;
+  browsing and Step 7 purchase/payment UI;
   there is no periodic source-catalog mirror. Operating reconciliation/recovery
   in Step 8; confirmed paid-access projection and
   delivery in Step 9; actual usage/quota integration in Step 10. These are
@@ -168,5 +165,5 @@ trust boundary under ANY-541.
 - Pricing navigation and its unavailable placeholder establish presentation
   topology only. Published offer terms use the ANY-504 Step 6 Portal path;
   current sellability and genuine enablement retain the source/approval gates;
-  ANY-709 implements and tests Step 7 purchase/Widget behavior, with recorded
-  owner payment QA complete and independent final review pending.
+  ANY-709 implements Step 7 purchase/Widget behavior. Dated acceptance evidence
+  belongs to ANY-709.

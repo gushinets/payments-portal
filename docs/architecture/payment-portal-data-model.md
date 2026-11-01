@@ -15,50 +15,22 @@ This document describes the schema produced by the current Alembic chain:
 `20261001_0002_clear_false_email_verification` is a data-only forward migration
 that clears predecessor registration-time `users.email_verified_at` values,
 because those timestamps did not prove mailbox ownership.
-`20261029_0003_normal_billing` consolidates all ANY-709 branch-local
-operations into one forward migration after main's unchanged head. It adds one
-small current-link pointer table, nullable provider-origin provenance and unique
-`(provider_origin, product_id)` without backfilling or rewriting legacy mappings.
-It also adds optional FIO, nullable customer origin, provider-ID uniqueness,
-permanent customer-operation identity, send fencing and coalesced recovery-work
-uniqueness. It neither guesses identity/origin nor creates provider objects.
-It adds the purchase hold, scoped permanent financial identities/bindings and
-immutable financial-send evidence. It backfills operation scope from its existing
-customer and holds nonterminal purchases; ambiguous old holds/bindings fail the
-upgrade without deletion or arbitrary adoption. It adds the explicit financial
-`unverified` state. Clean and populated test upgrades have passed. The earlier
-purchase-preparation schema was applied as the original four-revision chain to
-the local development database under explicit owner authorization on 2026-10-27;
-existing application row counts were preserved. This historical application does
-not assert application of the final `20261029_0003` revision. Consolidation
-retains every upgrade/downgrade operation. The
-owner requested consecutive numbering after the initial consolidation: an
-existing fully upgraded `20261027_0006` schema must be verified before changing
-only its revision label to the then-current `20261027_0003`; its DDL must not be replayed.
-This local transition completed under explicit owner authorization after an exact
-schema comparison and protected backup; all rows in 27 application tables were
-preserved and normal `upgrade head` passed afterward.
-The final single migration also includes the former
-`20261028_0004_financial_recovery_window`: nullable
-`billing_work_items.active_recovery_deadline_at`, without rewriting existing rows.
-NULL retains the original immutable financial deadline. Only a new fenced send
-permitted by `proven_not_sent` establishes a fresh two-hour recovery window.
-Upgrade operations are the exact concatenation of the former `0003` and `0004`;
-downgrade executes `0004`'s inverse before `0003`'s inverse.
+`20261029_0003_normal_billing` consolidates the ANY-709 branch migrations after
+main's unchanged head. It adds the current-link pointer, nullable proven origin,
+optional FIO, customer/provider and permanent-operation uniqueness, send fences,
+coalesced recovery work, user/product purchase holds, scoped financial bindings
+and immutable financial-send evidence. Existing operation account/hold backfills
+refuse ambiguous history without deletion or arbitrary adoption. The migration
+creates no provider object and does not guess legacy origin or rewrite immutable
+mapping/consent evidence.
 
-Both old `20261027_0003` and `20261028_0004` are retired revision IDs; normal
-`upgrade head` rejects them without replaying DDL or silently skipping changes.
-The former `0003` may lack the active-window column. Such databases must first
-finish the old chain at `20261028_0004` using checkout `afb46c5`, then verify the
-complete schema, retain a protected backup and change only the revision label
-to the new `20261029_0003`. An old `0004` database needs the same verified label
-transition, with no DDL replay or row rewrite. Retired earlier revisions must
-follow their original upgrade path first; see the
-[migration runbook](../engineering/ANY-709-billing-runbook.md#consolidated-any-709-migration).
-No automatic compatibility stamp is performed. The chain has one current head.
-This document is authoritative for the implemented SQLAlchemy
-table inventory and physical persistence rules; the generated column-level
-artifact remains `docs/generated/db-schema.md`.
+Its nullable `billing_work_items.active_recovery_deadline_at` records the fixed
+window for a genuinely new proven-unsent financial attempt; NULL retains the
+original immutable deadline. Retired branch revision IDs are absent from the
+current graph. Already-applied branch databases need the verified transition in
+the [migration runbook](../engineering/ANY-709-billing-runbook.md#consolidated-any-709-migration),
+never automatic stamping or replay of consolidated DDL. This document owns
+persistence meaning; `docs/generated/db-schema.md` owns column-level output.
 
 Target commercial ownership and runtime behavior follow, in precedence order:
 
@@ -72,7 +44,7 @@ change. Subscription trust, reconciliation and AccessSnapshot are unchanged.
 
 The schema is a provider-independent storage baseline. Its presence does not
 itself establish runtime acceptance. ANY-709 Step 3 implements purchase preparation
-with focused synthetic tests passing and real purchase/payment QA pending; workers, paid-access derivation and Kernel
+and request-driven recovery; workers, paid-access derivation and Kernel
 invalidation delivery remain future work.
 
 ## Physical baseline

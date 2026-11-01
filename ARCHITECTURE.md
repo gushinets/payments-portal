@@ -12,20 +12,13 @@ provider-neutral external-billing persistence baseline. It does not own
 workflow execution, artifacts, usage consumption, or quota enforcement; those
 belong to the separate Platform Kernel repository.
 
-The current Portal combines product-first public discovery,
-per-product pages, presentation-only pricing navigation, direct account/auth
-entry and a product-centric cabinet. It remains pre-production and
-provider-independent on the current ANY-636 4F surface. ANY-664 adds read-only
-source clients and historical v1 publication. ANY-709 Step 1 now supplies
-normal LBX configuration, direct immutable product links and source-backed
-catalog/current-offer reads; genuine Kernel conformance and production enablement remain gated.
-ANY-709 Step 3 adds accepted-purchase APIs and financial preparation/recovery,
-with automated QA and recorded owner test-payment validation complete.
-Step 4 adds localized product/account Buy/Continue/Manage and a shared payment-capable
-Widget controller; automated and intended-agreement owner payment QA passed,
-with independent final review pending. Billing lifecycle
-workers and paid access remain later work. Final 4F
-verification and human screenshot/intent acceptance remain pending.
+The current Portal combines public discovery, product detail, account/auth and
+an owned-purchase cabinet. ANY-709 implements direct product links, live current
+offers, account Widget, accepted-purchase preparation/recovery and localized
+Buy/Continue/Manage with one shared payment-capable Widget. It remains
+pre-production. Billing lifecycle workers, paid access, actual usage/quota and
+real Kernel enablement belong to later program steps. Delivery and acceptance
+evidence are recorded in [ANY-709](https://linear.app/paveldik/issue/ANY-709).
 
 Each production deployment serves exactly one contour. Region Resolver is a
 separate planned service for contour selection; it is not implemented here.
@@ -57,16 +50,15 @@ CloudPayments runtime, `PaymentProviderAdapter`, `PaymentProviderRegistry`,
 provider-account routing model, direct-payment webhook path, or Portal-owned
 catalog/order/payment/subscription/entitlement lifecycle. Purchase preparation is
 available through Step 3 APIs for explicit acceptance and bounded preparation;
-Step 4 browser Buy/Continue/Manage is implemented with targeted synthetic tests PASS. Catalog details read current
-selected offers, and no commercial observation grants paid access.
+browser Buy/Continue/Manage uses the same owned purchase. Catalog details read
+current selected offers, and no commercial observation grants paid access.
 
-The clean first-install schema contains ten retained identity/session/legal
-tables and fifteen provider-neutral target persistence tables. Those fifteen
-tables are empty after bootstrap. ANY-664 can append approved mapping revisions
-through its restricted operator path; simulated evidence remains simulated.
-ANY-709 Step 3 adds a purchase mutex and request-driven financial preparation.
-Workers, paid-access derivation and invalidation delivery remain later work. The two source-catalog projection tables are inert schema
-slots with no runtime readers/writers.
+The current migrated schema contains 27 application tables: ten retained
+identity/session/legal tables, fifteen original target billing tables, a current
+product-link pointer and a purchase hold. The billing tables start empty. Direct
+link publication and explicit customer/purchase flows populate their owned
+records. Source-catalog projection slots have no runtime readers/writers.
+Workers, paid-access derivation and invalidation delivery remain later work.
 
 The canonical target is defined, in precedence order, by
 [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md), the
@@ -75,8 +67,7 @@ and the accepted
 [Portal <-> Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
 The owner-approved [live-source admission amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
 narrowly supersedes those baselines' source-catalog mirroring/new-sale TTL.
-[ADR 0006](docs/architecture/decisions/0006-any-709-ticket-decisions.md)
-recognizes the exact dated ANY-504 C1-C4 exceptions and ANY-709 results. Apply
+ADR 0005 links the exact dated ANY-504 C1-C4 exceptions and ANY-709 results. Apply
 those decisions before the affected baseline clauses; the following describes
 the current implementation, while the accepted specification bodies stay intact.
 Each publication and genuinely new purchase requires live Kernel and complete
@@ -108,15 +99,15 @@ Provider-dependent LBX semantics, Widget behavior, paid-access derivation, and
 launch remain gated by Phase 0 and their owning `ANY-504` steps.
 
 ANY-709 Step 2 adds explicit verified-email account-only customer/Widget
-bootstrap, pending human validation. It reuses the durable customer/create/work
+bootstrap. It reuses the durable customer/create/work
 models and resolves the same proven provider-origin scope without a catalog/price
 prerequisite. The shared `ensure_customer` operation searches before CREATE and after a failed
 CREATE, binds only paired point proof, and retries temporary customer failures
 with backoff within one nonrenewable opening deadline. Failed GETs never permit
 CREATE; saved IDs and email-uniqueness rejection allow GET recovery only. A finite
 active-send lease protects sends; each later claim needs fresh discovery under
-the customer policy recorded as C3 through
-[ADR 0006](docs/architecture/decisions/0006-any-709-ticket-decisions.md).
+customer decision C3 linked by ADR 0005. Remote duplicate prevention depends
+on LBX email-uniqueness enforcement, not the local lease alone.
 Unresolved failures are reported once
 to Sentry. Unresolved customer ambiguity and other blocking review reasons
 remain blocking under the customer lock. Read-only recovery may resolve customer
@@ -140,10 +131,7 @@ send with a new fence and its own nonrenewable +2h window on the recovery work
 item. Point proof of the original customer/seller/agreement
 and effective subscription terms gates the existing bootstrap's optional payment
 presentation. Its initial subscription projection is `unverified` financially,
-with no paid-trust interval, grant or access-primary selection. Focused synthetic
-tests, the local development migration, original source purchase proof and the
-owner's intended-agreement test payment have passed; independent final review
-remains pending. The current acceptance ledger records their scope and limits.
+with no paid-trust interval, grant or access-primary selection.
 See the [Step 3 runbook](docs/engineering/ANY-709-billing-runbook.md#purchase-api-and-financial-recovery-step-3).
 
 ## Current domains and API

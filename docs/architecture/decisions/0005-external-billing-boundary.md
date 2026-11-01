@@ -48,26 +48,22 @@ target or turn External Billing into a direct payment-provider integration.
   for provider-dependent production semantics, Widget/LBX production behavior,
   and launch.
 
+**Dated ANY-709 decisions:** only C1-C4 in **"Accepted ANY-709 contract decisions
+— 2026-10-31"** in [ANY-504](https://linear.app/paveldik/issue/ANY-504) override the
+baseline clauses they explicitly identify. That section owns exact scope,
+rationale, retained guarantees and evidence limits; the accepted specification
+bodies are preserved. Ownership above and every other clause remain in force.
+[ANY-709](https://linear.app/paveldik/issue/ANY-709), section **"ANY-709 result and
+contract deviations — 2026-10-31"**, owns results and verification. Ordinary issue
+text, reports, passing tests and checkboxes do not create further exceptions.
 
-**Later ANY-709 decisions:** [ADR 0006](0006-any-709-ticket-decisions.md)
-recognizes only the dated C1-C4 decisions in ANY-504 and the implementation
-results in ANY-709. Apply those exact exceptions before affected baseline rules;
-the accepted specification bodies are preserved. This does not replace the
-ownership decision above or authorize additional departures.
+## Implementation status
 
-## Implementation status, 2026-10-26
-
-The retained implementation described in the original context and decision
-has since been physically removed. ANY-664 supplied restricted v1 publication/DB-only browsing. ANY-709 Step 1
-now supplies normal LBX configuration, direct links and source-backed current
-offers. ANY-709 Step 3 now implements accepted-purchase APIs, held scopes,
-financial preparation/GET-only recovery and verified payment bootstrap. Focused
-synthetic tests and the local development migration have passed; real purchase/
-payment QA remains NOT_RUN. Step 4 browser Buy/Continue/Manage and the shared
-payment-capable Widget are implemented; targeted synthetic tests PASS and real payment acceptance
-remains NOT_RUN. Paid access remains future work. See the current [architecture](../../../ARCHITECTURE.md).
-The retained wording records the decision's transition history and does not
-assert that executable direct-provider code still exists.
+The former direct-provider runtime has been physically removed. ANY-709 adds
+direct product links, live offers, account Widget and accepted-purchase
+preparation/recovery. Paid access remains later work. Current boundaries are in
+[ARCHITECTURE](../../../ARCHITECTURE.md); dated delivery evidence is in ANY-709.
+The original context above records transition history.
 
 ## Consequences
 

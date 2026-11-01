@@ -8,17 +8,13 @@ before backend work.
 For new billing work, follow the target authority chain before consulting any
 retained billing document:
 
-1. [ADR 0005](../../docs/architecture/decisions/0005-external-billing-boundary.md)
-2. [ADR 0006](../../docs/architecture/decisions/0006-any-709-ticket-decisions.md)
-   recognizes only the dated ANY-504 C1-C4 exceptions and ANY-709 results;
-   apply them before the affected baseline clauses.
-3. [External Billing Boundary Design](../../docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md)
-4. [Portal ↔ Kernel Access Contract Design](../../docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
-5. [Accepted live-source admission amendment](../../docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
-   retains the accepted source-read/new-sale baseline. Later linking, account
-   viewing and recovery decisions are recorded in the tickets recognized by
-   ADR 0006, not rewritten into those baseline bodies. Subscription trust and
-   AccessSnapshot are unchanged; see the [runbook](../../docs/engineering/ANY-709-billing-runbook.md).
+1. [ADR 0005](../../docs/architecture/decisions/0005-external-billing-boundary.md),
+   including its exact dated ANY-504 decision references.
+2. [External Billing Boundary Design](../../docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md)
+3. [Portal ↔ Kernel Access Contract Design](../../docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
+4. [Accepted live-source admission amendment](../../docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
+
+Operational commands are in the [billing runbook](../../docs/engineering/ANY-709-billing-runbook.md).
 
 The [payment-provider document](../../docs/architecture/payment-providers.md)
 is historical characterization of the physically removed direct-provider
@@ -123,16 +119,10 @@ database lifecycle.
 - Target paid access changes only from the authoritative sources
   permitted by ADR 0005 and the accepted designs; a browser return, Widget
   callback, webhook, outbound request success, or payment state alone is not
-  access authority. Direct versioned product linking and source-backed catalog reads are implemented;
-  account-only customer/Widget bootstrap is implemented by ANY-709 Step 2,
-  pending human validation. ANY-709 Step 3 implements accepted-purchase APIs,
-  held scopes, financial preparation/recovery and verified payment bootstrap;
-  focused synthetic tests and the local development migration have passed; real
-  purchase/payment QA is pending. Step 4 consumes these contracts in localized
-  Buy/Continue/Manage UI; targeted synthetic tests PASS; real payment acceptance is NOT_RUN.
-  Reconciliation, paid-access and
-  billing-callback runtime remain future work. See the
-  [purchase runbook](../../docs/engineering/ANY-709-billing-runbook.md#purchase-api-and-financial-recovery-step-3).
+  access authority. Direct product links, live catalog reads, account Widget,
+  accepted purchases and request-driven financial preparation/recovery are
+  implemented. Reconciliation workers, paid access and billing callbacks remain
+  later work. See the [runbook](../../docs/engineering/ANY-709-billing-runbook.md).
 - Never log authentication tokens, authorization headers, secrets, card fields,
   or unredacted webhook bodies.
 - Legal acceptance records are append-only.

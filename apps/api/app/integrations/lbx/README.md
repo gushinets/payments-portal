@@ -4,8 +4,8 @@
 The original read-client handoff below retains historical inventory/configuration
 facts. Its manual account-ID requirement is superseded: current runtime resolves
 the trusted provider-origin scope and uses normal connection settings. ANY-709
-Steps 2–4 add customer/purchase preparation and the shared payment-capable SDK;
-final real payment acceptance remains pending.
+Steps 2–4 add customer/purchase preparation and the shared payment-capable SDK.
+Dated acceptance evidence is recorded in [ANY-709](https://linear.app/paveldik/issue/ANY-709).
 
 Implementation source only; tests, checks and live LBX requests have **not**
 been run for this step. This boundary grants no commercial or paid-access
@@ -153,7 +153,7 @@ same transport/decoder. POST does not retry; receipts are only candidates until
 point proof. Financial UNKNOWN never inherits customer later-open retries.
 Payment APIs remain provider-owned. See the
 [purchase runbook](../../../../../docs/engineering/ANY-709-billing-runbook.md#purchase-api-and-financial-recovery-step-3)
-for recorded synthetic/local migration evidence, financial GET-only recovery and pending human QA. `LbxCreateNotSent` proves a before-dispatch failure;
+for current commands, migration transitions and financial GET-only recovery. `LbxCreateNotSent` proves a before-dispatch failure;
 every dispatched failure remains uncertain. Customer responses accept the
 operation-specific 200/201 envelope and must be point-verified before binding.
 Technical login/password are generated only for one POST; JWT signing uses

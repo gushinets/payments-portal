@@ -114,7 +114,7 @@ implementation was added in that original ANY-664 Step 1. ANY-709 v2 product
 links now preserve separate Kernel/LBX provenance; current source-backed catalog
 reads do not grant access or approve sales. Changing a URL does not rewrite a
 retained v1 or v2 revision. See the
-[normal connection/link runbook](../../../engineering/lbx-product-links.md).
+[normal connection/link runbook](../../../engineering/ANY-709-billing-runbook.md).
 
 ## Standalone mock and startup scenarios
 

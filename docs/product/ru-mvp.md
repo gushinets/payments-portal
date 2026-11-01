@@ -9,26 +9,18 @@ presentation-only pricing navigation, direct account/auth entry, and an
 authenticated cabinet whose primary content is brief cards for the user’s held
 accepted purchases, plus one shared billing Widget and a full-catalog link.
 Identity facts are compact supporting content. The repository remains
-pre-production. ANY-709 Step 2 adds optional FIO and explicit verified-email
-account-only Widget viewing with one durable customer, verified on the test stand.
-No offer/subscription is needed to view that account. ANY-709 Steps 3–4 implement
-accepted purchases, request-driven preparation/recovery and localized
-Buy/Continue/Manage/payment Widget in the existing detail/cabinet slots. Step 4
-targeted component/boundary/desktop/mobile synthetic tests PASS. The owner completed
-the real intended-agreement Widget/YooKassa test payment, corroborated by source
-and history evidence. Independent final review remains pending; billing workers,
-paid access and usage/quota are deferred. See the
-[current ANY-709 acceptance ledger](../exec-plans/completed/ANY-709-implementation-plan.md#current-acceptance-and-final-review).
-ANY-664 Step 6 now supplies published products and approved immutable commercial
-terms through the Portal catalog API. Home, catalog, product detail and the
-cabinet use Kernel `product_id`. ANY-709 listing discovers enabled Kernel products;
-selected details/review read current LBX offers. PostgreSQL retains immutable
-links and accepted history. Genuine conformance and production
-enablement remain gated. The cabinet reads owned accepted purchase history from
-PostgreSQL independently of catalog availability; unfinished purchases remain
-visible for continuation. Access and usage remain deferred to Steps 9–10.
-Published terms do not grant access or promise
-current sellability.
+pre-production. ANY-709 adds optional FIO, explicit verified-email account
+Widget viewing without an offer/subscription, immutable purchase consent and
+request-driven preparation/recovery. Buy/Continue/Manage uses one shared cabinet
+Widget with fresh original-purchase proof. Billing workers, paid access and
+actual usage/quota remain later work; delivery and acceptance evidence are in
+[ANY-709](https://linear.app/paveldik/issue/ANY-709).
+ANY-664's v1 publication/DB-only catalog is historical. Current listing discovers
+enabled Kernel products; details/review read selected live LBX offers.
+PostgreSQL retains immutable links and accepted purchases. The cabinet lists
+owned held purchases independently of catalog availability, including unfinished
+purchases for continuation. Real Kernel conformance/production enablement remain
+gated. No catalog, prepared subscription or Widget outcome grants paid access.
 
 This handoff preserves the completed ANY-636 implementation through Step 13,
 with current catalog routes and Step 6 sources updated below. The former static
@@ -186,11 +178,11 @@ names and ownership decisions.
 | Email and authenticated identity | Portal; generated `SessionUserResponse` from `/api/auth/session` and auth responses | Render the returned facts now |
 | Registration, sign-in, logout, verification, recovery | Portal; existing generated auth contracts and shared auth transport/forms | Reuse now; no billing/access inference |
 | Legal pages, links, registration acceptance | Portal identity/legal boundary and canonical RU legal source; existing legal runtime and generated legal assets | Preserve now; legal documents remain drafts |
-| Product discovery and detail content | Portal catalog API and generated contracts over approved immutable mappings; Kernel owns `product_id` | ANY-664 replaces historical static 4F discovery; locale catalogs own surrounding UI copy |
+| Product discovery and detail content | Portal API discovers enabled Kernel products and reads selected live LBX offers; PostgreSQL retains links/history | Kernel owns `product_id`; locale catalogs own surrounding UI copy |
 | Technical capability manifest and commercial catalog, tariffs, prices, periods, sellability | Kernel owns technical identity/capabilities; External Billing owns commercial truth; Portal stores immutable approved bindings/terms | ANY-664 delivered historical v1 source reads/publication. ANY-709 Step 1 adds direct links, enabled-product discovery and live selected offers; genuine Kernel enablement remains gated; ANY-709 now supplies purchase admission |
-| Purchase/payment Widget entry | External Billing with Portal orchestration and generated Step 3 contracts | ANY-709 implements Buy/Continue/Manage, review/consent and verified payment presentation; automated checks and recorded owner test-payment QA passed; independent final review pending |
+| Purchase/payment Widget entry | External Billing with Portal orchestration and generated contracts | ANY-709 implements Buy/Continue/Manage, review/consent and fresh verified payment presentation |
 | Subscription/billing state | Step 3 prepared-subscription proof, held intent and original accepted history | Preparation is not payment verification; local GETs show saved state only; operating observations remain Step 8 |
-| Provider reconciliation/recovery | Portal boundary over authoritative External Billing facts; no current runtime source | Deferred to ANY-504 Step 8 |
+| Provider reconciliation/recovery | Request-driven GET recovery exists for customer/financial creation | Background reconciliation, scheduling and webhooks remain ANY-504 Step 8 |
 | Confirmed paid-access state and delivery | Portal provider-neutral projection from authoritative facts; no current runtime source | Unknown/not ready; deferred to ANY-504 Step 9 |
 | Actual usage and remaining quota | Platform Kernel; no current runtime source | Unavailable; integration deferred to ANY-504 Step 10 |
 
@@ -217,15 +209,15 @@ business facts. Their owning steps must supply authoritative data/actions:
 
 1. **Step 6 — commercial facts:** ANY-664 implements live source validation,
    restricted immutable mapping publication and DB-only catalog browsing.
-   Current routes use mapped Kernel `product_id`; commercial terms include
-   duration and anchor. Genuine conformance/enablement remain gated. Pricing
+   That is the historical Step 6 baseline. ANY-709 replaces file approval and
+   DB-only browsing with direct links/current offers. Kernel owns product IDs;
+   genuine conformance/enablement remain gated. Pricing
    remains a placeholder; commercial truth stays with External Billing.
 2. **Step 7 — purchase/Widget:** populate the existing per-product action areas
    and relevant offer presentation with approved purchase entry and Widget
    orchestration. ANY-709 implements these controls with original-intent
    recovery and customer-wide payment presentation. Step 6 facts alone do not
-   implement purchase or confer paid access. Owner test-payment acceptance is
-   recorded for the intended agreement; independent final review remains pending.
+   implement purchase or confer paid access. Delivery evidence belongs to ANY-709.
 3. **Step 8 — reconciliation/recovery:** populate relevant commercial/status
    slots and action feedback with authoritative reconciled state and recovery
    behavior. UI returns, callbacks, webhooks and outbound success are signals,
@@ -239,8 +231,8 @@ business facts. Their owning steps must supply authoritative data/actions:
    durable usage and quota enforcement; no guessed zero, allowance or progress
    value may fill a missing source.
 
-Steps 8–10 and genuine Kernel producer enablement remain deferred parent-program work;
-Step 7 implementation/payment QA awaits independent review and merge approval.
+Steps 8–10 and genuine Kernel producer enablement remain later program work.
+Step 7 acceptance and review status are recorded in ANY-709.
 Provider-dependent semantics and launch retain the Phase 0 gates. No step may
 treat an unavailable source as “no subscription”, “no access”, a default/free
 plan or `0/N` usage.

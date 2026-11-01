@@ -18,21 +18,14 @@ work. Platform Kernel code is maintained in the separate
 
 The repository remains pre-production on the surface established by ANY-636 4F. All thirteen ANY-636 steps are marked `done` in the
 [completed plan](docs/exec-plans/completed/ANY-636-implementation-plan.md).
-ANY-709 Step 1 adds real source reads, direct links and current offers; Step 2
-adds explicit verified-email customer-only Widget viewing, verified on the test
-stand. Step 3 adds accepted-purchase APIs, financial preparation/recovery
-and verified payment bootstrap, with focused synthetic tests passing and the local
-development migration applied. Step 4 implements localized Buy/Continue/Manage, explicit
-review/consent and the shared payment-capable Widget lifecycle. Step 4 targeted component/boundary/desktop/mobile synthetic tests PASS;
-the owner completed the intended-agreement Widget/YooKassa test payment.
-Independent final review remains pending; the
-[current acceptance ledger](docs/exec-plans/completed/ANY-709-implementation-plan.md#current-acceptance-and-final-review)
-records evidence and limits. Confirmed paid access
-and actual usage/quota integration remain deferred. There are no production direct-provider
-subscribers or subscriptions to migrate. The fifteen target billing tables
-start empty; the link and explicit customer paths now populate their owned
-records. Step 3 can prepare an accepted subscription through the API without
-granting paid access; see the [billing runbook](docs/engineering/ANY-709-billing-runbook.md#purchase-api-and-financial-recovery-step-3).
+ANY-709 adds source-backed current offers, direct product links, explicit
+verified-email account Widget, immutable purchase consent and request-driven
+financial preparation/recovery. Localized Buy/Continue/Manage uses one shared
+cabinet Widget after fresh ownership/effective-term verification. Confirmed paid
+access, billing workers and actual usage/quota remain later program work.
+Delivery and acceptance evidence are in
+[ANY-709](https://linear.app/paveldik/issue/ANY-709); commands, migration transitions
+and diagnostics are in the [billing runbook](docs/engineering/ANY-709-billing-runbook.md).
 For target billing work, follow [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md),
 the accepted [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md),
 and the accepted
@@ -335,11 +328,7 @@ repository. No direct-provider runtime exists in this repository.
 - Account-only Widget viewing uses the real configured SDK after explicit open,
   verified email, paired customer identity and Client readiness. It requires no
   product price or subscription; see the runbook for human acceptance.
-- Step 3 APIs can prepare purchases and authorize verified payment presentation;
-  automated checks, the local development migration and recorded owner
-  purchase/payment QA have passed. Step 4 browser Buy/Continue/Manage and SDK
-  readiness/error handling are implemented and tested; independent final review
-  remains pending. Paid-access state and usage/quota await their
-  owning external-billing/Kernel integration steps;
-  provider-dependent work remains subject to Phase 0 gates.
+- Accepted purchases can be prepared/recovered and opened for verified payment
+  presentation. Paid-access state and usage/quota await their owning program
+  steps; provider-dependent work remains subject to Phase 0 gates.
 - Legal documents are drafts until reviewed and approved by counsel.

@@ -92,11 +92,8 @@ need, security treatment, and retention.
 - Validate HTTP, environment, webhook, and database-boundary data.
 - Verify authenticity at every external billing or payment Integration before
   trusting external state. ANY-709 implements real source reads and an explicit
-  account Widget bootstrap. Step 3 implements accepted-purchase preparation and
-  point-verified payment presentation; automated checks and recorded owner
-  intended-agreement test-payment QA passed. Independent final review remains
-  pending. Paid-access
-  derivation remains deferred.
+  account Widget bootstrap, accepted-purchase preparation and point-verified
+  payment presentation. Paid-access derivation remains deferred.
 - Treat request IDs and external billing or payment metadata as untrusted input
   with length and character limits.
 - Store session tokens only as hashes.
@@ -113,8 +110,8 @@ need, security treatment, and retention.
 Only explicit authenticated POST after verified email may allocate the single
 customer slot. Before users POST, the permanent operation, opaque outer key,
 send fence, per-attempt two-hour deadline and coalesced recovery work are committed.
-Under customer decision C3 recognized by
-[ADR 0006](architecture/decisions/0006-any-709-ticket-decisions.md), each explicit open uses a
+Under customer decision C3 linked by
+[ADR 0005](architecture/decisions/0005-external-billing-boundary.md), each explicit open uses a
 bounded discover/create/recover cycle. Temporary failures wait with backoff within
 the existing request deadline. A finite active-send lease protects sends; each
 later claim requires fresh successful empty discovery in the same slot/operation.

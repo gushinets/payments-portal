@@ -16,18 +16,15 @@ document that applies to the current task.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — current boundaries and dependency rules.
 - For all new billing work, follow this target authority chain in order:
   1. [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md)
-     — the canonical external-billing ownership and precedence decision;
-  2. [ADR 0006](docs/architecture/decisions/0006-any-709-ticket-decisions.md)
-     — recognizes only the dated ANY-504 C1-C4 decisions and ANY-709 result
-     record; apply those precise exceptions before the affected baseline rules.
-  3. [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md)
+     — canonical ownership/precedence and the precise dated ticket decisions;
+  2. [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md)
      — the accepted commercial boundary and implementation baseline;
-  4. [Portal ↔ Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
+  3. [Portal ↔ Kernel Access Contract Design](docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
      — the accepted paid-access and quota wire-contract baseline.
-  5. [Live-source commercial admission amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
+  4. [Live-source commercial admission amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
      — accepted on 2026-10-20; narrow source-catalog/new-sale supersession.
-     The baseline bodies are preserved; ADR 0006 links the later ANY-709
-     linking/account/recovery decisions. Subscription trust and AccessSnapshot
+     The baseline bodies are preserved; ADR 0005 links the later ANY-709
+     decisions. Subscription trust and AccessSnapshot
      remain unchanged; see [the runbook](docs/engineering/ANY-709-billing-runbook.md).
 - [docs/PRODUCT.md](docs/PRODUCT.md) — current product scope.
 - [docs/architecture/contours.md](docs/architecture/contours.md) — contour
@@ -95,7 +92,7 @@ cross-repository change workflow under the sources of truth above.
   owned `Product`, `Plan`, `Order`, `Payment`, `Subscription`, `Entitlement`,
   or trial authority.
 - Legacy documents cannot override ADR 0005, the accepted design baselines,
-  the live-source amendment or the precise decisions recognized by ADR 0006.
+  the live-source amendment or the precise ticket decisions linked by ADR 0005.
   Do not add periodic source-catalog mirrors or catalog-age admission; ANY-709 browsing discovers enabled Kernel products and reads selected current LBX offers; immutable history stays in PostgreSQL.
 - Provider-independent clean pre-production cleanup may precede Phase 0.
   Provider-dependent LBX production semantics, paid-access derivation, Widget

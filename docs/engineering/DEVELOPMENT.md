@@ -70,7 +70,7 @@ root aliases `dev:api`, `migrate:api`, `test:api:fast`, `test:api:postgres`,
 The Makefile contains only the `test_db_up` and `test_db_stop` convenience
 shortcuts. Normal startup uses `npm run repo:up -- --reuse`; direct product
 linking uses the one `app.cli.commercial_mappings` CLI. See the
-[normal LBX connection and link runbook](lbx-product-links.md). Historical
+[normal LBX connection and link runbook](ANY-709-billing-runbook.md). Historical
 `catalog_preview`/`catalog_preview_publish` shortcuts have been retired.
 
 Compose owns the PostgreSQL server/container and `repo.py` owns its
@@ -240,7 +240,7 @@ price or calendar lease. Current offer reads need the configured billing calenda
 
 The following records the completed ANY-664 workflow, not current setup.
 ANY-709 Step 1 removes its manual account/files and DB-only public catalog. Use
-[the normal connection/link runbook](lbx-product-links.md); the old fixture
+[the normal connection/link runbook](ANY-709-billing-runbook.md); the old fixture
 helpers are retained only under tests and are not deployment entrypoints.
 
 The public catalog reads only immutable published revisions from the configured
@@ -356,7 +356,7 @@ saved artifacts are recorded in the completed ANY-664 plan.
 
 The recorded joined walkthrough below is historical. The normal technical mock
 now has no billing mounts, approval files or publisher-UID startup requirement.
-Current source-backed catalog setup follows the [normal runbook](lbx-product-links.md).
+Current source-backed catalog setup follows the [normal runbook](ANY-709-billing-runbook.md).
 
 **Status: the positive joined P1 acceptance passed on 2026-10-21, with 2 Chromium
 projects passed and zero skips.** See the [execution record](../exec-plans/completed/ANY-664-implementation-plan.md#p1-joined-browser-acceptance--pass-2026-10-21)
