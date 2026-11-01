@@ -36,6 +36,7 @@ def claimable(
     *,
     urgent: bool | None,
     account: str,
+    sweep_key: str,
     trust_urgent_before: datetime,
 ) -> BillingWorkItem | None:
     query = select(BillingWorkItem).where(
@@ -43,6 +44,7 @@ def claimable(
         BillingWorkItem.work_state.in_(("pending", "running")),
         BillingWorkItem.next_attempt_at <= now,
         or_(
+            (BillingWorkItem.work_kind == "billing_enrollment_sweep") & (BillingWorkItem.coalescing_key == sweep_key),
             BillingWorkItem.coalescing_key == account,
             BillingWorkItem.coalescing_key.startswith(account + ":", autoescape=True),
             (BillingWorkItem.work_kind == "external_create_recovery")
@@ -104,7 +106,7 @@ def by_key(db: Session, kind: str, key: str) -> BillingWorkItem | None:
     )
 
 
-def backlog(db: Session, account: str) -> tuple[int, datetime | None, int]:
+def backlog(db: Session, account: str, *, sweep_key: str) -> tuple[int, datetime | None, int]:
     rows = db.execute(
         select(BillingWorkItem.work_state, func.count(), func.min(BillingWorkItem.next_attempt_at))
         .where(
@@ -119,6 +121,8 @@ def backlog(db: Session, account: str) -> tuple[int, datetime | None, int]:
                 )
             ),
             or_(
+                (BillingWorkItem.work_kind == "billing_enrollment_sweep")
+                & (BillingWorkItem.coalescing_key == sweep_key),
                 BillingWorkItem.coalescing_key == account,
                 BillingWorkItem.coalescing_key.startswith(account + ":", autoescape=True),
                 (BillingWorkItem.work_kind == "external_create_recovery")

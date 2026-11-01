@@ -158,6 +158,59 @@ Verification uses disposable PostgreSQL and **SIMULATED** LBX responses:
   `.harness/any715-simplicity-20261101/` directory. Browser E2E and real LBX/webhook
   integration were not run; existing enablement and launch gates remain open.
 
+## 2026-11-01 — Retained connection scope review fix
+
+The owner requested correction of `ARCH-1` from the sequential correctness,
+architecture and DoD review of `ce2baba` against ANY-709 `6288733`. An ordinary
+purchase on a proven retained account reached LINKED and enrolled reconciliation,
+but the worker filtered it out and direct reconciliation refused its provenance.
+The disposable PostgreSQL diagnostic passed for a fresh scope and failed for the
+retained scope; no real provider call was involved.
+
+Reuse the existing origin-backed account evidence across customer admission,
+worker selection/backfill, recovery/inventory, webhook correlation and both
+audited operator resolutions. Keep immutable historical account IDs and reject
+unproven/foreign/ambiguous scopes. Distinguish configured HTTP-read provenance
+from the retained storage ID. The sweep keeps its deployment key so the first
+proven scope can appear after startup. No migration, new registry, manual
+account input, CREATE permission or paid-access behavior is added.
+
+Regression coverage pairs fresh and retained scopes after credential rotation,
+exercises worker/CLI facts and both resolutions, startup/backfill/inventory,
+authenticated receipt/processing, provider-free expiry, repaired customer and
+financial recovery/deadlines, and refuses unproven/foreign/ambiguous scope before
+HTTP. Focused verification passed 15 PostgreSQL and 75 fast cases. Initial
+negative-fixture FK violations and an incorrect dataclass-copy helper were
+corrected before the final selections; they were test setup failures.
+
+Final verification reused unchanged application/test source throughout:
+
+- `npm run check` completed Python/web lint, 1,680 fast API, 384 component and
+  38 web boundary tests, plus the production build. It then received SIGTERM at
+  34% of its PostgreSQL partition, without a test failure. This invocation has
+  no successful final exit status and is not a monolithic PASS.
+- All 586 PostgreSQL cases have passing coverage: 195 completed before SIGTERM;
+  the remaining 391 passed in three sequential explicit-module selections
+  (152 in 351.26s, 135 in 396.73s, 104 in 168.34s), each with exit 0. The partly
+  executed background-recovery fault module was rerun in full. The selections
+  use `repo.canonical_check_environment` / `repo.api_test_environment`, with
+  inherited source/telemetry settings cleared in child processes only.
+- Documentation, architecture and generated freshness checks passed. Source
+  hashes were checked unchanged across the interrupted and resumed runs.
+- Logs, result XML and the exact partition manifest are retained under the
+  ignored `.harness/any715-retained-scope-20261101/` directory.
+
+Configured read-only LBX remains NOT_RUN: URL and server credentials are absent.
+Real webhook delivery and browser E2E were not run. Polling-only mode and the
+existing integration/launch gates remain unchanged; no application/production
+database or real provider was mutated.
+
+At final remote-ref verification, ANY-709 had independently advanced to
+`71ad993e843f7910626d6a9f40ce2b8a67494f1e`. The evidence above covers the reviewed
+ANY-715 source based on `6288733`; it does not claim verification of that newer
+base. Integrating it requires separate resolution of the purchase-composition
+and documentation-index conflicts and affected verification.
+
 ## Verification and remaining checkpoints
 
 The 2026-10-30 baseline `07556e4` had a complete canonical PASS. The subsequent

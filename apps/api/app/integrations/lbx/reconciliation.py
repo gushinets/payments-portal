@@ -142,7 +142,10 @@ def normalize_subscription(
         policy_incomplete = True
         reasons.append("tariff_policy_incomplete")
     elif (
-        tariff.external_billing_account_id != subject.purchase.account_id
+        # LbxRead carries the configured HTTP origin identity, whereas the
+        # purchase may retain a separately proven historical storage scope.
+        tariff.external_billing_account_id != configuration.lbx_external_billing_account_id
+        or accepted.provider_origin != configuration.lbx_provider_origin
         or tariff.tariff_id != accepted.selection.tariff_id
         or tariff.value.tariff_id != accepted.selection.tariff_id
         or tariff.observed_at.utcoffset() is None
