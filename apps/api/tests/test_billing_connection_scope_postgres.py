@@ -288,7 +288,10 @@ def test_purchase_acquires_origin_before_product(
             kernel_transport=httpx.MockTransport(transport.kernel),
             lbx_transport=httpx.MockTransport(transport.respond),
         ) as sources:
-            return await review_purchase(sources, config, factory=factory, token=TOKEN, product_id="proposal_ai")
+            link, offer, documents, _ = await review_purchase(
+                sources, config, factory=factory, token=TOKEN, product_id="proposal_ai"
+            )
+            return link, offer, documents
 
     link, offer, documents = asyncio.run(review())
     meaning = PurchaseMeaning(

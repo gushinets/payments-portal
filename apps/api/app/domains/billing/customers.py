@@ -16,6 +16,7 @@ from app.core.time import utc_now
 from app.domains.billing.contracts import CREATE_FAILURE_REASONS, CREATE_RESPONSE_SCHEMA, BillingRefused, CustomerOpen
 from app.domains.billing.customer_reviews import (
     CUSTOMER_UNKNOWN_REVIEW,
+    mark_customer_identity_conflict as mark_customer_identity_conflict,
     customer_admission_reviews,
     customer_recovery_reviews,
     record_customer_conflict,
@@ -327,17 +328,6 @@ def finish_customer_attempt(factory: SessionFactory, expected: CustomerOpen) -> 
             # A later attempt needs a fresh snapshot and fresh discovery.
             operation.send_fence = uuid4()
         db.commit()
-
-
-def mark_customer_identity_conflict(
-    db: Session,
-    customer: ExternalBillingCustomer,
-    operation: ExternalCreateOperation,
-    *,
-    provider_id: str | None = None,
-) -> None:
-    """Caller owns the transaction; preserve only proven original-ID recovery."""
-    record_customer_conflict(db, customer, operation, provider_id=provider_id, ambiguous=False)
 
 
 def apply_customer_read(

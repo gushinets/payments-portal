@@ -181,7 +181,7 @@ Follow root and applicable subtree instructions,
   and [Phase 0 handoff](../../superpowers/phase0/2026-10-14-any-634-lbx-evidence-handoff.md).
 - The inherited [Step 7 plan](../completed/ANY-709-implementation-plan.md),
   [Step 7 runbook](../../engineering/ANY-709-billing-runbook.md),
-  [Step 8 plan](ANY-715-implementation-plan.md) and operations runbook.
+  [Step 8 plan](../completed/ANY-715-implementation-plan.md) and operations runbook.
 - [Kernel integration map](../../integrations/platform-kernel.md) and
   producer-owned
   [ANY-711 manifest contract](https://github.com/gushinets/anytoolai-platform/blob/e627bf296a6476efcca839a0328cf1a5683555e2/docs/contracts/kernel-capability-manifest/v1/README.md).
@@ -1122,6 +1122,63 @@ review correction. Branch/HEAD remain `ANY-765` / `d5f9aac`; the index is
 unchanged, all work remains uncommitted and Step 4 is not started. The complete
 patch at `.harness/any765/step3-complete.diff` includes this correction. The
 worktree-local PostgreSQL server is stopped with its volume retained.
+
+### ANY-715 rebase integration record — 2026-11-02
+
+The owner requested rebasing ANY-765 onto the current ANY-715 and resolving
+conflicts against this plan, the ticket and implemented behavior. The four
+original ANY-765 commits were replayed from old predecessor `b44a45f` onto
+`0edd114`. During verification, ANY-715 advanced to `b202ad3` with documentation
+and one documentation-contract unit-test update; the final rebase includes it.
+Original HEAD `d8c61d7` is retained at
+`codex/any765-before-715-rebase-20261102`. The verified intermediate runtime is
+retained at `codex/any765-verified-before-715-docs-20261102` (`8d81673`).
+
+Conflict resolution preserves the newer predecessor's original-key recovery,
+permanent sibling ownership and in-flight preparation rules, product-local
+inventory failures, retained connection scopes, final Widget admission and
+post-lock deadline refresh. The paid writer still owns atomic reductions,
+semantic revisions, immutable allowances and queue checks after business locks.
+Shared inventory points use one conservative read-set start, including across
+products. Existing customer/financial review transitions were kept under one
+owner and split into focused modules to retain the 500-line architecture limit.
+The compact current ANY-715 runbook is retained with the implemented ANY-765
+sections, without restoring its removed historical delivery ledger.
+
+**Verification and corrections.**
+
+- Canonical `npm run check` passed docs, generation, architecture, Python/web
+  lint, 38 web boundaries, 396 components, 1,749 API-fast tests and the production
+  web build/TypeScript stages. Its PostgreSQL stage was interrupted to adapt
+  newly inherited three-value review tuples and pre-Step-9 HTTP-read counts.
+  No complete aggregate `check` PASS is claimed.
+- Full `npm run test:api:postgres`: **682 passed / 2 failed**, 1,790.05 seconds.
+  Both failures were old test expectations allowing automatic recovery from an
+  arbitrary customer identity conflict. They now assert retained review, denied
+  access and refusal of both identity recovery and subscription polling. The
+  stricter ANY-715 original-key policy was preserved, not weakened.
+- Final focused rerun of the complete paid-recovery module plus the three new
+  rebase regressions: **26/26 PASS**, 84.86 seconds. The new cases prove original
+  key recovery requires fresh subscription proof, preserves the same allowance,
+  and cached cross-product reads cannot move source trust past the first read.
+  These 26 overlap the full run; they are not a separate 684-case aggregate PASS.
+- Earlier focused cached-inventory/rebase checks: **5/5 PASS**; concurrent
+  sibling inventory and connection-scope checks: **16/16 PASS**.
+- Final documentation-rebase `npm run check:fast`: **PASS / exit 0**; 1,749
+  API-fast, 396 web components and 38 boundary tests, docs/generated freshness,
+  architecture and Python/web lint. Post-record docs and whitespace checks PASS.
+
+Runtime, migration and PostgreSQL-test files are byte-identical to the verified
+intermediate commit after the final documentation-only predecessor rebase.
+The sole API-file difference is the predecessor's four expected runbook endpoint
+strings in a fast unit test. Local logs are retained under
+`.harness/any765/rebase-20261102/`. The worktree-only PostgreSQL server
+`payments-cf94dbf9-postgres-1` is stopped with its volume retained.
+
+Browser E2E, configured LBX/deployed Kernel acceptance, natural renewal and
+deployment remain **NOT_RUN** in this rebase. Existing enablement gates remain
+unchanged. Step 4 is not started; no production migration or external billing
+mutation was performed. Remote publication is not part of this local rebase.
 
 ### Step 4 — Expose committed paid state in the cabinet
 

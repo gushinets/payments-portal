@@ -52,7 +52,8 @@ preparation and recovery binding alone remain non-authoritative.
 The initial deployment is one API process/replica with an embedded worker.
 There is no separate process to launch or standalone worker command/container.
 
-- `BILLING_WORKER_ENABLED=true`: starts embedded local execution; configured LBX additionally enables source lanes.
+- `BILLING_WORKER_ENABLED=true`: starts embedded local execution; configured LBX
+  additionally enables source lanes.
 - `BILLING_WORKER_URGENT_CONCURRENCY=2`: urgent source slots, range 1–16.
 - `BILLING_WORKER_NORMAL_CONCURRENCY=1`: normal source slots, range 1–16.
 - `BILLING_WORKER_IO_TIMEOUT_SECONDS=60`: total source/cleanup budget; greater

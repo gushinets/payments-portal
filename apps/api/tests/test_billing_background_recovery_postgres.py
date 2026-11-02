@@ -293,8 +293,11 @@ async def test_billing_background_recovery_two_products_same_tariff_isolated(
     assert (
         (datetime.now(UTC) + timedelta(hours=4)) < inventory.next_attempt_at <= (datetime.now(UTC) + timedelta(hours=6))
     )
+    # Step 9 normalizes each product against customer/tariff truth; canonical
+    # subscription and agreement points remain shared only within this attempt.
     assert Counter(request.url.path for request in transport.requests[inventory_start:]) == {
-        "/api/rest/v1/users/345": 1,
+        "/api/rest/v1/users/345": 3,
+        "/api/rest/v1/tariffs/701": 2,
         "/api/rest/v1/subscriptions": 2,
         "/api/rest/v1/subscriptions/567": 1,
         "/api/rest/v1/subscriptions/568": 1,

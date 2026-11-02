@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
 from app.core.time import utc_now
@@ -23,6 +22,7 @@ from app.domains.purchases.contracts import (
     Purchase,
     PurchaseRefused,
 )
+from app.domains.purchases.review import review_financial as _review
 from app.domains.purchases.service import _locked, _operation, read_purchase
 from app.infrastructure.queries import purchases as queries
 from app.infrastructure.queries.billing_customers import (
@@ -38,15 +38,12 @@ from app.models import (
     BillingStateObservation,
     BillingStateObservationKind,
     BillingWorkItem,
-    ExternalCreateOperation,
     ExternalCreateOperationKind as Kind,
     ExternalCreateOperationState as State,
     ExternalSubscription,
     ExternalSubscriptionCommercialAccessStatus as Commercial,
     ExternalSubscriptionFinancialAccessStatus as Financial,
     ExternalSubscriptionLifecycleStatus as Lifecycle,
-    ManualReviewCase,
-    PurchaseIntent,
     PurchaseIntentState as IntentState,
 )
 
@@ -194,35 +191,6 @@ def record_receipt(factory: SessionFactory, purchase: Purchase, expected: Financ
             raise PurchaseRefused("purchase_review_required", 409)
         work.payload_document = {**work.payload_document, "candidate_id": str(provider_id)}
         db.commit()
-
-
-def _review(db: Session, row: PurchaseIntent, operation: ExternalCreateOperation, reason: str) -> None:
-    if not any(case.reason_code == reason for case in open_customer_reviews(db, operation.create_operation_id)):
-        db.add(
-            ManualReviewCase(
-                reason_code=reason,
-                scope_kind="create_operation",
-                scope_reference=str(operation.create_operation_id),
-                evidence_schema_version="financial-review:v1",
-                evidence_document={
-                    "purchase_intent_id": str(row.purchase_intent_id),
-                    "create_operation_id": str(operation.create_operation_id),
-                    "operation_state_at_conflict": operation.operation_state.value,
-                    "send_fence_at_conflict": str(operation.send_fence) if operation.send_fence else None,
-                },
-                case_state="open",
-            )
-        )
-    operation.operation_state = State.MANUAL_REVIEW
-    operation.send_fence = uuid4()
-    row.state = IntentState.MANUAL_REVIEW
-    row.state_updated_at = utc_now()
-    from app.domains.billing.paid_access import commit_paid_state
-    from app.models import User
-
-    # Every caller already owns the user/purchase locks. Review is not authority
-    # to retain an issued grant, even when source HTTP is unavailable.
-    commit_paid_state(db, db.get(User, row.user_id), None, utc_now())
 
 
 def financial_pending(

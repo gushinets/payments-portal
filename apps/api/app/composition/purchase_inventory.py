@@ -91,6 +91,8 @@ async def inventory(
     delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
     inventory: tuple[Subscription, ...] | None = None,
     points: tuple[tuple[Subscription, Agreement], ...] | None = None,
+    subscription_points: dict[int, Subscription] | None = None,
+    agreement_points: dict[int, Agreement] | None = None,
 ) -> None:
     rows = (
         inventory
@@ -98,7 +100,15 @@ async def inventory(
         else await client.discover_subscriptions(user_id=int(customer.provider_id), budget=budget)
     )
     if points is None:
-        points = await read_inventory_points(client, purchase, customer, budget=budget, rows=rows)
+        points = await read_inventory_points(
+            client,
+            purchase,
+            customer,
+            budget=budget,
+            rows=rows,
+            subscription_points=subscription_points,
+            agreement_points=agreement_points,
+        )
     for point, agreement in points:
         try:
             terminal = inventory_terminal(point)

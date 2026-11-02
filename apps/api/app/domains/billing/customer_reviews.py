@@ -111,3 +111,14 @@ def record_customer_conflict(
     from app.domains.billing.paid_access import commit_paid_state
 
     commit_paid_state(db, db.get(User, customer.user_id), None, utc_now())
+
+
+def mark_customer_identity_conflict(
+    db: Session,
+    customer: ExternalBillingCustomer,
+    operation: ExternalCreateOperation,
+    *,
+    provider_id: str | None = None,
+) -> None:
+    """Caller owns the transaction; preserve only proven original-ID recovery."""
+    record_customer_conflict(db, customer, operation, provider_id=provider_id, ambiguous=False)

@@ -100,6 +100,7 @@ async def _inventory_customer(
     delegate: Callable[..., Awaitable[Any]],
 ) -> None:
     current, purchases = await delegate(recovery.customer_snapshot, factory, configuration, UUID(claim.reference))
+    started = utc_now()
     point = await client.get_user(user_id=int(current.provider_id), budget=budget)
     if point.outer_id is None:
         raise LbxResponseInvalid()
@@ -121,7 +122,6 @@ async def _inventory_customer(
     try:
         for purchase in purchases:
             try:
-                started = utc_now()
                 points = await read_inventory_points(
                     client,
                     purchase,

@@ -443,17 +443,23 @@ async def test_paid_access_identity_conflict_other_entrypoints_are_atomic(
     else:
         record_customer_conflict(factory, current, None)
     assert effective(factory) == (2, {"grants": [], "allowances": []})
-    # Customer-only recovery never restores a paid grant or bucket.
+    # An ID collision or an unclassified identity conflict cannot use the
+    # narrow original-key recovery path introduced by Step 8 review fixes.
     from app.infrastructure.queries.billing_customers import customer_operation, lock_customer
     from app.domains.billing.customers import _snapshot
 
     with factory() as db:
         customer = lock_customer(db, current.customer_id)
         restored = _snapshot(customer, customer_operation(db, current.customer_id))
-    apply_customer_read(factory, restored, provider_id=current.provider_id, outer_key=current.outer_key)
+    with pytest.raises(BillingRefused, match="billing_identity_conflict"):
+        apply_customer_read(factory, restored, provider_id=current.provider_id, outer_key=current.outer_key)
     assert effective(factory) == (2, {"grants": [], "allowances": []})
-    await reconcile(paid_scenario, factory)
-    assert effective(factory)[0] == 3
+    with pytest.raises(BillingRefused, match="billing_identity_unproven"):
+        await reconcile(paid_scenario, factory)
+    assert effective(factory) == (2, {"grants": [], "allowances": []})
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(PurchasedAllowance)) == 1
+        assert db.scalars(select(ManualReviewCase)).one().case_state == "open"
 
 
 async def test_paid_access_production_sweep_reduces_simulated_metering_without_http(
