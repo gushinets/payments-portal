@@ -38,7 +38,9 @@ removed. The clean database contains provider-neutral target persistence;
 ANY-664 can append immutable mapping revisions. Purchase orchestration is
 implemented by ANY-709. ANY-715 implements embedded reconciliation, GET-only
 recovery/inventory, optional default-disabled webhook hints and audited operator
-controls; paid-access producers remain later work. See the
+controls; paid-access producers remain later work. Step 8 final acceptance
+remains open for [confirmed review defects and integration checks](engineering/ANY-715-qa-report.md).
+See the
 [billing operations guide](engineering/ANY-715-billing-operations.md). The sole long-term
 production target is external-billing-managed.
 

@@ -249,6 +249,11 @@ Local contention preserves original send authority; retries and source outages
 never move financial UNKNOWN deadlines or convert completed no-send evidence. See the
 [billing operations runbook](engineering/ANY-715-billing-operations.md).
 
+The [open ANY-715 final-review findings](engineering/ANY-715-qa-report.md#open-final-review-findings)
+qualify current end-to-end recovery: P1-1 can lose a timely inventory conflict
+after another product times out, and ARCH-1 prevents deadline completion after
+safe no-send hold release. Passing suites do not establish those guarantees.
+
 Development environments are worktree-isolated and disposable. The Step-4
 baseline is a destructive compatibility boundary:
 
