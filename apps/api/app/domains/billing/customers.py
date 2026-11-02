@@ -447,22 +447,28 @@ def recheck_widget_session(
     factory: SessionFactory, configuration: Settings, token: str, expected: CustomerOpen
 ) -> None:
     with factory() as db:
-        user = authenticate(db, configuration, token)
-        lock_user(db, user.id)
-        customer = lock_customer(db, expected.customer_id)
-        operation = customer_operation(db, customer.customer_id)
-        if (
-            customer.user_id != user.id
-            or customer.binding_state != Binding.BOUND
-            or customer.provider_customer_id != expected.provider_id
-            or customer.billing_customer_key != expected.outer_key
-            or operation is None
-            or operation.send_fence != expected.fence
-            or operation.request_correlation_key != expected.outer_key
-            or operation.operation_state != State.BOUND
-        ):
-            raise BillingRefused("billing_identity_conflict", 409)
-        customer_admission_reviews(db, customer, operation)
+        require_widget_session(db, configuration, token, expected)
+
+
+def require_widget_session(db: Session, configuration: Settings, token: str, expected: CustomerOpen) -> User:
+    """Caller owns the transaction; keep customer locks through final admission."""
+    user = authenticate(db, configuration, token)
+    lock_user(db, user.id)
+    customer = lock_customer(db, expected.customer_id)
+    operation = customer_operation(db, customer.customer_id)
+    if (
+        customer.user_id != user.id
+        or customer.binding_state != Binding.BOUND
+        or customer.provider_customer_id != expected.provider_id
+        or customer.billing_customer_key != expected.outer_key
+        or operation is None
+        or operation.send_fence != expected.fence
+        or operation.request_correlation_key != expected.outer_key
+        or operation.operation_state != State.BOUND
+    ):
+        raise BillingRefused("billing_identity_conflict", 409)
+    customer_admission_reviews(db, customer, operation)
+    return user
 
 
 def escalate_overdue_customers(factory: SessionFactory, *, now: datetime | None = None, limit: int = 100) -> int:

@@ -16,7 +16,7 @@ from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases.contracts import PurchaseRefused
 from app.infrastructure.preflight import PreflightAdmission, PreflightBudget
 from app.integrations.lbx.client import LbxServerClient
-from app.integrations.lbx.errors import LbxScopeMismatch, LbxResponseInvalid
+from app.integrations.lbx.errors import LbxError, LbxScopeMismatch, LbxResponseInvalid
 from app.integrations.lbx.financial import Agreement, Subscription
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State
 
@@ -120,9 +120,11 @@ async def _inventory_customer(
                 subscription_points=subscription_points,
                 agreement_points=agreement_points,
             )
-        except (LbxScopeMismatch, PurchaseRefused) as error:
+        except (LbxError, PurchaseRefused) as error:
             budget.check()
-            conflict = isinstance(error, LbxScopeMismatch) or error.code == "purchase_existing_subscription_review"
+            conflict = isinstance(error, LbxScopeMismatch) or (
+                isinstance(error, PurchaseRefused) and error.code == "purchase_existing_subscription_review"
+            )
             if conflict:
                 conflicts.append(purchase)
             else:
