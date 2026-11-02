@@ -436,7 +436,9 @@ async def test_billing_background_recovery_bound_terminal_uses_lifecycle_not_pre
     assert await worker.tick(WorkLane.NORMAL)
     with factory() as db:
         ended = db.get(ExternalSubscription, sub.subscription_id)
-        assert (ended.latest_observation_id, ended.projection_valid_until) == before
+        assert ended.latest_observation_id != before[0]
+        assert ended.projection_valid_until >= before[1]
+        assert ended.lifecycle_status == Lifecycle.ENDED and ended.financial_access_status == "blocked"
         assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
     await worker.aclose()
 

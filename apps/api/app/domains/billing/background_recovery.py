@@ -297,14 +297,20 @@ def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> None:
 
 
 def apply_inventory(
-    factory: SessionFactory, claim: WorkClaim, conflicts: tuple[Purchase, ...], reason: str | None
+    factory: SessionFactory,
+    claim: WorkClaim,
+    conflicts: tuple[Purchase, ...],
+    reason: str | None,
+    *,
+    discovery_ids: tuple[UUID, ...] = (),
+    clock_skew_seconds: int | None = None,
 ) -> None:
     """Fence all scoped conflicts and finish their shared customer job once."""
     with factory() as db:
         customer = queries.customer(db, UUID(claim.reference))
-        customers.lock_user(db, customer.user_id)
+        user = customers.lock_user(db, customer.user_id)
         locked = []
-        for purchase in conflicts:
+        for purchase in sorted(conflicts, key=lambda item: (item.accepted.selection.product_id, str(item.id))):
             row = service._locked(db, purchase)
             operations = purchases.operations(db, row.purchase_intent_id, lock=True)
             scope = billing_reconciliation.scope(db, purchase.user_id, row.product_id)
@@ -321,34 +327,71 @@ def apply_inventory(
             service._verify_original_consent(db, row, current.accepted)
             target = next(op for op in operations if op.operation_kind == Kind.SUBSCRIPTION)
             locked.append((purchase, row, target, scope, subscription))
-        queue = work.verify_claim(db, claim)
+        now = as_utc(billing_reconciliation.database_now(db))
+        from app.domains.billing.paid_inventory import apply_discoveries
+
+        causes = list(
+            apply_discoveries(
+                db,
+                user,
+                claim,
+                discovery_ids,
+                now,
+                skew_seconds=clock_skew_seconds,
+                conflicted_purchases=frozenset(purchase.id for purchase in conflicts),
+            )
+        )
         for purchase, row, target, scope, subscription in locked:
-            financial._review(db, row, target, "customer_inventory_conflict")
+            selected_primary = (
+                subscription is not None and scope.primary_subscription_id == subscription.subscription_id
+            )
+            if not selected_primary:
+                financial._review(db, row, target, "customer_inventory_conflict")
+            else:
+                from app.models import ManualReviewCase
+                from app.infrastructure.queries.paid_access import metric_review
+
+                if metric_review(db, str(scope.access_scope_id), "product_competitor") is None:
+                    db.add(
+                        ManualReviewCase(
+                            reason_code="customer_inventory_competitor",
+                            scope_kind="product_competitor",
+                            scope_reference=str(scope.access_scope_id),
+                            evidence_schema_version="customer-inventory:v2",
+                            evidence_document={},
+                            case_state="open",
+                        )
+                    )
             from app.models import (
                 BillingStateObservation,
                 BillingStateObservationKind,
                 ExternalSubscriptionCommercialAccessStatus as Commercial,
             )
 
-            if subscription is not None:
+            if subscription is not None and not selected_primary:
                 subscription.commercial_access_status = Commercial.INELIGIBLE
-            db.add(
-                BillingStateObservation(
-                    observation_kind=BillingStateObservationKind.TARGET_PRODUCT_DISCOVERY,
-                    external_billing_account_id=customer.external_billing_account_id,
-                    user_id=purchase.user_id,
-                    product_id=purchase.accepted.selection.product_id,
-                    access_scope_id=scope.access_scope_id,
-                    subscription_id=subscription.subscription_id if subscription else None,
-                    observed_at=as_utc(billing_reconciliation.database_now(db)),
-                    evidence_schema_version="customer-inventory:v1",
-                    evidence_document={"purchase_intent_id": str(purchase.id), "reason": "competing_inventory"},
-                    completeness_classification="conflict",
-                    result_classification="review_required",
-                    resulting_access_revision=None,
-                )
+            cause = BillingStateObservation(
+                observation_kind=BillingStateObservationKind.TARGET_PRODUCT_DISCOVERY,
+                external_billing_account_id=customer.external_billing_account_id,
+                user_id=purchase.user_id,
+                product_id=purchase.accepted.selection.product_id,
+                access_scope_id=scope.access_scope_id,
+                subscription_id=subscription.subscription_id if subscription else None,
+                observed_at=as_utc(billing_reconciliation.database_now(db)),
+                evidence_schema_version="customer-inventory:v1",
+                evidence_document={"purchase_intent_id": str(purchase.id), "reason": "competing_inventory"},
+                completeness_classification="conflict",
+                result_classification="review_required",
+                resulting_access_revision=None,
             )
-        now = as_utc(billing_reconciliation.database_now(db))
+            db.add(cause)
+            db.flush()
+            causes.append(cause)
+        if causes:
+            from app.domains.billing.paid_access import commit_paid_state
+
+            commit_paid_state(db, user, causes[-1], now, related_causes=tuple(causes[:-1]))
+        queue = work.verify_claim(db, claim)  # Queue locks last; stale work rolls back all writes.
         interval = work.URGENT_SECONDS if reason else INVENTORY_SECONDS
         work.finish(
             db,

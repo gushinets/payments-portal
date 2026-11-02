@@ -65,6 +65,10 @@ def test_target_reconciliation_model_columns_are_exact() -> None:
         "user_id",
         "product_id",
         "primary_subscription_id",
+        "effective_access_document",
+        "effective_access_until",
+        "access_basis_observation_id",
+        "primary_retired_at",
         "updated_at",
     }
     assert _column_names(ExternalSubscription) == {
@@ -121,6 +125,12 @@ def test_target_reconciliation_model_columns_are_exact() -> None:
         "provider_cycle_end",
         "period_start",
         "period_end",
+        "cycle_schema_version",
+        "cycle_date_start",
+        "cycle_date_end",
+        "calendar_document",
+        "unit",
+        "terms_document",
         "created_at",
     }
     assert _column_names(ExternalBillingWebhookDelivery) == {
@@ -176,7 +186,13 @@ def test_target_reconciliation_model_columns_are_exact() -> None:
 
 
 def test_nullable_slots_are_limited_to_the_approved_contract() -> None:
-    assert _nullable_columns(BillingProductAccessScope) == {"primary_subscription_id"}
+    assert _nullable_columns(BillingProductAccessScope) == {
+        "primary_subscription_id",
+        "effective_access_document",
+        "effective_access_until",
+        "access_basis_observation_id",
+        "primary_retired_at",
+    }
     assert _nullable_columns(ExternalSubscription) == {
         "purchase_intent_id",
         "mapping_revision_id",
@@ -198,6 +214,13 @@ def test_nullable_slots_are_limited_to_the_approved_contract() -> None:
         "resulting_access_revision",
     }
     assert _nullable_columns(PurchasedAllowance) == {
+        "period_start",
+        "period_end",
+        "cycle_date_start",
+        "cycle_date_end",
+        "calendar_document",
+        "unit",
+        "terms_document",
         "provider_cycle_key",
         "provider_cycle_start",
         "provider_cycle_end",
@@ -242,6 +265,7 @@ def test_access_scope_subscription_and_observation_keys_are_exact() -> None:
     }
 
     assert _foreign_keys(BillingProductAccessScope) == {
+        (("access_basis_observation_id",), ("billing_state_observations.observation_id",), "RESTRICT"),
         (("user_id",), ("users.id",), "RESTRICT"),
         (
             ("primary_subscription_id", "user_id", "product_id"),
@@ -388,6 +412,7 @@ def test_step_4_safe_checks_are_exact() -> None:
         "ck_external_subscriptions_fencing_token_nonnegative",
     }
     assert _check_names(BillingStateObservation) == {
+        "ck_billing_observations_revision_positive",
         "ck_billing_state_observations_provenance_exclusive",
         "ck_billing_state_observations_subject_shape",
         "ck_billing_state_observations_kind",
@@ -395,6 +420,7 @@ def test_step_4_safe_checks_are_exact() -> None:
         "ck_billing_state_observations_evidence_schema_nonempty",
     }
     assert _check_names(PurchasedAllowance) == {
+        "ck_purchased_allowances_cycle_shape",
         "ck_purchased_allowances_quantity_nonnegative",
         "ck_purchased_allowances_provider_cycle_pair",
         "ck_purchased_allowances_period_order",
@@ -416,6 +442,7 @@ def test_step_4_safe_checks_are_exact() -> None:
 
 def test_lookup_indexes_cover_the_fixed_contract() -> None:
     assert _indexes(BillingProductAccessScope) == {
+        "ix_billing_product_access_scopes_effective_access_until": ("effective_access_until",),
         "ix_billing_product_access_scopes_primary_subscription": ("primary_subscription_id",),
     }
     assert _indexes(ExternalSubscription) == {

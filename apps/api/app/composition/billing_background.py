@@ -5,11 +5,16 @@ from typing import Any
 from uuid import UUID
 
 from app.composition.billing import recover_customer
-from app.composition.purchases import MAX_RELEVANT_SUBSCRIPTIONS, _inventory, recover_financial
+from app.composition.purchases import _inventory, recover_financial
+from app.composition.purchase_inventory import MAX_RELEVANT_SUBSCRIPTIONS
 from app.composition.sources import SourceResources
 from app.core.errors import AppError
 from app.core.settings import Settings
+from app.core.time import utc_now
 from app.domains.billing import background_recovery as recovery, work
+from app.domains.billing.discovery import persist_discovery
+from app.domains.billing.reconciliation_contracts import SubscriptionCandidateSubject
+from app.composition.purchase_inventory import read_inventory_points, read_target_inventory
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.customer_conflicts import record_customer_conflict
 from app.domains.catalog.publication import SessionFactory
@@ -106,6 +111,7 @@ async def _inventory_customer(
     if sum(row.tariff_id in tariffs for row in rows) > MAX_RELEVANT_SUBSCRIPTIONS:
         await delegate(recovery.apply_inventory, factory, claim, (), "inventory_incomplete")
         return
+    discovery_ids = []
     conflicts = []
     incomplete = False
     # Share successful reads only within this attempt; each purchase still
@@ -115,16 +121,53 @@ async def _inventory_customer(
     try:
         for purchase in purchases:
             try:
-                await _inventory(
+                started = utc_now()
+                points = await read_inventory_points(
                     client,
                     purchase,
                     current,
-                    factory,
                     budget=budget,
-                    delegate=delegate,
-                    inventory=rows,
+                    rows=rows,
                     subscription_points=subscription_points,
                     agreement_points=agreement_points,
+                )
+                bindings = {op.kind: op for op in purchase.operations}
+                if (
+                    Kind.SUBSCRIPTION in bindings
+                    and bindings[Kind.SUBSCRIPTION].bound_id
+                    and bindings[Kind.AGREEMENT].bound_id
+                ):
+                    subject = SubscriptionCandidateSubject(
+                        purchase,
+                        current,
+                        bindings[Kind.AGREEMENT].bound_id,
+                        bindings[Kind.AGREEMENT].key,
+                        bindings[Kind.SUBSCRIPTION].bound_id,
+                    )
+                    evidence = await read_target_inventory(
+                        client,
+                        subject,
+                        configuration,
+                        factory,
+                        budget=budget,
+                        rows=rows,
+                        points=points,
+                        read_started_at=started,
+                        delegate=delegate,
+                    )
+                    discovery_ids.append(
+                        await delegate(
+                            persist_discovery,
+                            factory,
+                            purchase,
+                            current,
+                            evidence,
+                            work_id=claim.id,
+                            generation=claim.generation,
+                        )
+                    )
+                await _inventory(
+                    client, purchase, current, factory, budget=budget, delegate=delegate, inventory=rows, points=points
                 )
             except (LbxError, PurchaseRefused) as error:
                 budget.check()
@@ -148,6 +191,8 @@ async def _inventory_customer(
             claim,
             tuple(conflicts),
             "inventory_conflict" if conflicts else "inventory_incomplete",
+            discovery_ids=tuple(discovery_ids),
+            clock_skew_seconds=configuration.paid_access_clock_skew_seconds,
         )
         return
     again = await client.discover_subscriptions(user_id=int(current.provider_id), budget=budget)
@@ -157,4 +202,12 @@ async def _inventory_customer(
         await delegate(recovery.apply_inventory, factory, claim, (), "inventory_incomplete")
         return
     budget.check()
-    await delegate(recovery.apply_inventory, factory, claim, (), None)
+    await delegate(
+        recovery.apply_inventory,
+        factory,
+        claim,
+        (),
+        None,
+        discovery_ids=tuple(discovery_ids),
+        clock_skew_seconds=configuration.paid_access_clock_skew_seconds,
+    )

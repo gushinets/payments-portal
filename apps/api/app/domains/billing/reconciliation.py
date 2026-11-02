@@ -25,6 +25,7 @@ from app.domains.billing.work import schedule_reconciliation, verify_claim
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.operator_contracts import ReviewResolution
 from app.domains.billing.webhook_contracts import CORRELATION_SCHEMA
+from app.domains.billing.paid_access import apply_paid_source, commit_paid_state
 from app.models import (
     BillingProductAccessScope,
     BillingStateObservation,
@@ -32,14 +33,13 @@ from app.models import (
     ExternalBillingCustomerBindingState as Binding,
     ExternalCreateOperationKind as Kind,
     ExternalCreateOperationState as State,
-    ExternalSubscriptionCommercialAccessStatus as Commercial,
-    ExternalSubscriptionFinancialAccessStatus as Financial,
     ExternalSubscriptionLifecycleStatus as Lifecycle,
     ManualReviewCase,
     PurchaseIntentState,
 )
 
-SOURCE_TRUST = timedelta(hours=6)
+from app.domains.billing.reconciliation_facts import source_conflict, apply_source_facts, SOURCE_TRUST as SOURCE_TRUST
+
 APPLY_SAFETY_SECONDS = 30
 
 
@@ -150,6 +150,7 @@ def claim_reconciliation(
             current.reconciliation_fencing_token,
             current.reconciliation_lease_expires_at,
             now,
+            needs_primary_discovery=scope.primary_subscription_id is None,
         )
         db.commit()
         return result
@@ -162,11 +163,13 @@ def apply_reconciliation(
     *,
     work_claim: WorkClaim | None = None,
     resolution: ReviewResolution | None = None,
+    discovery_id: UUID | None = None,
+    clock_skew_seconds: int | None = None,
 ) -> UUID:
     """Recheck permanent provenance and current fences before any fact changes."""
     with factory() as db:
         purchase = subject.purchase
-        lock_user(db, purchase.user_id)
+        user = lock_user(db, purchase.user_id)
         customer = lock_customer(db, purchase.customer_id)
         customer_op = customer_operation(db, customer.customer_id)
         row = service._locked(db, purchase)
@@ -217,7 +220,11 @@ def apply_reconciliation(
         if work_claim is not None:
             if work_claim.kind != "subscription_reconciliation" or work_claim.reference != str(current.subscription_id):
                 raise BillingRefused("billing_work_stale", 409)
-            verify_claim(db, work_claim)
+        from app.infrastructure.queries.paid_access import discovery
+
+        latest = discovery(db, current.latest_observation_id) if current.latest_observation_id else None
+        if latest is not None and as_utc(latest.observed_at) > proof.read_started_at:
+            raise BillingRefused("subscription_reconciliation_stale", 409)
         service._verify_original_consent(db, row, purchase.accepted)
         resolved_case = None
         if resolution is not None:
@@ -243,7 +250,6 @@ def apply_reconciliation(
                 for op in operations
             )
         )
-        conflict = None
         customer_conflict = "customer_identity_conflict" in proof.reasons
         if customer_conflict:
             mark_customer_identity_conflict(
@@ -252,15 +258,9 @@ def apply_reconciliation(
                 customer_op,
                 provider_id=subject.customer.provider_id if "customer_original_key_mismatch" in proof.reasons else None,
             )
-        if proof.identity == IdentityProof.CONFLICT and (
-            not customer_conflict or "subscription_identity_conflict" in proof.reasons
-        ):
-            conflict = "subscription_identity_conflict"
-        elif current.lifecycle_status == Lifecycle.ENDED and proof.lifecycle not in {None, Lifecycle.ENDED}:
-            conflict = "subscription_terminal_revival_conflict"
-        elif proof.identity == IdentityProof.MATCH and proof.commercial == CommercialProof.MISMATCH:
-            conflict = "subscription_commercial_mismatch"
+        conflict = source_conflict(current, proof)
         document = asdict(proof)
+        document["cycle"] = proof.cycle.model_dump(mode="json") if proof.cycle else None
         document["read_started_at"] = proof.read_started_at.isoformat()
         document["read_finished_at"] = proof.read_finished_at.isoformat()
         document["provenance"] = {
@@ -310,31 +310,33 @@ def apply_reconciliation(
                         case_state="open",
                     )
                 )
-        if (
-            proof.identity == IdentityProof.MATCH
-            and proof.financial == Financial.BLOCKED
-            and current.lifecycle_status != Lifecycle.ENDED
-        ):
-            current.lifecycle_status = proof.lifecycle
-        if conflict or known_review or customer_conflict:
-            current.commercial_access_status = Commercial.INELIGIBLE
-            current.financial_access_status = Financial.BLOCKED
-            if conflict or customer_conflict or proof.complete:
-                current.latest_observation_id = observation.observation_id
-        elif proof.financial == Financial.BLOCKED:
-            current.lifecycle_status = proof.lifecycle
-            current.financial_access_status = Financial.BLOCKED
-            current.latest_observation_id = observation.observation_id
-        if proof.complete and not conflict and not known_review:
-            current.lifecycle_status = proof.lifecycle
-            current.financial_access_status = proof.financial
-            current.commercial_access_status = Commercial.ELIGIBLE
-            current.last_authoritative_read_at = proof.read_started_at
-            current.projection_valid_until = proof.read_started_at + SOURCE_TRUST
-            current.latest_observation_id = observation.observation_id
+        apply_source_facts(
+            current,
+            proof,
+            observation,
+            conflict=bool(conflict),
+            known_review=known_review,
+            customer_conflict=customer_conflict,
+        )
         # Incomplete attempts append evidence, preserving finite LKG support.
         # A negative with incomplete commercial proof reduces usability above,
-        # but never renews trust. No paid-access writer runs in this step.
+        # but never renews trust. Paid state uses the same caller-owned commit.
+        apply_paid_source(
+            db,
+            scope,
+            current,
+            purchase,
+            proof,
+            observation,
+            now,
+            skew_seconds=clock_skew_seconds,
+            discovery_id=discovery_id,
+            review=bool(conflict or known_review or customer_conflict),
+            fence=subject.fence,
+        )
+        commit_paid_state(db, user, observation, now)
+        if work_claim is not None:
+            verify_claim(db, work_claim)  # Queue ownership last; failure rolls everything back.
         current.reconciliation_lease_owner = None
         current.reconciliation_lease_expires_at = None
         schedule_reconciliation(

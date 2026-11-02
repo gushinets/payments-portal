@@ -74,7 +74,10 @@ class Subscription(PrivateDto):
     )
     @classmethod
     def provider_calendar(cls, value: str | None) -> str | None:
-        if value is not None and not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}(?: [0-9]{2}:[0-9]{2}:[0-9]{2})?", value):
+        if value is not None and not re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}(?:[ T][0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?(?:Z|[+-][0-9]{2}:[0-9]{2})?)?",
+            value,
+        ):
             raise ValueError("invalid provider calendar evidence")
         return value
 

@@ -116,16 +116,12 @@ database lifecycle.
 
 ## Safety
 
-- Target paid access changes only from the authoritative sources
-  permitted by ADR 0005 and the accepted designs; a browser return, Widget
-  callback, webhook, outbound request success, or payment state alone is not
-  access authority. Direct product links, live catalog reads, account Widget,
-  accepted purchases and request-driven financial preparation/recovery are
-  implemented. ANY-715 Steps 1–5 implement embedded reconciliation/recovery,
-  default-disabled authenticated durable webhook hints and audited operator
-  controls; see [billing operations](../../docs/engineering/billing-background-operations.md).
-  Paid-access derivation remains future work; real webhook authentication/delivery
-  is an enablement gate. See the [runbook](../../docs/engineering/ANY-709-billing-runbook.md).
+- Paid access changes only from the authoritative sources permitted by the
+  authority chain above. Browser/Widget callbacks, webhook receipt, outbound
+  success, preparation or payment state alone cannot grant access. Current
+  implementation and acceptance limits belong to [architecture](../../ARCHITECTURE.md),
+  the [purchase runbook](../../docs/engineering/ANY-709-billing-runbook.md) and
+  [billing operations](../../docs/engineering/billing-background-operations.md).
 - Never log authentication tokens, authorization headers, secrets, card fields,
   or unredacted webhook bodies.
 - Legal acceptance records are append-only.

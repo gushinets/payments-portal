@@ -135,13 +135,14 @@ the rewrite/launch rather than weakening this boundary.
 
 ### Paid access authority
 
-Provider commercial/subscription facts change locally only after a complete,
-successfully normalized authoritative provider read.
+Positive paid access and source-trust extension require a complete, successfully
+normalized authoritative provider read. An owned decisive negative may reduce
+affected access even when unrelated commercial fields are incomplete.
 
 Paid access may change only because of:
 
-1. complete authoritative provider facts plus the accepted provider-owned
-   commercial terms;
+1. authoritative provider facts under the completeness rules above plus the
+   accepted provider-owned commercial terms;
 2. deterministic passage of time across an already-known boundary, which may
    only reduce/expire access;
 3. an explicit audited operator resolution that selects already-proven facts,
@@ -894,14 +895,17 @@ financial_access_status:   allowed | blocked
 commercial_access_status:  eligible | ineligible
 ```
 
-For customer-funded RU access, `financial_access_status=allowed` requires a
-verified supported prepaid-blocking profile, **ACTIVE** lifecycle (not merely
-non-terminal), `current_blocking == 0`, complete authoritative owner/agreement,
-current-cycle and material-term reads, and independently supportable paid
-eligibility. A pending `state=-2/current_blocking=0` subscription is denied;
-`state=2/current_blocking=0` alone does not prove a paid period. When an
-underfunded renewal or financial block is ambiguous, deny the new allowance
-rather than infer access from a balance or payment status.
+For supported prepaid customer-funded access, `financial_access_status=allowed`
+requires the verified prepaid-blocking profile, **ACTIVE** lifecycle,
+`current_blocking == 0`, complete authoritative owner/dedicated-agreement and
+material-term reads. Under the accepted ANY-715/765 owner clarification, this
+verified provider conclusion is the operational eligibility signal; retained
+"paid authority" wording does not require a second Portal settlement
+reconstruction. Preparation or `state=2/current_blocking=0` without the original
+ownership/terms/policy proof cannot authorize. Waiting `state=-2` is denied.
+Cycle/calendar proof separately gates each new allowance; ambiguous current
+metering cannot hide an independently supported product grant. No balance or
+payment status manufactures quota.
 
 `commercial_access_status=eligible` additionally requires complete material-term
 match, valid pinned mapping/legal/origin rules, and no access conflict.

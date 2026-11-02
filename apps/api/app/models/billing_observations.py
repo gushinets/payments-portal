@@ -25,6 +25,10 @@ from app.models.enums import BillingStateObservationKind
 class BillingStateObservation(Base):
     __tablename__ = "billing_state_observations"
     __table_args__ = (
+        CheckConstraint(
+            "resulting_access_revision IS NULL OR resulting_access_revision > 0",
+            name="ck_billing_observations_revision_positive",
+        ),
         UniqueConstraint(
             "observation_id",
             "access_scope_id",
@@ -93,7 +97,8 @@ class BillingStateObservation(Base):
         CheckConstraint(
             "(observation_kind <> 'authoritative_subscription_read' OR subscription_id IS NOT NULL) "
             "AND (observation_kind <> 'target_product_discovery' OR "
-            "(user_id IS NOT NULL AND product_id IS NOT NULL AND access_scope_id IS NOT NULL)) "
+            "(user_id IS NOT NULL AND product_id IS NOT NULL AND (access_scope_id IS NOT NULL OR "
+            "(evidence_schema_version IN ('target-product-discovery:v2', 'paid-access-cause:v1') AND purchase_intent_id IS NOT NULL)))) "
             "AND (observation_kind <> 'primary_selection' OR "
             "(access_scope_id IS NOT NULL AND basis_observation_id IS NOT NULL)) "
             "AND (observation_kind <> 'deterministic_access_boundary' OR "

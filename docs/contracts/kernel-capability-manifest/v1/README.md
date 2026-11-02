@@ -3,8 +3,10 @@
 Status: specification-derived development contract; SIMULATED fixtures.
 Implementation: ANY-664 implementation Step 1 (part of ANY-504 program Step 6).
 Verification: local conformance CI PASS is recorded in the [Step 8 handoff](step-8-handoff.md);
-real producer conformance is DEFERRED_NOT_IMPLEMENTED. This does not certify
-every manual procedure below or a new verification run.
+that checkpoint recorded real producer conformance as DEFERRED_NOT_IMPLEMENTED.
+ANY-765 Step 1 later inspected the implemented ANY-711 producer at
+[`e627bf2`](https://github.com/gushinets/anytoolai-platform/blob/e627bf296a6476efcca839a0328cf1a5683555e2/docs/contracts/kernel-capability-manifest/v1/README.md).
+Source alignment does not establish deployed conformance or a new HTTP PASS.
 
 This directory describes the documented manifest boundary and explicit local
 conventions. It is not a Kernel-owned OpenAPI export, a delivered producer, a
@@ -84,18 +86,18 @@ conventions. Production requires TLS, service authentication and no browser acce
 
 - Local service auth is `Authorization: Bearer <KERNEL_MOCK_TOKEN>`, supplied
   at process startup. No default credential is supplied. This is not evidence
-  of the eventual producer's credential format.
+  of deployed producer authentication.
 - The local schema rejects unknown fields and requires nonempty identities
-  and units. Confirm compatibility, including extension handling, with the
-  eventual Kernel-owned contract before real enablement.
+  and units. Confirm compatibility, including extension handling, against the
+  inspected Kernel-owned contract in deployment conformance.
 - `manifest_version` is `sha256:` plus the lowercase SHA-256 hex digest of
   canonical UTF-8 JSON containing only `schema_version`, `tenant_id`,
   `region`, `products` and `usage_metrics`. Sort object keys recursively;
   sort products by `product_id` and metrics by `metric_key`; use compact
   separators with no whitespace and unescaped Unicode (`ensure_ascii=False`).
   Reject duplicate IDs/keys and invalid references before hashing. Exclude
-  `generated_at` and `manifest_version` itself. This serialization must be
-  reconciled with the eventual producer.
+  `generated_at` and `manifest_version` itself. The fixture/digest was
+  source-aligned with ANY-711; deployment conformance remains separate.
 
 [valid-manifest.digest](fixtures/valid-manifest.digest) is the literal expected
 digest, authored independently of mock/client execution. Focused test source
@@ -119,21 +121,13 @@ retained v1 or v2 revision. See the
 ## Accepted development purchase examples (ANY-765 Step 1)
 
 The single [development terms dataset](../../../../config/development/paid-access-test-terms.json)
-supplies separate Swagger/OpenAPI metadata (`x-simulated-purchase-examples`).
-It is outside the manifest wire schema and preserves PR #151's **SIMULATED**
-100 generations / 300 analyses examples. Quantities are never Kernel capability
-fields. Portal's explicitly enabled dev/test acceptance path now consumes this
-dataset independently of mock-server code; see the
+provides `x-simulated-purchase-examples` metadata and the explicitly enabled
+Portal dev/test acceptance source. Its SIMULATED 100 generations / 300 analyses
+are outside the manifest wire. See the
 [purchase runbook](../../../engineering/ANY-709-billing-runbook.md#development-purchase-metering-any-765-step-1).
-Historical manifest fixture bytes and independent digest pins remain unchanged.
-
-Alignment was checked against producer-owned ANY-711 at
-`e627bf296a6476efcca839a0328cf1a5683555e2`:
-[contract](https://github.com/gushinets/anytoolai-platform/blob/e627bf296a6476efcca839a0328cf1a5683555e2/docs/contracts/kernel-capability-manifest/v1/README.md),
-[error models](https://github.com/gushinets/anytoolai-platform/blob/e627bf296a6476efcca839a0328cf1a5683555e2/apps/platform-api/src/anytoolai_platform_api/schemas.py).
-This is source inspection and local mock alignment, not a new real-producer HTTP
-or deployed conformance PASS. The historical evidence below retains its labels.
-No token rotation infrastructure is added.
+Historical positive fixture bytes/digest are retained. The all-disabled and safe
+500/503/error-envelope scenarios follow inspected ANY-711 source above; mock
+auth remains single-token. No deployed conformance or production approval follows.
 
 ## Standalone mock and startup scenarios
 

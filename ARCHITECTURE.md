@@ -8,7 +8,8 @@ Last updated: 2026-11-02
 This repository currently owns the `ru` contour's identity, authenticated
 sessions, email verification, password recovery,
 legal-document/version/acceptance records, the AnyToolAI Portal UI, and a
-provider-neutral external-billing persistence baseline. It does not own
+provider-neutral external-billing persistence baseline and intermediate local
+paid-access projection. It does not own
 workflow execution, artifacts, usage consumption, or quota enforcement; those
 belong to the separate Platform Kernel repository.
 
@@ -17,8 +18,9 @@ an owned-purchase cabinet. ANY-709 implements direct product links, live current
 offers, account Widget, accepted-purchase preparation/recovery and localized
 Buy/Continue/Manage with one shared payment-capable Widget. It remains
 pre-production. ANY-715 supplies embedded lifecycle polling and GET-only
-recovery/inventory. Paid access, actual usage/quota and real Kernel enablement
-belong to later program steps. Delivery and acceptance evidence are recorded in
+recovery/inventory. ANY-765 Step 2 adds local paid derivation/revision/outbox;
+deadline completion, cabinet, actual usage/quota and real Kernel enablement
+remain later work. Delivery and acceptance evidence are recorded in
 [ANY-709](https://linear.app/paveldik/issue/ANY-709).
 
 Each production deployment serves exactly one contour. Region Resolver is a
@@ -27,8 +29,9 @@ See [contours](docs/architecture/contours.md) and the
 [Region Resolver contract](docs/architecture/region-resolver-contract.md).
 The [Platform Kernel integration map](docs/integrations/platform-kernel.md)
 records actual peer implementation and the remaining enablement gates. Dashed
-Kernel arrows below are future requests to real endpoints; the current Manifest
-client is verified only against the separate development mock.
+Kernel access-delivery arrows below remain future work. Manifest client tests
+use the development mock; peer producer source inspection is recorded in the
+integration map and does not establish deployed conformance.
 
 ```mermaid
 flowchart LR
@@ -37,7 +40,7 @@ flowchart LR
   Browser --> Web["AnyToolAI Portal · Next.js web"]
   Web --> API["Portal backend · FastAPI"]
   API --> DB[("PostgreSQL")]
-  API -. "future GET capability-manifest" .-> Kernel["Platform Kernel"]
+  API -. "configured Manifest client · deployed conformance pending" .-> Kernel["Platform Kernel"]
   Kernel -. "future GET access-snapshots/{user_id}" .-> API
   API -. "future POST access-invalidations" .-> Kernel
   API -->|"current Manifest HTTP client · dev/test only"| Mock["Optional Kernel Manifest mock"]
@@ -59,8 +62,8 @@ identity/session/legal tables, fifteen original target billing tables, a current
 product-link pointer and a purchase hold. The billing tables start empty. Direct
 link publication and explicit customer/purchase flows populate their owned
 records. Source-catalog projection slots have no runtime readers/writers.
-ANY-715 Step 2 adds embedded reconciliation polling; paid-access derivation
-and invalidation delivery remain later work.
+ANY-715 adds embedded reconciliation polling; ANY-765 Step 2 adds local paid
+derivation. Invalidation delivery remains later work.
 
 ANY-715 Step 1 supplies shared authoritative subscription reconciliation through
 `composition/reconciliation.py`, billing Application contracts/apply and LBX
@@ -68,8 +71,7 @@ normalization. Four bounded point reads run outside transactions; short fenced
 claim/apply transactions preserve original purchase/legal provenance. Complete
 matching proof establishes finite source trust; incomplete attempts cannot
 renew it, and owned negative/conflict evidence reduces usability immediately.
-Preparation readback preserves reconciled facts. Scope provenance has no chosen
-primary, and no access revision, allowance or paid grant is produced. Step 2
+Preparation readback preserves reconciled facts. ANY-715 Step 2
 adds atomic enrollment, bounded embedded execution and provider-free trust-expiry
 evidence. Step 3 dispatches shared GET-only uncertain-create recovery, separate
 fixed two-hour local deadlines and bounded customer inventory. Permanent operation
@@ -161,17 +163,15 @@ presentation. Its initial subscription projection is `unverified` financially,
 with no paid-trust interval, grant or access-primary selection.
 See the [Step 3 runbook](docs/engineering/ANY-709-billing-runbook.md#purchase-api-and-financial-recovery-step-3).
 
-ANY-765 Step 1 adds explicitly enabled development purchase metering. Composition
-reads one versioned dev/test dataset independently of mock code and validates
-selected metric ownership/unit against the live Kernel manifest already used by
-review. A separate technical digest extends request idempotency meaning without
-changing the commercial fingerprint. New `accepted-purchase:v2` JSON snapshots
-pin all values, binding and SIMULATED provenance. Legacy v1 and saved replays
-remain source-independent and receive no invented metering. The development
-image includes the data; production rejects its enablement and contains no data
-fallback. See the [purchase runbook](docs/engineering/ANY-709-billing-runbook.md#development-purchase-metering-any-765-step-1).
-This changes acceptance only; paid projection/deadlines/cabinet paid-state remain
-later steps.
+ANY-765 Step 1 pins optional SIMULATED technical terms in immutable
+`accepted-purchase:v2` history; production rejects the development source.
+Legacy v1 remains readable without invented metering. See the
+[purchase runbook](docs/engineering/ANY-709-billing-runbook.md#development-purchase-metering-any-765-step-1).
+Step 2 adds safe primary selection, immutable calendar allowances and one
+user-serialized state/revision/audit/outbox commit for reconciliation/inventory.
+Storage details belong to the [schema reference](docs/architecture/payment-portal-data-model.md);
+clock configuration and intermediate enablement limits belong to the
+[operations runbook](docs/engineering/ANY-715-billing-operations.md#any-765-step-2-intermediate-local-projection).
 
 ## Current domains and API
 
@@ -500,8 +500,8 @@ commercial behavior:
 - external create operations preserve uncertain outcomes for safe recovery;
 - webhook delivery rows preserve bounded/redacted evidence, not authority;
 - work items are scheduling state, not business truth;
-- subscription and observation rows have ANY-715 reconciliation writers;
-  allowance production remains Step 9 work;
+- subscription/observation rows retain reconciled facts and allowances freeze
+  accepted quantities and classified cycles;
 - paid-access state and the invalidation outbox support later provider-neutral
   access delivery.
 

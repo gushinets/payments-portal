@@ -18,9 +18,11 @@ ownership, persistence, or paid-access derivation.
 The direct-provider runtime and Portal-owned commercial/access lifecycle are
 removed. ANY-709 implements live product links/offers, accepted purchase holds
 and request-driven financial preparation/recovery. ANY-715 implements embedded
-reconciliation and GET-only recovery/inventory with local deadlines. Paid-access
-derivation and invalidation delivery remain later work. Source-catalog
-projection tables remain inert. Dated delivery evidence belongs to
+reconciliation and GET-only recovery/inventory with local deadlines. ANY-765
+Step 2 adds ordinary reconciliation/inventory paid derivation and atomic
+revision/outbox commits; remaining deadline/customer/operator paths and
+invalidation delivery are deferred. Source-catalog projection tables remain
+inert. Dated delivery evidence belongs to
 [ANY-709](https://linear.app/paveldik/issue/ANY-709).
 
 ## Cross-cutting critical paths
@@ -58,9 +60,7 @@ projection tables remain inert. Dated delivery evidence belongs to
 - Webhook receipt, Widget callback, outbound command success, payment state, or
   manual operator input alone never grants paid access.
 
-These are cross-cutting constraints. Purchase preparation and embedded
-reconciliation/recovery and default-disabled durable webhook hints are implemented;
-paid-access derivation and invalidation delivery remain later work. Webhook receipt
+Webhook receipt
 and coalesced work commit before 200. Complete fenced rereads process only covered
 receipt generations; incomplete reads/crashes retry, and later hints remain due.
 Polling converges independently of delivery, ordering or provider retries. See the

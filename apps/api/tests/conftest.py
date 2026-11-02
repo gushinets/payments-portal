@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
+from collections.abc import Iterator, AsyncIterator
+from uuid import UUID
+from typing import TYPE_CHECKING
 from datetime import UTC, datetime, timedelta
 from itertools import count
 
@@ -19,6 +21,12 @@ from .support.postgres import (
     validate_test_database_url,
 )
 from .support.settings import DEFAULT_API_TEST_ENV
+
+
+if TYPE_CHECKING:
+    from app.composition.sources import SourceResources
+    from app.core.settings import Settings
+    from apps.api.tests.support.any709_step3 import PurchaseTransport
 
 
 load_dotenv()
@@ -171,3 +179,73 @@ def mapping_clock(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(mapping_operator, "utc_now", now)
     monkeypatch.setattr(publication, "utc_now", now)
+
+
+@pytest.fixture
+async def paid_scenario(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> AsyncIterator[tuple[PurchaseTransport, SourceResources, Settings, UUID, UUID]]:
+    import time
+    import httpx
+    from sqlalchemy import select, func
+    from app.composition.purchases import advance_purchase, confirm_purchase, review_purchase
+    from app.composition.sources import source_resources
+    from app.domains.catalog.link_publication import publish_product_link
+    from app.models import ExternalSubscription, PaidAccessState
+    from apps.api.tests.factories.purchase_terms import reviewed_meaning
+    from apps.api.tests.support.any709_step1 import step1_settings, link_selection, link_document
+    from apps.api.tests.test_any709_step3_postgres import setup_purchase, TOKEN
+    from app.integrations.lbx import current_offer
+
+    monkeypatch.setattr(current_offer, "utc_now", lambda: datetime(2026, 10, 27, 12, tzinfo=UTC))
+    factory = postgres_session_factory
+    transport = setup_purchase(factory)
+    mode = getattr(request, "param", "proposal_ai")
+    product = "brief_decoder" if mode == "brief_decoder" else "proposal_ai"
+    config = step1_settings(purchase_test_terms_enabled=mode != "legacy", paid_access_clock_skew_seconds=10)
+    if product == "brief_decoder":
+        for selection, previous in ((link_selection(tariff_id=702), 1), (link_selection(product_id=product), 0)):
+            publish_product_link(
+                factory,
+                evaluation=link_document(selection=selection),
+                expected_previous_revision=previous,
+                deadline=time.monotonic() + 5,
+                lock_timeout_seconds=1,
+                provider_origin=config.lbx_provider_origin,
+            )
+    async with source_resources(
+        config,
+        kernel_transport=httpx.MockTransport(transport.kernel),
+        lbx_transport=httpx.MockTransport(transport.respond),
+    ) as sources:
+        link, offer, documents, terms = await review_purchase(
+            sources, config, factory=factory, token=TOKEN, product_id=product
+        )
+        purchase = await confirm_purchase(
+            sources,
+            config,
+            factory=factory,
+            token=TOKEN,
+            key="paid-test",
+            meaning=reviewed_meaning(product, link.mapping_revision_id, offer.fingerprint, documents, terms),
+        )
+        await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+        with factory() as db:
+            sub_id = db.scalar(select(ExternalSubscription.subscription_id))
+            assert db.scalar(select(func.count()).select_from(PaidAccessState)) == 0
+        transport.subscriptions[0].update(
+            state=2,
+            subscription_instance_start_date="2026-01-31",
+            last_tariffication_period_start="2026-10-31",
+            last_tariffication_period_end="2026-11-29",
+        )
+        if mode == "timestamp":
+            transport.subscriptions[0].update(
+                subscription_instance_start_date="2026-01-31T12:34:56.123456+03:00",
+                last_tariffication_period_start="2026-10-31T12:34:56.123456+03:00",
+                last_tariffication_period_end="2026-11-30T12:34:56.123456+03:00",
+            )
+        yield transport, sources, config, sub_id, purchase.user_id

@@ -368,9 +368,34 @@ source-expiry evidence. Incomplete attempts preserve only finite existing suppor
 known negative/conflicting facts supersede usability. Calendar precision stays
 provider evidence, without an inferred UTC cycle or allowance identity.
 
-Scopes have `primary_subscription_id=NULL` and observations keep
-`resulting_access_revision` null. Step 9 owns primary selection, paid
-grants/allowances, effective-access revisions and atomic outbox production;
-it must attach earlier effective access deadlines to the existing scheduler.
+Step 8 initially creates scopes with `primary_subscription_id=NULL` and
+observations with null `resulting_access_revision`. ANY-765 now consumes those
+facts through the local paid writer described below, adding primary selection,
+grants/allowances, semantic revisions and atomic outbox production.
 Step 10 owns Kernel wire/invalidation delivery and coupled UTC calendar design.
 Step 11 owns complete real paid-access/natural-renewal and launch acceptance.
+Automated source evidence is SIMULATED. Configured read-only LBX and actual
+webhook checks remain NOT_RUN; see the verification report for acceptance status.
+
+
+## ANY-765 Step 2 intermediate local projection
+
+Reconciliation and inventory share one caller-transaction paid writer. Complete
+persisted discovery gates first-primary selection; ordinary primary refreshes
+use four point reads, while periodic inventory detects newcomers. A customer-owned
+ended external source cannot compete. Unknown nonterminal or locally hidden
+candidates still prevent unsafe selection; competitors never replace a primary.
+Within one inventory operation, financial/paid checks reuse canonical point reads.
+
+Set `PAID_ACCESS_CLOCK_SKEW_SECONDS` to an operationally supported integer in
+1..299 for positive derivation; no deployment default is assumed. Unset prevents
+new positives while reductions remain available. Source trust is at most six
+hours from read-set start. Equal effective contents refresh metadata without a
+revision; material changes commit state, causal audit and pending invalidation
+atomically. See the [schema reference](../architecture/payment-portal-data-model.md)
+for immutable allowance shapes and storage guards.
+
+Remaining deadline/customer/operator paths and the paid read/cabinet are Steps
+3–4. Kernel delivery/acknowledgement and actual usage remain ANY-766. This
+intermediate implementation is not production-ready. Current verification and
+live acceptance limits are recorded in the [canonical plan](../exec-plans/active/ANY-765-implementation-plan.md).

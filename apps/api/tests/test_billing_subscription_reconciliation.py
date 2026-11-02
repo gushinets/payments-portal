@@ -166,7 +166,11 @@ def test_billing_subscription_reconciliation_unknown_or_incomplete(change: dict)
         tariff=tariff_factory(subject),
         subscription=subscription_factory().model_copy(update=change),
     )
-    assert not proof.complete and proof.financial is None
+    if "state" in change or "current_blocking" in change:
+        assert not proof.complete and proof.financial is None
+    else:
+        # Product truth is independent of allowance calendar proof.
+        assert proof.complete and proof.financial == "allowed"
 
 
 @pytest.mark.parametrize("kind", ["customer", "customer_id", "agreement", "seller", "subscription"])
@@ -376,7 +380,7 @@ def test_billing_subscription_reconciliation_preserves_calendar_precision(
         tariff=tariff_factory(subject),
         subscription=Subscription.model_validate(raw),
     )
-    assert proof.calendar_complete is complete and proof.complete is complete
-    assert (proof.financial == "allowed") is complete
+    assert proof.calendar_complete is complete
+    assert proof.complete and proof.financial == "allowed"
     assert proof.calendar["subscription_instance_start_date"] == start
     assert proof.calendar["last_tariffication_period_end"] == cycle_end

@@ -6,6 +6,7 @@ from enum import StrEnum
 from uuid import UUID
 
 from app.domains.billing.contracts import CustomerOpen
+from app.domains.billing.paid_cycles import CalendarEvidence
 from app.domains.purchases.contracts import Purchase
 from app.models import (
     ExternalSubscriptionFinancialAccessStatus as Financial,
@@ -50,6 +51,7 @@ class ReconciliationSubject:
     fence: int
     lease_expires_at: datetime
     claimed_at: datetime
+    needs_primary_discovery: bool = True
 
 
 @dataclass(frozen=True)
@@ -66,3 +68,4 @@ class SubscriptionProof:
     reasons: tuple[str, ...]
     # Names of successful point reads, never payloads or credentials.
     reads: tuple[str, ...]
+    cycle: CalendarEvidence | None = None

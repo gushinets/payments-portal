@@ -11,7 +11,7 @@ from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperat
 from app.models import PurchaseIntentState as IntentState
 
 
-def other_inventory_purchase(
+def inventory_purchase(
     factory: SessionFactory, purchase: Purchase, provider_id: int, agreement_id: int
 ) -> Purchase | None:
     """Identify the owning purchase by its permanent dedicated-agreement binding."""
@@ -26,14 +26,13 @@ def other_inventory_purchase(
             account_id=purchase.account_id,
             agreement_id=str(agreement_id),
         )
-        if row is None or row.product_id == purchase.accepted.selection.product_id:
+        if row is None:
             return None
         other = _snapshot(db, row)
         _verify_original_consent(db, row, other.accepted)
         bindings = {op.kind: op for op in other.operations}
         if (
-            not other.held
-            or other.accepted.provider_origin != purchase.accepted.provider_origin
+            other.accepted.provider_origin != purchase.accepted.provider_origin
             or not {Kind.AGREEMENT, Kind.SUBSCRIPTION}.issubset(bindings)
             or bindings[Kind.AGREEMENT].state != State.BOUND
             or bindings[Kind.AGREEMENT].bound_id != str(agreement_id)
@@ -53,3 +52,12 @@ def other_inventory_purchase(
         ):
             return other
         return None
+
+
+def other_inventory_purchase(
+    factory: SessionFactory, purchase: Purchase, provider_id: int, agreement_id: int
+) -> Purchase | None:
+    other = inventory_purchase(factory, purchase, provider_id, agreement_id)
+    if other is None or not other.held or other.accepted.selection.product_id == purchase.accepted.selection.product_id:
+        return None
+    return other

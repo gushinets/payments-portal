@@ -20,6 +20,7 @@ Generated from SQLAlchemy metadata. Do not edit directly.
 
 Indexes and constraints:
 
+- `ck_access_invalidation_outbox_delivered_nonnegative`
 - `ck_access_invalidation_outbox_pending_revision_positive`
 - `ck_access_invalidation_outbox_revision_order`
 - `fk_access_invalidation_outbox_user_scope`
@@ -58,13 +59,19 @@ Indexes and constraints:
 | `user_id` | `CHAR(32)` | no | FK |
 | `product_id` | `TEXT` | no | FK |
 | `primary_subscription_id` | `CHAR(32)` | yes | FK |
+| `effective_access_document` | `JSON` | yes |  |
+| `effective_access_until` | `DATETIME` | yes |  |
+| `access_basis_observation_id` | `CHAR(32)` | yes | FK |
+| `primary_retired_at` | `DATETIME` | yes |  |
 | `updated_at` | `DATETIME` | no |  |
 
 Indexes and constraints:
 
+- `fk_access_scope_basis`
 - `fk_billing_product_access_scopes_primary_subscription`
 - `uq_billing_product_access_scopes_id_user_product`
 - `uq_billing_product_access_scopes_user_product`
+- `ix_billing_product_access_scopes_effective_access_until`
 - `ix_billing_product_access_scopes_primary_subscription`
 
 ## `billing_purchase_scope_holds`
@@ -106,6 +113,7 @@ Indexes and constraints:
 
 Indexes and constraints:
 
+- `ck_billing_observations_revision_positive`
 - `ck_billing_state_observations_evidence_schema_nonempty`
 - `ck_billing_state_observations_kind`
 - `ck_billing_state_observations_kind_shape`
@@ -601,6 +609,7 @@ Indexes and constraints:
 
 Indexes and constraints:
 
+- `ck_paid_access_states_revision_positive`
 - `fk_paid_access_states_user_scope`
 - `uq_paid_access_states_tenant_region_user`
 
@@ -674,16 +683,24 @@ Indexes and constraints:
 | `provider_cycle_key` | `TEXT` | yes |  |
 | `provider_cycle_start` | `DATETIME` | yes |  |
 | `provider_cycle_end` | `DATETIME` | yes |  |
-| `period_start` | `DATETIME` | no |  |
-| `period_end` | `DATETIME` | no |  |
+| `period_start` | `DATETIME` | yes |  |
+| `period_end` | `DATETIME` | yes |  |
+| `cycle_schema_version` | `TEXT` | no |  |
+| `cycle_date_start` | `DATE` | yes |  |
+| `cycle_date_end` | `DATE` | yes |  |
+| `calendar_document` | `JSON` | yes |  |
+| `unit` | `TEXT` | yes |  |
+| `terms_document` | `JSON` | yes |  |
 | `created_at` | `DATETIME` | no |  |
 
 Indexes and constraints:
 
+- `ck_purchased_allowances_cycle_shape`
 - `ck_purchased_allowances_period_order`
 - `ck_purchased_allowances_provider_cycle_pair`
 - `ck_purchased_allowances_quantity_nonnegative`
 - `fk_purchased_allowances_subscription_product`
+- `uq_purchased_allowances_logical_cycle`
 - `ix_purchased_allowances_product_metric`
 - `ix_purchased_allowances_provider_cycle_key`
 - `ix_purchased_allowances_subscription_component_cycle`

@@ -108,7 +108,9 @@ before enablement. Receipt cannot update subscription/access facts.
 - Verify authenticity at every external billing or payment Integration before
   trusting external state. ANY-709 implements real source reads and an explicit
   account Widget bootstrap, accepted-purchase preparation and point-verified
-  payment presentation. Paid-access derivation remains deferred.
+  payment presentation. ANY-765 Step 2 adds intermediate local paid derivation
+  with immutable accepted quantities and one user-serialized semantic commit.
+  Completion of deadline paths, cabinet and Kernel delivery remains deferred.
 - Treat request IDs and external billing or payment metadata as untrusted input
   with length and character limits.
 - Store session tokens only as hashes.

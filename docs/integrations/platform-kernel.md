@@ -1,7 +1,7 @@
 # Platform Kernel integration map
 
 Status: navigation and implementation snapshot; normative contracts are delegated below.
-Last observed: 2026-10-23.
+Last observed: 2026-10-30 for manifest producer source; access-delivery peer snapshot remains 2026-10-23.
 
 ## Ownership and sources
 
@@ -32,12 +32,15 @@ plans do not override accepted sources.
 ## Observed implementation
 
 Evidence baselines: Portal `79dc3f4d204aec4ac9552e3d1da3481553cc8aef`;
-Platform `79a2ada5b790f959a40b3e08451ef9ed8d97da5b`.
-These identify inspected source snapshots, not a verified joint deployment.
+Platform access-delivery snapshot `79a2ada5b790f959a40b3e08451ef9ed8d97da5b`.
+ANY-765 Step 1 inspected the newer manifest producer/contract at
+[`e627bf2`](https://github.com/gushinets/anytoolai-platform/blob/e627bf296a6476efcca839a0328cf1a5683555e2/docs/contracts/kernel-capability-manifest/v1/README.md).
+These are source snapshots, not a verified joint deployment or a fresh peer
+inspection in the 2026-11-02 review.
 
 | Operation / request direction | Payload producer | Payload consumer / receiver | Verification status |
 | --- | --- | --- | --- |
-| `GET /internal/v1/capability-manifest`: Portal -> Kernel | Real Kernel endpoint not implemented; optional separate development HTTP mock exists in Portal | Portal typed HTTP client implemented | Local mock/client CI PASS; real producer deferred |
+| `GET /internal/v1/capability-manifest`: Portal -> Kernel | Kernel producer implemented at inspected `e627bf2`; Portal retains a separate development mock | Portal typed HTTP client implemented | Source alignment and local mock/client CI PASS; new deployed conformance NOT_RUN |
 | `GET /internal/v1/access-snapshots/{user_id}`: Kernel -> Portal | Portal paid-access producer not implemented | Kernel snapshot client/cache/revision floor not implemented | Target contract only |
 | `POST /internal/v1/access-invalidations`: Portal -> Kernel | Portal invalidation producer/delivery not implemented | Kernel receiver endpoint not implemented | Target contract only |
 
@@ -47,19 +50,21 @@ enabled-product discovery and current selected LBX offers. Kernel wire semantics
 and the pinned peer observation above are unchanged; no fresh peer inspection
 or real producer conformance is claimed. Source projection slots remain inert.
 ANY-709 implements purchase orchestration; ANY-715 implements subscription
-reconciliation and GET-only recovery without Kernel calls. Paid-access derivation
-and actual cabinet usage remain later work; stored approved terms do not promise
-current sellability. See the [billing operations guide](../engineering/billing-background-operations.md)
-for current Step 8 behavior and the Step 9/10 handoff; no Kernel wire contract
-or peer-verification status changes with this implementation.
+reconciliation and GET-only recovery without Kernel calls. ANY-765 Step 2 adds
+local paid derivation; paid cabinet, Kernel delivery and actual usage remain
+later work. Stored accepted terms do not promise current sellability. See the
+[billing operations guide](../engineering/billing-background-operations.md) for
+current behavior and the Step 9/10 handoff; no Kernel wire contract or
+peer-verification status changes with this implementation.
 
 Evidence: [publication](https://github.com/gushinets/payments-portal/blob/79dc3f4d204aec4ac9552e3d1da3481553cc8aef/apps/api/app/domains/catalog/publication.py),
 [typed client](https://github.com/gushinets/payments-portal/blob/79dc3f4d204aec4ac9552e3d1da3481553cc8aef/apps/api/app/integrations/kernel/client.py),
 [Kernel routes](https://github.com/gushinets/anytoolai-platform/blob/79a2ada5b790f959a40b3e08451ef9ed8d97da5b/apps/platform-api/src/anytoolai_platform_api/main.py)
 and [Step 8 handoff](../contracts/kernel-capability-manifest/v1/step-8-handoff.md).
 The handoff records `LOCAL_SPEC_CONFORMANCE=PASS` for historical CI and
-`REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED`. It does not claim a fresh
-run, completion of every manual procedure or real producer compatibility.
+`REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED` at that historical checkpoint.
+The newer producer source observation above does not turn it into a deployed
+conformance PASS.
 
 ## Dependencies before real integration
 
@@ -73,12 +78,11 @@ run, completion of every manual procedure or real producer compatibility.
   permits `anytoolai/ru`, and its client rejects mismatched response scope.
   Real deployment alignment is separate work. Locale and country do not select
   authenticated scope; do not rename existing scopes as a documentation fix.
-- **Producer delivery:** Kernel API owners supply the actual endpoint,
-  producer-owned schema and fixtures, approved paid metrics/units/releases and
-  service-authenticated tenant/region deployment. Portal integration owners pin
-  and reconcile those artifacts and run real consumer-versus-producer checks.
-  Until then [provisional artifacts](../contracts/kernel-capability-manifest/v1/README.md)
-  retain their historical pins and SIMULATED status; no shared runtime SDK.
+- **Producer/deployment:** inspected ANY-711 supplies the manifest producer,
+  schema and fixtures. Deployment conformance and production paid metric/quantity
+  approval remain separate. Portal owns consumer verification; retained
+  [development artifacts](../contracts/kernel-capability-manifest/v1/README.md)
+  keep their historical pins and SIMULATED provenance. No shared runtime SDK.
 - **Enablement:** ANY-709 Step 1 accepts ordinary configured HTTPS Kernel/LBX
   connections without a blanket production refusal. Explicit Kernel mock mode
   remains development/test-only and SIMULATED, including after URL changes.
@@ -118,16 +122,9 @@ companion [ANY-727](https://linear.app/paveldik/issue/ANY-727).
 
 ## ANY-765 Step 1 consumer alignment
 
-Producer-owned ANY-711 contract and error models were inspected read-only at
-`e627bf296a6476efcca839a0328cf1a5683555e2`; see the
-[producer contract](https://github.com/gushinets/anytoolai-platform/blob/e627bf296a6476efcca839a0328cf1a5683555e2/docs/contracts/kernel-capability-manifest/v1/README.md).
-The existing positive fixture/digest are retained. The local mock adds the
-all-disabled inventory and safe 500/503 producer-shaped error envelope. This
-source inspection does not claim a new real Kernel HTTP run.
-
-Portal review/new confirmation validate the two test metrics' current owner,
-unit and enabled flags. Quantities 100/300 belong exclusively to the separate
-explicitly enabled development purchase dataset and accepted v2 history; the
-manifest and commercial link carry no technical quantity. SIMULATED provenance
-survives configuration changes. No peer edit, shared runtime package, access
-delivery, usage or production metric approval is introduced by this step.
+The existing positive fixture/digest is retained. The mock adds all-disabled and
+safe 500/503 producer-shaped errors based on the source inspection above; this
+is not a new real-producer HTTP run. Portal confirmation validates metric owner,
+unit and enablement. SIMULATED 100/300 quantities live only in explicit dev/test
+accepted terms, never in the manifest; see the
+[purchase runbook](../engineering/ANY-709-billing-runbook.md#development-purchase-metering-any-765-step-1).

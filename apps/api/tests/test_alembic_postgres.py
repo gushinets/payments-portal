@@ -18,7 +18,8 @@ from apps.api.tests.support.postgres import alembic_test_config, reset_public_sc
 BASELINE_REVISION = "20260924_0001"
 EMAIL_VERIFICATION_REVISION = "20261001_0002"
 BILLING_PREPARATION_REVISION = "20261029_0003"
-HEAD_REVISION = "20261028_0005"
+WORKER_REVISION = "20261028_0005"
+HEAD_REVISION = "20261031_0006"
 
 SURVIVOR_TABLES = {
     "regions",
@@ -276,6 +277,10 @@ EXPECTED_COLUMNS = {
         "user_id",
         "product_id",
         "primary_subscription_id",
+        "effective_access_document",
+        "effective_access_until",
+        "access_basis_observation_id",
+        "primary_retired_at",
         "updated_at",
     },
     "external_subscriptions": {
@@ -332,6 +337,12 @@ EXPECTED_COLUMNS = {
         "provider_cycle_end",
         "period_start",
         "period_end",
+        "cycle_schema_version",
+        "cycle_date_start",
+        "cycle_date_end",
+        "calendar_document",
+        "unit",
+        "terms_document",
         "created_at",
     },
     "external_billing_webhook_deliveries": {
@@ -450,6 +461,7 @@ EXPECTED_CHECKS = {
         "ck_external_subscriptions_fencing_token_nonnegative",
     },
     "billing_state_observations": {
+        "ck_billing_observations_revision_positive",
         "ck_billing_state_observations_provenance_exclusive",
         "ck_billing_state_observations_subject_shape",
         "ck_billing_state_observations_kind",
@@ -457,6 +469,7 @@ EXPECTED_CHECKS = {
         "ck_billing_state_observations_evidence_schema_nonempty",
     },
     "purchased_allowances": {
+        "ck_purchased_allowances_cycle_shape",
         "ck_purchased_allowances_quantity_nonnegative",
         "ck_purchased_allowances_provider_cycle_pair",
         "ck_purchased_allowances_period_order",
@@ -472,8 +485,9 @@ EXPECTED_CHECKS = {
         "ck_billing_work_items_generation_nonnegative",
     },
     "manual_review_cases": {"ck_manual_review_cases_evidence_schema_nonempty"},
-    "paid_access_states": set(),
+    "paid_access_states": {"ck_paid_access_states_revision_positive"},
     "access_invalidation_outbox": {
+        "ck_access_invalidation_outbox_delivered_nonnegative",
         "ck_access_invalidation_outbox_pending_revision_positive",
         "ck_access_invalidation_outbox_revision_order",
     },
@@ -531,6 +545,7 @@ EXPECTED_UNIQUE_CONSTRAINTS = {
         "uq_billing_state_observations_id_scope",
         "uq_billing_state_observations_id_subscription",
     },
+    "purchased_allowances": {"uq_purchased_allowances_logical_cycle"},
     "paid_access_states": {"uq_paid_access_states_tenant_region_user"},
     "access_invalidation_outbox": {"uq_access_invalidation_outbox_tenant_region_user"},
 }
@@ -744,6 +759,7 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         assert script.get_bases() == [BASELINE_REVISION]
         assert [item.revision for item in script.walk_revisions()] == [
             HEAD_REVISION,
+            WORKER_REVISION,
             BILLING_PREPARATION_REVISION,
             EMAIL_VERIFICATION_REVISION,
             BASELINE_REVISION,
@@ -831,6 +847,7 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         "fk_create_operation_account",
         "fk_purchase_hold_scope",
         "fk_billing_product_access_scopes_primary_subscription",
+        "fk_access_scope_basis",
         "fk_external_subscriptions_customer_scope",
         "fk_external_subscriptions_purchase_provenance",
         "fk_external_subscriptions_mapping_scope",
@@ -870,6 +887,9 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
     )
 
     json_columns = {
+        ("purchased_allowances", "calendar_document"),
+        ("purchased_allowances", "terms_document"),
+        ("billing_product_access_scopes", "effective_access_document"),
         ("users", "metadata"),
         ("capability_manifest_projections", "manifest_document"),
         ("external_billing_catalog_projections", "catalog_document"),

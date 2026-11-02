@@ -18,6 +18,9 @@ from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.operator_contracts import ReviewResolution
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.reconciliation import read_subscription_proof
+from app.composition.purchase_inventory import read_target_inventory
+from app.domains.billing.discovery import persist_discovery
+from app.domains.billing.paid_policy import PaidDecision, paid_decision
 
 
 async def reconcile_subscription(
@@ -44,9 +47,25 @@ async def reconcile_subscription(
     # Claim is committed before admission/HTTP; each delegated unit owns its DB.
     # Failure/cancellation leaves a finite lease for safe subsequent reclaim.
     started = utc_now()
+    discovery_id = None
     try:
         async with _budget(admission, budget) as active_budget:
             proof = await read_subscription_proof(client, subject, configuration, budget=active_budget)
+            if (
+                subject.needs_primary_discovery
+                and paid_decision(proof) == PaidDecision.GRANT
+                and configuration.paid_access_clock_skew_seconds is not None
+            ):
+                discovery = await read_target_inventory(
+                    client, subject, configuration, factory, budget=active_budget, proof=proof, delegate=delegate
+                )
+                # Discovery may observe a newer owned block/end/conflict. Never
+                # mask it with the positive point proof that triggered discovery.
+                if discovery.linked_proof is not None:
+                    proof = discovery.linked_proof
+                discovery_id = await delegate(
+                    persist_discovery, factory, subject.purchase, subject.customer, discovery, fence=subject.fence
+                )
     except PreflightDeadlineExceeded:
         # Record a failed attempt, never apply facts returned after its budget.
         # Preflight retains any unfinished HTTP/cleanup resource ownership.
@@ -63,7 +82,16 @@ async def reconcile_subscription(
             ("read_budget_exhausted",),
             (),
         )
-    return await delegate(apply_reconciliation, factory, subject, proof, work_claim=work_claim, resolution=resolution)
+    return await delegate(
+        apply_reconciliation,
+        factory,
+        subject,
+        proof,
+        work_claim=work_claim,
+        resolution=resolution,
+        discovery_id=discovery_id,
+        clock_skew_seconds=configuration.paid_access_clock_skew_seconds,
+    )
 
 
 @asynccontextmanager

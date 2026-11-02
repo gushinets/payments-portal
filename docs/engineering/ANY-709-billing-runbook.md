@@ -15,47 +15,31 @@ This guide supplies commands and recovery procedures, not additional exceptions.
 
 ## Development purchase metering (ANY-765 Step 1)
 
-Set `PURCHASE_TEST_TERMS_ENABLED=true` explicitly in the private development
-environment, then rebuild/restart the development API through the normal
-worktree lifecycle. The default is false; Settings refuses true with
-`APP_ENV=production`, including test deployments using that value. The
-development image copies the single
-[versioned dataset](../../config/development/paid-access-test-terms.json);
-the production image does not copy it. The separate Kernel mock documentation
-reads the same data, without Portal importing mock code.
+Set `PURCHASE_TEST_TERMS_ENABLED=true` in the private development environment
+and rebuild/restart the API through the normal worktree lifecycle. Default is
+false; `APP_ENV=production` rejects enablement. Only the development image copies
+the single [versioned dataset](../../config/development/paid-access-test-terms.json),
+which also supplies mock documentation without a runtime mock dependency.
 
-The examples are **SIMULATED**, fixed per confirmed cycle: ProposalAI
-`proposal_ai.test_generations`, 100 `generation`; Brief Decoder
-`brief_decoder.test_analyses`, 300 `analysis`. Prices and lifecycle still
-come from LBX. Review and each genuinely new confirmation obtain a live Kernel
-manifest and current selected LBX offer. Product/metric enablement, metric owner
-and unit must match. Missing, malformed or incompatible enabled data refuses
-with `purchase_technical_terms_unavailable`; there is no fallback.
+The **SIMULATED** examples are 100 `proposal_ai.test_generations` (`generation`)
+and 300 `brief_decoder.test_analyses` (`analysis`) per confirmed cycle. LBX owns
+price/lifecycle; the live Kernel manifest verifies metric ownership/unit and
+enablement. Missing or incompatible enabled data refuses with
+`purchase_technical_terms_unavailable`.
 
-Review shows the exact limit and simulation label. Confirmation supplies
-`expected_technical_terms_digest` independently of the unchanged commercial
-fingerprint. The digest covers source version/content, complete values and
-provenance, account, exact link revision/component/offer and Kernel evidence.
-Changed or omitted expected meaning returns `terms_changed` before acceptance.
-A new explicit review and unchecked consent are required after this refusal.
+Review displays the limit and simulation label. Confirmation compares
+`expected_technical_terms_digest` separately from the commercial fingerprint;
+changed terms return `terms_changed` and require a fresh review/consent.
+`accepted-purchase:v2` freezes values, source/link/offer/Kernel provenance and
+the digest. Quantities are strict integers in `0..9007199254740991`; zero is
+finite. Legacy v1 and disabled-source purchases acquire no invented allowance.
+Same-key replay uses saved history; different meaning returns
+`purchase_idempotency_conflict`. Fixture edits or disablement never rewrite it.
 
-New `accepted-purchase:v2` snapshots preserve the complete technical evidence
-alongside the original commercial/legal associations. Technical quantities are
-strict JSON integers in `0..9007199254740991` (exact in browser JSON and within
-PostgreSQL BIGINT); booleans, floats and strings are refused. Zero is a finite
-zero allowance input, never unlimited. This step creates no allowance or access.
-
-When the source is disabled, new v2 purchases retain absent technical evidence;
-absence is not proof of an access-only or unlimited offer. Legacy
-`accepted-purchase:v1` remains readable without invented limits. Same-key
-replay and owned status use the original snapshot before any source/configuration
-lookup; fixture edits, removal or disablement cannot rewrite accepted values
-or upgrade SIMULATED provenance. Different technical meaning under the same key
-returns `purchase_idempotency_conflict`.
-
-Step 2 consumes saved evidence only. Paid grants, allowance issuance, revisions,
-outbox writes, production quantities and real LBX/Kernel execution remain later
-work. No legal text or legal-event meaning changes here.
+Step 2 derives local paid state from saved acceptance; see the
+[operations runbook](ANY-715-billing-operations.md#any-765-step-2-intermediate-local-projection).
+Production quantities and live acceptance remain separate gates. Legal text
+and legal-event meaning are unchanged.
 
 ## Connection and deployment
 

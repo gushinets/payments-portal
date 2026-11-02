@@ -1,14 +1,14 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-10-29 (consolidated ANY-709 billing and ANY-715 worker generations)
+Last updated: 2026-10-31 (ANY-765 Step 2 internal paid projection)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 (head)
+20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
@@ -50,16 +50,18 @@ change. Subscription trust, reconciliation and AccessSnapshot are unchanged.
 The schema is a provider-independent storage baseline. Its presence does not
 itself establish runtime acceptance. ANY-709 implements purchase preparation
 and request-driven recovery. ANY-715 adds shared reconciliation, embedded durable
-polling and audited operations; paid-access derivation and Kernel invalidation
-delivery remain future work.
+polling and audited operations; ANY-765 Step 2 adds local paid derivation and
+revision/outbox commits. Deadline worker completion, paid-state presentation
+and Kernel delivery remain later work.
 
 ## Physical baseline
 
 A fresh database has exactly 27 application tables: ten retained
 identity/session/legal tables, fifteen original external-billing persistence
 tables, one current product-link pointer and one purchase mutex. Alembic has
-four revisions in one linear chain and one current head. Revision
-`20261029_0003` belongs to ANY-709; revision `20261028_0005` belongs to ANY-715.
+five revisions in one linear chain and one current head. Revision
+`20261029_0003` belongs to ANY-709; revision `20261028_0005` belongs to ANY-715;
+revision `20261031_0006` belongs to ANY-765 Step 2.
 
 There is no Portal-owned product, plan, order, payment, refund, subscription,
 entitlement, trial, provider-account, or direct-payment webhook table. There is
@@ -94,7 +96,7 @@ to a Portal-managed routing catalog.
 | `external_billing_webhook_deliveries` | Operations | Redacted webhook receipt/correlation evidence; never raw payload or access authority. |
 | `billing_work_items` | Operations | Shared durable scheduling/lease substrate; not business authority. |
 | `manual_review_cases` | Operations | Durable conflict/uncertainty evidence and audited resolution slots. |
-| `paid_access_states` | Access | Provider-neutral paid-access document storage with a required revision slot per user scope; runtime transition semantics are deferred. |
+| `paid_access_states` | Access | Provider-neutral paid-access document storage with a required revision slot per user scope; positive monotonic semantic revisions are enforced. |
 | `access_invalidation_outbox` | Access | Durable pending/delivered revision slots for later paid-access invalidation delivery. |
 
 The documentation checker requires every implemented SQLAlchemy metadata table
@@ -209,8 +211,8 @@ New ANY-765 Step 1 acceptances use `accepted-purchase:v2`: complete optional
 technical terms, their independent expected digest, dev source version/content
 digest, exact link/component/offer binding, Kernel evidence and SIMULATED
 provenance are embedded in the existing JSON snapshot. Legacy v1 remains
-readable without metering. No quota columns, schema migration, allowance or
-paid-state writer is introduced.
+readable without metering. Step 1 introduced no new columns or migration;
+Step 2 derives allowances from this saved evidence.
 
 The purchase closed states are `created`, `preparing`, `awaiting_external_result`, `linked`,
 `resolved_no_external_effect`, `failed_before_external_effect`, and
@@ -275,15 +277,12 @@ financial status and an immediately expired projection, plus normalized effectiv
 terms and nullable/sentinel calendar observations. It creates no access-primary,
 paid state, grant or allowance, and never extends paid trust on Manage.
 
-ANY-715 Step 1 uses the existing reconciliation lease/fence columns and appends
-`subscription-reconciliation:v1` evidence through shared claim/read/apply logic.
-It creates/reuses a product scope without selecting a primary. Complete matching
-proof anchors at most six hours of source trust to read-set start; incomplete
-attempts preserve the existing deadline and complete support, while decisive
-owned negative/conflict evidence reduces usability. Subsequent preparation
-cannot overwrite monitored facts. All resulting access revisions remain null.
-Step 1 alone added no DDL or worker; Steps 2–5 supply the running worker and
-operations described below. See the
+Shared reconciliation uses the subscription lease/fence columns and appends
+`subscription-reconciliation:v1` evidence. Complete matching proof anchors at
+most six hours of source trust to read-set start. Incomplete attempts preserve
+the existing deadline; owned negative/conflict evidence reduces usability.
+Preparation cannot overwrite monitored facts. ANY-765 Step 2 integrates this
+path with primary selection and the atomic paid writer; see the
 [operations runbook](../engineering/billing-background-operations.md).
 
 `billing_state_observations` stores evidence whose core fields are immutable.
@@ -293,23 +292,57 @@ Its closed kinds are
 enforce each kind's minimum provenance shape. DELETE is forbidden, and all
 fields except `resulting_access_revision` are immutable. That field may be
 assigned exactly once from `NULL` to a non-null value; once assigned, it cannot
-be cleared or replaced. Positivity and semantic/causal validation of that
-revision belong to ANY-504 Step 9 and are not current storage guarantees.
+be cleared or replaced. ANY-765 Step 2 enforces positivity and links committed
+semantic changes to these observations.
 
-`purchased_allowances` links a source component and product/metric quantity to
-an external subscription. Quantity is non-negative, provider-cycle bounds are
-paired, and `period_start < period_end`. PostgreSQL triggers prevent
-updates/deletes.
+`purchased_allowances` freezes source component, product, metric, unit, quantity,
+accepted terms/provenance and classified cycle meaning. Logical identity is unique
+by `(subscription_id, source_component_id, metric_key, provider_cycle_key)`.
+The immutable whole-row trigger covers all new fields. Storage distinguishes:
 
-`paid_access_states` has at most one row per `(tenant_id, region, user_id)` and
-stores a complete effective-state document with a non-null `access_revision`
-slot. The current database does not enforce that slot as positive or enforce
-monotonic state transitions; those runtime semantics belong to ANY-504 Step 9.
-`access_invalidation_outbox` has the same unique scope. Its physical checks
-require a positive pending revision and forbid `delivered_revision` from
-exceeding it, but do not implement coalescing or delivery. Runtime derivation,
-revision transitions, coalescing, and delivery are not implemented by this
-baseline.
+- `legacy-utc:v1`: original non-null UTC periods retained exactly; no inferred
+  calendar dates, units or terms;
+- `calendar:v1`: explicit inclusive `cycle_date_start/end`, versioned
+  `calendar_document`, non-null cycle key/unit/terms, no fabricated UTC bounds;
+- `timestamp:v1`: independently zoned source instants and frozen conservative
+  effective UTC periods; no date-only fields. Naive/mixed precision never grants
+  an allowance.
+
+Cycle classification precedes insertion. Month/year arithmetic uses the frozen
+original anchor, including month-end and leap-day clipping. Same-cycle recovery
+reuses identity; a proven later current cycle issues only that cycle. Ambiguity
+opens `subscription_metric` review and omits that metric, preserving product
+access. Legacy purchases never acquire today's test quantities.
+
+ANY-765 Step 2 persists `target-product-discovery:v2` before the final product
+lock, including bounded normalized candidate conclusions, original provenance,
+linked point proof and claim/fence evidence. Its scope ID may be absent before a
+scope exists; a purchase reference remains mandatory. The decision unions it
+with locally known nonterminal sources. Confirmed ended external candidates
+are ineligible without requiring a local purchase. Unknown nonterminal
+candidates remain incomplete. Scope rows retain the internal
+`effective_access_document`, conservative `effective_access_until`, supporting
+`access_basis_observation_id` and `primary_retired_at`. Complete reads may refresh
+metadata without changing semantic state. Blocking retains primary identity;
+terminal clearing prevents promotion of an old competitor.
+
+`paid_access_states` stores one complete provider-neutral internal document per
+user, schema `paid-effective-state:v1`. This is not an AccessSnapshot wire DTO.
+No row is implicit empty revision zero. Material changes atomically write positive
+revision 1, then exactly N+1, with causal observations and coalesced outbox.
+Database guards forbid revision regression/skips, same-revision semantic changes,
+identity replacement and deletion/reset. `resulting_access_revision` is positive
+when present and can be populated once; a later change appends a causal
+observation. `access_invalidation_outbox` preserves delivery bookkeeping while
+coalescing `pending_revision = max(existing, committed)`; pending/delivered
+regression and deletion are forbidden. Delivery/ack networking remains deferred.
+
+Migration `20261031_0006` preserves legacy rows and preflights incompatible
+non-null logical duplicates, nonpositive state/observation revisions and negative
+delivered revisions. It fails without repair/deletion. Downgrade refuses to lose
+new calendar, access or pre-scope discovery meaning. Worker deadlines and
+customer/operator integration are completed separately by Step 3; no paid-state
+read endpoint or Kernel networking is introduced by Step 2.
 
 ## Durable operational tables
 
@@ -345,8 +378,9 @@ use `customer-inventory:v1`; conflicts never grant access or rewrite bindings.
 The pre-existing create-recovery index and customer-send lease identity remain
 unchanged. Claims use paired finite ownership; completion preserves newer enqueue
 generations. Binding atomically enrolls new canonical subscriptions. Source apply
-atomically reschedules monitoring and the local trust deadline, with no paid-state
-or access-revision writes. Migration `20261028_0005` follows consolidated billing revision
+atomically reschedules monitoring and the local trust deadline. Ordinary
+reconciliation/inventory also commit paid state; the remaining local
+deadline/customer/operator integration is Step 3. Migration `20261028_0005` follows consolidated billing revision
 `20261029_0003` and preserves its active deadline and existing rows.
 
 `manual_review_cases` stores bounded evidence and optional resolution proof.

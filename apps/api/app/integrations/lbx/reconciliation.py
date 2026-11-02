@@ -20,6 +20,7 @@ from app.integrations.lbx.dto import LbxRead, LbxTariff
 from app.integrations.lbx.errors import LbxError, LbxResponseInvalid, LbxScopeMismatch
 from app.integrations.lbx.financial import Agreement, Subscription, prove_effective_terms
 from app.integrations.lbx.selected_offer import PERIOD_ANCHORS
+from app.integrations.lbx.calendar import EMPTY_CALENDAR, normalize_calendar
 from app.models import (
     ExternalSubscriptionFinancialAccessStatus as Financial,
     ExternalSubscriptionLifecycleStatus as Lifecycle,
@@ -33,10 +34,15 @@ CALENDAR_FIELDS = (
     "last_tariffication_period_start",
     "last_tariffication_period_end",
 )
-EMPTY_CALENDAR = {None, "", "0000-00-00", "0000-00-00 00:00:00", "1970-01-01", "1970-01-01 00:00:00"}
 
 
 def _calendar_ordered(left: date | datetime, right: date | datetime, *, strict: bool = False) -> bool:
+    if (
+        isinstance(left, datetime)
+        and isinstance(right, datetime)
+        and ((left.utcoffset() is None) != (right.utcoffset() is None))
+    ):
+        return False
     if type(left) is type(right):
         return left < right if strict else left <= right
     left_day = left.date() if isinstance(left, datetime) else left
@@ -61,13 +67,27 @@ def _calendar_complete(calendar: dict[str, str | None]) -> bool:
             start, end = parsed.get(prefix + "_start"), parsed.get(prefix + "_end")
             if start is None or end is None:
                 return False
-        if start is not None and end is not None and not _calendar_ordered(start, end, strict=True):
+        if (
+            start is not None
+            and end is not None
+            and not _calendar_ordered(start, end, strict=isinstance(start, datetime) or isinstance(end, datetime))
+        ):
             return False
     cycle_start = parsed["last_tariffication_period_start"]
     cycle_end = parsed["last_tariffication_period_end"]
     for prefix in ("subscription", "subscription_instance"):
         start, end = parsed.get(prefix + "_start_date"), parsed.get(prefix + "_end_date")
-        if (start and not _calendar_ordered(start, cycle_start)) or (end and not _calendar_ordered(cycle_end, end)):
+        # Full calendar billing ranges may straddle activation/termination.
+        # Only timestamp bounds independently claim instants of containment.
+        if (
+            start
+            and (isinstance(start, datetime) or isinstance(cycle_start, datetime))
+            and not _calendar_ordered(start, cycle_start)
+        ) or (
+            end
+            and (isinstance(end, datetime) or isinstance(cycle_end, datetime))
+            and not _calendar_ordered(cycle_end, end)
+        ):
             return False
     return True
 
@@ -235,7 +255,6 @@ def normalize_subscription(
             reasons.append("agreement_policy_mismatch")
     positive = financial == Financial.ALLOWED
     if positive and not calendar_complete:
-        financial = None
         reasons.append("current_calendar_incomplete")
     if positive and commercial == CommercialProof.INCOMPLETE:
         financial = None
@@ -247,7 +266,18 @@ def normalize_subscription(
         and agreement_calendar_complete
     )
     return SubscriptionProof(
-        now, now, identity, commercial, lifecycle, financial, calendar, calendar_complete, complete, tuple(reasons), ()
+        now,
+        now,
+        identity,
+        commercial,
+        lifecycle,
+        financial,
+        calendar,
+        calendar_complete,
+        complete,
+        tuple(reasons),
+        (),
+        normalize_calendar(calendar, accepted.offer.period.anchor) if calendar_complete else None,
     )
 
 
@@ -268,9 +298,14 @@ async def read_subscription_proof(
     configuration: Settings,
     *,
     budget: PreflightBudget,
+    point_reads: tuple[Subscription, Agreement] | None = None,
+    read_started_at: datetime | None = None,
 ) -> SubscriptionProof:
-    started = utc_now()
+    """Reuse canonical points only within the same budget, retaining earliest read time."""
+    started = read_started_at or utc_now()
     user, agreement, tariff, subscription = None, None, None, None
+    if point_reads is not None:
+        subscription, agreement = point_reads
     reads: list[str] = []
     failures: list[str] = []
     # Customer pair; canonical agreement/seller/correlation; prepaid policy;
@@ -281,9 +316,10 @@ async def read_subscription_proof(
     except (LbxError, PreflightDeadlineExceeded) as error:
         failures.append("customer:" + error.code)
     try:
-        agreement = await _timely_point(
-            client.get_agreement(agreement_id=int(subject.agreement_id), budget=budget), budget
-        )
+        if agreement is None:
+            agreement = await _timely_point(
+                client.get_agreement(agreement_id=int(subject.agreement_id), budget=budget), budget
+            )
         reads.append("agreement")
     except (LbxError, PreflightDeadlineExceeded) as error:
         failures.append("agreement:" + error.code)
@@ -295,9 +331,10 @@ async def read_subscription_proof(
     except (LbxError, PreflightDeadlineExceeded) as error:
         failures.append("tariff:" + error.code)
     try:
-        subscription = await _timely_point(
-            client.get_subscription(subscription_id=int(subject.provider_subscription_id), budget=budget), budget
-        )
+        if subscription is None:
+            subscription = await _timely_point(
+                client.get_subscription(subscription_id=int(subject.provider_subscription_id), budget=budget), budget
+            )
         reads.append("subscription")
     except (LbxError, PreflightDeadlineExceeded) as error:
         failures.append("subscription:" + error.code)
