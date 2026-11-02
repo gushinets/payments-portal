@@ -1,6 +1,6 @@
 # ANY-765 — Paid Access Projection, Allowances, Revision & Invalidation
 
-Status: Steps 1–4 DONE (implementation); final aggregate check FAIL; configured test-LBX acceptance NOT_RUN
+Status: Steps 1–4 DONE (implementation); post-rebase aggregate check PASS; configured test-LBX acceptance NOT_RUN
 Validation: **READY WITH GATES** — validated using the validate-plan skill
 Updated: 2026-11-02
 Issue: [ANY-765](https://linear.app/paveldik/issue/ANY-765)
@@ -70,11 +70,14 @@ changes and production rollout remain Steps 10–11.
 
 ### Delivered baseline
 
-- Portal branch: `ANY-765`; runtime and customer UI delivered through `5eb88c8`.
-- Predecessor: `ANY-715` at `b202ad3`, inherited after the owner-requested rebase.
-  It contains the relevant later Step 7 corrections. No further predecessor
-  integration is required for this implementation. The later local ANY-715
-  commit `3d15297` changes documentation only.
+- Portal branch: `ANY-765`; original four-step runtime/UI delivery at `5eb88c8`.
+  The owner-requested current rebase replays all eight commits through `ac9fffe`
+  onto freshly fetched `ANY-715` at `76ea1a7` (2026-11-02). Integration fix and
+  current tested runtime are `aff7343`. Original delivery is retained at
+  `codex/any765-before-715-refresh-ac9fffe`.
+- The predecessor includes the relevant Step 7 corrections, the operations
+  runbook rename and inventory/Widget/deadline regressions. Current integration
+  verification below supersedes historical pre-rebase results.
 - Current migration head: `20261031_0006`, following `20261028_0005`.
 - Kernel source inspection on 2026-11-02: local `main` at
   `331e086ca9e0c72eb757aacc476bad5bacb5bae5`. The manifest producer is present;
@@ -1033,13 +1036,14 @@ PASS, and the ticket must not claim complete functional acceptance. This
 condition does not block supported application implementation and deterministic
 tests.
 
-### Current verification — runtime/UI baseline `5eb88c8`
+### Pre-rebase verification — runtime/UI baseline `5eb88c8`
 
 All automated provider inputs are synthetic. PostgreSQL uses the worktree's
 shared disposable-database fixtures; the source-capacity harness uses real
 loopback HTTP. Results below were obtained before publication, against the
-corresponding implementation diff. The documentation-only reconciliation does
-not change runtime or require repeating those suites.
+corresponding implementation diff. The documentation-only reconciliation did
+not change runtime. The subsequent ANY-715 rebase changes shared backend paths;
+its separate verification follows below.
 
 - **PASS:** final `npm run check:fast`: 1,749 API-fast, 410 web components,
   38 boundaries, Ruff check/format, lint/typecheck, docs/architecture and generated
@@ -1075,6 +1079,41 @@ not change runtime or require repeating those suites.
 The dedicated frontend and worktree PostgreSQL server were stopped; the database
 volume was retained. Earlier execution/rebase journals are historical evidence
 in `5eb88c8`, not current prerequisites or additional acceptance requirements.
+
+### Current ANY-715 rebase — 2026-11-02
+
+All eight ANY-765 commits were replayed onto `76ea1a7`; the original `ac9fffe`
+result is retained in the backup ref above. Current tested runtime is `aff7343`.
+Inventory keeps its common read-set start, attempt-local point reuse and paid
+writer while retaining timely conflict proof across a later timeout. Per-point
+admission checks precede paid discovery without suppressing owned negative facts.
+Widget terminal admission and no-send deadline cleanup retain the predecessor
+fixes. The renamed `billing-background-operations.md` remains canonical; removed
+predecessor plan/QA files are not restored. Current links and the paid/cabinet
+handoff are preserved. Web, migrations and generated files match `ac9fffe` exactly.
+
+- **PASS:** full `npm run check`, exit 0: 1,749 API-fast, **703 PostgreSQL**, 410
+  components, 38 boundaries, Ruff check/format, lint, production build/TypeScript,
+  docs/architecture and generated freshness. PostgreSQL: 1,858.12 seconds.
+  The formerly failing worker case passed within this complete run without
+  increasing its budget; the pre-rebase failed run remains historical evidence.
+- **FAIL then corrected:** first focused PostgreSQL selection, 32 passed / 1
+  failed, exposed all-points-before-financial-proof ordering discarding timely
+  conflict evidence on a later timeout. The corrected selection passed **33/33**.
+  An additional owned-block/newcomer test passed **1/1** and in the full run:
+  access is removed with revision/outbox while the frozen allowance is retained.
+- **PASS:** complete runtime diff/range review, four original prompt comparison,
+  retained predecessor guards, final docs and whitespace checks. Runtime changes
+  versus `ac9fffe` are limited to four intended integration paths.
+- **SKIP / NOT_RERUN:** browser E2E; unchanged web/migration/generated files permit
+  reuse of prior layout/session evidence, not a new post-rebase browser PASS.
+  Actual test-LBX, deployed Kernel, clean lock-pinned install and rollout remain
+  **NOT_RUN** under their existing acceptance/enablement owners.
+
+Evidence: `.harness/any765/rebase-715-refresh/{check,focused-postgres,focused-postgres-fixed,owned-negative}.{log,exit}`;
+`range-diff.txt` and the integration/runtime diff snapshots in that directory.
+The worktree-only test PostgreSQL server is stopped with its volume retained.
+No other worktree or real billing/production system was mutated.
 
 ### Plan validation and documentation reconciliation
 
