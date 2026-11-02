@@ -11,7 +11,7 @@ from app.domains.billing.discovery import DISCOVERY_SCHEMA, ProductDiscovery
 from app.domains.billing.paid_access import apply_paid_source
 from app.domains.billing.reconciliation_contracts import RECONCILIATION_SCHEMA
 from app.domains.billing.reconciliation_facts import apply_source_facts, source_conflict
-from app.domains.billing.customers import mark_customer_identity_conflict
+from app.domains.billing.customer_conflicts import mark_customer_identity_conflict
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
@@ -36,6 +36,7 @@ def apply_discoveries(
     *,
     skew_seconds: int | None,
     conflicted_purchases: frozenset[UUID] = frozenset(),
+    allow_simulated_metering: bool = True,
 ) -> tuple[BillingStateObservation, ...]:
     causes = []
     observations = [paid_access.discovery(db, identity) for identity in identities]
@@ -176,6 +177,9 @@ def apply_discoveries(
             discovery_id=identity,
             generation=claim.generation,
             review=bool(known_review or conflict or customer_conflict),
+            allow_simulated_metering=allow_simulated_metering,
         )
         causes.extend((cause, authoritative))
+        if customer_conflict:
+            break  # Shared identity failure already reduced every dependent product.
     return tuple(causes)

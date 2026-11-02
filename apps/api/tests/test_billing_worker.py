@@ -73,13 +73,21 @@ def test_billing_worker_settings_propagate_and_match_documentation() -> None:
     assert "per-process" in text and "standalone" in text and "100" in text
 
 
-async def test_billing_worker_unconfigured_or_disabled_creates_no_resources() -> None:
-    for config in (
-        step1_settings(billing_worker_enabled=False),
-        lbx_settings(lbx_base_url="", lbx_server_username="", lbx_server_password="", billing_worker_enabled=True),
-    ):
-        async with billing_worker_resources(config) as worker:
-            assert worker is None
+async def test_billing_worker_disabled_creates_no_resources() -> None:
+    async with billing_worker_resources(step1_settings(billing_worker_enabled=False)) as worker:
+        assert worker is None
+
+
+async def test_billing_worker_unconfigured_keeps_local_resources(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def no_start(self: BillingWorker) -> None:
+        pass
+
+    monkeypatch.setattr(BillingWorker, "start", no_start)
+    config = lbx_settings(lbx_base_url="", lbx_server_username="", lbx_server_password="", billing_worker_enabled=True)
+    async with billing_worker_resources(config, factory=lambda: None) as worker:
+        assert worker is not None and worker.client is None
+        assert not await worker.tick(WorkLane.URGENT)
+        assert not await worker.tick(WorkLane.NORMAL)
 
 
 async def test_billing_worker_health_named_schema_and_readiness(monkeypatch: pytest.MonkeyPatch) -> None:

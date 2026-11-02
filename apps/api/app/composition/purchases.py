@@ -102,8 +102,6 @@ def _connection(purchase: Purchase, configuration: Settings) -> None:
         raise PurchaseRefused("billing_connection_conflict", 409)
 
 
-
-
 async def _find_financial(
     client: LbxServerClient,
     purchase: Purchase,

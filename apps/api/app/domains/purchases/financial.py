@@ -217,6 +217,12 @@ def _review(db: Session, row: PurchaseIntent, operation: ExternalCreateOperation
     operation.send_fence = uuid4()
     row.state = IntentState.MANUAL_REVIEW
     row.state_updated_at = utc_now()
+    from app.domains.billing.paid_access import commit_paid_state
+    from app.models import User
+
+    # Every caller already owns the user/purchase locks. Review is not authority
+    # to retain an issued grant, even when source HTTP is unavailable.
+    commit_paid_state(db, db.get(User, row.user_id), None, utc_now())
 
 
 def financial_pending(
@@ -231,10 +237,6 @@ def financial_pending(
     with factory() as db:
         row = _locked(db, purchase)
         op = next(op for op in queries.operations(db, purchase.id, lock=True) if op.create_operation_id == expected.id)
-        if work_claim is not None:
-            from app.domains.billing.work import verify_operation_claim
-
-            verify_operation_claim(db, work_claim, expected.id)
         if op.send_fence != expected.fence:
             return  # A stale failure cannot demote a newer proven result.
         work = recovery_work(db, op.create_operation_id)
@@ -260,6 +262,10 @@ def financial_pending(
             work.next_attempt_at = utc_now()
         if work and failure_facts:
             work.payload_document = {**work.payload_document, "last_failure": failure_facts}
+        if work_claim is not None:
+            from app.domains.billing.work import verify_operation_claim
+
+            verify_operation_claim(db, work_claim, expected.id)
         db.commit()
 
 

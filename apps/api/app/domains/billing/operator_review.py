@@ -186,8 +186,20 @@ def _validate_case(
         raise PurchaseRefused("billing_review_unrelated_cases", 409)
     if case.case_state != "open" or case_digest(case) != request.expected_case_digest:
         raise PurchaseRefused("billing_review_stale", 409)
-    if case.reason_code not in (RESTORABLE if request.resolution == "restore-original" else BINDABLE):
+    supported = (
+        {"primary_selection_required"}
+        if request.resolution == "select-primary"
+        else RESTORABLE
+        if request.resolution == "restore-original"
+        else BINDABLE
+    )
+    if case.reason_code not in supported:
         raise PurchaseRefused("billing_review_resolution_unsupported", 409)
+    if request.resolution == "select-primary" and (
+        subscription is None
+        or (case.scope_kind, case.scope_reference) != ("subscription", str(subscription.subscription_id))
+    ):
+        raise PurchaseRefused("billing_review_stale", 409)
     if request.resolution == "bind-original" and (case.scope_kind, case.scope_reference) != (
         "create_operation",
         str(request.operation_id),
@@ -258,7 +270,7 @@ def prepare_resolution(
         service._verify_original_consent(db, row, purchase.accepted)
         now = as_utc(billing_reconciliation.database_now(db))
         saved_request = None
-        if request.resolution == "restore-original":
+        if request.resolution in {"restore-original", "select-primary"}:
             if (
                 subscription is None
                 or subscription.latest_observation_id != request.expected_observation_id
@@ -372,7 +384,7 @@ def authorize_resolution(
         or service.accepted(row) != resolution.purchase.accepted
         or operation_digest(db, operations) != resolution.operation_digest
         or customer_digest(db, resolution.purchase) != resolution.customer_digest
-        or restoring != (request.resolution == "restore-original")
+        or restoring != (request.resolution in {"restore-original", "select-primary"})
     ):
         raise PurchaseRefused("billing_review_stale", 409)
     case, related = _validate_case(db, request, resolution.purchase, subscription, operations)

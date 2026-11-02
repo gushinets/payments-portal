@@ -174,9 +174,7 @@ async def read_target_inventory(
                         )
                     )
                     continue
-                other = await delegate(
-                    inventory_purchase, factory, purchase, point.subscription_id, point.agreement_id
-                )
+                other = await delegate(inventory_purchase, factory, purchase, point.subscription_id, point.agreement_id)
                 if other is not None:
                     prove_agreement(
                         agreement,

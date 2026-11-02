@@ -351,16 +351,14 @@ def apply_customer_read(
 ) -> CustomerOpen:
     """Apply point proof only against its current fence; lists alone never bind."""
     with factory() as db:
-        if work_claim is not None:
-            from app.infrastructure.queries.billing_background import customer as read_customer
+        from app.infrastructure.queries.billing_background import customer as read_customer
 
-            lock_user(db, read_customer(db, expected.customer_id).user_id)
+        lock_user(db, read_customer(db, expected.customer_id).user_id)
         customer = lock_customer(db, expected.customer_id)
         operation = customer_operation(db, customer.customer_id)
         if work_claim is not None:
             from app.domains.billing.work import verify_operation_claim
 
-            verify_operation_claim(db, work_claim, expected.operation_id)
             if customer.binding_state == Binding.IDENTITY_CONFLICT:
                 raise BillingRefused("billing_identity_conflict", 409)
         if (
@@ -383,9 +381,13 @@ def apply_customer_read(
         )
         if conflict:
             record_customer_conflict(db, customer, operation, provider_id=provider_id, ambiguous=ambiguous)
+            if work_claim is not None:
+                verify_operation_claim(db, work_claim, expected.operation_id)
             db.commit()
             raise BillingRefused("billing_identity_conflict", 409)
         if provider_id is None:
+            if work_claim is not None:
+                verify_operation_claim(db, work_claim, expected.operation_id)
             if operation.operation_state == State.PENDING:
                 raise BillingRefused("billing_customer_pending", 409)
             if operation.unknown_recovery_deadline_at and utc_now() >= as_utc(operation.unknown_recovery_deadline_at):
@@ -413,6 +415,7 @@ def apply_customer_read(
             if work_claim is not None:
                 from app.domains.billing.work import finish
 
+                verify_operation_claim(db, work_claim, expected.operation_id)
                 finish(db, work, work_claim, due=None)
             else:
                 work.work_state = "done"
@@ -432,12 +435,19 @@ def apply_customer_read(
             db.commit()
         except IntegrityError:
             db.rollback()
+            lock_user(db, read_customer(db, expected.customer_id).user_id)
             customer = lock_customer(db, expected.customer_id)
             operation = customer_operation(db, customer.customer_id)
+            if operation is None or operation.send_fence != expected.fence:
+                raise BillingRefused("billing_customer_pending", 409) from None
             customer.binding_state = Binding.IDENTITY_CONFLICT
-            if operation is not None:
-                operation.send_fence = uuid4()
-                record_customer_review(db, operation, "customer_provider_id_already_bound")
+            operation.send_fence = uuid4()
+            record_customer_review(db, operation, "customer_provider_id_already_bound")
+            from app.domains.billing.paid_access import commit_paid_state
+
+            commit_paid_state(db, db.get(User, customer.user_id), None, utc_now())
+            if work_claim is not None:
+                verify_operation_claim(db, work_claim, expected.operation_id)
             db.commit()
             raise BillingRefused("billing_identity_conflict", 409) from None
         return result

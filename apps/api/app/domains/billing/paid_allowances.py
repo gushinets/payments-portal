@@ -100,6 +100,15 @@ def materialize_allowance(
     if len(queries.metric_cycle_allowances(db, subscription.subscription_id, offer.metric_key, result.key)) != 1:
         diagnose_cycle(db, subscription, offer.metric_key)
         return None
+    review = queries.metric_review(db, f"{subscription.subscription_id}:{offer.metric_key}")
+    if review is not None and review.reason_code == "allowance_cycle_conflict":
+        from app.infrastructure.queries.billing_reconciliation import database_now
+
+        review.case_state = "resolved"
+        review.resolved_at = as_utc(database_now(db))
+        review.resolved_by_principal = "system:original-cycle-proof"
+        review.resolution_schema_version = "allowance-cycle-resolution:v1"
+        review.resolution_document = {"allowance_id": str(same.allowance_id), "cycle_key": result.key}
     return EffectiveAllowance(
         allowance_id=str(same.allowance_id),
         product_id=same.product_id,

@@ -26,6 +26,7 @@ from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.operator_contracts import ReviewResolution
 from app.domains.billing.webhook_contracts import CORRELATION_SCHEMA
 from app.domains.billing.paid_access import apply_paid_source, commit_paid_state
+from app.domains.billing.paid_policy import PaidDecision, paid_decision
 from app.models import (
     BillingProductAccessScope,
     BillingStateObservation,
@@ -165,6 +166,7 @@ def apply_reconciliation(
     resolution: ReviewResolution | None = None,
     discovery_id: UUID | None = None,
     clock_skew_seconds: int | None = None,
+    allow_simulated_metering: bool = True,
 ) -> UUID:
     """Recheck permanent provenance and current fences before any fact changes."""
     with factory() as db:
@@ -240,7 +242,16 @@ def apply_reconciliation(
                 or proof.read_finished_at >= resolution.expires_at - timedelta(seconds=30)
             ):
                 raise BillingRefused("billing_review_proof_incomplete", 409)
+            if resolution.request.resolution == "select-primary":
+                if (
+                    clock_skew_seconds is None
+                    or paid_decision(proof) != PaidDecision.GRANT
+                    or scope.primary_subscription_id not in {None, current.subscription_id}
+                ):
+                    raise BillingRefused("billing_review_primary_unavailable", 409)
             resolved_case = authorize_resolution(db, resolution, row, operations, current, restoring=True)
+            if resolution.request.resolution == "select-primary":
+                scope.primary_subscription_id = current.subscription_id
         reviews = queries.open_reviews(db, current.subscription_id)
         known_review = (
             row.state == PurchaseIntentState.MANUAL_REVIEW
@@ -333,8 +344,30 @@ def apply_reconciliation(
             discovery_id=discovery_id,
             review=bool(conflict or known_review or customer_conflict),
             fence=subject.fence,
+            allow_simulated_metering=allow_simulated_metering,
         )
-        commit_paid_state(db, user, observation, now)
+        if resolved_case is not None:
+            from app.domains.billing.operator_review import audit_resolution
+
+            audit_resolution(
+                db,
+                resolved_case,
+                operations,
+                current,
+                observation_id=observation.observation_id,
+                proof={
+                    "schema": RECONCILIATION_SCHEMA,
+                    "identity": proof.identity,
+                    "commercial": proof.commercial,
+                    "reads": list(proof.reads),
+                    "read_started_at": proof.read_started_at.isoformat(),
+                    "read_finished_at": proof.read_finished_at.isoformat(),
+                    "primary_subscription_id": str(scope.primary_subscription_id)
+                    if scope.primary_subscription_id
+                    else None,
+                },
+            )
+        commit_paid_state(db, user, observation, now, allow_simulated_metering=allow_simulated_metering)
         if work_claim is not None:
             verify_claim(db, work_claim)  # Queue ownership last; failure rolls everything back.
         current.reconciliation_lease_owner = None
@@ -354,24 +387,6 @@ def apply_reconciliation(
                 generation=work_claim.generation,
                 started_at=work_claim.started_at,
                 now=now,
-            )
-        if resolved_case is not None:
-            from app.domains.billing.operator_review import audit_resolution
-
-            audit_resolution(
-                db,
-                resolved_case,
-                operations,
-                current,
-                observation_id=observation.observation_id,
-                proof={
-                    "schema": RECONCILIATION_SCHEMA,
-                    "identity": proof.identity,
-                    "commercial": proof.commercial,
-                    "reads": list(proof.reads),
-                    "read_started_at": proof.read_started_at.isoformat(),
-                    "read_finished_at": proof.read_finished_at.isoformat(),
-                },
             )
         db.commit()
         return observation.observation_id

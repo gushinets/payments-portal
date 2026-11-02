@@ -6,11 +6,14 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
-from app.core.settings import Settings
+from app.core.settings import AppEnv, Settings
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.customers import lock_user
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.work_contracts import WorkClaim, WorkLane
+from app.domains.billing.paid_deadlines import effective_deadline, schedule_deadline
+from app.domains.billing.paid_access import commit_paid_state
+from app.infrastructure.queries import paid_access
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.infrastructure.persistence.billing_work import coalesce
@@ -67,6 +70,8 @@ def enroll_subscription(db: Session, subscription: ExternalSubscription, *, hint
 
 def enroll_batch(factory: SessionFactory, configuration: Settings) -> int:
     """Committed missing set is the progress marker; no offset/cursor or HTTP."""
+    if configuration.lbx_configuration_error is not None:
+        return 0
     with factory() as db:
         account = connection_account(db, configuration)
         subscriptions = queries.missing_subscriptions(
@@ -78,11 +83,49 @@ def enroll_batch(factory: SessionFactory, configuration: Settings) -> int:
         )
         for sub in subscriptions:
             enroll_subscription(db, sub)
-        deadlines = queries.missing_deadlines(db, account, configuration.billing_worker_scan_batch_size)
-        for sub in deadlines:
-            schedule_reconciliation(db, sub, None, complete=False)
         db.commit()
-        return max(len(subscriptions), len(deadlines))
+        return len(subscriptions)
+
+
+def repair_paid_deadlines(factory: SessionFactory, configuration: Settings) -> int:
+    """Bounded missing set is its own progress marker; no source config or HTTP."""
+    with factory() as db:
+        users = paid_access.missing_deadline_users(
+            db,
+            configuration.instance_tenant_id,
+            configuration.instance_region,
+            configuration.billing_worker_scan_batch_size,
+            allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
+        )
+    repaired = 0
+    for identity in users:
+        try:
+            with factory() as db:
+                user = lock_user(db, identity)
+                commit_paid_state(
+                    db,
+                    user,
+                    None,
+                    as_utc(billing_reconciliation.database_now(db)),
+                    allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
+                )
+                db.commit()
+                repaired += 1
+        except BillingRefused as error:
+            if error.code != "billing_busy":
+                raise
+    # Retain Step 8 source-trust evidence repair even for non-paid projections.
+    with factory() as db:
+        deadlines = queries.missing_deadlines(
+            db,
+            configuration.instance_tenant_id,
+            configuration.instance_region,
+            configuration.billing_worker_scan_batch_size,
+        )
+        for sub in deadlines:
+            schedule_deadline(db, sub)
+        db.commit()
+    return max(repaired, len(deadlines))
 
 
 def ensure_sweep(factory: SessionFactory, configuration: Settings) -> None:
@@ -115,6 +158,9 @@ def claim_work(factory: SessionFactory, configuration: Settings, lane: WorkLane)
             urgent=None if lane == WorkLane.LOCAL else lane == WorkLane.URGENT,
             account=connection_account(db, configuration),
             sweep_key=configuration.lbx_external_billing_account_id,
+            local_scope=(configuration.instance_tenant_id, configuration.instance_region)
+            if lane == WorkLane.LOCAL
+            else None,
             trust_urgent_before=now + URGENT_TRUST_WINDOW,
         )
         if row is None:
@@ -190,6 +236,7 @@ def schedule_reconciliation(
     attempt_started_at: datetime | None = None,
 ) -> None:
     now = as_utc(billing_reconciliation.database_now(db))
+    scope = billing_reconciliation.scope(db, sub.user_id, sub.product_id)
     urgent = (
         not complete
         or sub.financial_access_status != Financial.ALLOWED
@@ -222,28 +269,8 @@ def schedule_reconciliation(
             payload={},
             hint=urgent,
         )
-    # Renewed trust and its deterministic deadline are committed together.
-    if (
-        sub.latest_observation_id is not None
-        and sub.reconciliation_fencing_token
-        and as_utc(sub.projection_valid_until) > as_utc(sub.last_authoritative_read_at)
-    ):
-        # Preparation has a zero-length trust window and an unscoped observation.
-        # An incomplete first attempt cannot turn that into expiry provenance.
-        coalesce(
-            db,
-            kind=EXPIRY,
-            key=key(sub),
-            scope_kind="subscription",
-            reference=str(sub.subscription_id),
-            due=as_utc(sub.projection_valid_until),
-            priority=1,
-            payload={
-                "supporting_observation_id": str(sub.latest_observation_id),
-                "deadline": as_utc(sub.projection_valid_until).isoformat(),
-            },
-            replace_deadline=True,
-        )
+    # Source trust and the earliest conservative paid boundary share one row.
+    schedule_deadline(db, sub, scope)
 
 
 def retry_work(
@@ -284,7 +311,7 @@ def expire_trust(factory: SessionFactory, claim: WorkClaim) -> None:
         initial = billing_reconciliation.subscription(db, UUID(claim.reference))
         if initial is None:
             raise BillingRefused("subscription_not_found", 404)
-        lock_user(db, initial.user_id)
+        user = lock_user(db, initial.user_id)
         # Follow the same business lock order as authoritative apply.
         purchase = purchases.owned(db, initial.user_id, initial.purchase_intent_id, lock=True)
         if purchase is None:
@@ -292,41 +319,49 @@ def expire_trust(factory: SessionFactory, claim: WorkClaim) -> None:
         purchases.operations(db, purchase.purchase_intent_id, lock=True)
         scope = billing_reconciliation.scope(db, initial.user_id, initial.product_id)
         sub = billing_reconciliation.subscription(db, initial.subscription_id, lock=True)
-        row = verify_claim(db, claim)  # Queue lock last, never while acquiring business locks.
         now = as_utc(billing_reconciliation.database_now(db))
-        if row.enqueue_generation != claim.generation or as_utc(sub.projection_valid_until) > now:
-            finish(db, row, claim, due=as_utc(sub.projection_valid_until))
-        else:
-            if scope is not None and sub.latest_observation_id is not None:
-                db.add(
-                    BillingStateObservation(
-                        observation_kind=BillingStateObservationKind.DETERMINISTIC_ACCESS_BOUNDARY,
-                        external_billing_account_id=sub.external_billing_account_id,
-                        user_id=sub.user_id,
-                        product_id=sub.product_id,
-                        access_scope_id=scope.access_scope_id,
-                        subscription_id=sub.subscription_id,
-                        basis_observation_id=sub.latest_observation_id,
-                        observed_at=now,
-                        effective_at=sub.projection_valid_until,
-                        evidence_schema_version="subscription-trust-expiry:v1",
-                        evidence_document={
-                            "supporting_observation_id": str(sub.latest_observation_id),
-                            "deadline": as_utc(sub.projection_valid_until).isoformat(),
-                        },
-                        completeness_classification="local_deadline",
-                        result_classification="source_trust_expired",
-                        resulting_access_revision=None,
-                    )
+        cause = None
+        if scope is not None and sub.latest_observation_id is not None:
+            due = effective_deadline(scope) if scope.primary_subscription_id == sub.subscription_id else None
+            deadline = min(as_utc(sub.projection_valid_until), due) if due else as_utc(sub.projection_valid_until)
+            if deadline <= now:
+                cause = BillingStateObservation(
+                    observation_kind=BillingStateObservationKind.DETERMINISTIC_ACCESS_BOUNDARY,
+                    external_billing_account_id=sub.external_billing_account_id,
+                    user_id=sub.user_id,
+                    product_id=sub.product_id,
+                    access_scope_id=scope.access_scope_id,
+                    subscription_id=sub.subscription_id,
+                    basis_observation_id=sub.latest_observation_id,
+                    observed_at=now,
+                    effective_at=deadline,
+                    evidence_schema_version="subscription-trust-expiry:v1",
+                    evidence_document={
+                        "supporting_observation_id": str(sub.latest_observation_id),
+                        "deadline": deadline.isoformat(),
+                    },
+                    completeness_classification="local_deadline",
+                    result_classification="source_trust_expired"
+                    if as_utc(sub.projection_valid_until) <= now
+                    else "effective_access_deadline",
                 )
-            # Source timestamps/lifecycle/support stay intact: expiry is not a
-            # new provider block. Step 9 consumes this local deadline evidence.
-            finish(db, row, claim, due=None)
+                db.add(cause)
+        # Reduction only: this path never applies source proof or issues allowances.
+        commit_paid_state(db, user, cause, now)
+        row = verify_claim(db, claim)  # Queue ownership last; stale owner rolls back all writes.
+        due = effective_deadline(scope) if scope and scope.primary_subscription_id == sub.subscription_id else None
+        future = [value for value in (due, as_utc(sub.projection_valid_until)) if value and value > now]
+        finish(db, row, claim, due=min(future) if future else None)
+
         db.commit()
 
 
 def inspect_backlog(factory: SessionFactory, configuration: Settings) -> tuple[int, datetime | None, int]:
     with factory() as db:
         return queries.backlog(
-            db, connection_account(db, configuration), sweep_key=configuration.lbx_external_billing_account_id
+            db,
+            connection_account(db, configuration),
+            configuration.instance_tenant_id,
+            configuration.instance_region,
+            sweep_key=configuration.lbx_external_billing_account_id,
         )

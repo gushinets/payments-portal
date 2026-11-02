@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
+from app.core.time import utc_now
 from app.domains.billing.contracts import BillingRefused
 from app.infrastructure.queries.billing_customers import open_customer_reviews
 from app.models import (
@@ -14,6 +15,7 @@ from app.models import (
     ExternalCreateOperation,
     ExternalCreateOperationState as State,
     ManualReviewCase,
+    User,
 )
 
 CUSTOMER_UNKNOWN_REVIEW = "external_create_outcome_unknown:customer"
@@ -106,3 +108,6 @@ def record_customer_conflict(
     customer.binding_state = Binding.IDENTITY_CONFLICT
     operation.send_fence = uuid4()  # Invalidate all earlier in-flight proof.
     record_customer_review(db, operation, CUSTOMER_KEY_REVIEW if original_id else "customer_identity_conflict")
+    from app.domains.billing.paid_access import commit_paid_state
+
+    commit_paid_state(db, db.get(User, customer.user_id), None, utc_now())

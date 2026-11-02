@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.domains.billing.discovery import DISCOVERY_SCHEMA, ProductDiscovery
 from app.domains.billing.paid_allowances import materialize_allowance
+from app.domains.billing.paid_deadlines import schedule_deadline
 from app.domains.billing.paid_contracts import EFFECTIVE_SCHEMA, EffectiveState, PaidGrant, canonical_state
 from app.domains.billing.paid_policy import (
     CandidateConclusion,
@@ -18,6 +19,7 @@ from app.domains.billing.paid_policy import (
 from app.domains.billing.reconciliation_contracts import SubscriptionProof
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases.contracts import Purchase
+from app.domains.purchases.evidence import accepted
 from app.infrastructure.queries import paid_access as queries
 from app.models import (
     AccessInvalidationOutbox,
@@ -27,6 +29,11 @@ from app.models import (
     ExternalSubscription,
     PaidAccessState,
     User,
+    ManualReviewCase,
+    PurchaseIntent,
+    PurchaseIntentState,
+    ExternalBillingCustomerBindingState as Binding,
+    ExternalCreateOperationState as OperationState,
     ExternalSubscriptionCommercialAccessStatus as Commercial,
     ExternalSubscriptionFinancialAccessStatus as Financial,
     ExternalSubscriptionLifecycleStatus as Lifecycle,
@@ -48,6 +55,7 @@ def _select_primary(
     if scope.primary_subscription_id is not None:
         return scope.primary_subscription_id == subscription.subscription_id
     if scope.primary_retired_at is not None and as_utc(purchase.created_at) <= as_utc(scope.primary_retired_at):
+        _primary_review(db, subscription)
         return False
     observation = queries.discovery(db, discovery_id) if discovery_id else None
     if observation is None or (
@@ -96,9 +104,35 @@ def _select_primary(
             ):
                 candidates[identity] = PrimaryCandidate(identity, CandidateConclusion.INCOMPLETE)
     if not first_primary(subscription.external_subscription_id, tuple(candidates.values()), complete=observed.complete):
+        # Incomplete visibility stays retryable; only proven ambiguity needs
+        # a durable operator decision. Include local candidates in completeness.
+        if (
+            observed.complete
+            and len(candidates) > 1
+            and all(item.conclusion != CandidateConclusion.INCOMPLETE for item in candidates.values())
+        ):
+            _primary_review(db, subscription)
         return False
     scope.primary_subscription_id = subscription.subscription_id
     return True
+
+
+def _primary_review(db: Session, subscription: ExternalSubscription) -> None:
+    if queries.metric_review(db, str(subscription.subscription_id), "subscription") is None:
+        db.add(
+            ManualReviewCase(
+                reason_code="primary_selection_required",
+                scope_kind="subscription",
+                scope_reference=str(subscription.subscription_id),
+                evidence_schema_version="primary-review:v1",
+                evidence_document={
+                    "subscription_id": str(subscription.subscription_id),
+                    "supporting_observation_id": str(subscription.latest_observation_id),
+                    "reconciliation_fence": subscription.reconciliation_fencing_token,
+                },
+                case_state="open",
+            )
+        )
 
 
 def apply_paid_source(
@@ -115,6 +149,7 @@ def apply_paid_source(
     review: bool = False,
     fence: int | None = None,
     generation: int | None = None,
+    allow_simulated_metering: bool = True,
 ) -> None:
     """Caller holds user first, then original purchase/scope/source locks."""
     decision = paid_decision(proof, review=review)
@@ -146,7 +181,11 @@ def apply_paid_source(
             scope.effective_access_document = None
             scope.effective_access_until = deadline
             return
-        allowance = materialize_allowance(db, subscription, purchase.accepted, proof.cycle, skew_seconds=skew_seconds)
+        allowance = (
+            materialize_allowance(db, subscription, purchase.accepted, proof.cycle, skew_seconds=skew_seconds)
+            if allow_simulated_metering
+            else None
+        )
         state = EffectiveState(
             grants=(
                 PaidGrant(product_id=subscription.product_id, valid_until=grant_end.isoformat() if grant_end else None),
@@ -167,6 +206,8 @@ def _reduction_cause(
     subscription: ExternalSubscription,
     now: datetime,
     effective_at: datetime,
+    *,
+    reason: str = "effective_deadline",
 ) -> BillingStateObservation:
     basis = queries.discovery(db, scope.access_basis_observation_id) if scope.access_basis_observation_id else None
     return BillingStateObservation(
@@ -180,7 +221,7 @@ def _reduction_cause(
         observed_at=now,
         effective_at=effective_at,
         evidence_schema_version="paid-access-reduction:v1",
-        evidence_document={"source_observation_id": str(scope.access_basis_observation_id)},
+        evidence_document={"source_observation_id": str(scope.access_basis_observation_id), "reason": reason},
         completeness_classification="complete",
         result_classification="local_reduction",
     )
@@ -189,14 +230,16 @@ def _reduction_cause(
 def commit_paid_state(
     db: Session,
     user: User,
-    cause: BillingStateObservation,
+    cause: BillingStateObservation | None,
     now: datetime,
     *,
     related_causes: tuple[BillingStateObservation, ...] = (),
+    allow_simulated_metering: bool = True,
 ) -> int:
     """Canonicalize the complete set under the caller's user lock; never commit."""
     states = []
     reductions = []
+    deadlines = []
     for scope in queries.scopes(db, user.id):
         if scope.effective_access_document is None:
             continue
@@ -207,17 +250,22 @@ def commit_paid_state(
             or primary.financial_access_status != Financial.ALLOWED
             or primary.commercial_access_status != Commercial.ELIGIBLE
             or primary.lifecycle_status != Lifecycle.ACTIVE
+            or _dependency_blocked(db, primary)
             or scope.effective_access_until is None
             or as_utc(scope.effective_access_until) <= now
         ):
-            if primary is not None:
+            source = primary or next(iter(sources), None)
+            if source is not None:
                 reductions.append(
                     _reduction_cause(
                         db,
                         scope,
-                        primary,
+                        source,
                         now,
                         min(now, as_utc(scope.effective_access_until)) if scope.effective_access_until else now,
+                        reason="effective_deadline"
+                        if scope.effective_access_until and as_utc(scope.effective_access_until) <= now
+                        else "source_or_dependency_ineligible",
                     )
                 )
             scope.effective_access_document = None
@@ -230,6 +278,15 @@ def commit_paid_state(
         ]
         if ended_periods:
             reductions.append(_reduction_cause(db, scope, primary, now, min(ended_periods)))
+        simulated = False
+        if state.allowances and not allow_simulated_metering:
+            purchase = db.get(PurchaseIntent, primary.purchase_intent_id) if primary.purchase_intent_id else None
+            terms = accepted(purchase).technical_terms if purchase else None
+            simulated = terms is None or terms.provenance == "SIMULATED"
+            if simulated:
+                reductions.append(
+                    _reduction_cause(db, scope, primary, now, now, reason="metering_provenance_unavailable")
+                )
         # Independently supported UTC bounds can reduce metering; calendar dates
         # alone never expire or refill it.
         state = state.model_copy(
@@ -237,16 +294,19 @@ def commit_paid_state(
                 "allowances": tuple(
                     item
                     for item in state.allowances
-                    if item.period_end is None or datetime.fromisoformat(item.period_end) > now
+                    if not simulated and (item.period_end is None or datetime.fromisoformat(item.period_end) > now)
                 )
             }
         )
         scope.effective_access_document = state.model_dump(mode="json")
         states.append(state)
+        deadlines.append((primary, scope))
     effective = canonical_state(states).model_dump(mode="json")
     row = queries.state(db, user.id)
     outbox = queries.outbox(db, user.id)
     if (row.effective_state_document if row else EffectiveState().model_dump(mode="json")) == effective:
+        for primary, scope in deadlines:
+            schedule_deadline(db, primary, scope)
         return row.access_revision if row else 0
     revision = row.access_revision + 1 if row else 1
     if row is None:
@@ -264,6 +324,11 @@ def commit_paid_state(
         row.access_revision = revision
         row.effective_state_document = effective
         row.committed_at = now
+    if cause is None:
+        if not reductions:
+            raise ValueError("material access change requires causal evidence")
+        cause = reductions.pop()
+        db.add(cause)
     if cause.resulting_access_revision is not None:
         cause = BillingStateObservation(
             observation_kind=cause.observation_kind,
@@ -275,6 +340,7 @@ def commit_paid_state(
             purchase_intent_id=cause.purchase_intent_id,
             basis_observation_id=cause.observation_id,
             observed_at=now,
+            effective_at=cause.effective_at,
             evidence_schema_version="paid-access-cause:v1",
             evidence_document={},
             completeness_classification="complete",
@@ -303,4 +369,16 @@ def commit_paid_state(
     else:
         outbox.pending_revision = max(outbox.pending_revision, revision)
     db.flush()
+    for primary, scope in deadlines:
+        schedule_deadline(db, primary, scope)
     return revision
+
+
+def _dependency_blocked(db: Session, subscription: ExternalSubscription) -> bool:
+    customer, purchase, operations = queries.dependencies(db, subscription)
+    return (
+        customer is None
+        or customer.binding_state != Binding.BOUND
+        or (purchase is not None and purchase.state == PurchaseIntentState.MANUAL_REVIEW)
+        or any(op.operation_state == OperationState.MANUAL_REVIEW for op in operations)
+    )

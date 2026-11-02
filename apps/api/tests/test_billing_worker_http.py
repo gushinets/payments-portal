@@ -8,6 +8,7 @@ import json
 import pytest
 
 from app.composition.billing_worker import billing_worker_resources
+from app.composition.sources import source_resources
 from app.domains.billing.work_contracts import WorkLane
 from app.jobs.billing import BillingWorker
 from apps.api.tests.support.any709_step1 import step1_settings
@@ -26,7 +27,7 @@ async def test_billing_worker_http_pools_reserve_all_urgent_slots(
     monkeypatch: pytest.MonkeyPatch, resource: str
 ) -> None:
     normal_count, urgent_count = 4, 2
-    release, saturated = asyncio.Event(), asyncio.Event()
+    release, saturated, sale_saturated = asyncio.Event(), asyncio.Event(), asyncio.Event()
     held: set[int] = set()
     reached: set[int] = set()
     handlers: set[asyncio.Task[None]] = set()
@@ -43,7 +44,10 @@ async def test_billing_worker_http_pools_reserve_all_urgent_slots(
             else:
                 identity = int(path.rsplit("/", 1)[1])
                 reached.add(identity)
-                if 100 <= identity < 100 + normal_count:
+                if identity == 777:
+                    sale_saturated.set()
+                    await release.wait()
+                elif 100 <= identity < 100 + normal_count:
                     held.add(identity)
                     if len(held) == normal_count:
                         saturated.set()
@@ -88,7 +92,11 @@ async def test_billing_worker_http_pools_reserve_all_urgent_slots(
         lbx_max_get_attempts=2,
     )
     try:
-        async with server, billing_worker_resources(configuration, factory=forbidden_database) as worker:
+        async with (
+            server,
+            billing_worker_resources(configuration, factory=forbidden_database) as worker,
+            source_resources(configuration) as sales,
+        ):
             async with worker.admissions[WorkLane.URGENT].operation(bound_scope=False) as budget:
                 await worker.client.get_user(user_id=1, budget=budget)
 
@@ -100,17 +108,30 @@ async def test_billing_worker_http_pools_reserve_all_urgent_slots(
                         await worker.client.get_tariff(tariff_id=identity, budget=budget)
 
             normal = [asyncio.create_task(read(WorkLane.NORMAL, 100 + i)) for i in range(normal_count)]
+
+            async def new_sale() -> None:
+                async with sales.billing.operation(bound_scope=False) as budget:
+                    await sales.require_lbx().get_user(user_id=777, budget=budget)
+
+            sale = asyncio.create_task(new_sale())
             try:
                 await asyncio.wait_for(saturated.wait(), timeout=5)
+                await asyncio.wait_for(sale_saturated.wait(), timeout=5)
                 async with asyncio.TaskGroup() as urgent:
                     for identity in range(900, 900 + urgent_count):
                         urgent.create_task(read(WorkLane.URGENT, identity))
                 assert reached.issuperset(range(900, 900 + urgent_count))
                 assert worker.admissions[WorkLane.NORMAL].active_count == normal_count
+                assert sales.billing.active_count == 1
+                # The local DB lane stays available while all normal HTTP
+                # owners are still waiting; no source pool or admission needed.
+                assert (
+                    await asyncio.wait_for(worker.db(WorkLane.LOCAL, lambda: "local-deadline"), 1) == "local-deadline"
+                )
                 assert not release.is_set()
             finally:
                 release.set()
-                await asyncio.gather(*normal)
+                await asyncio.gather(*normal, sale)
     finally:
         release.set()
         server.close()

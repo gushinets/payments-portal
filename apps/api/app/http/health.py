@@ -76,7 +76,13 @@ def billing_health(request: Request) -> BillingHealthResponse:
     if worker is None:
         return BillingHealthResponse(status=getattr(request.app.state, "billing_worker_mode", "disabled"))
     return BillingHealthResponse(
-        status="stopping" if worker.stopping else "running" if worker.healthy else "degraded",
+        status="stopping"
+        if worker.stopping
+        else "not_configured"
+        if worker.healthy and worker.client is None
+        else "running"
+        if worker.healthy
+        else "degraded",
         active_slots=sum(admission.active_count for admission in worker.admissions.values()),
         cleanup_pending=worker.cleanup_pending,
         pending_work=worker.pending,

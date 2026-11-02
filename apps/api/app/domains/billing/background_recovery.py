@@ -275,7 +275,6 @@ def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> None:
         # Initial lookup may have cached POSSIBLE_SEND before another writer
         # completed. Row locks serialize decisions but do not refresh that cache.
         db.refresh(op)
-        row = work.verify_claim(db, claim)
         now = as_utc(billing_reconciliation.database_now(db))
         deadline = (
             op.unknown_recovery_deadline_at
@@ -292,6 +291,7 @@ def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> None:
                 # A hold is required for escalation, not for finishing completed work.
                 service._locked(db, service._snapshot(db, purchase))
                 financial._review(db, purchase, op, reason)
+        row = work.verify_claim(db, claim)
         work.finish(db, row, claim, due=due)
         db.commit()
 
@@ -304,6 +304,7 @@ def apply_inventory(
     *,
     discovery_ids: tuple[UUID, ...] = (),
     clock_skew_seconds: int | None = None,
+    allow_simulated_metering: bool = True,
 ) -> None:
     """Fence all scoped conflicts and finish their shared customer job once."""
     with factory() as db:
@@ -339,6 +340,7 @@ def apply_inventory(
                 now,
                 skew_seconds=clock_skew_seconds,
                 conflicted_purchases=frozenset(purchase.id for purchase in conflicts),
+                allow_simulated_metering=allow_simulated_metering,
             )
         )
         for purchase, row, target, scope, subscription in locked:
@@ -390,7 +392,14 @@ def apply_inventory(
         if causes:
             from app.domains.billing.paid_access import commit_paid_state
 
-            commit_paid_state(db, user, causes[-1], now, related_causes=tuple(causes[:-1]))
+            commit_paid_state(
+                db,
+                user,
+                causes[-1],
+                now,
+                related_causes=tuple(causes[:-1]),
+                allow_simulated_metering=allow_simulated_metering,
+            )
         queue = work.verify_claim(db, claim)  # Queue locks last; stale work rolls back all writes.
         interval = work.URGENT_SECONDS if reason else INVENTORY_SECONDS
         work.finish(

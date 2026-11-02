@@ -54,7 +54,7 @@ async def resolve_review(
         return resolution
     purchase = resolution.purchase
     _connection(purchase, configuration)
-    if request.resolution == "restore-original":
+    if request.resolution in {"restore-original", "select-primary"}:
         observation_id = await reconcile_subscription(
             sources.require_lbx(),
             sources.billing,

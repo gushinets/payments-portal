@@ -160,6 +160,11 @@ def test_billing_recovery_cli_runbook_parser_and_settings_contract() -> None:
     wrapper = subparsers(repo.build_parser())["billing-purchase"]
     assert set(next(action.choices for action in wrapper._actions if action.dest == "action")) == set(actions)
     wrapper_options = {option for action in wrapper._actions for option in action.option_strings}
+    assert next(action.choices for action in wrapper._actions if action.dest == "resolution") == (
+        "restore-original",
+        "bind-original",
+        "select-primary",
+    )
     for name, parser in actions.items():
         assert f"`{name}`" in text
         for action in parser._actions:

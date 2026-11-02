@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 class BillingWorker:
-    def __init__(self, configuration: Settings, factory: SessionFactory, client: LbxServerClient) -> None:
+    def __init__(self, configuration: Settings, factory: SessionFactory, client: LbxServerClient | None) -> None:
         self.configuration = configuration
         self.factory = factory
         self.client = client
@@ -110,6 +110,8 @@ class BillingWorker:
             (WorkLane.URGENT, self.configuration.billing_worker_urgent_concurrency),
             (WorkLane.NORMAL, self.configuration.billing_worker_normal_concurrency),
         ):
+            if lane != WorkLane.LOCAL and self.client is None:
+                continue
             for _ in range(count):
                 task = asyncio.create_task(self._loop(lane), name=f"billing-{lane}")
                 task.add_done_callback(self._done)
@@ -122,6 +124,8 @@ class BillingWorker:
                 report_exception(task.exception(), operation=Operation.BILLING_WORKER)
 
     async def tick(self, lane: WorkLane) -> bool:
+        if lane != WorkLane.LOCAL and self.client is None:
+            return False
         if any(task in self.db_cleanup for task in self.db_tasks[lane]):
             return False  # An interrupted DB owner may still be committing.
         attempt_outcome = "completed"
@@ -132,8 +136,13 @@ class BillingWorker:
             if claim.kind == work.SWEEP:
                 # One committed batch per tick allows due expiry between batches.
                 count = await self.db(lane, work.enroll_batch, self.factory, self.configuration)
-                repaired = await self.db(lane, background_recovery.repair_batch, self.factory, self.configuration)
-                count = max(count, repaired)
+                paid = await self.db(lane, work.repair_paid_deadlines, self.factory, self.configuration)
+                repaired = (
+                    await self.db(lane, background_recovery.repair_batch, self.factory, self.configuration)
+                    if self.client is not None
+                    else 0
+                )
+                count = max(count, repaired, paid)
                 self.enrolled_batches += int(count > 0)
                 await self.db(
                     lane,

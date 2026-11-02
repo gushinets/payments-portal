@@ -9,7 +9,7 @@ from app.composition.purchases import _inventory, recover_financial
 from app.composition.purchase_inventory import MAX_RELEVANT_SUBSCRIPTIONS
 from app.composition.sources import SourceResources
 from app.core.errors import AppError
-from app.core.settings import Settings
+from app.core.settings import AppEnv, Settings
 from app.core.time import utc_now
 from app.domains.billing import background_recovery as recovery, work
 from app.domains.billing.discovery import persist_discovery
@@ -193,6 +193,7 @@ async def _inventory_customer(
             "inventory_conflict" if conflicts else "inventory_incomplete",
             discovery_ids=tuple(discovery_ids),
             clock_skew_seconds=configuration.paid_access_clock_skew_seconds,
+            allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
         )
         return
     again = await client.discover_subscriptions(user_id=int(current.provider_id), budget=budget)
@@ -210,4 +211,5 @@ async def _inventory_customer(
         None,
         discovery_ids=tuple(discovery_ids),
         clock_skew_seconds=configuration.paid_access_clock_skew_seconds,
+        allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
     )

@@ -3537,7 +3537,7 @@ def build_parser() -> argparse.ArgumentParser:
     purchase.add_argument("action", choices=("inspect", "recover", "reconcile", "resolve-review"))
     purchase.add_argument("--user-id", type=uuid.UUID, required=True)
     purchase.add_argument("--purchase-id", type=uuid.UUID, required=True)
-    purchase.add_argument("--resolution", choices=("restore-original", "bind-original"))
+    purchase.add_argument("--resolution", choices=("restore-original", "bind-original", "select-primary"))
     for name in ("case-id", "expected-observation-id", "operation-id", "expected-operation-fence"):
         purchase.add_argument("--" + name, type=uuid.UUID)
     purchase.add_argument("--expected-case-digest")

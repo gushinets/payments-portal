@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import exists, or_, select, Text, cast
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -13,6 +13,11 @@ from app.models import (
     ExternalSubscription,
     PaidAccessState,
     PurchasedAllowance,
+    ExternalBillingCustomer,
+    ExternalCreateOperation,
+    PurchaseIntent,
+    BillingWorkItem,
+    User,
 )
 
 
@@ -94,5 +99,63 @@ def scope_id(db: Session, user_id: UUID, product_id: str) -> UUID | None:
     return db.scalar(
         select(BillingProductAccessScope.access_scope_id).where(
             BillingProductAccessScope.user_id == user_id, BillingProductAccessScope.product_id == product_id
+        )
+    )
+
+
+def dependencies(
+    db: Session, sub: ExternalSubscription
+) -> tuple[ExternalBillingCustomer | None, PurchaseIntent | None, list[ExternalCreateOperation]]:
+    customer = db.get(ExternalBillingCustomer, sub.customer_id)
+    purchase = db.get(PurchaseIntent, sub.purchase_intent_id) if sub.purchase_intent_id else None
+    operations = list(
+        db.scalars(
+            select(ExternalCreateOperation)
+            .where(
+                ExternalCreateOperation.customer_id == sub.customer_id,
+                or_(
+                    ExternalCreateOperation.purchase_intent_id == sub.purchase_intent_id,
+                    ExternalCreateOperation.purchase_intent_id.is_(None),
+                ),
+            )
+            .order_by(ExternalCreateOperation.create_operation_id)
+        )
+    )
+    return customer, purchase, operations
+
+
+def missing_deadline_users(
+    db: Session, tenant: str, region: str, limit: int, *, allow_simulated_metering: bool = True
+) -> list[UUID]:
+    """Persisted scope/identity, independent of today's source account setting."""
+    scheduled = exists().where(
+        BillingWorkItem.work_kind == "subscription_trust_expiry",
+        BillingWorkItem.scope_reference == cast(BillingProductAccessScope.primary_subscription_id, Text),
+        BillingWorkItem.work_state.in_(("pending", "running")),
+        BillingWorkItem.next_attempt_at <= BillingProductAccessScope.effective_access_until,
+    )
+    needs_repair = ~scheduled
+    if not allow_simulated_metering:
+        simulated = exists().where(
+            ExternalSubscription.subscription_id == BillingProductAccessScope.primary_subscription_id,
+            ExternalSubscription.purchase_intent_id == PurchaseIntent.purchase_intent_id,
+            PurchaseIntent.accepted_snapshot["technical_terms"]["provenance"].as_string() == "SIMULATED",
+        )
+        needs_repair = or_(
+            needs_repair, simulated & (BillingProductAccessScope.effective_access_document["allowances"] != [])
+        )
+    return list(
+        db.scalars(
+            select(BillingProductAccessScope.user_id)
+            .join(User, User.id == BillingProductAccessScope.user_id)
+            .where(
+                User.tenant_id == tenant,
+                User.region == region,
+                BillingProductAccessScope.effective_access_document.is_not(None),
+                needs_repair,
+            )
+            .distinct()
+            .order_by(BillingProductAccessScope.user_id)
+            .limit(limit)
         )
     )

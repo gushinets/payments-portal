@@ -43,15 +43,16 @@ as billing_connection_conflict. A customer-key conflict uses the existing explic
 account-open recovery policy; background recovery cannot restore that conflict.
 See [customer diagnosis and recovery](ANY-709-billing-runbook.md#customer-diagnosis-cli).
 
-The worker produces subscription facts and expiry evidence. It does not choose an
-access primary, grant access or create allowances/revisions/invalidations.
+Step 8 supplies subscription facts and expiry evidence. ANY-765 integrates
+those facts with the local paid writer, primary policy and deadlines below;
+preparation and recovery binding alone remain non-authoritative.
 
 ## Embedded worker settings and resource limits
 
 The initial deployment is one API process/replica with an embedded worker.
 There is no separate process to launch or standalone worker command/container.
 
-- `BILLING_WORKER_ENABLED=true`: starts embedded execution when LBX is configured.
+- `BILLING_WORKER_ENABLED=true`: starts embedded local execution; configured LBX additionally enables source lanes.
 - `BILLING_WORKER_URGENT_CONCURRENCY=2`: urgent source slots, range 1–16.
 - `BILLING_WORKER_NORMAL_CONCURRENCY=1`: normal source slots, range 1–16.
 - `BILLING_WORKER_IO_TIMEOUT_SECONDS=60`: total source/cleanup budget; greater
@@ -70,6 +71,8 @@ worker resources are isolated from purchase/Widget/new-sale resources.
 Unconfigured or partially configured LBX reports `not_configured` without source
 execution; disabled execution reports `disabled`. Source outage alone does not
 withdraw identity readiness.
+The local lane remains active without LBX configuration and processes persisted
+paid deadlines, including when the current account setting is empty or changed.
 
 Increase capacity only from measured queue age/source latency and actual LBX
 limits. A future separate worker can reuse the durable jobs, but requires an
@@ -97,6 +100,9 @@ Recurring schedules use earlier-only jitter. Incomplete source reads use bounded
 backoff up to five minutes. Process pauses/backlog can cause observable cadence
 lag; they never extend trust. Claims/fences prevent competing or stale consumers
 from overwriting newer facts, and hints arriving during work remain due.
+ANY-765 also commits material paid reductions through the shared revision/outbox
+writer, retaining the supporting observation and effective deadline. A local
+boundary never grants, refills, unblocks or renews source trust.
 
 `external_create_recovery` is GET-only. Zero candidates remain uncertain; exactly
 one original point-proven candidate may bind; ambiguous/foreign/already-bound
@@ -123,6 +129,8 @@ creates customers, agreements, subscriptions, payments or renewals.
 A `billing_busy` / PostgreSQL `55P03` refusal is local contention: retry the same
 work without changing send authority, deadlines or holds. Use
 `last_error_classification` to distinguish local contention from source errors.
+ANY-765 authoritative inventory may select a proven safe first primary and
+derive paid state; preparation/recovery binding alone cannot grant access.
 
 `customer_inventory` uses fewer than 100 discovery rows and at most 20 relevant
 candidates under one read budget. Capped, duplicate, unstable or partial results
@@ -243,13 +251,16 @@ manual-replay or provider-configuration CLI.
 
 ## Startup, inspection and shutdown
 
-Apply migration `20261028_0005` after consolidated billing revision `20261029_0003`
+Apply paid-access migration `20261031_0006` after worker `20261028_0005` and
+consolidated billing revision `20261029_0003`
 through the normal migration service before API startup. For retired branch
 revision labels, follow the [base migration runbook](ANY-709-billing-runbook.md#consolidated-any-709-migration).
 Use the existing repository/deployment start/restart commands. To disable worker
 execution, set `BILLING_WORKER_ENABLED=false` and restart. Shutdown stops claims
 and drains bounded work/cleanup; outstanding work remains reclaimable after
 finite lease expiry. Persistent cleanup is degraded health, not a successful drain.
+Disabling the worker also stops local reductions. Missing source configuration
+instead disables only source lanes while retaining local deadline processing.
 
 `GET /api/health/billing` reports redacted worker status, occupied/cleanup slots,
 pending/invalid work, oldest due time, execution errors and scan/progress times.
@@ -332,8 +343,8 @@ unrelated open cases, terminal revival and changed accepted requests. Diagnose
 billing_review_stale, billing_review_unrelated_cases, billing_review_proof_incomplete,
 billing_review_terminal, purchase_history_unproven and ordinary source/busy errors;
 do not bypass them. There is no release-terminal, force-release, arbitrary rebind,
-commercial reacceptance, manual paid or quota command. Terminal and inventory
-conflict overrides remain deferred. Existing Step 7 proven-unsent automatic
+commercial reacceptance, manual paid or quota command. ANY-765 adds proof-based audited
+primary selection below; it supplies no force override of terminal or inventory facts. Existing Step 7 proven-unsent automatic
 release keeps its separate rule.
 
 ## Alerts and outage diagnosis
@@ -395,7 +406,107 @@ revision; material changes commit state, causal audit and pending invalidation
 atomically. See the [schema reference](../architecture/payment-portal-data-model.md)
 for immutable allowance shapes and storage guards.
 
-Remaining deadline/customer/operator paths and the paid read/cabinet are Steps
-3–4. Kernel delivery/acknowledgement and actual usage remain ANY-766. This
+ANY-765 Step 3 completes local deadlines and customer/review/operator paths
+as described below. The paid read/cabinet remains Step 4. Kernel
+delivery/acknowledgement and actual usage remain ANY-766. This
 intermediate implementation is not production-ready. Current verification and
 live acceptance limits are recorded in the [canonical plan](../exec-plans/active/ANY-765-implementation-plan.md).
+
+
+## ANY-765 Step 3 autonomous reductions and controlled recovery
+
+`commit_paid_state()` is the user-serialized, caller-transaction writer. It
+checks each primary's source status, customer binding and purchase/operation
+review dependencies before canonical comparison. Missing/expired authority
+removes only its dependent facts. State, positive semantic revision, causal
+observations and coalesced pending invalidation commit together. Equal contents
+leave the revision unchanged; observation `resulting_access_revision=null` is
+not a claim of a material access commit. Existing outbox delivery bookkeeping
+and frozen allowances survive reductions. No invalidation HTTP runs here.
+
+The existing `subscription_trust_expiry` row now schedules the earliest of the
+saved conservative source/grant deadline and finite UTC allowance/grant bounds.
+Its payload retains supporting observation, paid basis and effective deadline.
+Complete proof refresh atomically reschedules it even when authorization contents
+are equal. Unknown/error attempts preserve the original paid bound. Calendar-only
+cycle dates schedule neither expiry nor refill. At a UTC allowance end, only
+metering is omitted; the next remaining supported deadline is scheduled.
+
+`effective_access_deadline` identifies an earlier paid boundary;
+`source_trust_expired` is reserved for the raw source deadline. Neither rewrites
+provider timestamps or lifecycle.
+
+Expiry takes the user lock, original purchase/operations, product/source locks,
+then the shared state/outbox writer and queue ownership check last. It rechecks
+current authority, so a concurrent refresh survives; a stale queue owner rolls
+back all reductions/audit/outbox writes. Timers perform no provider HTTP and
+cannot renew trust, unblock, select a primary or issue a bucket. Source lease
+expiry is unchanged at six hours; there is no outage grace or local renewal.
+
+The startup/minute enrollment sweep repairs missing or prematurely completed
+paid deadlines in bounded batches. Repair uses persisted user/contour/scope
+identity, independent of current LBX account/URL/credentials. An overdue repaired
+scope is reduced immediately through the same writer. Empty/changed source
+configuration does not hide historical local work. Source-unconfigured startup
+creates no LBX client/source loops; billing health reports `not_configured`
+while local supervision continues. Explicit worker disablement stops both lanes.
+The local DB limiter and retained cleanup ownership remain independent of
+normal/urgent HTTP saturation; request/new-sale resources remain separate.
+
+Unset clock budget authorizes no new positive paid derivation and does not
+extend existing effective bounds. A changed supported budget applies to newly
+derived trust/grant bounds; existing allowance UTC tuples remain frozen. Disabling
+the development fixture does not rewrite accepted history. Moving to production
+removes SIMULATED metering in the bounded sweep and refuses its reissuance on
+source apply, while retaining an independently proven product grant. No simulated
+quantity becomes production authority. Current catalog/manifest changes alone
+are not access-revocation signals.
+
+Paired customer identity failures (interactive, background, reconciliation and
+post-integrity-error paths) reduce every dependent product atomically under the
+user lock. Customer-only paired-key recovery restores no access: each product
+still needs fresh authoritative subscription proof. Financial review transitions
+reduce the affected purchase only. A newcomer-only inventory conflict retains
+an already trusted primary. `restore-original` uses the same source writer and
+can recover the original same-cycle allowance IDs. `bind-original` remains
+preparation-only and merely enrolls the linked source for reconciliation.
+
+`resolve-review --resolution select-primary` is the narrow new privileged
+operation. It requires the current `primary_selection_required` subscription
+case, original linked purchase, the same `--expected-observation-id` and
+`--expected-reconciliation-fence` options as restore-original, case digest,
+OS principal, reason and incident reference. Fresh complete owned original-term,
+ACTIVE/ALLOWED supported-policy proof is mandatory. Apply rechecks current
+customer/consent/operations/case/fences and refuses a different existing primary,
+unrelated review, stale proof, block, ended state or terminal revival. It records
+the selected local primary in the existing resolution audit and commits source,
+paid state and deadline together. It accepts no provider object ID or quantity.
+Incomplete relevant inventory stays retryable without creating this review;
+fresh complete discovery may select the sole eligible linked candidate. Proven
+competing eligible candidates and retired competitors require review; ordinary
+polls cannot resolve it or automatically promote a retired competitor. Existing
+open cases are not automatically cleared by this distinction.
+
+```bash
+.venv/bin/python scripts/repo.py billing-purchase resolve-review --user-id <portal-user-uuid> --purchase-id <purchase-intent-uuid> --resolution select-primary --case-id <case-uuid> --expected-case-digest <sha256:digest> --expected-observation-id <supporting-observation-uuid> --expected-reconciliation-fence <integer> --reason 'Original linked candidate independently proven' --reference 'ANY-765'
+```
+
+Cycle ambiguity is metric-scoped. Only restored original anchor/terms and a
+successful existing classifier close `allowance_cycle_conflict`; an operator
+cannot edit dates, supply quantities, resize a bucket or approve different
+commercial/anchor meaning. Same-cycle restoration reuses IDs and quantities;
+proven later-current recovery creates only that observed cycle, without backfill.
+
+For incidents, `billing-purchase inspect` now includes committed user revision,
+local primary/basis IDs, earliest effective deadline and nonnegative deadline lag.
+Recent observation summaries also expose their positive resulting revision or
+null for no material commit.
+Use these local IDs with review/observation summaries; no IDs become metric labels.
+Worker backlog/lag includes persisted local deadlines even when today's account
+setting differs. A due observation/revision/outbox identifies the atomic
+reduction; null resulting revision records a semantic no-op. Late reads must
+fail closed until the reduction commits; that customer read contract remains
+Step 4 and is not implemented by this step. No new customer endpoint or B10 wire
+is introduced. See the canonical plan for passed, failed and unexecuted evidence;
+configured test-LBX, natural renewal and deployed Kernel acceptance remain
+separate from synthetic PostgreSQL/HTTP tests.

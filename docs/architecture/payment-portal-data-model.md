@@ -1,7 +1,7 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-10-31 (ANY-765 Step 2 internal paid projection)
+Last updated: 2026-11-02 (ANY-765 Step 3 local deadlines and recovery)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
@@ -50,9 +50,9 @@ change. Subscription trust, reconciliation and AccessSnapshot are unchanged.
 The schema is a provider-independent storage baseline. Its presence does not
 itself establish runtime acceptance. ANY-709 implements purchase preparation
 and request-driven recovery. ANY-715 adds shared reconciliation, embedded durable
-polling and audited operations; ANY-765 Step 2 adds local paid derivation and
-revision/outbox commits. Deadline worker completion, paid-state presentation
-and Kernel delivery remain later work.
+polling and audited operations; ANY-765 Steps 2–3 add local paid derivation,
+revision/outbox commits, effective deadlines and audited recovery. Paid-state
+presentation and Kernel delivery remain later work.
 
 ## Physical baseline
 
@@ -340,9 +340,9 @@ regression and deletion are forbidden. Delivery/ack networking remains deferred.
 Migration `20261031_0006` preserves legacy rows and preflights incompatible
 non-null logical duplicates, nonpositive state/observation revisions and negative
 delivered revisions. It fails without repair/deletion. Downgrade refuses to lose
-new calendar, access or pre-scope discovery meaning. Worker deadlines and
-customer/operator integration are completed separately by Step 3; no paid-state
-read endpoint or Kernel networking is introduced by Step 2.
+new calendar, access or pre-scope discovery meaning. Step 3 reuses this schema
+for worker deadlines and customer/operator integration; no further migration,
+paid-state read endpoint or Kernel networking is introduced.
 
 ## Durable operational tables
 
@@ -379,8 +379,11 @@ The pre-existing create-recovery index and customer-send lease identity remain
 unchanged. Claims use paired finite ownership; completion preserves newer enqueue
 generations. Binding atomically enrolls new canonical subscriptions. Source apply
 atomically reschedules monitoring and the local trust deadline. Ordinary
-reconciliation/inventory also commit paid state; the remaining local
-deadline/customer/operator integration is Step 3. Migration `20261028_0005` follows consolidated billing revision
+reconciliation/inventory and Step 3 local deadline/customer/review/operator paths
+commit paid state through the same caller-transaction writer. The existing
+subscription expiry row schedules the earliest saved effective deadline; local
+selection/repair uses persisted contour ownership rather than current account
+configuration. Source-unconfigured startup retains local reductions. Migration `20261028_0005` follows consolidated billing revision
 `20261029_0003` and preserves its active deadline and existing rows.
 
 `manual_review_cases` stores bounded evidence and optional resolution proof.

@@ -210,6 +210,7 @@ async def test_paid_access_initial_discovery_requires_complete_union(
     with factory() as db:
         assert db.scalar(select(BillingProductAccessScope.primary_subscription_id)) is None
         assert db.scalar(select(func.count()).select_from(PurchasedAllowance)) == 0
+        assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
 
 
 async def test_paid_access_terminal_primary_cleared_without_revival(

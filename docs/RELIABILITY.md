@@ -19,9 +19,9 @@ The direct-provider runtime and Portal-owned commercial/access lifecycle are
 removed. ANY-709 implements live product links/offers, accepted purchase holds
 and request-driven financial preparation/recovery. ANY-715 implements embedded
 reconciliation and GET-only recovery/inventory with local deadlines. ANY-765
-Step 2 adds ordinary reconciliation/inventory paid derivation and atomic
-revision/outbox commits; remaining deadline/customer/operator paths and
-invalidation delivery are deferred. Source-catalog projection tables remain
+Steps 2–3 add ordinary reconciliation/inventory paid derivation, atomic
+revision/outbox commits, provider-free effective deadlines and audited recovery.
+Paid cabinet reads and invalidation delivery remain deferred. Source-catalog projection tables remain
 inert. Dated delivery evidence belongs to
 [ANY-709](https://linear.app/paveldik/issue/ANY-709).
 

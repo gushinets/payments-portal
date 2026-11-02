@@ -4,6 +4,7 @@ from uuid import UUID
 
 from app.core.settings import Settings
 from app.domains.billing.operator_review import case_digest
+from app.domains.billing.paid_deadlines import effective_deadline
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
@@ -35,11 +36,24 @@ def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: 
         work = queries.work(db, references)
         reviews = queries.reviews(db, purchase.id, purchase.customer_id, sub.subscription_id if sub else None)
         now = as_utc(billing_reconciliation.database_now(db))
+        state, scope = queries.paid_state(db, user_id, row.product_id)
+        deadline = effective_deadline(scope) if scope else None
         return {
             "purchase_intent_id": str(purchase.id),
             "state": purchase.state,
             "reason": purchase.reason,
             "scope_held": purchase.held,
+            "paid_access": {
+                "revision": state.access_revision if state else 0,
+                "primary_subscription_id": str(scope.primary_subscription_id)
+                if scope and scope.primary_subscription_id
+                else None,
+                "effective_deadline": deadline.isoformat() if deadline else None,
+                "deadline_lag_seconds": max(0, (now - deadline).total_seconds()) if deadline else 0,
+                "supporting_observation_id": str(scope.access_basis_observation_id)
+                if scope and scope.access_basis_observation_id
+                else None,
+            },
             "operations": [
                 {
                     "create_operation_id": str(op.id),
@@ -84,6 +98,7 @@ def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: 
                     "observed_at": obs.observed_at.isoformat(),
                     "completeness": obs.completeness_classification,
                     "result": obs.result_classification,
+                    "resulting_access_revision": obs.resulting_access_revision,
                 }
                 for obs in queries.observations(db, sub.subscription_id)
             ]

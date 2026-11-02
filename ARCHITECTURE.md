@@ -18,9 +18,9 @@ an owned-purchase cabinet. ANY-709 implements direct product links, live current
 offers, account Widget, accepted-purchase preparation/recovery and localized
 Buy/Continue/Manage with one shared payment-capable Widget. It remains
 pre-production. ANY-715 supplies embedded lifecycle polling and GET-only
-recovery/inventory. ANY-765 Step 2 adds local paid derivation/revision/outbox;
-deadline completion, cabinet, actual usage/quota and real Kernel enablement
-remain later work. Delivery and acceptance evidence are recorded in
+recovery/inventory. ANY-765 Steps 2–3 add local paid derivation/revision/outbox,
+autonomous deadlines and audited recovery. Paid cabinet, actual usage/quota
+and real Kernel enablement remain later work. Delivery and acceptance evidence are recorded in
 [ANY-709](https://linear.app/paveldik/issue/ANY-709).
 
 Each production deployment serves exactly one contour. Region Resolver is a
@@ -170,8 +170,8 @@ Legacy v1 remains readable without invented metering. See the
 Step 2 adds safe primary selection, immutable calendar allowances and one
 user-serialized state/revision/audit/outbox commit for reconciliation/inventory.
 Storage details belong to the [schema reference](docs/architecture/payment-portal-data-model.md);
-clock configuration and intermediate enablement limits belong to the
-[operations runbook](docs/engineering/ANY-715-billing-operations.md#any-765-step-2-intermediate-local-projection).
+clock configuration, autonomous reductions and controlled primary recovery belong to the
+[operations runbook](docs/engineering/billing-background-operations.md#any-765-step-2-intermediate-local-projection).
 
 ## Current domains and API
 
@@ -556,8 +556,9 @@ payment state, or manual operator input alone never grant paid access.
 | Commercial mapping publication | `publish_product_link()` appends a v2 immutable revision and CAS-updates one product head after live checks; same identity is a no-op across price changes. Catalog HTTP runs outside short resource-owning worker DB units. |
 | Accepted purchase | `pin_purchase()` atomically commits immutable terms, consent, local customer slot, permanent financial identities and one product hold after source reads. |
 | Financial preparation | `claim_financial()` commits permanent possible-send evidence/work before HTTP; fenced point-read apply owns separate short binding/observation transactions. |
-| Subscription reconciliation | Claims commit before source reads; shared fenced apply atomically writes observations, facts and work. Audited operator resolutions use that same apply/bind transaction. |
-| Other target billing tables | Source-catalog slots are inert; paid-access behavior belongs to later `ANY-504` steps. |
+| Subscription reconciliation | Claims commit before source reads; shared fenced apply atomically writes observations, facts, paid state/revision/outbox and effective deadline work under user-first serialization. Audited operator resolutions use that same apply/bind transaction. |
+| Local paid reductions | The existing local worker lane, customer conflicts and financial review paths use the same caller-transaction paid writer. Local deadlines perform no source HTTP; missing source configuration leaves this lane operational. |
+| Other target billing tables | Source-catalog slots are inert; paid-state presentation and Kernel delivery remain later work. |
 
 ## Enforced architecture guards
 
@@ -632,7 +633,9 @@ Password-reset email delivery remains the existing synchronous framework
 background task. ANY-715 Step 2 adds a durable billing runner embedded in the API lifespan. It
 uses isolated worker HTTP/DB resources, PostgreSQL claims/generations and the
 shared fenced reconciliation path. Local enrollment and trust expiry perform
-no provider HTTP. Paid-access production remains deferred; see the
+no provider HTTP. ANY-765 Step 3 commits effective paid reductions and repairs
+deadlines without source configuration. Paid cabinet reads and Kernel delivery
+remain deferred; see the
 [billing operations runbook](docs/engineering/billing-background-operations.md).
 
 The web dependency direction is:

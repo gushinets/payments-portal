@@ -11,6 +11,8 @@ from app.models import (
     ExternalCreateOperation,
     ExternalSubscription,
     ManualReviewCase,
+    BillingProductAccessScope,
+    PaidAccessState,
 )
 
 
@@ -83,4 +85,18 @@ def work(db: Session, references: tuple[str, ...]) -> list[BillingWorkItem]:
             .order_by(BillingWorkItem.work_item_id)
             .limit(101)
         )
+    )
+
+
+def paid_state(
+    db: Session, user_id: UUID, product_id: str
+) -> tuple[PaidAccessState | None, BillingProductAccessScope | None]:
+    return (
+        db.scalar(select(PaidAccessState).where(PaidAccessState.user_id == user_id)),
+        db.scalar(
+            select(BillingProductAccessScope).where(
+                BillingProductAccessScope.user_id == user_id,
+                BillingProductAccessScope.product_id == product_id,
+            )
+        ),
     )

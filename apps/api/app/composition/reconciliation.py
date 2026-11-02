@@ -7,7 +7,7 @@ from uuid import UUID
 
 from starlette.concurrency import run_in_threadpool
 
-from app.core.settings import Settings
+from app.core.settings import AppEnv, Settings
 from app.core.time import utc_now
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.reconciliation import apply_reconciliation, claim_reconciliation
@@ -91,6 +91,7 @@ async def reconcile_subscription(
         resolution=resolution,
         discovery_id=discovery_id,
         clock_skew_seconds=configuration.paid_access_clock_skew_seconds,
+        allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
     )
 
 
