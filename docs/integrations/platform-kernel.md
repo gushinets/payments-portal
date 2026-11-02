@@ -5,9 +5,9 @@ Last observed: 2026-11-02 for read-only local Kernel composition/contract inspec
 
 ## Ownership and sources
 
-Portal owns identity, sessions, legal acceptance, public discovery and the
-cabinet. Its target owns approved commercial-to-technical mappings, paid
-grants/allowances, access revisions and delivery. External Billing owns
+Portal owns identity, sessions, legal acceptance, public discovery, the cabinet,
+immutable commercial-to-technical mappings, local paid grants/allowances and
+access revisions. Kernel HTTP delivery remains planned. External Billing owns
 commercial billing truth and lifecycle. The separate
 [Platform Kernel repository](https://github.com/gushinets/anytoolai-platform)
 owns execution, artifacts, technical product/metric vocabulary, actual usage
@@ -36,7 +36,7 @@ Platform access-delivery snapshot `79a2ada5b790f959a40b3e08451ef9ed8d97da5b`.
 ANY-765 Step 1 inspected the newer manifest producer/contract at
 [`e627bf2`](https://github.com/gushinets/anytoolai-platform/blob/e627bf296a6476efcca839a0328cf1a5683555e2/docs/contracts/kernel-capability-manifest/v1/README.md).
 These identify historical source evidence, not a verified joint deployment.
-The separate Step 4 local peer refresh is recorded below.
+The 2026-11-02 local peer inspection is recorded below.
 
 | Operation / request direction | Payload producer | Payload consumer / receiver | Verification status |
 | --- | --- | --- | --- |
@@ -47,8 +47,8 @@ The separate Step 4 local peer refresh is recorded below.
 ANY-664 implemented restricted v1 publication and DB-only browsing. ANY-709
 Step 1 now implements direct versioned links, one current product pointer,
 enabled-product discovery and current selected LBX offers. Kernel wire semantics
-and the historical pinned peer observation above are unchanged. The separate
-Step 4 inspection below does not establish real producer HTTP conformance.
+and the historical pinned peer observation above are unchanged. The newer
+source inspection below does not establish real producer HTTP conformance.
 Source projection slots remain inert.
 ANY-709 implements purchase orchestration; ANY-715 implements subscription
 reconciliation and GET-only recovery without Kernel calls. ANY-765 Step 2 adds
@@ -122,7 +122,7 @@ checker remains in Portal CI. The owner removed external source monitoring on
 remains future work. Delivery: [ANY-728](https://linear.app/paveldik/issue/ANY-728),
 companion [ANY-727](https://linear.app/paveldik/issue/ANY-727).
 
-## ANY-765 Step 1 consumer alignment
+## Development manifest alignment
 
 The existing positive fixture/digest is retained. The mock adds all-disabled and
 safe 500/503 producer-shaped errors based on the source inspection above; this
@@ -131,20 +131,20 @@ unit and enablement. SIMULATED 100/300 quantities live only in explicit dev/test
 accepted terms, never in the manifest; see the
 [purchase runbook](../engineering/ANY-709-billing-runbook.md#development-purchase-metering-any-765-step-1).
 
-## ANY-765 Step 4 customer contract
+## Customer paid-state contract
 
 The Portal-only `GET /api/paid-access` exposes committed local paid state to the
 ordinary authenticated cabinet. It is not the internal Kernel AccessSnapshot,
 and changes no Kernel DTO, fixtures, hashes, authentication or networking.
 Purchased SIMULATED quantities/provenance are shown without actual usage or
 remaining. Deadline refusal and read-only behavior are described in the
-[billing operations guide](../engineering/billing-background-operations.md#any-765-step-4-local-cabinet-read-and-step-10-handoff).
+[billing operations guide](../engineering/billing-background-operations.md#customer-paid-state-read-and-kernel-handoff).
 
 Read-only peer refresh on 2026-11-02 inspected the clean local Kernel `main` at
 `331e086ca9e0c72eb757aacc476bad5bacb5bae5`: architecture, API composition,
 manifest router and producer contract still separate guest quota from future
 paid integration. The manifest producer is present; the access snapshot and
-invalidation routes are absent from that composition. No peer worktree was
-modified and no joint deployment/HTTP conformance is claimed. ANY-766 owns the
+invalidation routes are absent from that composition. Source inspection does
+not establish deployed HTTP conformance. ANY-766 owns the
 coordinated B10 specification/producer/consumer change and Kernel delivery;
 actual usage/remaining and cross-app launch remain separate interfaces.

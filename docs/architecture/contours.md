@@ -148,8 +148,9 @@ clean target persistence baseline is contour-local. Only immutable offer
 publication was the original producer. ANY-709 adds immutable purchase consent,
 request-driven preparation/recovery and payment UI.
 ANY-715 implements operating reconciliation/recovery and audited controls in the
-configured contour; real LBX/webhook enablement remains unverified. Paid-access
-derivation remains later work. AnyToolAI Portal is not yet a production billing service.
+configured contour. ANY-765 derives local paid access and serves committed state
+to the authenticated cabinet. Real LBX/webhook enablement and Kernel delivery
+remain separate acceptance boundaries. AnyToolAI Portal remains pre-production.
 
 The long-term production target requires contour enablement/deployment
 configuration to select one concrete external-billing integration. Target

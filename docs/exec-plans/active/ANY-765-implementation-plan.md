@@ -8,7 +8,7 @@ Program: [ANY-504](https://linear.app/paveldik/issue/ANY-504)
 The implementation-ready plan is preserved at
 [`96e3b0c`](https://github.com/gushinets/payments-portal/blob/96e3b0c/docs/exec-plans/active/ANY-765-implementation-plan.md).
 The four approved steps and execution prompts below are retained as the scope
-contract.
+contract; current implementation is summarized in Section 2.
 Implementation is published in [PR #157](https://github.com/gushinets/payments-portal/pull/157).
 Implementation completion does not close the acceptance gates in Section 6.
 
@@ -71,10 +71,6 @@ changes and production rollout remain Steps 10–11.
 - Predecessor: ANY-715 subscription reconciliation and background recovery,
   including the relevant Step 7 corrections.
 - Current migration head: `20261031_0006`, following `20261028_0005`.
-- Kernel source inspection on 2026-11-02: local `main` at
-  `331e086ca9e0c72eb757aacc476bad5bacb5bae5`. The manifest producer is present;
-  paid snapshot/invalidation endpoints remain absent from its API composition.
-  Source inspection is not deployed HTTP conformance.
 
 ### Implemented seams
 
@@ -124,7 +120,7 @@ Follow root and applicable subtree instructions,
   and [Phase 0 handoff](../../superpowers/phase0/2026-10-14-any-634-lbx-evidence-handoff.md).
 - The inherited [Step 7 plan](../completed/ANY-709-implementation-plan.md),
   [Step 7 runbook](../../engineering/ANY-709-billing-runbook.md),
-  [Step 8 delivery history](https://github.com/gushinets/payments-portal/blob/b202ad3/docs/exec-plans/completed/ANY-715-implementation-plan.md) and the current background operations runbook.
+  and [background operations runbook](../../engineering/billing-background-operations.md).
 - [Kernel integration map](../../integrations/platform-kernel.md) and
   producer-owned
   [ANY-711 manifest contract](https://github.com/gushinets/anytoolai-platform/blob/e627bf296a6476efcca839a0328cf1a5683555e2/docs/contracts/kernel-capability-manifest/v1/README.md).
@@ -403,8 +399,7 @@ prerequisite to start coding.
 
 All four implementation steps below are **DONE**. Their original execution
 prompts are retained for traceability, not as a queue of unfinished work.
-Per-step delivery records identify the resulting behavior; Section 6 defines
-the verification and acceptance criteria.
+Section 6 defines the verification and acceptance criteria.
 
 Use the repository-managed test environment and shared PostgreSQL fixtures.
 Focused canonical selection can use command-local `PYTEST_ADDOPTS`, for example:
@@ -520,15 +515,6 @@ lookup.
 **Proposed commit**
 
 `ANY-765 - Pin consented development metering terms`
-
-### Step 1 delivery — DONE
-
-Delivered in `85ba988` (the rebased form of original `017ab1a`). V2 acceptance
-pins strict integer quantities, unit/metric ownership, digest and SIMULATED
-provenance. Changed terms refuse new confirmation; saved v1/v2 replays preserve
-history. The explicitly enabled dev/test fixture refuses production use.
-The existing two-product mock was reused and its bounded missing scenarios
-aligned with inspected ANY-711 source. No paid grant was introduced by this step.
 
 ### Step 2 — Derive and atomically commit paid access
 
@@ -668,20 +654,6 @@ semantic revisions and durable invalidation work.
 
 `ANY-765 - Commit paid access with immutable cycle allowances`
 
-### Step 2 delivery — DONE
-
-Delivered in `f18c279`, with predecessor/rebase corrections in `d005cec`.
-Migration `20261031_0006` adds lossless cycle evidence, logical allowance
-uniqueness and immutable/monotonic storage guards. Reconciliation and inventory
-share the caller-transaction paid writer, causal audit and coalesced outbox.
-
-Complete discovery gates first selection. Ordinary trusted-primary refreshes
-reuse point proof; newcomer conflicts do not replace that primary. Ended
-customer-owned external history may be excluded without fabricated local
-acceptance; unknown nonterminal/local-hidden candidates still prevent unsafe
-selection. Same-cycle recovery reuses frozen IDs and quantities; proven later
-current cycles receive no skipped-period backfill.
-
 ### Step 3 — Apply autonomous deadlines and controlled recovery
 
 **Goal**
@@ -806,21 +778,6 @@ outage or process restart.
 
 `ANY-765 - Enforce paid access deadlines and audited recovery`
 
-### Step 3 delivery — DONE
-
-Delivered in `0d360d0`, with integration corrections in `d005cec` and `b6c8802`.
-The existing local worker processes conservative source/grant/UTC-allowance
-deadlines and repairs missing work without provider I/O or present-day LBX
-configuration. Timers only reduce; user-first locking and queue checks preserve
-atomic state/revision/audit/outbox commits and stale-owner rollback.
-
-Customer identity conflicts reduce dependent products atomically; scoped
-purchase/review failures preserve independent products. Ordinary paired-key
-recovery restores no access before fresh subscription proof. Audited
-`select-primary` accepts only the original linked candidate with current case,
-proof and fence checks. Incomplete inventory remains retryable rather than
-creating a durable ambiguity review; existing review history is preserved.
-
 ### Step 4 — Expose committed paid state in the cabinet
 
 **Goal**
@@ -939,24 +896,6 @@ and no dependency on live LBX reads.
 
 `ANY-765 - Show committed paid access in the cabinet`
 
-### Step 4 delivery — DONE
-
-Delivered in `5eb88c8`, based on clean `b6c8802` plus the reviewed Step 4 diff.
-`GET /api/paid-access` uses the existing verified-email session policy and the
-configured user/tenant/region scope. A shared user-row read lock stabilizes the
-committed complete document and deadline/evidence metadata against paid writers.
-After identity bookkeeping, only local SELECTs run; implicit zero creates no
-paid state. Database time is sampled after those reads, so an overdue tuple
-returns correlated no-store `503/paid_access_deadline_pending` without filtering
-or scheduling repair.
-
-Generated customer DTOs expose complete grants/allowances and separate bounded
-product evidence. No provider/cycle identifiers, guessed UTC periods or Kernel
-AccessSnapshot wire are exposed. The cabinet refreshes local reads while visible,
-on retry/visibility return and after Widget close, with session replacement/
-logout/unmount guards. Purchase preparation is separate; SIMULATED quantities
-are labeled and actual usage/remaining is unavailable.
-
 ## 6. Final Verification & Review
 
 ### Automated acceptance
@@ -1013,7 +952,7 @@ tests.
 ## 7. Handoff to Next Step
 
 The Step 10 handoff is delivered in the existing
-[billing operations runbook](../../engineering/billing-background-operations.md#any-765-step-4-local-cabinet-read-and-step-10-handoff).
+[billing operations runbook](../../engineering/billing-background-operations.md#customer-paid-state-read-and-kernel-handoff).
 It preserves:
 
 - Exact accepted ACTIVE/unblocked policy and its evidence limits.

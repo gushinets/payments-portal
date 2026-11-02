@@ -174,7 +174,7 @@ Step 2 adds safe primary selection, immutable calendar allowances and one
 user-serialized state/revision/audit/outbox commit for reconciliation/inventory.
 Storage details belong to the [schema reference](docs/architecture/payment-portal-data-model.md);
 clock configuration, autonomous reductions and controlled primary recovery belong to the
-[operations runbook](docs/engineering/billing-background-operations.md#any-765-step-2-intermediate-local-projection).
+[operations runbook](docs/engineering/billing-background-operations.md#local-paid-projection).
 
 Step 4's `GET /api/paid-access` is a separate customer contract, authenticated
 with the existing verified-email session policy. Presentation owns named DTOs;

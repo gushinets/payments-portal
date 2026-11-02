@@ -24,7 +24,7 @@ revision/outbox commits, provider-free effective deadlines and audited recovery.
 The cabinet reads committed local paid state without source calls; overdue
 unprocessed deadlines return 503 without changing the revision's document.
 Invalidation HTTP delivery remains deferred and source-catalog projection tables
-remain inert. Paid-access verification and open acceptance belong to the
+remain inert. Paid-access scope and acceptance criteria belong to the
 [ANY-765 plan](exec-plans/active/ANY-765-implementation-plan.md).
 
 ## Cross-cutting critical paths

@@ -383,16 +383,16 @@ source-expiry evidence. Incomplete attempts preserve only finite existing suppor
 known negative/conflicting facts supersede usability. Calendar precision stays
 provider evidence, without an inferred UTC cycle or allowance identity.
 
-Step 8 initially creates scopes with `primary_subscription_id=NULL` and
-observations with null `resulting_access_revision`. ANY-765 now consumes those
-facts through the local paid writer described below, adding primary selection,
-grants/allowances, semantic revisions and atomic outbox production.
+Preparation and recovery binding alone cannot select a primary or issue paid
+grants/allowances. Authoritative reconciliation and inventory use the local paid
+writer for primary selection, grants/allowances, semantic revisions and atomic
+outbox production.
 Step 10 owns Kernel wire/invalidation delivery and coupled UTC calendar design.
 ANY-765 still owns configured test-LBX purchase-to-cabinet acceptance. Step 11
 owns the broader deployed journey, natural-renewal and launch acceptance.
 
 
-## ANY-765 Step 2 intermediate local projection
+## Local paid projection
 
 Reconciliation and inventory share one caller-transaction paid writer. Complete
 persisted discovery gates first-primary selection; ordinary primary refreshes
@@ -409,15 +409,13 @@ revision; material changes commit state, causal audit and pending invalidation
 atomically. See the [schema reference](../architecture/payment-portal-data-model.md)
 for immutable allowance shapes and storage guards.
 
-ANY-765 Step 3 completes local deadlines and customer/review/operator paths
-as described below. Step 4 adds the local paid read/cabinet described below.
 Kernel delivery/acknowledgement and actual usage remain ANY-766. This
 local implementation has not established production enablement. Acceptance
 criteria and later enablement boundaries are defined in the
 [canonical plan](../exec-plans/active/ANY-765-implementation-plan.md).
 
 
-## ANY-765 Step 3 autonomous reductions and controlled recovery
+## Autonomous paid reductions and controlled recovery
 
 `commit_paid_state()` is the user-serialized, caller-transaction writer. It
 checks each primary's source status, customer binding and purchase/operation
@@ -509,12 +507,11 @@ Use these local IDs with review/observation summaries; no IDs become metric labe
 Worker backlog/lag includes persisted local deadlines even when today's account
 setting differs. A due observation/revision/outbox identifies the atomic
 reduction; null resulting revision records a semantic no-op. Late reads must
-fail closed until the reduction commits; Step 4 implements that customer read
-contract below. No B10 wire is introduced. Configured test-LBX, natural renewal
-and deployed Kernel acceptance remain
-separate from synthetic PostgreSQL/HTTP tests.
+fail closed until the reduction commits; the customer read contract is described
+below. No B10 wire is introduced. Configured test-LBX, natural renewal and
+deployed Kernel acceptance remain separate from synthetic PostgreSQL/HTTP tests.
 
-## ANY-765 Step 4 local cabinet read and Step 10 handoff
+## Customer paid-state read and Kernel handoff
 
 `GET /api/paid-access` requires a current verified-email bearer session. Tenant,
 region and user come from authenticated identity and deployment configuration;
