@@ -111,8 +111,9 @@ async def test_shared_inventory_points_never_move_source_trust_past_the_first_re
     )
 
 
+@pytest.mark.parametrize("competitor_state", [2, None])
 async def test_inventory_competitor_cannot_hide_owned_block_or_reissue_paid_allowance(
-    paid_scenario: tuple, postgres_session_factory: sessionmaker[Session]
+    paid_scenario: tuple, postgres_session_factory: sessionmaker[Session], competitor_state: int | None
 ) -> None:
     factory = postgres_session_factory
     transport, sources, config, subscription_id, _ = paid_scenario
@@ -123,6 +124,7 @@ async def test_inventory_competitor_cannot_hide_owned_block_or_reissue_paid_allo
     transport.subscriptions[0]["current_blocking"] = 1
     competitor = deepcopy(transport.subscriptions[0])
     competitor["subscription_id"] = 999
+    competitor["state"] = competitor_state
     transport.subscriptions.append(competitor)
     background_recovery.repair_batch(factory, config)
     transport.requests.clear()

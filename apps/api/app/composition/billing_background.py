@@ -143,9 +143,9 @@ async def _inventory_customer(
                         conflicts.append(purchase)
                     else:
                         incomplete = True
-                        continue
                 # Preserve timely admission conflicts even if the remaining
-                # paid discovery times out; still apply owned negative proof.
+                # paid discovery times out. Incomplete financial admission
+                # must not hide independently proven owned negative facts.
                 points = await read_inventory_points(
                     client,
                     purchase,
