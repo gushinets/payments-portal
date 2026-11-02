@@ -453,18 +453,3 @@ def _locked(db: Session, purchase: Purchase) -> PurchaseIntent:
     ):
         raise PurchaseRefused("purchase_scope_released", 409)
     return row
-
-
-def recheck_payment_purchase(factory: SessionFactory, configuration: Settings, token: str, expected: Purchase) -> None:
-    """Last local auth/ownership/fence check after all asynchronous Widget work."""
-    with factory() as db:
-        user = authenticate(db, configuration, token)
-        if user.id != expected.user_id:
-            raise PurchaseRefused("purchase_not_found", 404)
-        row = _locked(db, expected)
-        _verify_original_consent(db, row, expected.accepted)
-        current = _snapshot(db, row)
-        if current.state != IntentState.LINKED or tuple(op.admission_snapshot() for op in current.operations) != tuple(
-            op.admission_snapshot() for op in expected.operations
-        ):
-            raise PurchaseRefused("purchase_not_prepared", 409)
