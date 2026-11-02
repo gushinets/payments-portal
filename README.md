@@ -29,7 +29,7 @@ hints and audited operator commands. ANY-765 adds committed local paid access
 and an authenticated cabinet read; Kernel delivery and actual usage/remaining
 remain later program work.
 Purchase delivery evidence is in [ANY-709](https://linear.app/paveldik/issue/ANY-709);
-paid-access delivery and open acceptance are in the
+paid-access scope and acceptance criteria are in the
 [ANY-765 plan](docs/exec-plans/active/ANY-765-implementation-plan.md).
 Commands, migration transitions and diagnostics are in the
 [billing runbook](docs/engineering/ANY-709-billing-runbook.md).

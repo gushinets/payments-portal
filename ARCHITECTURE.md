@@ -22,7 +22,7 @@ recovery/inventory. ANY-765 adds local paid derivation/revision/outbox,
 autonomous deadlines, audited recovery and an authenticated local paid-state
 cabinet. Actual usage/quota and real Kernel delivery/enablement remain later
 work. Purchase delivery evidence is in [ANY-709](https://linear.app/paveldik/issue/ANY-709);
-paid-access verification and open acceptance are in the
+paid-access scope and acceptance criteria are in the
 [ANY-765 plan](docs/exec-plans/active/ANY-765-implementation-plan.md).
 
 Each production deployment serves exactly one contour. Region Resolver is a

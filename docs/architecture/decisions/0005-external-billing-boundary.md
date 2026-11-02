@@ -100,8 +100,8 @@ direct product links, live offers, account Widget and accepted-purchase
 preparation/recovery. ANY-765 implements local paid projection, deadlines,
 revision/outbox commits and authenticated cabinet reads; Kernel HTTP delivery
 remains later work. Current boundaries are in
-[ARCHITECTURE](../../../ARCHITECTURE.md); current paid-access evidence and open
-acceptance are in the [ANY-765 plan](../../exec-plans/active/ANY-765-implementation-plan.md).
+[ARCHITECTURE](../../../ARCHITECTURE.md); paid-access scope and acceptance
+criteria are in the [ANY-765 plan](../../exec-plans/active/ANY-765-implementation-plan.md).
 The original context above records transition history.
 
 ## Consequences

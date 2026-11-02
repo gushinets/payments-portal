@@ -50,9 +50,8 @@ Start with the smallest document that matches the task.
 
 ### Implementation handoffs and references
 
-- [ANY-765 implementation plan and current verification](exec-plans/active/ANY-765-implementation-plan.md)
-  — four implementation steps DONE; post-rebase aggregate checks PASS;
-  configured test-LBX acceptance remains open; Kernel delivery belongs to ANY-766
+- [ANY-765 implementation plan](exec-plans/active/ANY-765-implementation-plan.md)
+  — paid-access scope, decisions and acceptance criteria; Kernel delivery belongs to ANY-766
 - [ANY-709 implementation plan and delivery record](exec-plans/completed/ANY-709-implementation-plan.md)
   — Steps 1-4 DONE as implementation milestones; dated source/verification
   evidence, the accepted cabinet layout and open final-review follow-ups.

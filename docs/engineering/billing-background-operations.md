@@ -412,8 +412,8 @@ for immutable allowance shapes and storage guards.
 ANY-765 Step 3 completes local deadlines and customer/review/operator paths
 as described below. Step 4 adds the local paid read/cabinet described below.
 Kernel delivery/acknowledgement and actual usage remain ANY-766. This
-local implementation has not established production enablement. Current
-verification and live acceptance limits are recorded in the
+local implementation has not established production enablement. Acceptance
+criteria and later enablement boundaries are defined in the
 [canonical plan](../exec-plans/active/ANY-765-implementation-plan.md).
 
 
@@ -510,8 +510,8 @@ Worker backlog/lag includes persisted local deadlines even when today's account
 setting differs. A due observation/revision/outbox identifies the atomic
 reduction; null resulting revision records a semantic no-op. Late reads must
 fail closed until the reduction commits; Step 4 implements that customer read
-contract below. No B10 wire is introduced. See the canonical plan for passed, failed and unexecuted evidence;
-configured test-LBX, natural renewal and deployed Kernel acceptance remain
+contract below. No B10 wire is introduced. Configured test-LBX, natural renewal
+and deployed Kernel acceptance remain
 separate from synthetic PostgreSQL/HTTP tests.
 
 ## ANY-765 Step 4 local cabinet read and Step 10 handoff
@@ -571,9 +571,8 @@ fixtures, hashes and compatibility together. Preserve finite UTC trust/grant/
 snapshot deadlines, six-hour source trust, the five-minute snapshot ceiling and
 durable usage identity. This cabinet DTO must not become that internal wire.
 
-Synthetic PostgreSQL/API/component/browser evidence and failed/unexecuted checks
-are recorded in the [canonical plan](../exec-plans/active/ANY-765-implementation-plan.md).
-Configured test-LBX-to-cabinet acceptance remains a distinct owner-QA checkpoint;
+The [canonical plan](../exec-plans/active/ANY-765-implementation-plan.md) defines
+test-LBX-to-cabinet acceptance as a distinct owner-QA checkpoint;
 100/300 SIMULATED quantities cannot satisfy production metering approval.
 ANY-711/Steps 10–11 own real vocabulary/quantity approval, Kernel conformance,
 natural renewal and deployment acceptance. Webhook enablement remains ANY-715's

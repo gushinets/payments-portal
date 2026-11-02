@@ -1,7 +1,6 @@
 # ANY-765 — Paid Access Projection, Allowances, Revision & Invalidation
 
-Status: Steps 1–4 DONE (implementation); post-rebase aggregate check PASS; configured test-LBX acceptance NOT_RUN
-Validation: **READY WITH GATES** — validated using the validate-plan skill
+Status: Steps 1–4 DONE (implementation)
 Updated: 2026-11-02
 Issue: [ANY-765](https://linear.app/paveldik/issue/ANY-765)
 Program: [ANY-504](https://linear.app/paveldik/issue/ANY-504)
@@ -9,8 +8,7 @@ Program: [ANY-504](https://linear.app/paveldik/issue/ANY-504)
 The implementation-ready plan is preserved at
 [`96e3b0c`](https://github.com/gushinets/payments-portal/blob/96e3b0c/docs/exec-plans/active/ANY-765-implementation-plan.md).
 The four approved steps and execution prompts below are retained as the scope
-contract. Current delivery and verification replace the superseded per-run
-journals; their detailed history remains in Git through `5eb88c8`.
+contract.
 Implementation is published in [PR #157](https://github.com/gushinets/payments-portal/pull/157).
 Implementation completion does not close the acceptance gates in Section 6.
 
@@ -70,21 +68,13 @@ changes and production rollout remain Steps 10–11.
 
 ### Delivered baseline
 
-- Portal branch: `ANY-765`; original four-step runtime/UI delivery at `5eb88c8`.
-  The owner-requested current rebase replays all eight commits through `ac9fffe`
-  onto freshly fetched `ANY-715` at `76ea1a7` (2026-11-02). Integration fix and
-  current tested runtime are `aff7343`. Original delivery is retained at
-  `codex/any765-before-715-refresh-ac9fffe`.
-- The predecessor includes the relevant Step 7 corrections, the operations
-  runbook rename and inventory/Widget/deadline regressions. Current integration
-  verification below supersedes historical pre-rebase results.
+- Predecessor: ANY-715 subscription reconciliation and background recovery,
+  including the relevant Step 7 corrections.
 - Current migration head: `20261031_0006`, following `20261028_0005`.
 - Kernel source inspection on 2026-11-02: local `main` at
   `331e086ca9e0c72eb757aacc476bad5bacb5bae5`. The manifest producer is present;
   paid snapshot/invalidation endpoints remain absent from its API composition.
   Source inspection is not deployed HTTP conformance.
-- Real test-LBX-to-cabinet acceptance is **NOT_RUN**. Synthetic tests and
-  SIMULATED quantities do not establish production enablement.
 
 ### Implemented seams
 
@@ -413,8 +403,8 @@ prerequisite to start coding.
 
 All four implementation steps below are **DONE**. Their original execution
 prompts are retained for traceability, not as a queue of unfinished work.
-Per-step delivery records identify the resulting commits; Section 6 owns the
-current verification and acceptance status.
+Per-step delivery records identify the resulting behavior; Section 6 defines
+the verification and acceptance criteria.
 
 Use the repository-managed test environment and shared PostgreSQL fixtures.
 Focused canonical selection can use command-local `PYTEST_ADDOPTS`, for example:
@@ -539,10 +529,6 @@ provenance. Changed terms refuse new confirmation; saved v1/v2 replays preserve
 history. The explicitly enabled dev/test fixture refuses production use.
 The existing two-product mock was reused and its bounded missing scenarios
 aligned with inspected ANY-711 source. No paid grant was introduced by this step.
-
-Purchase API/PostgreSQL, component and desktop/mobile synthetic browser checks
-passed. Current aggregate results and remaining limits are consolidated in
-Section 6; earlier run-by-run evidence remains in Git.
 
 ### Step 2 — Derive and atomically commit paid access
 
@@ -696,9 +682,6 @@ acceptance; unknown nonterminal/local-hidden candidates still prevent unsafe
 selection. Same-cycle recovery reuses frozen IDs and quantities; proven later
 current cycles receive no skipped-period backfill.
 
-Policy, migration, PostgreSQL/concurrency and source-read regression checks
-passed. Section 6 reports verification of the combined delivered state.
-
 ### Step 3 — Apply autonomous deadlines and controlled recovery
 
 **Goal**
@@ -838,11 +821,6 @@ recovery restores no access before fresh subscription proof. Audited
 proof and fence checks. Incomplete inventory remains retryable rather than
 creating a durable ambiguity review; existing review history is preserved.
 
-PostgreSQL deadline/recovery/fence and real-loopback HTTP capacity checks passed.
-The post-rebase regressions preserve original-key recovery, the common read-set
-trust start and local deadlines across account-scope/configuration conflicts.
-Current final verification and unresolved acceptance remain in Section 6.
-
 ### Step 4 — Expose committed paid state in the cabinet
 
 **Goal**
@@ -979,10 +957,6 @@ on retry/visibility return and after Widget close, with session replacement/
 logout/unmount guards. Purchase preparation is separate; SIMULATED quantities
 are labeled and actual usage/remaining is unavailable.
 
-The read-only `review-full` pass found no confirmed Step 4 defect and changed no
-files or test results. It does not establish actual-LBX acceptance or human merge
-approval. Verification is consolidated below; Kernel networking was not started.
-
 ## 6. Final Verification & Review
 
 ### Automated acceptance
@@ -1036,106 +1010,6 @@ PASS, and the ticket must not claim complete functional acceptance. This
 condition does not block supported application implementation and deterministic
 tests.
 
-### Pre-rebase verification — runtime/UI baseline `5eb88c8`
-
-All automated provider inputs are synthetic. PostgreSQL uses the worktree's
-shared disposable-database fixtures; the source-capacity harness uses real
-loopback HTTP. Results below were obtained before publication, against the
-corresponding implementation diff. The documentation-only reconciliation did
-not change runtime. The subsequent ANY-715 rebase changes shared backend paths;
-its separate verification follows below.
-
-- **PASS:** final `npm run check:fast`: 1,749 API-fast, 410 web components,
-  38 boundaries, Ruff check/format, lint/typecheck, docs/architecture and generated
-  freshness. Local evidence: `.harness/any765/step4-check-fast-deadline-final.{log,exit}`.
-- **PASS:** final PostgreSQL selection, 9/9: all seven paid-read cases plus both
-  variations of the worker case that failed in the aggregate. It covers auth/
-  email/scope, implicit zero, paid/negative/unknown evidence, unchanged billing/
-  work/outbox tables, concurrent writer/read consistency, bounded display
-  evidence, slow-source availability and deadline crossing during local SELECTs.
-  Evidence: `.harness/any765/step4-postgres-deadline-worker-final.{log,exit}`.
-- **PASS:** final synthetic Playwright purchase/Widget/cabinet journeys, 18/18,
-  desktop/mobile, including layout and serious/critical Axe checks; screenshots
-  inspected. Production web build/TypeScript and affected lint/components passed.
-  Evidence: `.harness/any765/step4-browser-layout-final.{log,exit}` and
-  `step4-{build,lint,components}-layout-final.log` in the same directory.
-- **FAIL:** broad `npm run check`: PostgreSQL 693 passed / 1 failed at
-  `test_billing_worker_on_time_proof_keeps_delayed_apply_owned[False]`, line 908;
-  `latest_observation_id` stayed unchanged. That unchanged test has a 0.3-second
-  source budget. The logs do not establish a definitive cause. Its focused
-  rerun passed without changing the budget; the aggregate remains **FAIL**.
-  It precedes the final deadline-clock/UI refinements verified above.
-  Evidence: `.harness/any765/step4-check-final.{log,exit}`.
-- **NOT_RUN:** configured actual test-LBX purchase → authoritative observation →
-  revision/outbox → ordinary API/cabinet; API image smoke and rollout. This leaves
-  ANY-765 functional acceptance open. No real billing mutation was attempted.
-- **NOT_RUN / later enablement:** natural renewal, deployed Kernel conformance,
-  production vocabulary/quantity approval, supported deployment clock budget and
-  the coordinated B10 wire rollout retain the owners in Section 3.7 and the
-  operations handoff. They are not additional unfinished coding steps here.
-- **NOT_RUN:** clean `npm ci` verification. Installed frontend versions were
-  Next 16.3.1 / Vitest 3.2.7 versus unchanged lock pins 16.4.2 / 4.1.12.
-
-The dedicated frontend and worktree PostgreSQL server were stopped; the database
-volume was retained. Earlier execution/rebase journals are historical evidence
-in `5eb88c8`, not current prerequisites or additional acceptance requirements.
-
-### Current ANY-715 rebase — 2026-11-02
-
-All eight ANY-765 commits were replayed onto `76ea1a7`; the original `ac9fffe`
-result is retained in the backup ref above. Current tested runtime is `aff7343`.
-Inventory keeps its common read-set start, attempt-local point reuse and paid
-writer while retaining timely conflict proof across a later timeout. Per-point
-admission checks precede paid discovery without suppressing owned negative facts.
-Widget terminal admission and no-send deadline cleanup retain the predecessor
-fixes. The renamed `billing-background-operations.md` remains canonical; removed
-predecessor plan/QA files are not restored. Current links and the paid/cabinet
-handoff are preserved. Web, migrations and generated files match `ac9fffe` exactly.
-
-- **PASS:** full `npm run check`, exit 0: 1,749 API-fast, **703 PostgreSQL**, 410
-  components, 38 boundaries, Ruff check/format, lint, production build/TypeScript,
-  docs/architecture and generated freshness. PostgreSQL: 1,858.12 seconds.
-  The formerly failing worker case passed within this complete run without
-  increasing its budget; the pre-rebase failed run remains historical evidence.
-- **FAIL then corrected:** first focused PostgreSQL selection, 32 passed / 1
-  failed, exposed all-points-before-financial-proof ordering discarding timely
-  conflict evidence on a later timeout. The corrected selection passed **33/33**.
-  An additional owned-block/newcomer test passed **1/1** and in the full run:
-  access is removed with revision/outbox while the frozen allowance is retained.
-- **PASS:** complete runtime diff/range review, four original prompt comparison,
-  retained predecessor guards, final docs and whitespace checks. Runtime changes
-  versus `ac9fffe` are limited to four intended integration paths.
-- **SKIP / NOT_RERUN:** browser E2E; unchanged web/migration/generated files permit
-  reuse of prior layout/session evidence, not a new post-rebase browser PASS.
-  Actual test-LBX, deployed Kernel, clean lock-pinned install and rollout remain
-  **NOT_RUN** under their existing acceptance/enablement owners.
-
-Evidence: `.harness/any765/rebase-715-refresh/{check,focused-postgres,focused-postgres-fixed,owned-negative}.{log,exit}`;
-`range-diff.txt` and the integration/runtime diff snapshots in that directory.
-The worktree-only test PostgreSQL server is stopped with its volume retained.
-No other worktree or real billing/production system was mutated.
-
-### Plan validation and documentation reconciliation
-
-The original 2026-10-30 plan passed **validate-plan: READY WITH GATES**. That was
-planning self-review, not runtime acceptance. The approved four-step structure,
-authority, scope, calendar/quantity rules and original execution prompts remain.
-The documented first-primary/ordinary-refresh distinction clarifies the delivered
-selection path; it adds no discovery requirement to every primary refresh.
-
-The 2026-11-02 documentation reconciliation removes superseded run/rebase
-narratives, identifies all four delivered steps, consolidates current check
-results and separates open acceptance from later Kernel/production work.
-Current-state architecture/security/reliability/product references and PR #157
-are aligned with the implemented local paid read. No new runtime or wire
-behavior is introduced by that documentation change.
-
-Documentation follow-up verification: `npm run docs:check` **PASS**;
-`pytest apps/api/tests/test_repository_docs.py` **PASS**, 194 cases; whitespace
-check **PASS**. A comparison with `96e3b0c` confirms all four execution prompts,
-the goal, accepted purchase/decision/cycle/revision rules and functional DoD are
-unchanged. Runtime/API/UI suites were not repeated for documentation-only edits.
-
 ## 7. Handoff to Next Step
 
 The Step 10 handoff is delivered in the existing
@@ -1156,7 +1030,7 @@ It preserves:
 - Deadline/clock/configuration behavior, outage/restart guarantees and
   late-read refusal.
 - Supported/refused operator actions and operational diagnosis.
-- Automated, actual-LBX and unperformed acceptance evidence.
+- Automated and configured test-LBX acceptance criteria.
 
 For **ANY-766**, explicitly identify the remaining coordinated B10 change:
 reconcile canonical specs' legacy UTC allowance-period clauses with
