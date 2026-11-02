@@ -123,7 +123,7 @@ database lifecycle.
   accepted purchases and request-driven financial preparation/recovery are
   implemented. ANY-715 Steps 1–5 implement embedded reconciliation/recovery,
   default-disabled authenticated durable webhook hints and audited operator
-  controls; see [billing operations](../../docs/engineering/ANY-715-billing-operations.md).
+  controls; see [billing operations](../../docs/engineering/billing-background-operations.md).
   Paid-access derivation remains future work; real webhook authentication/delivery
   is an enablement gate. See the [runbook](../../docs/engineering/ANY-709-billing-runbook.md).
 - Never log authentication tokens, authorization headers, secrets, card fields,

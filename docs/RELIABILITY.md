@@ -64,7 +64,7 @@ paid-access derivation and invalidation delivery remain later work. Webhook rece
 and coalesced work commit before 200. Complete fenced rereads process only covered
 receipt generations; incomplete reads/crashes retry, and later hints remain due.
 Polling converges independently of delivery, ordering or provider retries. See the
-[real enablement gate and rollback](engineering/ANY-715-billing-operations.md#real-enablement-checklist-and-rollback).
+[real enablement gate and rollback](engineering/billing-background-operations.md#real-enablement-checklist-and-rollback).
 
 ## Transaction, idempotency, and retry contract
 
@@ -247,12 +247,7 @@ overwrite monitored facts. Steps 2–3 execute it in the bounded embedded worker
 trust/create deadlines, urgent GET-only recovery and bounded customer inventory.
 Local contention preserves original send authority; retries and source outages
 never move financial UNKNOWN deadlines or convert completed no-send evidence. See the
-[billing operations runbook](engineering/ANY-715-billing-operations.md).
-
-The [open ANY-715 final-review findings](engineering/ANY-715-qa-report.md#open-final-review-findings)
-qualify current end-to-end recovery: P1-1 can lose a timely inventory conflict
-after another product times out, and ARCH-1 prevents deadline completion after
-safe no-send hold release. Passing suites do not establish those guarantees.
+[billing operations runbook](engineering/billing-background-operations.md).
 
 Development environments are worktree-isolated and disposable. The Step-4
 baseline is a destructive compatibility boundary:

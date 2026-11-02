@@ -78,7 +78,7 @@ no background CREATE or cross-product adoption is permitted. Step 4 adds the
 default-disabled authenticated `POST /api/billing/lbx/webhook`: bounded input,
 redacted durable inbox and generation-coalesced hints commit before 200; worker
 GET/apply alone updates facts. Real header/delivery compatibility remains a
-separate enablement gate; polling is independent. See [billing operations](docs/engineering/ANY-715-billing-operations.md).
+separate enablement gate; polling is independent. See [billing operations](docs/engineering/billing-background-operations.md).
 
 Step 5 extends the existing privileged purchase CLI with local inspection,
 GET-only recovery/reconciliation and two audited resolutions: restore original
@@ -86,15 +86,6 @@ canonical facts or bind the uniquely proven original possible-send operation.
 Fresh proof, expected review/evidence/fences and OS principal are rechecked in the
 shared writer; facts/binding, review audit and scheduling commit atomically.
 No terminal hold release, arbitrary rebind or access authority is introduced.
-
-Implementation presence is not final acceptance. Review of `b202ad3` confirmed
-P1-1 (inventory loses timely conflicts on a later product timeout), P1-2
-(payment Widget admission can miss a concurrently committed ENDED fact) and
-ARCH-1 (a no-send deadline cannot finish after safe hold release). These
-unresolved defects qualify the current-state guarantees and Step 9 handoff;
-see [findings and verification scope](docs/engineering/ANY-715-qa-report.md#open-final-review-findings).
-The required invariants remain unchanged. Configured test-LBX acceptance also
-remains open; webhooks remain DISABLED/POLLING-ONLY.
 
 The canonical target is defined, in precedence order, by
 [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md), the
@@ -630,7 +621,7 @@ background task. ANY-715 Step 2 adds a durable billing runner embedded in the AP
 uses isolated worker HTTP/DB resources, PostgreSQL claims/generations and the
 shared fenced reconciliation path. Local enrollment and trust expiry perform
 no provider HTTP. Paid-access production remains deferred; see the
-[billing operations runbook](docs/engineering/ANY-715-billing-operations.md).
+[billing operations runbook](docs/engineering/billing-background-operations.md).
 
 The web dependency direction is:
 
