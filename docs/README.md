@@ -51,9 +51,7 @@ Start with the smallest document that matches the task.
 ### Implementation handoffs and references
 
 - [ANY-715 completed implementation plan](exec-plans/completed/ANY-715-implementation-plan.md)
-  — original approved plan preserved verbatim, dated approved amendments and
-  concise delivery/handoff record; local verification and real integration
-  checkpoints remain separate
+  — delivered scope, retained decisions and the Step 9 handoff
 - [ANY-709 implementation plan and delivery record](exec-plans/completed/ANY-709-implementation-plan.md)
   — Steps 1-4 DONE as implementation milestones; dated source/verification
   evidence, the accepted cabinet layout and open final-review follow-ups.
@@ -106,7 +104,7 @@ Start with the smallest document that matches the task.
 - [Quality score](QUALITY_SCORE.md)
 - [Execution plans](exec-plans/README.md)
 - [ANY-715 billing operations](engineering/ANY-715-billing-operations.md) — current reconciliation/recovery, webhook setup/gate/rollback, audited operator controls, monitoring and Step 9 handoff.
-- [ANY-715 QA execution](engineering/ANY-715-qa-report.md) — P0/P1 scenario evidence, same-tariff product isolation and separately recorded real integration checkpoints.
+- [ANY-715 verification](engineering/ANY-715-qa-report.md) — tested runtime baseline, scenario coverage and remaining real integration checks.
 
 ## Legal
 

@@ -269,10 +269,10 @@ def test_billing_subscription_reconciliation_invalid_decoder_and_runbook_contrac
     runbook = Path("docs/engineering/ANY-715-billing-operations.md").read_text()
     for phrase in (
         RECONCILIATION_SCHEMA,
-        "get_user()",
-        "get_agreement()",
-        "get_tariff()",
-        "get_subscription()",
+        "/users/{id}",
+        "/agreements/{id}",
+        "/tariffs/{id}",
+        "/subscriptions/{id}",
         "COMPLETE_MATCH",
         "COMPLETE_MISMATCH",
         "INCOMPLETE",
