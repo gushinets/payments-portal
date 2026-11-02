@@ -169,7 +169,15 @@ async def read_target_inventory(
         )
         if points is None:
             points = await read_inventory_points(client, purchase, customer, budget=budget, rows=initial)
-        for point, agreement in points:
+        # Preserve the linked point proof before unrelated candidates can make
+        # discovery incomplete. Completeness gates admission, not owned negatives.
+        for point, agreement in sorted(
+            points,
+            key=lambda item: (
+                (str(item[0].subscription_id), str(item[0].agreement_id))
+                != (subject.provider_subscription_id, subject.agreement_id)
+            ),
+        ):
             own = (
                 str(point.subscription_id) == subject.provider_subscription_id
                 and str(point.agreement_id) == subject.agreement_id

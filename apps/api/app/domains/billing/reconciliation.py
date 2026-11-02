@@ -274,6 +274,7 @@ def apply_reconciliation(
         document["cycle"] = proof.cycle.model_dump(mode="json") if proof.cycle else None
         document["read_started_at"] = proof.read_started_at.isoformat()
         document["read_finished_at"] = proof.read_finished_at.isoformat()
+        document["access_end_at"] = proof.access_end_at.isoformat() if proof.access_end_at else None
         document["provenance"] = {
             "purchase_intent_id": str(purchase.id),
             "mapping_revision_id": str(purchase.accepted.meaning.revision_id),

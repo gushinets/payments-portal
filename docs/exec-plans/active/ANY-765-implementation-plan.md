@@ -898,6 +898,44 @@ and no dependency on live LBX reads.
 
 ## 6. Final Verification & Review
 
+### Review follow-up — 2026-11-02
+
+The review of `74935d02fba2` against ANY-715 identified four corrections:
+
+- Preserve independently proven owned negative facts when an inventory neighbor
+  is unknown or final membership changes; incomplete inventory must not admit
+  a new primary.
+- Normalize optional finite subscription-end instants in Integration and pass
+  the typed result to the paid writer; empty provider dates remain audit evidence.
+- Exclude both SQL NULL and JSON null documents from paid-deadline repair.
+- Replace the obsolete preparation-only runbook assertion with the implemented
+  authoritative reconciliation/paid-writer contract.
+
+All four corrections are implemented with regression coverage. Validation of the
+follow-up on top of `74935d02fba2`:
+
+- PASS: `npm run test:api:fast` — 1759 tests. Command-local
+  `KERNEL_MOCK_ENABLED=0 KERNEL_BASE_URL= KERNEL_SERVICE_TOKEN=` removes the
+  inherited development-mock settings from production-settings tests.
+- PASS: `npm run test:api:postgres` with `PYTEST_ADDOPTS="-k 'paid_access or
+  any765 or billing_subscription_reconciliation or billing_background_recovery
+  or billing_worker or billing_operator or any709_concurrent_inventory or
+  any709_recovery_scenarios or any709_final_review'"` — 210 tests. Coverage
+  includes both inventory orders, membership change with a no-new-primary
+  control, empty/finite end dates and both SQL NULL/JSON null repair cases.
+- PASS: Ruff check/format, `npm run docs:check`, `npm run architecture:check`,
+  `npm run generate:check` and `git diff --check`.
+- Reused from the unchanged frontend at the review baseline: 410 component,
+  38 boundary and 18 synthetic browser scenarios, web lint/typecheck/build.
+  The aggregate `npm run check` was not repeated; the remaining PostgreSQL
+  scenarios and clean dependency installation remain NOT_RUN.
+
+The isolated test PostgreSQL was stopped through `make test_db_stop`. Peer
+impact: None; the local Kernel source remains at
+`331e086ca9e0c72eb757aacc476bad5bacb5bae5`, with no Kernel wire change.
+The configured test-LBX purchase-to-cabinet checkpoint remains NOT_RUN; this
+follow-up does not claim live acceptance or change the ANY-766 boundary.
+
 ### Automated acceptance
 
 After focused checks pass, run the broadest supported canonical verification:

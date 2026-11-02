@@ -1,6 +1,7 @@
 """SIMULATED lifecycle/term proof; these tests never call real LBX."""
 
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ from app.domains.billing.reconciliation_contracts import CommercialProof, Identi
 from app.integrations.lbx.financial import Subscription, prove_subscription
 from app.integrations.lbx.errors import LbxScopeMismatch
 from app.integrations.lbx.reconciliation import normalize_subscription
+from app.integrations.lbx.calendar import normalize_access_end
 from apps.api.tests.factories.reconciliation import (
     subject_factory,
     user_factory,
@@ -18,6 +20,27 @@ from apps.api.tests.factories.reconciliation import (
     subscription_factory,
 )
 from apps.api.tests.support.any709_step1 import step1_settings
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (None, None),
+        ("", None),
+        ("0000-00-00", None),
+        ("0000-00-00 00:00:00", None),
+        ("1970-01-01", None),
+        ("1970-01-01 00:00:00", None),
+        ("2026-11-30", None),
+        ("2026-11-30T12:00:00", None),
+        ("2026-02-30T12:00:00+03:00", None),
+        ("2026-11-30T12:00:00+03:00", datetime(2026, 11, 30, 9, tzinfo=UTC)),
+    ],
+)
+def test_billing_subscription_reconciliation_normalizes_access_end(
+    value: str | None, expected: datetime | None
+) -> None:
+    assert normalize_access_end(value) == expected
 
 
 @pytest.mark.parametrize(
@@ -281,7 +304,9 @@ def test_billing_subscription_reconciliation_invalid_decoder_and_runbook_contrac
         "COMPLETE_MISMATCH",
         "INCOMPLETE",
         "six hours",
-        "primary_subscription_id=NULL",
+        "Preparation and recovery binding alone cannot select a primary",
+        "Authoritative reconciliation and inventory use the local paid",
+        "writer for primary selection, grants/allowances, semantic revisions and atomic",
         "read_started_at",
     ):
         assert phrase in runbook

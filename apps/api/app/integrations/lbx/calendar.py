@@ -1,10 +1,21 @@
 """Lossless LBX calendar normalization. Naive timestamps never acquire a zone."""
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 from app.domains.billing.paid_cycles import CalendarEvidence
 
 EMPTY_CALENDAR = {None, "", "0000-00-00", "0000-00-00 00:00:00", "1970-01-01", "1970-01-01 00:00:00"}
+
+
+def normalize_access_end(value: str | None) -> datetime | None:
+    """Only an explicit zoned instant establishes a finite access boundary."""
+    if value in EMPTY_CALENDAR or len(value) == 10:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed.astimezone(UTC) if parsed.utcoffset() is not None else None
 
 
 def normalize_calendar(calendar: dict[str, str | None], anchor_kind: str) -> CalendarEvidence | None:

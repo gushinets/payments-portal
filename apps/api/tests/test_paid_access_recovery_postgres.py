@@ -6,7 +6,7 @@ from uuid import UUID
 
 import pytest
 from pydantic import SecretStr
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, null, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.composition.billing_operator import resolve_review
@@ -18,7 +18,7 @@ from app.domains.billing.operator_diagnostics import inspect_evidence
 from app.domains.billing.work_contracts import WorkLane
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import financial, service
-from app.infrastructure.queries import billing_reconciliation
+from app.infrastructure.queries import billing_reconciliation, paid_access as paid_access_queries
 from app.jobs.billing import BillingWorker
 from app.models import (
     AccessInvalidationOutbox,
@@ -125,6 +125,29 @@ async def test_paid_access_restart_repairs_deadline_and_catches_up(
             while effective(factory)[0] != 2:
                 await asyncio.sleep(0.01)
     assert effective(factory)[1] == {"grants": [], "allowances": []}
+
+
+@pytest.mark.parametrize("storage", ["json_null", "sql_null"])
+async def test_paid_access_revoked_scope_does_not_repeat_deadline_repair(
+    paid_scenario: tuple, postgres_session_factory: sessionmaker[Session], storage: str
+) -> None:
+    factory = postgres_session_factory
+    transport, _, config, _, _ = paid_scenario
+    await reconcile(paid_scenario, factory)
+    transport.subscriptions[0]["current_blocking"] = 1
+    await reconcile(paid_scenario, factory)
+    assert effective(factory) == (2, {"grants": [], "allowances": []})
+    with factory() as db:
+        scope = db.scalars(select(BillingProductAccessScope)).one()
+        assert scope.effective_access_document is None
+        if storage == "sql_null":
+            scope.effective_access_document = null()
+            db.commit()
+        assert (
+            paid_access_queries.missing_deadline_users(db, config.instance_tenant_id, config.instance_region, 1) == []
+        )
+    assert (work.repair_paid_deadlines(factory, config), work.repair_paid_deadlines(factory, config)) == (0, 0)
+    assert effective(factory) == (2, {"grants": [], "allowances": []})
 
 
 @pytest.mark.parametrize("race", ["refresh", "stale_owner"])

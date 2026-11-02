@@ -171,12 +171,9 @@ def apply_paid_source(
     if decision == PaidDecision.GRANT and skew_seconds is not None:
         deadline = as_utc(subscription.projection_valid_until) - timedelta(seconds=skew_seconds)
         grant_end = None
-        value = proof.calendar.get("subscription_end_date")
-        if value and len(value) > 10:
-            parsed = datetime.fromisoformat(value)
-            if parsed.utcoffset() is not None:
-                grant_end = as_utc(parsed) - timedelta(seconds=skew_seconds)
-                deadline = min(deadline, grant_end)
+        if proof.access_end_at is not None:
+            grant_end = proof.access_end_at - timedelta(seconds=skew_seconds)
+            deadline = min(deadline, grant_end)
         if deadline <= now:
             scope.effective_access_document = None
             scope.effective_access_until = deadline

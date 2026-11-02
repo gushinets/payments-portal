@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.models import PurchasedAllowance
+from app.models import BillingStateObservation, ExternalSubscription, PurchasedAllowance
 from apps.api.tests.test_paid_access_postgres import reconcile, effective
 
 pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
@@ -30,6 +30,30 @@ async def test_paid_access_accepted_terms_are_the_only_quantity_source(
         ]
     else:
         assert document["allowances"] == []  # v1 has no invented technical history.
+
+
+@pytest.mark.parametrize(
+    "end",
+    [None, "0000-00-00", "0000-00-00 00:00:00", "1970-01-01 00:00:00", "2030-03-01T12:00:00+03:00"],
+)
+async def test_paid_access_normalized_subscription_end_preserves_grant_and_audit(
+    paid_scenario: tuple, postgres_session_factory: sessionmaker[Session], end: str | None
+) -> None:
+    transport, _, _, subscription_id, _ = paid_scenario
+    transport.subscriptions[0]["subscription_end_date"] = end
+    await reconcile(paid_scenario, postgres_session_factory)
+    revision, document = effective(postgres_session_factory)
+    expected_end = datetime(2030, 3, 1, 9, tzinfo=UTC) if end and end.startswith("2030") else None
+    grant_end = (expected_end - timedelta(seconds=10)).isoformat() if expected_end else None
+    assert revision == 1 and document["grants"] == [{"product_id": "proposal_ai", "valid_until": grant_end}]
+    assert document["allowances"][0]["quantity"] == 100
+    await reconcile(paid_scenario, postgres_session_factory)
+    assert effective(postgres_session_factory) == (revision, document)
+    with postgres_session_factory() as db:
+        subscription = db.get(ExternalSubscription, subscription_id)
+        observation = db.get(BillingStateObservation, subscription.latest_observation_id)
+        assert observation.evidence_document["calendar"]["subscription_end_date"] == end
+        assert observation.evidence_document["access_end_at"] == (expected_end.isoformat() if expected_end else None)
 
 
 @pytest.mark.parametrize("paid_scenario", ["timestamp"], indirect=True)

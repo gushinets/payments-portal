@@ -147,6 +147,7 @@ def apply_discoveries(
         proof_document = asdict(proof)
         proof_document["read_started_at"] = proof.read_started_at.isoformat()
         proof_document["read_finished_at"] = proof.read_finished_at.isoformat()
+        proof_document["access_end_at"] = proof.access_end_at.isoformat() if proof.access_end_at else None
         proof_document["cycle"] = proof.cycle.model_dump(mode="json") if proof.cycle else None
         authoritative = BillingStateObservation(
             observation_kind=BillingStateObservationKind.AUTHORITATIVE_SUBSCRIPTION_READ,

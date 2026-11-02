@@ -215,7 +215,18 @@ async def _inventory_customer(
     if {(row.subscription_id, row.agreement_id, row.tariff_id) for row in rows} != {
         (row.subscription_id, row.agreement_id, row.tariff_id) for row in again
     }:
-        await delegate(recovery.apply_inventory, factory, claim, (), "inventory_incomplete")
+        # Retain independently proven negatives. An unstable list cannot admit
+        # a primary or refresh paid access, even if an earlier discovery was complete.
+        await delegate(
+            recovery.apply_inventory,
+            factory,
+            claim,
+            (),
+            "inventory_incomplete",
+            discovery_ids=tuple(discovery_ids),
+            clock_skew_seconds=None,
+            allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
+        )
         return
     budget.check()
     await delegate(

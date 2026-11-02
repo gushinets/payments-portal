@@ -69,3 +69,4 @@ class SubscriptionProof:
     # Names of successful point reads, never payloads or credentials.
     reads: tuple[str, ...]
     cycle: CalendarEvidence | None = None
+    access_end_at: datetime | None = None

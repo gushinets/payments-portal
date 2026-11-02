@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from sqlalchemy import exists, or_, select, Text, cast
+from sqlalchemy import JSON, exists, or_, select, Text, cast
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -152,6 +152,7 @@ def missing_deadline_users(
                 User.tenant_id == tenant,
                 User.region == region,
                 BillingProductAccessScope.effective_access_document.is_not(None),
+                BillingProductAccessScope.effective_access_document != JSON.NULL,
                 needs_repair,
             )
             .distinct()

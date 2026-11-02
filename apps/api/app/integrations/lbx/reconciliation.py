@@ -20,7 +20,7 @@ from app.integrations.lbx.dto import LbxRead, LbxTariff
 from app.integrations.lbx.errors import LbxError, LbxResponseInvalid, LbxScopeMismatch
 from app.integrations.lbx.financial import Agreement, Subscription, prove_effective_terms
 from app.integrations.lbx.selected_offer import PERIOD_ANCHORS
-from app.integrations.lbx.calendar import EMPTY_CALENDAR, normalize_calendar
+from app.integrations.lbx.calendar import EMPTY_CALENDAR, normalize_access_end, normalize_calendar
 from app.models import (
     ExternalSubscriptionFinancialAccessStatus as Financial,
     ExternalSubscriptionLifecycleStatus as Lifecycle,
@@ -278,6 +278,7 @@ def normalize_subscription(
         tuple(reasons),
         (),
         normalize_calendar(calendar, accepted.offer.period.anchor) if calendar_complete else None,
+        normalize_access_end(calendar.get("subscription_end_date")),
     )
 
 

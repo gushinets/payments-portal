@@ -112,8 +112,12 @@ async def test_shared_inventory_points_never_move_source_trust_past_the_first_re
 
 
 @pytest.mark.parametrize("competitor_state", [2, None])
+@pytest.mark.parametrize("unknown_first", [False, True])
 async def test_inventory_competitor_cannot_hide_owned_block_or_reissue_paid_allowance(
-    paid_scenario: tuple, postgres_session_factory: sessionmaker[Session], competitor_state: int | None
+    paid_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    competitor_state: int | None,
+    unknown_first: bool,
 ) -> None:
     factory = postgres_session_factory
     transport, sources, config, subscription_id, _ = paid_scenario
@@ -125,7 +129,7 @@ async def test_inventory_competitor_cannot_hide_owned_block_or_reissue_paid_allo
     competitor = deepcopy(transport.subscriptions[0])
     competitor["subscription_id"] = 999
     competitor["state"] = competitor_state
-    transport.subscriptions.append(competitor)
+    transport.subscriptions.insert(0 if unknown_first else len(transport.subscriptions), competitor)
     background_recovery.repair_batch(factory, config)
     transport.requests.clear()
     worker = BillingWorker(config, factory, sources.require_lbx())
@@ -139,4 +143,38 @@ async def test_inventory_competitor_cannot_hide_owned_block_or_reissue_paid_allo
         assert db.scalar(select(AccessInvalidationOutbox.pending_revision)) == revision + 1
         allowance = db.scalars(select(PurchasedAllowance)).one()
         assert str(allowance.allowance_id) == original and allowance.quantity == 100
+    assert all(request.method == "GET" for request in transport.requests)
+
+
+@pytest.mark.parametrize("initially_paid", [False, True])
+async def test_inventory_membership_change_preserves_owned_negative_but_cannot_admit_primary(
+    paid_scenario: tuple, postgres_session_factory: sessionmaker[Session], initially_paid: bool
+) -> None:
+    factory = postgres_session_factory
+    transport, sources, config, subscription_id, _ = paid_scenario
+    await reconcile(
+        paid_scenario,
+        factory,
+        config if initially_paid else config.model_copy(update={"paid_access_clock_skew_seconds": None}),
+    )
+    own = transport.subscriptions[0]
+    own["current_blocking"] = int(initially_paid)
+    competitor = deepcopy(own)
+    competitor["subscription_id"] = 999
+    transport.before_offer = lambda: transport.subscriptions.append(competitor)
+    background_recovery.repair_batch(factory, config)
+    transport.requests.clear()
+    worker = BillingWorker(config, factory, sources.require_lbx())
+    try:
+        assert await worker.tick(WorkLane.NORMAL)
+    finally:
+        await worker.aclose()
+    assert effective(factory) == (2 if initially_paid else 0, {"grants": [], "allowances": []})
+    with factory() as db:
+        from app.models import BillingProductAccessScope
+
+        scope = db.scalars(select(BillingProductAccessScope)).one()
+        assert (scope.primary_subscription_id == subscription_id) is initially_paid
+        assert db.scalar(select(AccessInvalidationOutbox.pending_revision)) == (2 if initially_paid else None)
+        assert db.scalar(select(func.count()).select_from(PurchasedAllowance)) == int(initially_paid)
     assert all(request.method == "GET" for request in transport.requests)
