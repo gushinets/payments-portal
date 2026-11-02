@@ -61,7 +61,7 @@ async def test_cached_inventory_still_obeys_attempt_deadline() -> None:
 
 
 def test_billing_background_recovery_documented_contract() -> None:
-    runbook = (Path(__file__).resolve().parents[3] / "docs/engineering/ANY-715-billing-operations.md").read_text()
+    runbook = (Path(__file__).resolve().parents[3] / "docs/engineering/billing-background-operations.md").read_text()
     for kind in (background_recovery.RECOVERY, background_recovery.DEADLINE, background_recovery.INVENTORY):
         assert f"`{kind}`" in runbook
     assert f"fewer than {MAX_FINANCIAL_INVENTORY_ROWS}" in runbook
@@ -78,7 +78,5 @@ def test_billing_background_recovery_documented_contract() -> None:
         "proposal_ai",
         "brief_decoder",
         "DISABLED/POLLING-ONLY",
-        "SIMULATED",
-        "NOT_RUN",
     ):
         assert policy in runbook

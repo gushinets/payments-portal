@@ -49,7 +49,7 @@ or real producer conformance is claimed. Source projection slots remain inert.
 ANY-709 implements purchase orchestration; ANY-715 implements subscription
 reconciliation and GET-only recovery without Kernel calls. Paid-access derivation
 and actual cabinet usage remain later work; stored approved terms do not promise
-current sellability. See the [billing operations guide](../engineering/ANY-715-billing-operations.md)
+current sellability. See the [billing operations guide](../engineering/billing-background-operations.md)
 for current Step 8 behavior and the Step 9/10 handoff; no Kernel wire contract
 or peer-verification status changes with this implementation.
 

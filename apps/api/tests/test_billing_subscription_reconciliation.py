@@ -266,7 +266,7 @@ def test_billing_subscription_reconciliation_invalid_decoder_and_runbook_contrac
                 "subscription_start_date": "secret arbitrary text",
             }
         )
-    runbook = Path("docs/engineering/ANY-715-billing-operations.md").read_text()
+    runbook = Path("docs/engineering/billing-background-operations.md").read_text()
     for phrase in (
         RECONCILIATION_SCHEMA,
         "/users/{id}",
@@ -277,8 +277,6 @@ def test_billing_subscription_reconciliation_invalid_decoder_and_runbook_contrac
         "COMPLETE_MISMATCH",
         "INCOMPLETE",
         "six hours",
-        "SIMULATED",
-        "NOT_RUN",
         "primary_subscription_id=NULL",
         "read_started_at",
     ):

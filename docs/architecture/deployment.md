@@ -92,7 +92,7 @@ ANY-715 Step 4 implements contour-local `POST /api/billing/lbx/webhook`, default
 disabled via `LBX_WEBHOOK_ENABLED=false`. All Compose API environments forward
 that flag plus `LBX_WEBHOOK_AUTH_HEADER` and secret `LBX_WEBHOOK_AUTH_VALUE`.
 The existing Caddy `/api/*` proxy terminates at that contour's API; Region Resolver
-is not a webhook proxy. Follow the [manual setup and real enablement gate](../engineering/ANY-715-billing-operations.md#test-and-production-setup)
+is not a webhook proxy. Follow the [manual setup and real enablement gate](../engineering/billing-background-operations.md#test-and-production-setup)
 for each environment. Keep polling enabled; no real header/delivery PASS is claimed.
 
 The clean baseline validates the configured scope and then bootstraps only the

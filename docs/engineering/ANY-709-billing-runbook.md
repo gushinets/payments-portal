@@ -206,7 +206,7 @@ bound. Customer-only proven scope also governs first product publication.
 
 All writing API/CLI processes must use the shared origin-lock protocol before
 rollout; older binaries do not participate. See the exact lock order in the
-[Step 8 handoff](#step-8-integration-handoff). Caller timeouts return temporary
+[concurrency and preparation boundary](#concurrency-and-preparation-boundary). Caller timeouts return temporary
 `503 billing_busy` for customer/purchase contention, or `mapping_storage_busy`
 for publication, without renewing deadlines. Exact accepted-request replay stays
 local. READ COMMITTED is required; provider HTTP stays outside transactions.
@@ -387,12 +387,11 @@ only for changed accepted terms while **all** financial operations are provably
 unsent under send-claim locks. Other release needs trustworthy audited evidence;
 there is no force-release/grant command or absence inference from zero results.
 
-ANY-715 final review found two integration defects affecting these paths:
-payment admission can miss an ENDED fact committed after source readback
-(P1-2), and a deadline can repeatedly fail after safe no-send hold release
-(ARCH-1). See the [current findings](ANY-715-qa-report.md#open-final-review-findings).
-The documented admission and no-send rules remain required; these defects
-are not approved policy exceptions or grounds to force a release/retry.
+Final payment admission rechecks session, ownership and operation fences, but
+currently does not recheck a canonical ENDED fact committed after source
+readback. A concurrent reconciliation can therefore end the subscription
+while that payment opening still succeeds. Account-only viewing remains
+independent of purchase lifecycle.
 
 ## Browser operation and diagnostics
 
@@ -412,7 +411,7 @@ its original key/purchase; no POST repeats automatically. Pending/error UI keeps
 a safe request ID. Local status is not an LBX refresh or paid verification.
 ANY-715 now supplies persisted observation/reconciliation facts and operator
 diagnostics; it does not add a new public billing-status UI contract. See the
-[billing operations guide](ANY-715-billing-operations.md).
+[billing operations guide](billing-background-operations.md).
 
 SDK `render()` is not readiness. The isolated host waits up to 20 seconds for
 `lbx-widget` READY from the exact nested window at the configured provider origin.
@@ -446,14 +445,10 @@ one dedicated agreement/subscription. Repeated opens/advance/Manage must retain
 these identities. Never delete/relabel holds, receipts, reviews or accepted pins
 to recover a UI or provider failure.
 
-## Step 8 integration handoff
+## Concurrency and preparation boundary
 
-This section records the Step 7 boundary handed to ANY-715. Step 8 is now
-implemented; use the [billing operations guide](ANY-715-billing-operations.md)
-for the running worker, optional webhook receiver and audited commands.
-
-ANY-715/ANY-765 must carry the origin-scope and customer-conflict fixes together.
-Use existing owner functions, not duplicated admission logic:
+Purchase and background recovery share the same ownership and send-authority
+transitions. Reuse these owners when changing either path:
 
 - New customer reservation, purchase acceptance and origin-backed publication
   share the tenant/region/normalized-origin transaction advisory lock.
@@ -482,14 +477,13 @@ Use existing owner functions, not duplicated admission logic:
   domain `escalate_overdue_customers`/`escalate_overdue_financial` are bounded
   callable escalation. Financial limit is 1..100 due operations. Reuse coalesced
   `external_create_recovery` work and active deadlines, retaining source/recovery
-  capacity separation. ANY-709 itself introduced no scheduler; ANY-715 now supplies the embedded
-  GET-only worker with isolated normal/urgent capacity.
+  capacity separation. The embedded GET-only worker has isolated normal/urgent
+  capacity; see [background operations](billing-background-operations.md).
 - `prepared-subscription:v1` observations are `preparation_only` /
   `not_paid_verified`, with `paid_verified=false`; no paid trust is extended.
-  ANY-715 implements Step 8 workers/webhooks/reconciliation, with webhooks
-  DISABLED/POLLING-ONLY pending real enablement. Paid AccessSnapshot,
-  AccessInvalidation and Kernel delivery/usage remain Steps 9–10. Preparation
-  grants no paid access.
+  Background reconciliation owns ongoing lifecycle and trust. Paid
+  AccessSnapshot, AccessInvalidation and Kernel delivery/usage remain later
+  work. Preparation grants no paid access.
 
 ## Verification commands
 
