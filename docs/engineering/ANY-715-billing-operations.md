@@ -1,312 +1,162 @@
 # ANY-715 billing operations
 
-Status: implemented operations guide; real LBX/webhook enablement remains unverified.
-Updated: 2026-11-01.
-Issue: [ANY-715](https://linear.app/paveldik/issue/ANY-715).
-Scope: [completed implementation plan](../exec-plans/completed/ANY-715-implementation-plan.md), Steps 1–5.
+Status: implemented; configured test-LBX acceptance and real webhook enablement open
+Updated: 2026-11-02
+Issue: [ANY-715](https://linear.app/paveldik/issue/ANY-715)
 
-Use this guide for current operational commands and behavior, the completed plan
-for delivery history, and the [QA report](ANY-715-qa-report.md) for final local
-verification and remaining integration gates. Architectural authority remains
-ADR 0005 and the accepted designs/amendment in the repository guide.
+This guide owns current operating guarantees, configuration, commands and
+incident response. The [delivery record](../exec-plans/completed/ANY-715-implementation-plan.md)
+owns scope and retained decisions; the [verification report](ANY-715-qa-report.md)
+owns tested coverage and remaining integration checks. Architectural authority
+remains [ADR 0005](../architecture/decisions/0005-external-billing-boundary.md)
+and its accepted specifications and dated decisions.
 
-## Shared proof and original history
+## Source authority and trust
 
-`app.composition.reconciliation.reconcile_subscription()` is the reusable outer
-I/O seam. It accepts an explicitly supplied LBX client and bounded admission
-resource, configuration, session factory and canonical local subscription ID.
-The embedded worker and privileged `reconcile` CLI call this shared seam; it is not a public billing endpoint.
-It makes no financial POST, Kernel call, catalog discovery or current-offer read.
+LBX owns subscription activation and financial/administrative blocking. Portal
+verifies the original customer, agreement/seller, accepted effective terms and
+supported prepaid policy. Reconciliation uses authenticated point reads of
+`/users/{id}`, `/agreements/{id}`, `/tariffs/{id}` and `/subscriptions/{id}`;
+the read window is not an atomic provider snapshot. Current catalog prices,
+sale visibility and Kernel publication do not reprice accepted history. Balances,
+payments and charges are not a separate Portal settlement authority.
 
-Application claims a finite subscription lease in a short transaction using
-database time, a unique owner and an incrementing fence. The lease covers the
-supplied total I/O budget plus a 30-second local apply margin. LBX reads run
-outside transactions. Apply rechecks lease/owner/fence, canonical ownership,
-original consent, accepted snapshot, permanent operation identities and product
-hold under the existing user-first lock policy. Preparation may rotate its own
-send fences without invalidating permanent reconciliation provenance.
-
-The normal proof uses one call to each method, in this order:
-
-1. `get_user()` proves the canonical provider customer and immutable Portal key.
-2. `get_agreement()` proves the original agreement, customer, seller and permanent
-   correlation. A closed agreement can establish ordinary negative facts.
-3. `get_tariff()` proves applicable prepaid/full-funding/automatic-blocking,
-   non-demo, non-prorated policy and configured currency interpretation.
-4. `get_subscription()` proves canonical identity, original effective service,
-   quantity, price, total, currency, period and the latest lifecycle/calendar.
-
-Authentication and bounded transport retries remain owned by the shared client.
-All four reads share one absolute operation budget. Successful point methods,
-`read_started_at`, read completion and immutable local provenance are recorded in
-`subscription-reconciliation:v1`. The read window is not an atomic provider
-snapshot; a concurrent source change may remain undetected. There is no second
-full read round.
-
-Current catalog prices, current mapping heads, source sale visibility/archive
-flags and Kernel publication availability do not reprice or invalidate accepted
-history. Effective subscription prices are compared with the original accepted
-snapshot. Missing policy or currency proof cannot establish positive trust.
-No balances, payments, charges or settlement reconstruction decide usability.
-
-Worker claims, backfill, inventory, recovery, webhook correlation and audited
-operator resolutions reuse the origin-backed account resolver from customer
-admission. A proven historical storage account remains unchanged, including
-after credentials rotate; a new origin-derived ID is only the fallback before
-any binding is proven. Unproven aliases and foreign origins are excluded, and
-multiple proven accounts refuse as `billing_connection_conflict`. LBX read
-metadata identifies the current configured HTTP origin, independently of the
-purchase's retained storage ID. The enrollment sweep keeps its stable deployment
-key and resolves storage scope per batch, including the first proof after startup.
-
-## State and finite trust
-
-Commercial evidence is `COMPLETE_MATCH`, `COMPLETE_MISMATCH` or `INCOMPLETE`.
-Identity, lifecycle, financial conclusion and calendar completeness are recorded
-separately. Unknown numeric source states are incomplete evidence.
-
-Waiting/unpaid becomes inactive/blocked and may have null cycle dates. Supported
-ACTIVE/unblocked with complete owned original-term and coherent cycle proof
-becomes active/allowed operational source facts. Financial and administrative
-blocks remain distinct bounded reasons. Ended is terminal; a later nonterminal
-state for the same ID opens `subscription_terminal_revival_conflict`.
+Commercial proof is `COMPLETE_MATCH`, `COMPLETE_MISMATCH` or `INCOMPLETE`. Waiting/unpaid
+is inactive/blocked and may have null cycle dates. Complete owned ACTIVE/unblocked
+proof with matching terms and coherent cycle evidence records operational
+active/allowed facts. Financial and administrative blocks are distinct negative
+facts. Ended is terminal; a later nonterminal state for the same canonical ID
+opens subscription_terminal_revival_conflict.
 
 Only complete matching proof without a known review refreshes source trust.
-Trust starts at `read_started_at` and lasts at most six hours. There is no extra
-outage grace interval. Incomplete reads append attempt evidence without replacing
-the last complete supporting observation or extending its deadline. Decisive
-owned blocks/end or identity/commercial conflicts supersede positive usability
-even if unrelated commercial fields are missing. They never renew trust from
-incomplete evidence. Effective-term proof checks supplied contradictions before
-missing fields: a changed service price with an absent total still opens a
-commercial conflict. A positive match continues to require all mandatory terms.
-Attempts whose source reads exhaust the I/O budget persist only incomplete
-evidence; delayed source results cannot become positive facts. On-time proof
-can finish its short fenced DB apply within the existing 30-second lease margin. Expired or superseded leases
-cannot apply. Failed/cancelled claims remain reclaimable after their finite lease.
+Trust begins at `read_started_at` and lasts at most six hours, with no outage
+grace. Incomplete reads preserve the existing finite support without extending
+it. Proven owned negative/conflicting facts reduce usability immediately, even
+if unrelated commercial fields are missing. Polling cannot clear a known
+financial/subscription conflict merely because later terms match.
 
-Known subscription/financial conflicts require controlled review and cannot be
-cleared by an ordinary matching poll or preparation read. Customer-key conflict
-uses the existing customer transition: an authenticated explicit account open
-may restore the original paired key. That policy does not clear financial or
-subscription conflicts. Subsequent preparation can append `prepared-subscription:v1`
-but cannot replace monitored lifecycle, financial facts, supporting observation
-or trust. The existing linked-state incomplete-read behavior is preserved.
+Provider calendar dates retain their original precision. Missing, sentinel or
+contradictory current-cycle bounds cannot establish positive trust. Date-only
+facts do not imply a timezone, UTC boundary or allowance identity.
 
-The scope is established with `primary_subscription_id=NULL`; reconciliation
-does not select a primary. Every observation keeps `resulting_access_revision`
-null. Purchase history, bindings, legal evidence and product hold survive all
-lifecycle transitions, including ended. There is no automatic hold release.
+Purchase consent, original terms, permanent bindings and held product scope
+survive reconciliation, outages and ended state. Existing proven account scope
+survives credential rotation at the same origin; ambiguous/foreign scope refuses
+as billing_connection_conflict. A customer-key conflict uses the existing explicit
+account-open recovery policy; background recovery cannot restore that conflict.
+See [customer diagnosis and recovery](ANY-709-billing-runbook.md#customer-diagnosis-cli).
 
-## Calendar and downstream limits
-
-Original subscription, instance and calculation-period strings remain calendar
-evidence. Positive proof requires valid ordered calculation-period dates;
-sentinel/missing dates, reversed periods and contradictions with supplied
-lifetime/instance bounds cannot establish positive trust. Datetime evidence keeps
-its time-of-day precision. Date-only evidence stays a calendar date; mixed
-precision on the same day cannot prove ordering and remains incomplete. The provider's latest
-calculation-period pair is preserved without inventing an account timezone,
-exact UTC boundaries, native cycle ID or allowance identity. This step does not
-claim to prove natural rollover or derive paid access from those dates.
-
-Step 2 supplies automatic enrollment, durable polling and local source-trust
-expiry evidence. Step 3 adds uncertain-create recovery/inventory loops. Step 4 adds optional webhook hints; Step 5 supplies audited operator commands. Step 9 owns primary selection,
-access derivation, effective authorization deadlines, grants, allowances,
-revisions and invalidations. No paid-access producer runs here.
+Step 8 produces subscription facts and expiry evidence. It does not choose an
+access primary, grant access or create allowances/revisions/invalidations.
 
 ## Embedded worker settings and resource limits
 
-The initial deployment is one API process/replica. The API lifespan supervises
-`app.jobs.billing.BillingWorker` through `app.composition.billing_worker`.
-The runner accepts an explicit session factory and LBX client, independent of
-HTTP startup. There is no standalone worker command/container.
+The initial deployment is one API process/replica with an embedded worker.
+There is no separate process to launch or standalone worker command/container.
 
 - `BILLING_WORKER_ENABLED=true`: starts embedded execution when LBX is configured.
-- `BILLING_WORKER_URGENT_CONCURRENCY=2`: independent urgent source slots (1–16).
-- `BILLING_WORKER_NORMAL_CONCURRENCY=1`: independent normal source slots (1–16).
-- `BILLING_WORKER_IO_TIMEOUT_SECONDS=60`: total read/cleanup budget (greater
-  than the cleanup reserve, at most 600 seconds).
-- `BILLING_WORKER_SCAN_BATCH_SIZE=100`: local batch size (1–100).
+- `BILLING_WORKER_URGENT_CONCURRENCY=2`: urgent source slots, range 1–16.
+- `BILLING_WORKER_NORMAL_CONCURRENCY=1`: normal source slots, range 1–16.
+- `BILLING_WORKER_IO_TIMEOUT_SECONDS=60`: total source/cleanup budget; greater
+  than the cleanup reserve and at most 600 seconds.
+- `BILLING_WORKER_SCAN_BATCH_SIZE=100`: local enrollment/repair batch, range 1–100.
 
-`PREFLIGHT_CLEANUP_TIMEOUT_SECONDS` reserves cleanup within that total budget.
-Work and subscription leases cover the total budget plus 30 seconds for local
-apply/safety. Each source slot has one owner through actual HTTP cleanup.
-Timeout/cancellation/expired DB leases do not release unfinished HTTP slots.
-DB apply runs outside the source timeout and still checks finite ownership/fences.
-Cancelling a DB waiter retains the exact framework thread task and its limiter
-until the synchronous transaction finishes. No replacement claim starts in that
-lane while cancelled DB work remains live; health reports pending cleanup.
-No replacement request can accumulate behind an abandoned owner. Apply checks
-both queue ownership/expiry and subscription owner/fence/expiry under business
-locks. All provider retries are GET-only; the worker never creates a customer,
-agreement, subscription, payment or renewal.
+`PREFLIGHT_CLEANUP_TIMEOUT_SECONDS` reserves cleanup within the total I/O budget.
+Finite work/subscription leases include a 30-second local apply margin. Late or
+superseded source results cannot overwrite newer facts. Timely proof may finish
+its short database apply within the lease margin. Unfinished HTTP/database work
+retains its occupied capacity through cleanup, including after cancellation.
 
-These are **per-process** limits, not provider-wide concurrency/RPS guarantees.
-The worker owns separate LBX HTTP pools and bounded DB delegation/connection
-capacity from purchase, Widget and new-sale resources. Local sweep/deadline work
-has separate DB delegation and no provider HTTP. Normal and urgent lanes cannot
-consume each other's reserved slots. Each worker HTTP pool fits the sum of both
-lane limits, independently of interactive `PREFLIGHT_MAX_ACTIVE`; retained cleanup
-continues to occupy its lane's admission slot. Wholly unconfigured LBX reports
-`not_configured` without source calls; disabled execution reports `disabled`.
-Partial LBX configuration also prevents source execution without breaking auth.
-Retained cleanup is reported as degraded billing health while local supervision
-continues; source unavailability alone does not withdraw identity readiness.
-Ordinary automated tests explicitly disable unattended execution.
+Limits are per-process, not provider-wide concurrency or requests-per-second
+quotas. Urgent, normal and provider-free local work have reserved capacity;
+worker resources are isolated from purchase/Widget/new-sale resources.
+Unconfigured or partially configured LBX reports `not_configured` without source
+execution; disabled execution reports `disabled`. Source outage alone does not
+withdraw identity readiness.
 
-## Enrollment, cadence and restart
+Increase capacity only from measured queue age/source latency and actual LBX
+limits. A future separate worker can reuse the durable jobs, but requires an
+explicit stop-claim/drain/replace procedure and aggregate capacity review before
+adding processes. Step 8 supplies no scaled-deployment or provider-quota claim.
 
-Step 7's canonical local binding and its immediate reconciliation job commit
-atomically. Repeated preparation readbacks preserve existing future schedules,
-generation and ownership. Coalescing keys use configured account and local
-subscription identity, so two products sharing a customer/tariff keep independent
-jobs, observations and trust.
+## Enrollment, cadence and recovery
 
-Startup and every 60 seconds run a durable local enrollment sweep. Each batch
-selects the missing set by subscription ID (no offset/cursor), commits at most
-100 enrollments, yields to other tasks and continues until empty. Restart repeats
-from missing work. Existing pending/running work, including future jobs and
-expired leases awaiting reclaim, is already enrolled; completed recurring jobs
-reactivate. Enrollment does not duplicate provenance validation: the shared
-reconciliation claim checks it before provider I/O. Permanent history, consent,
-scope or binding failures are isolated as `invalid` through the fenced queue
-writer, without provider calls or reenrollment. Recoverable customer identity
-state and local contention remain retryable.
-Missing source-trust expiry jobs are repaired locally as well. Step 3 also repairs missing customer inventory, urgent recovery and independent
-create-deadline jobs in bounded batches. Existing customer active-send leases,
-future recurring schedules and completed no-send records remain protected.
+Prepared/recovered subscriptions enroll automatically. Durable work resumes after
+restart, and periodic local repair fills missing work without resetting existing
+schedules. Malformed history is quarantined as invalid; recoverable customer
+state and local contention remain retryable. Enrollment needs no provider HTTP.
 
-New links are immediately due. Never-positive/blocked/incomplete/conflicted or
-near-expiry (within 30 minutes) work is urgent, with at most five minutes between
-scheduled attempts. Claims check the current persisted trust deadline as well as
-stored priority, so waiting normal work can use urgent capacity as trust approaches
-expiry. This classification preserves the job's due time, generation and live
-lease. Otherwise reconciliation runs approximately every 15 minutes.
-Recurring due times use deterministic earlier-only jitter up to 20%; incomplete
-reads use bounded 30-second exponential backoff capped at five minutes. Scheduling
-includes attempt duration; a paused process/backlog can still cause observable
-lag and never extends source trust. Authentication/configuration failures cannot
-start rapid POST retries and retain the bounded read cooldown.
+- Normal subscription reconciliation runs approximately every 15 minutes.
+- Never-positive, blocked, incomplete, conflicted or near-expiry subscriptions
+  are urgent, with at most five minutes between scheduled attempts. Near expiry
+  means source trust has 30 minutes or less remaining.
+- Stable customer inventory runs approximately every six hours; incomplete or
+  conflicting inventory retries urgently within five minutes.
+- Source-trust expiry and uncertain-create escalation run locally without
+  provider HTTP, independently of source execution capacity.
 
-Claims use short PostgreSQL `FOR UPDATE SKIP LOCKED` transactions, DB time,
-unique ownership and an enqueue generation. Consumers claim only available
-execution capacity, then claim subscription fences separately. No network runs
-under locks. Hints arriving during execution survive completion. Source apply,
-trust scheduling and queue rescheduling commit atomically. Local expiry appends
-`subscription-trust-expiry:v1` / `deterministic_access_boundary` evidence with the
-supporting observation and effective deadline, without changing provider
-lifecycle/financial facts, extending trust or writing an access revision.
-A concurrent refresh wins through the same lock/generation checks.
+Local source-trust expiry does not invent a provider block or renew trust.
+Recurring schedules use earlier-only jitter. Incomplete source reads use bounded
+backoff up to five minutes. Process pauses/backlog can cause observable cadence
+lag; they never extend trust. Claims/fences prevent competing or stale consumers
+from overwriting newer facts, and hints arriving during work remain due.
 
-## GET-only uncertain-create recovery and customer inventory
+`external_create_recovery` is GET-only. Zero candidates remain uncertain; exactly
+one original point-proven candidate may bind; ambiguous/foreign/already-bound
+candidates require review or more proof. Recovery preserves the original
+operation, request/key/date, accepted history and hold. Known financial conflicts
+need audited resolution; a deadline-only escalation can recover normally.
 
-`external_create_recovery` runs in the urgent source lane through shared
-`recover_financial()` / `recover_customer()` Application proof and transitions.
-The permanent recovery key is the original local create-operation ID; receipts
-and request/key/date history remain on that same row. Claims commit before GETs.
-Apply checks current queue ownership/expiry and the original operation fence.
-A lost claim acknowledgement starts no HTTP; a late/superseded result cannot bind.
-Recovered canonical subscriptions enroll atomically through the same subscription
-binding path. Bound subscriptions use lifecycle reconciliation, avoiding
-preparation-only terminal restrictions.
+`external_create_deadline` uses the current fixed active financial recovery
+window. Legacy rows without an active deadline use original unknown_since + 2h.
+Only an explicit authenticated continuation after completed typed PROVEN_NOT_SENT
+may start a new two-hour active window for that same command. UNKNOWN, GETs,
+backoff and restart cannot extend the window or permit another financial CREATE.
+PENDING and completed PROVEN_NOT_SENT are excluded from overdue UNKNOWN
+escalation and authorize no background send.
 
-Zero candidates remain uncertain; delayed visibility can later recover. Exactly
-one original point-proven agreement/subscription/customer can bind. Multiple,
-foreign, swapped or already-bound candidates enter conflict review or remain
-incomplete, with no adoption. Saved receipts select only an original candidate;
-a discovery list alone never proves ownership. Known financial conflicts remain
-open after later matching GETs; only deadline-only review can recover normally.
-The hold and original legal/accepted history survive zero matches, review, ended
-states and source failure. No worker POST, force release, current-price
-reapproval, primary selection or access/grant/allowance/revision write exists.
+Customer creation keeps its separate explicit-open retry policy. An active
+customer-send: lease excludes competing recovery. Background execution never
+creates customers, agreements, subscriptions, payments or renewals.
+A `billing_busy` / PostgreSQL `55P03` refusal is local contention: retry the same
+work without changing send authority, deadlines or holds. Use
+`last_error_classification` to distinguish local contention from source errors.
 
-Recovery retries use bounded earlier-only jitter/backoff, at most five minutes
-between scheduled urgent attempts, accounting for attempt duration. A separate
-provider-free `external_create_deadline` job uses the current financial
-`billing_work_items.active_recovery_deadline_at`, falling back to the immutable
-original `unknown_since + 2h` pair for pre-migration NULL rows. A completed typed
-`PROVEN_NOT_SENT` followed by an authorized explicit advance sets a new active
-two-hour window under the send fence; original request/date/history remain unchanged. It escalates unresolved possible-send/UNKNOWN to
-`external_create_outcome_unknown:<operation_kind>` even during an LBX outage.
-Retrying GETs, restarting and delayed candidates never move that deadline.
-`PENDING` and completed `PROVEN_NOT_SENT` authorize no background CREATE and
-are excluded from UNKNOWN repair/escalation. Only the existing authenticated
-explicit advance and completed typed no-send rules can resume a financial send.
-
-Customer creation retains its distinct owner-approved explicit-open policy:
-background recovery never creates or restores an identity-conflict binding.
-An active `customer-send:` lease excludes competing recovery claims. After that
-finite lease or a completed explicit attempt, GET recovery is safe. A later
-explicit authenticated open may perform its existing discover-before-create
-retry with a new fence and its own two-hour pair, on the same customer operation.
-The customer policy does not change financial send authority.
-
-`503 billing_busy` / user-lock `55P03` is local contention. Retry the durable job
-with the same operation, request, key, send fence and fixed deadline. It is never
-provider failure, completed no-send evidence, permission to POST or hold release.
-Inspect `last_error_classification=billing_busy` to distinguish this local retry.
-
-`customer_inventory` runs in the normal lane, approximately every six hours
-when stable, and retries incomplete/conflicting reads urgently within five
-minutes. It uses paired customer proof, fewer than 100 discovery rows and at
-most 20 relevant candidates under one worker I/O budget. Capped, duplicate,
-unstable or partial results are incomplete, never absence. Two bounded inventory
-lists detect observed membership drift; they do not establish an atomic snapshot
-or a provider visibility SLA. Point reads must agree with discovery identities.
-Successful subscription/agreement point reads are shared across product checks
-within one attempt; every later attempt reads LBX again. Each purchase still
-requires its original ownership and accepted-term proof. Cached candidate
-checks enforce the same I/O deadline.
-
-A tariff is not product identity. `proposal_ai` and `brief_decoder` may share
-one tariff/service/period for the same customer/account only with separate
-accepted purchases, agreements and subscriptions. Another product is excluded
-from competing inventory only through its permanent local owner, original legal
-consent, agreement/customer/seller/correlation and original effective-term proof.
-Incomplete other-product evidence cannot exclude an object. Proven relevant
-competition records scoped `customer-inventory:v1` evidence and a durable
-`customer_inventory_conflict` review, reducing the affected subscription's
-commercial eligibility without rebinding any object or renewing source trust.
-Each bounded pass checks the customer's product scopes before applying its
-scoped conflicts together in one fenced transaction. The customer job finishes
-once after all those conflicts are recorded; an earlier conflicting product
-cannot repeatedly prevent later products from being checked. A stale operation
-snapshot or expired work claim rejects the entire conflict batch.
-Ordinary inventory success cannot close a known conflict.
-
-Owner checkpoint: review existing synthetic GET traffic and persisted original
-history using the `billing_background_recovery` PostgreSQL selection from the
-plan's shared harness recipe. All such fixtures are **SIMULATED**; no live billing
-failure, provider CREATE or payment is manufactured. Actual test-LBX failure
-recovery is **NOT_RUN**. Webhook mode remains **DISABLED/POLLING-ONLY** until its real gate below passes.
-Audited resolution and inspection commands are documented below.
+`customer_inventory` uses fewer than 100 discovery rows and at most 20 relevant
+candidates under one read budget. Capped, duplicate, unstable or partial results
+are incomplete, never evidence of absence. A tariff is not product identity:
+proposal_ai and brief_decoder can share one tariff only with separately proven
+purchases, dedicated agreements and subscriptions. Other-product exclusion needs
+original owner/legal/effective-term proof. Proven competition records scoped
+customer-inventory:v1 evidence and customer_inventory_conflict review without
+rebinding or renewing trust. One product's incomplete proof cannot discard
+another product's proven conflict. Inventory success cannot close known review.
 
 ## Optional webhook receiver and manual deployment
 
-`POST /api/billing/lbx/webhook` is implemented behind these settings:
+`POST /api/billing/lbx/webhook` is disabled by default:
 
-- `LBX_WEBHOOK_ENABLED=false`: default; returns 404 before body processing or DB use.
-- `LBX_WEBHOOK_AUTH_HEADER=`: required credential header name when enabled.
-- `LBX_WEBHOOK_AUTH_VALUE=`: required exact shared-secret header value when enabled;
-  keep it in the deployment secret manager/protected API environment, separate
-  from Server API credentials and the Widget signing secret.
+- `LBX_WEBHOOK_ENABLED=false`: returns 404 before body processing or DB use.
+- `LBX_WEBHOOK_AUTH_HEADER=`: verified credential header name when enabled.
+- `LBX_WEBHOOK_AUTH_VALUE=`: entire exact shared-secret header value when enabled.
 
-For worktree `repo:up`, all three settings pass from root `.env` or exported
-environment values into private `.harness/runtime.env`; exported values take
-precedence. They are excluded from public runtime metadata and web settings.
+Keep the webhook secret in the protected API environment/secret manager,
+separate from Server API credentials and the Widget signing secret. All Compose
+API environments forward these settings. For worktree `repo:up`, root `.env` or
+exported values populate private `.harness/runtime.env`; exported values take
+precedence. The secret is excluded from public runtime metadata and web settings.
 
-Enabling requires a valid configured LBX connection. Invalid/missing header or
-secret configuration fails startup. Transport/correlation headers (including
-`X-Request-ID`, tracing headers and `User-Agent`) cannot carry the credential,
-preventing its reuse in request diagnostics. Header names are HTTP case insensitive;
-values are compared exactly in constant time. Duplicate/missing/wrong credentials
-return 401 before reading the body. No query-token or signature fallback exists.
-The JSON receive limit is 65536 bytes, enforced for declared and streamed bodies
-(413). Unsupported media type returns 415; malformed JSON, unsupported event or
-invalid correlation fields returns 422. Rejections never echo payload or headers.
+Enabling requires a valid LBX connection and credential configuration. The
+receiver accepts exactly one matching credential header, compared in constant
+time before body processing. Missing/duplicate/wrong credentials return 401.
+Transport/correlation headers such as X-Request-ID and tracing headers cannot
+carry the credential. No query-token, anonymous or guessed-signature fallback
+exists.
 
-Supported events are exactly:
+The JSON limit is 65536 bytes for declared and streamed bodies (413).
+Unsupported media type returns 415; malformed JSON, unsupported event or invalid
+correlation returns 422. Rejections never echo payloads or headers.
+Supported events are:
 
 - `create_subscription`
 - `change_subscription`
@@ -315,362 +165,209 @@ Supported events are exactly:
 - `close_subscription`
 - `delete_subscription`
 
-The Integration reads only `event` and positive integer `parameters.subscription_id`,
-`parameters.agreement_id` and optional `parameters.user_id`. Other fields are
-discarded. Account/tenant/contour come from deployment configuration; user/product
-and work IDs come from existing local bindings. Unknown, foreign or conflicting
-correlation is acknowledged as `ignored`, with hashed correlation only. It creates
-no binding or recovery authority. Unknown creates still converge through independent
-GET-only recovery/inventory. An ignored receipt can be inspected by its local
-delivery ID; a later proven binding is polled independently.
+Only `event`, positive integer `parameters.subscription_id` and
+`parameters.agreement_id`, and optional `parameters.user_id` are used.
+Deployment determines account/contour;
+proven local bindings determine user/product. Unknown, foreign or conflicting
+correlation is acknowledged as ignored and creates no binding.
 
-A valid known hint atomically commits a redacted receipt and immediate coalesced
-reconciliation work before returning 200 with a named response containing only
-local `delivery_id` and `outcome` (`queued` or `ignored`). No LBX REST request runs
-in receipt, and payload lifecycle/price/payment fields never become facts.
-`billing-webhook-receipt:v1` evidence contains only the allowlisted event.
-`billing-webhook-work:v1` correlation retains a subject hash and, for queued work,
-local subscription/work IDs and `enqueue_generation`. Raw bodies, headers,
-credentials, customer contact/payment fields and provider event IDs are not stored.
-The body SHA-256 is diagnostic only: identical later events receive separate
-receipts and are never permanently deduplicated by hash.
+Known hints commit a redacted receipt and coalesced work before returning 200
+with local `delivery_id` and `queued`/`ignored` outcome. The request performs no LBX
+REST call and cannot change subscription/access facts. No raw body, credential,
+contact or payment field is persisted. Identical payload hashes do not suppress
+future events.
 
-Receipts stay `pending` through failed/incomplete GETs or crashed workers. A fenced
-claim applying complete authoritative proof marks only its covered generations
-`processed` in the same transaction as facts and rescheduling. Later receipts
-remain pending and their immediate hint survives that completion. Reclaiming an
-expired lease or restarting uses the same durable work. An incomplete read retries
-with the existing urgent backoff; a webhook arriving before REST visibility cannot
-extend trust. A complete but still old source response is only a current read;
-normal polling observes later visibility without any visibility-SLA assumption.
-Known conflicts remain subject to their existing review policy. `processed` means
-complete reread applied, never a payment, access grant or event-version match.
+Receipts are `pending` until complete authoritative processing marks the covered
+`enqueue_generation` values `processed`; later hints remain due. Incomplete reads
+and crashes leave pending work retryable. `processed` means a complete reread was
+applied, not proof of event-version visibility, payment or access. Polling remains
+the correctness path; HTTP 500 is not assumed to cause provider redelivery.
 
 ### Test and production setup
 
-The [official manual setup guide](https://docs.lbxbilling.ru/api/webhooks/set_webhooks/)
+The [official setup guide](https://docs.lbxbilling.ru/api/webhooks/set_webhooks/)
 and [event examples](https://docs.lbxbilling.ru/api/webhooks/list_webhooks/)
-were rechecked on 2026-11-01. The guide documents URL, token, event selection and
-an optional retry switch; it does not establish the actual authentication header
-name/value format for this account. No configuration API is assumed.
+document manual URL/token/event configuration. They do not establish this
+account's actual authentication header/value format. No configuration API is
+assumed.
 
-1. Keep the receiver disabled while preparing the target deployment's LBX
-   connection and secret configuration. Use separate test/production secrets.
-   Confirm ordinary embedded polling is healthy and migrations are applied.
-2. Test URL: the authorized publicly reachable HTTPS **test Portal origin** plus
-   `/api/billing/lbx/webhook`. Production URL: the approved HTTPS
-   `APP_PUBLIC_BASE_URL` origin plus `/api/billing/lbx/webhook`, served by that
-   contour's API through the existing Caddy `/api/*` proxy. Substitute actual
-   deployment origins; do not use a Kernel, Resolver, Widget or another contour URL.
+1. Keep the receiver disabled while configuring the target LBX connection and
+   secret. Use separate test/production secrets. Apply migrations and confirm
+   healthy independent polling.
+2. Test URL: authorized publicly reachable HTTPS test Portal origin plus
+   /api/billing/lbx/webhook. Production URL: approved APP_PUBLIC_BASE_URL origin
+   plus that path, through the contour-local Caddy /api/* proxy. Use neither
+   Kernel/Resolver/Widget origins nor another contour.
 3. In the correct LBX account, open Settings → Parameters → Webhooks → Add.
-   Enter the target URL, token from the secret manager, and a nonsecret description.
-   Select exactly the six events listed above. The optional **Repeat request**
-   switch may be enabled, but Portal correctness does not rely on redelivery.
-   Save only as part of an authorized integration gate.
-4. Verify the account's real authentication transport through an authorized,
-   privacy-controlled test delivery. Set `LBX_WEBHOOK_AUTH_HEADER` to its verified
-   credential header and `LBX_WEBHOOK_AUTH_VALUE` to the **entire exact header
-   value**, including any verified prefix. Do not guess a header/prefix from the
-   token field, accept anonymous delivery, or move the secret into the URL.
-   If the account cannot send this mode securely, leave disabled. Avoid body/header
-   logging at LBX, ingress, debug proxies, traces and the test capture boundary.
-5. Once the test mode is verified, set `LBX_WEBHOOK_ENABLED=true` and restart the
-   test API through its ordinary deployment path. Confirm the checklist below.
-   A local synthetic POST proves only Portal handling, not real LBX delivery.
-6. Production requires its own origin/account/secret and the same verified
-   transport, correlation and event-to-GET checks before enablement. Keep one API
-   replica and independent polling enabled. Document dated results without secrets.
+   Enter the URL, token from the secret manager and a nonsecret description.
+   Select the six listed events. Repeat request may be enabled; correctness
+   does not depend on redelivery. Save as part of the authorized integration check.
+4. Verify actual credential transport through a privacy-controlled test delivery.
+   Set LBX_WEBHOOK_AUTH_HEADER and LBX_WEBHOOK_AUTH_VALUE to the verified header
+   and entire exact value, including any prefix. Avoid body/header logging at
+   capture boundaries. If secure compatible delivery cannot be established,
+   leave the receiver disabled.
+5. After transport verification, enable the test API through its normal restart
+   procedure and complete the checklist below. A synthetic POST proves only
+   Portal handling. Production needs its own account/origin/secret verification
+   before enablement. Keep one API replica and independent polling.
 
 ### Real enablement checklist and rollback
 
-The real gate remains **NOT_RUN**, with **DISABLED/POLLING-ONLY** required.
-Synthetic HTTP/PostgreSQL coverage is separate from this gate and includes
-failure after commit, concurrent claims/hints, all six supported events and
-polling-only convergence. Current results and the substituted API/Widget browser
-regression are recorded in the [QA report](ANY-715-qa-report.md); its interrupted
-canonical run is not an unqualified full-check PASS. Authorized owner QA
-must record date, environment and sanitized local delivery/work/observation IDs for:
+Real enablement is NOT_RUN; required mode remains DISABLED/POLLING-ONLY.
+The deployment owner records the environment/date and sanitized local evidence
+before enabling actual provider delivery:
 
-- Real correct-header delivery accepted; missing/incorrect secret rejected before
-  body processing, with no credential/payload leakage.
-- Each selected event correlates only to its already owned canonical scope;
-  unknown/conflicting correlation stays ignored.
-- Receipt and work are durable before 200; worker subsequently uses GETs and the
-  shared transition. Verify duplicate/reordered hints and a restart during work.
-- Observe event-to-REST visibility, including an early event/incomplete read and
-  later convergence. Do not assume a provider delivery or visibility deadline.
-- Lose a notification or disable delivery and confirm polling convergence;
-  record provider retry behavior only if actually observed.
+- Correct credentials are accepted; missing/wrong credentials are rejected
+  before body processing without leaking credentials or payloads.
+- All selected events correlate only to the proven local scope; unknown or
+  conflicting correlation stays ignored.
+- Receipt/work are durable before acknowledgement; subsequent worker GETs
+  process hints safely across duplicate/reordered events and restart.
+- Early/incomplete REST visibility converges through later reads, without an
+  assumed provider delivery or visibility deadline.
+- Lost/disabled delivery still converges through polling.
 
-Rollback: set `LBX_WEBHOOK_ENABLED=false`, restart the API and verify the route
-returns 404. Disable/delete the webhook in the correct LBX account when authorized.
-Keep `BILLING_WORKER_ENABLED=true` and confirm polling/queue progress. Already
-committed pending receipts/work survive disablement and restart; never delete them
-or release holds to roll back. Rotate the secret in both systems through the same
-verified gate before re-enabling. Investigate old pending receipts by their local
-work ID/generation, claim/lease, due time and `last_error_classification`; the
-existing worker retries without replaying raw payloads. There is no inbox-delete,
-manual replay or provider-configuration CLI in Step 4. No 500→retry assumption
-is required after a DB failure or lost response.
+Rollback: set LBX_WEBHOOK_ENABLED=false, restart the API and confirm route 404.
+Disable/delete the provider webhook when authorized. Keep BILLING_WORKER_ENABLED
+true and confirm queue progress. Committed work survives disablement/restart;
+never delete receipts/jobs or release holds as rollback. Rotate secrets through
+the same verified procedure. For pending receipts, inspect their work ID,
+generation, due time, lease and last_error_classification. There is no inbox-delete,
+manual-replay or provider-configuration CLI.
 
 ## Startup, inspection and shutdown
 
-Apply migrations through `20261028_0005` (worker, following consolidated billing
-revision `20261029_0003`) through the normal migration service before starting
-the API. Retired ANY-709 revision labels require the verified transition in the
-[base migration runbook](ANY-709-billing-runbook.md#consolidated-any-709-migration);
-do not replay consolidated DDL over an existing branch schema. Start/restart with the existing repository/deployment commands;
-there is no additional process to launch. To stop source execution, set
-`BILLING_WORKER_ENABLED=false` and restart through the ordinary deployment path.
-Stop claiming before replacing the owner. Shutdown drains up to the configured
-I/O budget, cancels/awaits waiters and drains source cleanup plus retained DB
-owners. If cleanup is still
-pending it retains its slot, reports degraded shutdown and propagates failure;
-it never reports a successful drain or closes the client/engine underneath live
-I/O or a synchronous DB transaction.
-After process exit, finite durable leases are reclaimable on restart.
+Apply migration `20261028_0005` after consolidated billing revision `20261029_0003`
+through the normal migration service before API startup. For retired branch
+revision labels, follow the [base migration runbook](ANY-709-billing-runbook.md#consolidated-any-709-migration).
+Use the existing repository/deployment start/restart commands. To disable worker
+execution, set `BILLING_WORKER_ENABLED=false` and restart. Shutdown stops claims
+and drains bounded work/cleanup; outstanding work remains reclaimable after
+finite lease expiry. Persistent cleanup is degraded health, not a successful drain.
 
-`GET /api/health/billing` exposes named, redacted worker status, occupied slots,
-cleanup-pending count, pending/invalid work, oldest due time, failures, enrollment
-batch count and last scan/progress times. `/api/health/ready` requires the DB and
-progressing local worker supervision; an LBX outage alone does not make identity
-unready. `/api/health/live` remains DB-independent. No IDs/secrets are returned.
-
-Prometheus `payment_portal_billing_worker_*` signals report attempts by lane and
-outcome, active/cleanup slots, pending/invalid work, oldest overdue age and last
-progress time. `failures` counts execution exceptions. A `BillingRefused` caught
-by worker dispatch counts as `refused` only when its retry or quarantine commits
-under the current queue owner. This advances last progress and retains the safe
-refusal code in durable diagnostics;
-it does not increment failures or report an execution exception. Lost ownership
-and failed or uncertain commit acknowledgement remain execution failures.
-Completed work and last progress include durably recorded incomplete attempts
-and local sweeps. Neither completed nor refused attempts claim successful source
-proof. Inspect `source_incomplete` work classifications,
-versioned observations and bounded `lbx_http` source/authentication diagnostics
-for source failures. Alert on repeated authentication denial/configuration errors
-or incomplete reads approaching the affected source-trust deadline; the read
-backoff supplies cooldown without preserving or extending trust.
-Labels contain no local/customer/product IDs. Growing overdue age,
-invalid records, failed local scans (120 seconds) or persistent cleanup warrant
-operator investigation. Inspect durable work/projections through existing trusted
-local DB access; use the purchase `inspect`/`recover`/`reconcile` commands documented below.
-Do not use public health output as commercial or access authority.
-
-## Future expansion path
-
-Use measured queue age/source latency to tune bounded concurrency/timing within
-actual provider limits first. If API resource isolation requires it, a future
-thin standalone entrypoint can reuse the same runner/use cases: disable embedded
-startup, stop claims, drain/stop the old owner, then restart over the same durable
-jobs. Roll back by draining that owner before re-enabling embedded execution.
-Add consumers/read optimizations only after measured need and account for
-multiplied per-process limits and actual LBX quotas; add aggregate enforcement
-when required by that deployment. No scaled deployment, MQ, global admission,
-capacity benchmark or large-load claim is implemented by Step 2.
-
-## Evidence levels and owner checkpoint
-
-Automated fixtures and lifecycle transitions are **SIMULATED**. They establish
-local behavior, not real LBX renewal, settlement, webhook delivery or Kernel
-conformance. Real read-only normalized-output inspection is **NOT_RUN** here.
-Real mutation/payment operations are outside this step's authorization.
-
-Owner checkpoint: inspect sanitized `subscription-reconciliation:v1` outputs for
-waiting, active, next calculation period, financial/admin block, ended and
-incomplete attempts. Review classification, bounded reasons, read window,
-calendar completeness, original purchase/link/legal references and unchanged
-trust on incomplete proof. Do not export payloads, credentials, contact fields,
-customer keys or authorization data. Synthetic outputs are reproducible through
-the `billing_subscription_reconciliation` fast/PostgreSQL test selection in the
-repository's API test harness. Real untouched renewal and provider-to-Portal-to-Kernel
-acceptance remain separate enablement gates.
+`GET /api/health/billing` reports redacted worker status, occupied/cleanup slots,
+pending/invalid work, oldest due time, execution errors and scan/progress times.
+`/api/health/ready` requires the DB and progressing local supervision; LBX outage
+alone does not make identity unready. `/api/health/live` remains DB-independent.
+Health is diagnostic, never commercial/access authority.
 
 ## Privileged purchase operations
 
-All actions use the existing trusted deployment/OS access boundary and resolve
-`os-euid:<uid>` through `resolve_operator_principal()`. An unavailable OS identity
-refuses execution. There is no operator role, admin HTTP API or provider-ID
-input. `billing-customer diagnose --user-id <portal-user-uuid>` is read-only
-customer inspection; it does not restore a key or resolve a review. For the
-narrow original-key recovery through an explicit account opening, see
-[customer diagnosis and recovery](ANY-709-billing-runbook.md#customer-diagnosis-cli).
+Commands use existing trusted deployment/OS access and identify the operator as
+`os-euid:<uid>`. Unavailable OS identity refuses execution. Customer diagnosis is
+`billing-customer diagnose --user-id <portal-user-uuid>`; it is read-only and
+cannot resolve review.
 
-Invoke `.venv/bin/python scripts/repo.py billing-purchase <action>` with both
+Invoke `.venv/bin/python scripts/repo.py billing-purchase <action>` with
 `--user-id <portal-user-uuid>` and `--purchase-id <purchase-intent-uuid>`.
-The equivalent module is `app.cli.billing_purchases` with `PYTHONPATH=apps/api`
-and the same configured deployment environment. JSON success includes the OS
-principal; exit 0 means the bounded command completed, not paid access or a
-successful provider conclusion. Exit 1 returns only `detail.code`; invalid parser
-arguments exit 2. A source refusal cannot expose raw errors or credentials.
+Success JSON includes the operator principal. Exit 0 means the command completed,
+not that payment or positive source proof was established. Exit 1 returns only
+`detail.code`; invalid parser arguments exit 2.
 
-- `inspect` reads local evidence only, in a read-only PostgreSQL transaction.
-  It opens no source resources and changes no rows or leases. Output includes
-  local operation IDs, states, send fences, receipts as booleans, active recovery
-  deadlines, canonical subscription lifecycle/commercial/financial facts,
-  finite trust, supporting observation/fence, recent observation summaries,
-  due/leased work, generations, attempts, errors and review identities/digests.
-  Work/review lists cap at 100 with explicit truncation flags; the observation
-  list contains the latest 20 records. No customer keys, provider payloads,
-  secrets, accepted amounts or raw requests appear in this output.
-- `recover` performs bounded GET-only discovery/point proof through the same
-  `recover_financial()` as the worker. It may bind the uniquely proven original
-  possible-send operation and close a deadline-only escalation. It never sends
-  CREATE, adopts PENDING/PROVEN_NOT_SENT, clears a known conflict or changes the
-  original request/key/history/deadline. Bound subscriptions use `reconcile`.
-- `reconcile` resolves the purchase's canonical local subscription and calls
-  the worker's shared four-point read and fenced apply. It may record waiting,
-  active, blocked, ended, incomplete or conflicting evidence; known conflicts
-  remain open and cannot refresh positive trust. Reads use the existing CLI
-  `PREFLIGHT_TOTAL_TIMEOUT_SECONDS` total budget, cleanup reserve and finite
-  subscription lease. An active worker/CLI lease may return
-  `subscription_reconciliation_busy`; inspect and retry after its owner finishes
-  or the lease expires. Source outages never extend trust. Each point result,
-  including a scope error, must arrive within the shared read budget. A timely
-  proven identity conflict survives a later unrelated read timeout; late facts
-  are discarded. Incomplete or blocked CLI results coalesce urgent reconciliation
-  within five minutes without clearing a running worker's lease/generation or
-  downgrading an existing urgent hint after a complete positive read.
-- `resolve-review` is the only explicit audited known-conflict transition.
-  Required common options: `--resolution`, `--case-id`,
-  `--expected-case-digest`, `--reason` and `--reference`. Copy the current case
-  ID and `sha256:` digest from `inspect`. Reason/reference must be nonempty,
-  bounded single-line text (500/300 characters); never put secrets or personal
-  data there. The reference identifies the incident/ticket. Stale evidence or
-  unrelated open cases refuse the command.
+- `inspect`: local read-only evidence; no source I/O, row changes or leases.
+  Output includes original operations/fences, current subscription facts/trust,
+  recent observation summaries, work and review IDs/digests. Work/review lists
+  cap at 100 with truncation flags; observations contain the latest 20 records.
+  No customer keys, raw requests, credentials or accepted amounts are exposed.
+- `recover`: bounded GET-only recovery of the original possible-send operation.
+  It may prove a binding or close deadline-only review, but cannot send CREATE,
+  adopt PENDING/PROVEN_NOT_SENT or clear known conflicts. For a bound subscription,
+  use `reconcile`.
+- `reconcile`: bounded authoritative recheck of the canonical subscription.
+  It records waiting/active/blocked/ended/incomplete/conflicting evidence and
+  schedules follow-up. Known conflicts remain open. The budget is
+  `PREFLIGHT_TOTAL_TIMEOUT_SECONDS` with its cleanup reserve; active work may
+  return `subscription_reconciliation_busy`. Inspect and retry after completion
+  or finite lease expiry. Source outage never extends trust.
+- `resolve-review`: fresh-proof audited resolution, with required `--resolution`,
+  `--case-id`, `--expected-case-digest`, `--reason` and `--reference`. Copy the current
+  case ID and `sha256:` digest from `inspect`. Reason/reference are nonempty bounded
+  single-line text (500/300 characters); include no secrets or personal data.
 
-Examples (placeholders must be replaced with local IDs and current expectations):
+Examples; replace placeholders with local IDs and current expectations:
 
 ```bash
 .venv/bin/python scripts/repo.py billing-purchase inspect --user-id <portal-user-uuid> --purchase-id <purchase-intent-uuid>
 .venv/bin/python scripts/repo.py billing-purchase recover --user-id <portal-user-uuid> --purchase-id <purchase-intent-uuid>
 .venv/bin/python scripts/repo.py billing-purchase reconcile --user-id <portal-user-uuid> --purchase-id <purchase-intent-uuid>
-.venv/bin/python scripts/repo.py billing-purchase resolve-review --user-id <portal-user-uuid> --purchase-id <purchase-intent-uuid> --resolution restore-original --case-id <case-uuid> --expected-case-digest <sha256:digest> --expected-observation-id <supporting-observation-uuid> --expected-reconciliation-fence <integer> --reason 'Original canonical facts restored and verified' --reference 'ANY-715'
-.venv/bin/python scripts/repo.py billing-purchase resolve-review --user-id <portal-user-uuid> --purchase-id <purchase-intent-uuid> --resolution bind-original --case-id <case-uuid> --expected-case-digest <sha256:digest> --operation-id <create-operation-uuid> --expected-operation-fence <send-fence-uuid> --reason 'Original uncertain operation uniquely proven' --reference 'ANY-715'
+.venv/bin/python scripts/repo.py billing-purchase resolve-review --user-id <portal-user-uuid> --purchase-id <purchase-intent-uuid> --resolution restore-original --case-id <case-uuid> --expected-case-digest <sha256:digest> --expected-observation-id <supporting-observation-uuid> --expected-reconciliation-fence <integer> --reason 'Original facts verified' --reference 'ANY-715'
+.venv/bin/python scripts/repo.py billing-purchase resolve-review --user-id <portal-user-uuid> --purchase-id <purchase-intent-uuid> --resolution bind-original --case-id <case-uuid> --expected-case-digest <sha256:digest> --operation-id <create-operation-uuid> --expected-operation-fence <send-fence-uuid> --reason 'Original operation proven' --reference 'ANY-715'
 ```
 
-`restore-original` additionally requires `--expected-observation-id` and
-`--expected-reconciliation-fence`, with no operation override. It supports only
-`subscription_identity_conflict`, `subscription_commercial_mismatch`, or an
-original already-bound operation's `financial_binding_conflict` /
-`accepted_terms_changed_after_preparation`. All original financial bindings must
-still exist. Fresh complete owned original-term/prepaid-policy proof is required.
-Apply preserves those bindings, records a new authoritative observation and finite
-trust, resolves the corrected case and restores the purchase's linked state.
-A block is still a block: resolving commercial review never manually marks paid.
-Complete matching ended proof may resolve its corrected commercial conflict while
-remaining ended/blocked and held. A nonterminal reread of a previously ended
-canonical ID is refused; `subscription_terminal_revival_conflict` itself has no
-operator override.
+`restore-original` also requires `--expected-observation-id` and
+`--expected-reconciliation-fence`, with no operation override. Supported cases are
+subscription_identity_conflict, subscription_commercial_mismatch, or an original
+already-bound operation's financial_binding_conflict /
+accepted_terms_changed_after_preparation. All original bindings and fresh complete
+owned original-term/prepaid proof must hold. It restores facts and linked state
+without rebinding. Blocked/ended facts remain blocked/ended and held; terminal
+revival has no override.
 
-`bind-original` additionally requires `--operation-id` and
-`--expected-operation-fence`, with no reconciliation expectations. Only
-`financial_binding_conflict` / `accepted_terms_changed_after_preparation` on that
-unbound possible-send financial operation are supported. Its immutable saved
-request, original correlation, accepted fingerprint and possible-send history
-must prove the same command. Full bounded discovery must yield exactly one
-point-proven original candidate, including when a receipt is saved. Agreements
-also prove the original creation date. Subscription binding additionally requires
-complete supported-policy/lifecycle proof. Apply reuses `bind_financial()` and
-atomically enrolls the resulting subscription; this preparation does not itself
-renew source trust. A remaining PENDING operation still requires the user's
-existing explicit authorized advance before any send.
+`bind-original` also requires `--operation-id` and `--expected-operation-fence`, with
+no reconciliation expectations. Supported cases are financial_binding_conflict /
+accepted_terms_changed_after_preparation on an unbound possible-send financial
+operation. Complete bounded discovery must prove exactly one original candidate,
+even with a saved receipt. Saved request/correlation/accepted terms, original
+agreement date and supported subscription lifecycle/policy must match. Binding
+enrolls reconciliation without itself renewing trust.
 
-The original conflict evidence must retain its prior POSSIBLE_SEND/UNKNOWN state
-and send fence. If an earlier deadline escalation already moved the same
-operation to MANUAL_REVIEW, that operation's open
-`external_create_outcome_unknown:<kind>` case can supply the preserved original
-possible-send evidence. Its schema, purchase/operation identity, saved prior state and
-evidence digest are checked; a different operation's deadline or any additional
-known conflict still refuses. Historical cases without that proof, or cases
-raised from PENDING/PROVEN_NOT_SENT, refuse binding; do not edit the case/history
-to manufacture authorization.
+The conflict evidence must retain original POSSIBLE_SEND/UNKNOWN state and send
+fence; the same operation's deadline-review evidence may supply it. Missing
+history or PENDING/PROVEN_NOT_SENT cannot be turned into send proof. Both commands
+recheck current ownership, consent, case digest and expected fences. The audit
+billing-operator-resolution:v1 records principal, reason/reference and proof
+atomically with facts/binding, related-case resolution and scheduling. An identical
+completed request by the same operator replays without writes/source calls;
+a changed or stale repeat refuses.
 
-Both resolutions lock/recheck user, purchase/hold, ordered financial operations,
-subscription and target case before writing. Current customer identity, original
-consent, accepted history, saved requests, fences and expected evidence must still
-match; a competing poll, operator or changed receipt cannot be overwritten.
-Resolution rotates the affected financial fences so older preparation/recovery
-results or inventory snapshots cannot reopen the corrected conflict afterward.
-`billing-operator-resolution:v1` on the existing review row records OS principal,
-reason/reference, command digest, before/after identities, supporting observation
-when one exists, and versioned fresh-proof summary/read window. Original case
-and source evidence remain intact. Related deadline cases are locked and
-rechecked after source I/O, then resolved in the same transaction with the OS
-principal, reason/reference, original case digests and a link to the targeted
-known-conflict case. Each retains the resulting binding and fresh-proof audit.
-Audit/fact/binding/queue updates roll back
-as one transaction on failure. A completed identical request by the same OS
-principal returns `already_resolved` without source I/O or another audit;
-a different repeat refuses as stale. Failed reads may leave only the normal
-finite reconciliation claim for safe later reclaim.
-
-Refusals include stale case/digest/observation/fence, incomplete/empty/capped or
-ambiguous discovery, foreign or already-bound candidates, unsupported policy,
-customer identity conflict, unrelated inventory/review cases, terminal revival,
-unsafe unresolved CREATE effects, changed accepted request, arbitrary rebind,
-commercial reacceptance, paid marking and quota edits. `billing_review_stale`,
-`billing_review_unrelated_cases`, `billing_review_proof_incomplete`,
-`billing_review_terminal`, `purchase_history_unproven` and ordinary source/busy
-errors require diagnosis rather than bypass. No `release-terminal`, force-release,
-manual paid or quota command exists. Ended state retains the hold, purchase,
-consent and permanent bindings; proven-unsent automatic release retains its
-separate existing Step 7 rule.
+Refusals include stale evidence, incomplete/capped/ambiguous discovery, foreign
+or already-bound objects, unsupported policy, customer identity conflict,
+unrelated open cases, terminal revival and changed accepted requests. Diagnose
+billing_review_stale, billing_review_unrelated_cases, billing_review_proof_incomplete,
+billing_review_terminal, purchase_history_unproven and ordinary source/busy errors;
+do not bypass them. There is no release-terminal, force-release, arbitrary rebind,
+commercial reacceptance, manual paid or quota command. Terminal and inventory
+conflict overrides remain deferred. Existing Step 7 proven-unsent automatic
+release keeps its separate rule.
 
 ## Alerts and outage diagnosis
 
-Treat `last_progress_at` as durable queue/local progress, including incomplete
-attempts. `last_verified_subscription_at` and
-`payment_portal_billing_worker_last_verified_subscription_timestamp_seconds`
-track complete matching subscription proof in this process; they do not prove
-all subscriptions are fresh. The bounded
-`payment_portal_billing_worker_subscription_proofs_total{outcome}` distinguishes
-`verified`, `incomplete` and `conflict`. Process restarts reset these diagnostic
-signals; per-subscription persisted evidence remains authoritative.
+Inspect /api/health/billing, payment_portal_billing_worker_* metrics and the
+affected purchase's inspect output. last_progress_at includes durable incomplete
+attempts and local work; it is not new authoritative proof.
+Completed/refused queue attempts report progress, not verified source proof;
+the failures counter reports execution errors.
+last_verified_subscription_at and
+payment_portal_billing_worker_last_verified_subscription_timestamp_seconds track
+complete matching proof in this process, not freshness of every subscription.
+payment_portal_billing_worker_subscription_proofs_total distinguishes verified,
+incomplete and conflict. Process metrics reset on restart; persisted per-scope
+evidence remains authoritative.
 
 Alert on growing queue age/cadence lag, stale local scans (120 seconds), invalid
-records, persistent cleanup, repeated source authentication denial, or repeated
-incomplete proofs approaching a subscription's existing trust deadline. Inspect
-`/api/health/billing`, the metrics and the affected purchase's `inspect` output.
-During an outage confirm local expiry/deadline work progresses while source work
-backs off. Restore connection/authentication through the ordinary deployment
-path, keep polling enabled and require fresh complete proof. Use `recover` for
-UNKNOWN, `reconcile` for canonical subscriptions and only the supported audited
-resolution for a corrected known conflict. Do not delete jobs, reset deadlines,
-release holds or enlarge trust to hide backlog. Actual LBX quotas remain
-unverified; configured limits apply per-process. Deployment alert routing remains
-operator-owned under ANY-86.
+records, persistent cleanup, repeated authentication denial and incomplete proof
+approaching its trust deadline. During an outage, confirm local expiry/deadline
+progress while source reads back off. Restore connection/authentication through
+the normal deployment path and require fresh proof. Use recover for UNKNOWN,
+reconcile for bound subscriptions and only supported audited conflict resolutions.
+Do not delete work, reset deadlines, release holds or extend trust to hide backlog.
+Alert routing remains operator-owned under ANY-86.
 
 ## Step 9 handoff
 
-Reuse `subscription-reconciliation:v1`, complete/mismatch/incomplete classification,
-original ownership/legal/link/accepted provenance, source observation IDs,
-`last_authoritative_read_at`, `projection_valid_until`, and
-`subscription-trust-expiry:v1` deterministic boundary evidence. Preserve date-only
-and timestamp calendar precision; no account timezone, UTC cycle or allowance
-identity is inferred. Incomplete attempts preserve only finite existing support;
-known negative/conflict facts supersede usability immediately.
+Consume subscription-reconciliation:v1 observations, original ownership/legal/
+accepted provenance, commercial classification, last_authoritative_read_at and
+projection_valid_until. subscription-trust-expiry:v1 supplies deterministic
+source-expiry evidence. Incomplete attempts preserve only finite existing support;
+known negative/conflicting facts supersede usability. Calendar precision stays
+provider evidence, without an inferred UTC cycle or allowance identity.
 
-Reuse shared recovery/bind/apply, PostgreSQL claims/generations/fences, active
-UNKNOWN windows and the embedded runner's cancellation/cleanup ownership. The
-migration head remains `20261028_0005`, after `20261029_0003`; Step 5 adds no DDL.
-The two audit modes above are the entire supported operator resolution surface.
-Terminal hold release and inventory-conflict overrides remain deferred.
-
-Step 9 owns primary selection, paid grants/allowances, effective-access revisions
-and atomic outbox production, and must attach earlier access-reducing deadlines
-to this scheduling path. Step 10 owns Kernel wire/invalidation and coupled UTC
-calendar design. Step 11 owns real paid-access/natural-renewal and launch QA.
-No operator action, observation, webhook, successful CREATE or Widget event
-independently grants access. Automated evidence remains **SIMULATED**; real
-read-only LBX and real webhook gates must be recorded separately below and in the
-implementation record. Production migration and real provider/browser acceptance
-remain separate from the completed local browser regression.
-
-2026-10-29 checkpoint: **NOT_RUN / LBX_NOT_CONFIGURED**. The local configured
-read-only check exited before source or database writes; no actual provider read
-PASS is claimed. Real webhook authentication/delivery is also NOT_RUN and the
-required mode remains **DISABLED/POLLING-ONLY**. The subsequent
-[QA report](ANY-715-qa-report.md) retains these real integration gates and records
-final local counts, reruns and browser-test limits; simulated proofs cannot
-satisfy either real integration checkpoint.
+Scopes have `primary_subscription_id=NULL` and observations keep
+`resulting_access_revision` null. Step 9 owns primary selection, paid
+grants/allowances, effective-access revisions and atomic outbox production;
+it must attach earlier effective access deadlines to the existing scheduler.
+Step 10 owns Kernel wire/invalidation delivery and coupled UTC calendar design.
+Step 11 owns complete real paid-access/natural-renewal and launch acceptance.
+Automated source evidence is SIMULATED. Configured read-only LBX and actual
+webhook checks remain NOT_RUN; see the verification report for acceptance status.

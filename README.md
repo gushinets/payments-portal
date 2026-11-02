@@ -31,7 +31,7 @@ Delivery and acceptance evidence are in
 and diagnostics are in the [billing runbook](docs/engineering/ANY-709-billing-runbook.md).
 Background operation and CLI commands are in the
 [ANY-715 operations guide](docs/engineering/ANY-715-billing-operations.md);
-the [QA report](docs/engineering/ANY-715-qa-report.md) separates local verification
+the [verification report](docs/engineering/ANY-715-qa-report.md) separates local verification
 from the outstanding configured-LBX and webhook-enablement checkpoints.
 For target billing work, follow [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md),
 the accepted [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md),
