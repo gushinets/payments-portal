@@ -329,3 +329,40 @@ For future corrections, append the changed scenario, outcome, checked commit and
 verification limits to the appropriate record. Operational procedures stay in
 the runbook. Detailed predecessor logs remain available in Git; they do not need
 to be copied back into the current tracker.
+
+### Local review fixes on `cfb1265` - 2026-11-02
+
+- **P2-1:** sibling inventory is identified through its permanent dedicated
+  agreement. A point-proven in-flight subscription makes the new purchase wait
+  without a financial send or permanent conflict. Explicit continuation succeeds
+  after the original preparation completes. Existing conflict reviews are not
+  automatically cleared. The lookup is extracted from the full purchase service
+  to retain the repository's 500-line source limit.
+- **P3-1:** incomplete inventory uses the existing temporary financial-pending
+  message; retry preserves the accepted purchase without another confirmation.
+- Targeted verification: **79 API tests and 30 component tests passed**, plus
+  Ruff, changed-file ESLint and architecture checks. New PostgreSQL cases cover
+  visibility before receipt/binding, UNKNOWN recovery and seller/terms/receipt
+  conflicts. Logs: `/tmp/any709-review-fixes-20261102-regressions.log` and
+  `/tmp/any709-review-fixes-20261102-ui.log`. The unchanged full canonical suites
+  were not repeated. External LBX/Kernel edges were synthetic, PostgreSQL 14.24
+  was disposable and loopback-only, and local web dependency versions retain the
+  differences recorded above. No live payment, deployment or merge was performed.
+
+### Consistent sibling snapshot follow-up - 2026-11-02
+
+- Review reproduced a remaining P2-1 interleaving: the lookup read PREPARING,
+  the sibling completed, then operation reads returned BOUND and the new purchase
+  incorrectly entered permanent review. The independent diagnostic and valid
+  control are retained in `/tmp/any709-fix-review-mixed-snapshot.log`.
+- The lookup now takes the existing bounded user-row lock used by purchase
+  transitions while assembling its local snapshot. The transaction closes before
+  provider HTTP. No new lock mechanism, schema, worker or financial retry is added.
+- All seven concurrency regressions passed, including the new between-read
+  completion case. Its coordinator observes the actual PostgreSQL writer wait
+  instead of relying on a delay. Log: `/tmp/any709-final-fix-concurrency.log`.
+  The other 73 affected API cases passed separately without repeating those seven:
+  `/tmp/any709-final-fix-related.log`. Ruff, architecture and documentation checks
+  passed for the final change.
+  P3-1 and its 30 passing component tests are unchanged and reused. Full canonical
+  suites, browser and live-provider checks were not repeated.

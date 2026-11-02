@@ -20,7 +20,8 @@ export function billingErrorKey(error: unknown): BillingErrorKey {
     case "billing_identity_conflict":
     case "billing_identity_unproven":
     case "billing_legacy_identity_unproven": return "identity";
-    case "purchase_pending": return "financialPending";
+    case "purchase_pending":
+    case "purchase_inventory_incomplete": return "financialPending";
     case "billing_customer_pending": return "pending";
     case "billing_customer_review": return "review";
     case "lbx_authentication_failed":
@@ -33,7 +34,6 @@ export function billingErrorKey(error: unknown): BillingErrorKey {
     case "billing_client_not_ready": return "client";
     case "terms_changed": return "termsChanged";
     case "lbx_scope_mismatch":
-    case "purchase_inventory_incomplete":
     case "purchase_scope_released":
     case "purchase_review_required":
     case "purchase_existing_subscription_review":

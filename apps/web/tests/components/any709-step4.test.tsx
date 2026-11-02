@@ -26,6 +26,24 @@ function renderProduct(user = purchaseUser) {
   return renderWithIntl(<ProductBilling productId="proposal_ai" offerAvailable user={user} />, { locale: "ru", messages });
 }
 
+it("keeps incomplete inventory retryable without a support conflict or another confirmation", async () => {
+  advance.mockImplementationOnce(async () => {
+    owned = { ...savedPurchase, state: "awaiting_external_result" };
+    return json({ detail: { code: "purchase_inventory_incomplete", request_id: "inventory-pending" } }, 409);
+  });
+  renderProduct();
+  await accept();
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(ru.Billing.errors.financialPending);
+  expect(alert).toHaveTextContent("inventory-pending");
+  expect(alert).not.toHaveTextContent(ru.Billing.errors.purchaseConflict);
+  fireEvent.click(await screen.findByRole("button", { name: ru.Purchase.continue }));
+  expect(await screen.findByRole("link", { name: ru.Purchase.manage })).toBeVisible();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(confirm).toHaveBeenCalledTimes(1);
+  expect(advance).toHaveBeenCalledTimes(2);
+});
+
 it("recovers a concurrent confirmation without a false support warning or another advance", async () => {
   confirm.mockImplementationOnce(async () => {
     owned = { ...savedPurchase, state: "created" };

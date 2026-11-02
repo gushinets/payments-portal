@@ -260,36 +260,6 @@ def read_purchase(factory: SessionFactory, user_id: UUID, purchase_id: UUID) -> 
         return _snapshot(db, row)
 
 
-def other_inventory_purchase(
-    factory: SessionFactory, purchase: Purchase, provider_id: int, agreement_id: int
-) -> Purchase | None:
-    """A tariff is not product identity; require the original permanent local binding."""
-    with factory() as db:
-        row = queries.subscription_purchase(
-            db,
-            user_id=purchase.user_id,
-            customer_id=purchase.customer_id,
-            account_id=purchase.account_id,
-            provider_id=str(provider_id),
-            agreement_id=str(agreement_id),
-        )
-        if row is None or row.product_id == purchase.accepted.selection.product_id:
-            return None
-        other = _snapshot(db, row)
-        bindings = {op.kind: op for op in other.operations}
-        if (
-            other.state != IntentState.LINKED
-            or not other.held
-            or other.accepted.provider_origin != purchase.accepted.provider_origin
-            or not {Kind.AGREEMENT, Kind.SUBSCRIPTION}.issubset(bindings)
-            or any(op.state != State.BOUND for op in bindings.values())
-            or bindings[Kind.AGREEMENT].bound_id != str(agreement_id)
-            or bindings[Kind.SUBSCRIPTION].bound_id != str(provider_id)
-        ):
-            return None
-        return other
-
-
 def inspect_purchase(factory: SessionFactory, configuration: Settings, user_id: UUID, purchase_id: UUID) -> Purchase:
     with factory() as db:
         if (

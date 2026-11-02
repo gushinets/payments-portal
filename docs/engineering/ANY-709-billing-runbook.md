@@ -322,6 +322,12 @@ For API inspection use the authenticated verified owner's session:
    financial send, including subscription continuation after proven no-send.
    Incomplete inventory stays pending; an unproven competitor requires review.
    Another point-proven original Portal purchase may remain admissible.
+   If its subscription send is still unresolved, the new purchase waits with its
+   existing hold and no financial send. Resume it after the original purchase
+   completes; a saved receipt mismatch or failed owner/seller/terms proof still
+   requires review.
+   Its local snapshot uses the existing bounded user-row lock shared by purchase
+   transitions; provider HTTP runs after that transaction closes.
    The number of other held Portal purchases is not a separate admission quota.
 4. `GET /api/purchase-intents/current?product_id=<product>` and
    `GET /api/purchase-intents/<id>` read owned local history without CREATE or

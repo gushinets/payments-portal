@@ -28,6 +28,7 @@ from app.domains.purchases.contracts import (
     PurchaseInventoryIncomplete,
 )
 from app.domains.purchases import financial, service
+from app.domains.purchases.inventory import other_inventory_purchase
 from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from app.integrations.lbx._transport import customer_diagnostics
 from app.integrations.lbx.client import LbxServerClient
@@ -158,7 +159,7 @@ async def _inventory(
             raise PurchaseInventoryIncomplete()
         if point.state != 3 and str(point.subscription_id) != own:
             other = await run_in_threadpool(
-                service.other_inventory_purchase, factory, purchase, point.subscription_id, point.agreement_id
+                other_inventory_purchase, factory, purchase, point.subscription_id, point.agreement_id
             )
             if other is not None:
                 prove_agreement(
@@ -173,6 +174,8 @@ async def _inventory(
                     selection=other.accepted.selection,
                     offer=other.accepted.offer,
                 )
+                if other.state != PurchaseIntentState.LINKED:
+                    raise PurchaseInventoryIncomplete()
                 continue
             raise PurchaseRefused("purchase_existing_subscription_review", 409)
 
