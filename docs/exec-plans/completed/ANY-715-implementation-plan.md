@@ -277,6 +277,47 @@ the final complete `npm run check` exits 0 with 1,689 fast API, 612 PostgreSQL,
 generated freshness. API source/test hashes remain unchanged during that run.
 Real read-only LBX, webhook enablement and launch checkpoints remain open.
 
+## 2026-11-02 — Rebase onto ANY-709 2f61b86
+
+At the owner's request, fetch the current ANY-709 and replay all 18 ANY-715
+commits onto `2f61b86017f5c52ee7aff078eb0a74f034710fef`. First commit the locally
+verified review corrections as `b169910` and preserve the complete pre-rebase
+branch at `codex/any715-before-rebase-20261102`. The rebased application HEAD is
+`2e995c50cefb469377c30cabf2e0c1af01515162`; the fetched ANY-709 is its ancestor.
+The two original untracked contract-audit artifacts remain untracked and
+byte-for-byte unchanged. No remote push is part of this operation.
+
+Resolve the inventory conflict by retaining ANY-709's dedicated-agreement
+ownership helper, bounded user lock and retryable sibling preparation, together
+with ANY-715's shared delegate, per-attempt point cache, terminal normalization
+and original legal-consent verification. Move that verification to the new
+`domains/purchases/inventory.py` owner. Retain ANY-709's bounded publication-test
+timeout and ANY-715's atomic payment Widget guard; do not restore the old
+separate final purchase check.
+
+Initial focused integration verification returned 58 PASS / 1 FAIL. The failed
+concurrent-snapshot test's binding wrapper lacked the shared writer's optional
+`work_claim` parameter and never reached its binding checkpoint. Forward that
+parameter without weakening assertions or synchronization. All seven ANY-709
+concurrent inventory cases then passed in 29.31s. The other focused cases cover
+the 12 review regressions, background recovery faults and retained scopes.
+Final complete `npm run check` on the combined source exited 0: 1,689 fast API,
+620 PostgreSQL, 395 component and 38 web boundary tests passed, together with
+Python/web lint, production build, architecture, documentation and generated
+freshness. The PostgreSQL partition took 1,528.56s. API source/test SHA-256 was
+unchanged throughout the complete run:
+`71ebfdb4d8c055b0cc192c8782690d3a1474bac66b5a3b39a87737941cfd03b0`.
+The final run includes the test wrapper compatibility correction described above;
+the pre-rebase evidence is not relabelled as post-rebase verification.
+
+Logs and runner scripts are retained under ignored
+`.harness/any715-rebase-20261102/`, including the initial focused failure.
+Child processes clear inherited source/telemetry settings and disable unattended
+worker startup. Only the worktree's fixture-owned disposable PostgreSQL database
+is used. Browser E2E, real LBX and webhook delivery remain NOT_RUN; webhook mode
+stays DISABLED/POLLING-ONLY. No application/production migration or provider
+mutation is part of this rebase.
+
 ## Verification and remaining checkpoints
 
 The 2026-10-30 baseline `07556e4` had a complete canonical PASS. The subsequent
