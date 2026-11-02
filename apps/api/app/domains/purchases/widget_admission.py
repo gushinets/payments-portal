@@ -6,7 +6,8 @@ from app.domains.billing.customers import require_widget_session
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases.contracts import Purchase, PurchaseRefused
 from app.domains.purchases.service import _locked, _snapshot, _verify_original_consent
-from app.models import PurchaseIntentState
+from app.infrastructure.queries import purchases
+from app.models import ExternalSubscriptionLifecycleStatus as Lifecycle, PurchaseIntentState
 
 
 def recheck_payment_purchase(
@@ -22,7 +23,12 @@ def recheck_payment_purchase(
         row = _locked(db, expected)
         _verify_original_consent(db, row, expected.accepted)
         current = _snapshot(db, row)
-        if current.state != PurchaseIntentState.LINKED or tuple(
-            op.admission_snapshot() for op in current.operations
-        ) != tuple(op.admission_snapshot() for op in expected.operations):
+        subscription = purchases.linked_subscription(db, row.purchase_intent_id)
+        if (
+            subscription is None
+            or subscription.lifecycle_status == Lifecycle.ENDED
+            or current.state != PurchaseIntentState.LINKED
+            or tuple(op.admission_snapshot() for op in current.operations)
+            != tuple(op.admission_snapshot() for op in expected.operations)
+        ):
             raise PurchaseRefused("purchase_not_prepared", 409)
