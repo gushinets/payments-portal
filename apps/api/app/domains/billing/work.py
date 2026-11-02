@@ -156,7 +156,9 @@ def claim_work(factory: SessionFactory, configuration: Settings, lane: WorkLane)
             else (RECONCILIATION, "external_create_recovery", "customer_inventory"),
             now,
             urgent=None if lane == WorkLane.LOCAL else lane == WorkLane.URGENT,
-            account=connection_account(db, configuration),
+            account=configuration.lbx_external_billing_account_id
+            if lane == WorkLane.LOCAL
+            else connection_account(db, configuration),
             sweep_key=configuration.lbx_external_billing_account_id,
             local_scope=(configuration.instance_tenant_id, configuration.instance_region)
             if lane == WorkLane.LOCAL
@@ -358,9 +360,15 @@ def expire_trust(factory: SessionFactory, claim: WorkClaim) -> None:
 
 def inspect_backlog(factory: SessionFactory, configuration: Settings) -> tuple[int, datetime | None, int]:
     with factory() as db:
+        try:
+            account = connection_account(db, configuration)
+        except BillingRefused as error:
+            if error.code != "billing_connection_conflict":
+                raise
+            account = None  # Local queue visibility does not require source admission.
         return queries.backlog(
             db,
-            connection_account(db, configuration),
+            account,
             configuration.instance_tenant_id,
             configuration.instance_region,
             sweep_key=configuration.lbx_external_billing_account_id,

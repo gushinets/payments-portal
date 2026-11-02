@@ -128,7 +128,23 @@ def by_key(db: Session, kind: str, key: str) -> BillingWorkItem | None:
     )
 
 
-def backlog(db: Session, account: str, tenant: str, region: str, *, sweep_key: str) -> tuple[int, datetime | None, int]:
+def backlog(
+    db: Session, account: str | None, tenant: str, region: str, *, sweep_key: str
+) -> tuple[int, datetime | None, int]:
+    source_scope = (
+        or_(
+            BillingWorkItem.coalescing_key == account,
+            BillingWorkItem.coalescing_key.startswith(account + ":", autoescape=True),
+            (BillingWorkItem.work_kind == "external_create_recovery")
+            & exists().where(
+                func.cast(ExternalCreateOperation.create_operation_id, Text) == BillingWorkItem.scope_reference,
+                ExternalCreateOperation.customer_id == ExternalBillingCustomer.customer_id,
+                ExternalBillingCustomer.external_billing_account_id == account,
+            ),
+        )
+        if account is not None
+        else False
+    )
     rows = db.execute(
         select(BillingWorkItem.work_state, func.count(), func.min(BillingWorkItem.next_attempt_at))
         .where(
@@ -160,14 +176,7 @@ def backlog(db: Session, account: str, tenant: str, region: str, *, sweep_key: s
                     User.tenant_id == tenant,
                     User.region == region,
                 ),
-                BillingWorkItem.coalescing_key == account,
-                BillingWorkItem.coalescing_key.startswith(account + ":", autoescape=True),
-                (BillingWorkItem.work_kind == "external_create_recovery")
-                & exists().where(
-                    func.cast(ExternalCreateOperation.create_operation_id, Text) == BillingWorkItem.scope_reference,
-                    ExternalCreateOperation.customer_id == ExternalBillingCustomer.customer_id,
-                    ExternalBillingCustomer.external_billing_account_id == account,
-                ),
+                source_scope,
             ),
         )
         .group_by(BillingWorkItem.work_state)

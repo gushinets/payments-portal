@@ -135,8 +135,8 @@ class BillingWorker:
                 return False
             if claim.kind == work.SWEEP:
                 # One committed batch per tick allows due expiry between batches.
-                count = await self.db(lane, work.enroll_batch, self.factory, self.configuration)
                 paid = await self.db(lane, work.repair_paid_deadlines, self.factory, self.configuration)
+                count = await self.db(lane, work.enroll_batch, self.factory, self.configuration)
                 repaired = (
                     await self.db(lane, background_recovery.repair_batch, self.factory, self.configuration)
                     if self.client is not None
