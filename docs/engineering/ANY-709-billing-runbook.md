@@ -387,6 +387,13 @@ only for changed accepted terms while **all** financial operations are provably
 unsent under send-claim locks. Other release needs trustworthy audited evidence;
 there is no force-release/grant command or absence inference from zero results.
 
+ANY-715 final review found two integration defects affecting these paths:
+payment admission can miss an ENDED fact committed after source readback
+(P1-2), and a deadline can repeatedly fail after safe no-send hold release
+(ARCH-1). See the [current findings](ANY-715-qa-report.md#open-final-review-findings).
+The documented admission and no-send rules remain required; these defects
+are not approved policy exceptions or grounds to force a release/retry.
+
 ## Browser operation and diagnostics
 
 Prepared product detail links to `/account?purchase=<id>#billing`. The deep link

@@ -1,24 +1,26 @@
 # ANY-715 — Reconciliation and recovery delivery
 
-Status: Step 8 implemented; configured test-LBX acceptance remains open
+Status: implementation slices present; final-review defects and acceptance remain open
 Updated: 2026-11-02
 Issue: [ANY-715](https://linear.app/paveldik/issue/ANY-715)
 Program: [ANY-504](https://linear.app/paveldik/issue/ANY-504)
 
-This completed delivery record captures the result, retained decisions and
-next-step boundary. Use the [operations guide](../../engineering/ANY-715-billing-operations.md)
+This delivery record captures implementation scope, retained decisions and the
+next-step boundary. Its location under completed plans does not mean that
+Step 8 has passed final acceptance. Use the [operations guide](../../engineering/ANY-715-billing-operations.md)
 for current commands and operating guarantees, and the
 [verification report](../../engineering/ANY-715-qa-report.md) for tested coverage
 and open integration checks. Architectural authority remains
 [ADR 0005](../../architecture/decisions/0005-external-billing-boundary.md)
 and its accepted specifications and dated decisions.
 
-## Delivered result
+## Implemented scope
 
 An owned prepared subscription is monitored without further browser activity.
 Portal records authoritative subscription facts and recovers uncertain creates
 through durable scheduled work, including across restarts and missing webhooks.
-All five implementation slices are delivered:
+The branch contains all five implementation slices, subject to the
+[open final-review findings](../../engineering/ANY-715-qa-report.md#open-final-review-findings):
 
 1. Authoritative subscription reconciliation verifies original ownership,
    accepted effective terms and supported prepaid policy, and records waiting,
@@ -48,7 +50,8 @@ All five implementation slices are delivered:
   agreements and subscriptions.
 - **Trust is finite.** Complete matching proof can establish at most six hours
   from read start. Incomplete reads do not extend it; known negative/conflicting
-  facts reduce usability immediately. Provider calendar precision is preserved
+  facts must reduce usability immediately. P1-1 remains a violation of that
+  requirement in customer inventory. Provider calendar precision is preserved
   without inventing UTC cycle boundaries or an allowance identity.
 - **Recovery does not create financial send permission.** UNKNOWN is GET-only.
   Only an explicit authenticated continuation after completed typed
@@ -79,9 +82,12 @@ operator actions do not independently grant access.
 
 ## Acceptance status
 
-Local automated implementation verification is complete; the
-[verification report](../../engineering/ANY-715-qa-report.md) pins its source and
-coverage. Configured read-only LBX reconciliation remains unverified. Real
+Local suites passed, but final correctness, architecture and DoD review left
+P1-1, P1-2 and ARCH-1 unresolved. The
+[verification report](../../engineering/ANY-715-qa-report.md) pins the reviewed
+source, successful stages, failing supplemental scenarios and required fixes.
+This record does not establish merge readiness or an accepted Step 9 baseline.
+Configured read-only LBX reconciliation remains unverified. Real
 webhook authentication/delivery must be verified before enablement; until then,
 keep polling-only mode. Local completion does not authorize production migration
 or launch.
