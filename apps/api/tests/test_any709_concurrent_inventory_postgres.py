@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.composition import purchases
 from app.composition.sources import source_resources
 from app.domains.billing.contracts import CustomerOpen
+from app.domains.billing.work_contracts import WorkClaim
 from app.domains.catalog.link_publication import publish_product_link
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases import financial, service
@@ -249,11 +250,12 @@ async def test_sibling_completion_between_inventory_reads_keeps_purchase_retryab
             provider_id: int,
             *,
             observation: PreparedSubscriptionObservation | None = None,
+            work_claim: WorkClaim | None = None,
         ) -> None:
             if purchase.id == first.id and operation.kind == Kind.SUBSCRIPTION:
                 bind_ready.set()
                 assert allow_bind.wait(10)
-            original_bind(factory, purchase, operation, provider_id, observation=observation)
+            original_bind(factory, purchase, operation, provider_id, observation=observation, work_claim=work_claim)
 
         def pause_lookup(
             db: Session, *, user_id: UUID, customer_id: UUID, account_id: str, agreement_id: str
