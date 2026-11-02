@@ -67,7 +67,7 @@ def test_billing_worker_settings_propagate_and_match_documentation() -> None:
     for path in (".env.example", ".env.production.example"):
         for key, value in defaults.items():
             assert f"{key}={value}" in (ROOT / path).read_text()
-    text = (ROOT / "docs/engineering/ANY-715-billing-operations.md").read_text()
+    text = (ROOT / "docs/engineering/billing-background-operations.md").read_text()
     for key in defaults:
         assert key in text
     assert "per-process" in text and "standalone" in text and "100" in text

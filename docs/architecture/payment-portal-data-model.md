@@ -277,7 +277,7 @@ owned negative/conflict evidence reduces usability. Subsequent preparation
 cannot overwrite monitored facts. All resulting access revisions remain null.
 Step 1 alone added no DDL or worker; Steps 2–5 supply the running worker and
 operations described below. See the
-[operations runbook](../engineering/ANY-715-billing-operations.md).
+[operations runbook](../engineering/billing-background-operations.md).
 
 `billing_state_observations` stores evidence whose core fields are immutable.
 Its closed kinds are

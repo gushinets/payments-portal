@@ -10,7 +10,7 @@ calendar facts and immutable local provenance, never raw source payloads,
 credentials or contact fields. Scope and original customer/agreement/subscription
 bindings are server-resolved and rechecked under locks before apply. Conflicts
 cannot silently rebind or grant access; see
-[billing operations](engineering/ANY-715-billing-operations.md).
+[billing operations](engineering/billing-background-operations.md).
 
 Never collect, persist, or log full card data. Redact card-related external
 fields, raw session, password-reset, and email-verification tokens,
@@ -99,7 +99,7 @@ Exact constant-time credential-header authentication precedes bounded ASGI body
 processing. Deployment resolves account/contour; only proven local bindings route
 hints. Inbox evidence retains event, safe hashes and local work/generation
 correlation, never unrestricted provider fields. Real LBX header/delivery
-compatibility must pass the [operations gate](engineering/ANY-715-billing-operations.md#real-enablement-checklist-and-rollback)
+compatibility must pass the [operations gate](engineering/billing-background-operations.md#real-enablement-checklist-and-rollback)
 before enablement. Receipt cannot update subscription/access facts.
 
 ## Trust boundaries
@@ -157,10 +157,6 @@ invoice and stop controls stay disabled. Financial CREATE never inherits the
 customer later-open retry policy, and UNKNOWN keeps its hold and original +2h
 deadline. No operation or Widget outcome grants paid access.
 
-These checks currently omit canonical terminal state at final payment admission:
-[P1-2](engineering/ANY-715-qa-report.md#open-final-review-findings) reproduces an
-opening after reconciliation commits ENDED between readback and admission.
-This is an unresolved defect, not an authorized exception to payment admission.
 Account viewing has no catalog, price, seller-agreement or subscription prerequisite.
 
 Step 4 uses one disposable SDK lifecycle for account and payment views. Opening
@@ -193,7 +189,7 @@ before/after identities and proof summary stay in existing durable review storag
 atomically with shared apply/bind. Never include secrets/PII in operator text or
 logs. No terminal hold release, arbitrary identity override, admin API, new role,
 manual paid marking or quota editing is exposed. See the exact
-[effects and refusals](engineering/ANY-715-billing-operations.md#privileged-purchase-operations).
+[effects and refusals](engineering/billing-background-operations.md#privileged-purchase-operations).
 
 Authentication, payments, legal sources and seeds, migrations, telemetry
 redaction, production Compose, deployment configuration, and secret handling

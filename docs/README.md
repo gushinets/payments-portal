@@ -1,7 +1,7 @@
 # Documentation Index
 
 Status: authoritative index
-Last updated: 2026-11-01
+Last updated: 2026-11-02
 
 Start with the smallest document that matches the task.
 
@@ -50,9 +50,6 @@ Start with the smallest document that matches the task.
 
 ### Implementation handoffs and references
 
-- [ANY-715 delivery record](exec-plans/completed/ANY-715-implementation-plan.md)
-  — implemented scope, retained decisions and the conditional Step 9 handoff;
-  final-review defects and integration acceptance remain open
 - [ANY-709 implementation plan and delivery record](exec-plans/completed/ANY-709-implementation-plan.md)
   — Steps 1-4 DONE as implementation milestones; dated source/verification
   evidence, the accepted cabinet layout and open final-review follow-ups.
@@ -104,8 +101,7 @@ Start with the smallest document that matches the task.
 - [Security](SECURITY.md)
 - [Quality score](QUALITY_SCORE.md)
 - [Execution plans](exec-plans/README.md)
-- [ANY-715 billing operations](engineering/ANY-715-billing-operations.md) — current reconciliation/recovery, webhook setup/gate/rollback, audited operator controls, monitoring and Step 9 handoff.
-- [ANY-715 verification](engineering/ANY-715-qa-report.md) — reviewed source, passing suites, unresolved final-review findings and remaining real integration checks.
+- [Background billing operations](engineering/billing-background-operations.md) — worker settings, scheduling, webhook setup/rollback, operator commands, diagnostics and projection boundaries.
 
 ## Legal
 

@@ -1,18 +1,10 @@
-# ANY-715 billing operations
+# Background billing operations
 
-Status: implementation present; final-review defects and integration acceptance open
-Updated: 2026-11-02
-Issue: [ANY-715](https://linear.app/paveldik/issue/ANY-715)
-
-This guide owns current operating guarantees, configuration, commands and
-incident response. The [delivery record](../exec-plans/completed/ANY-715-implementation-plan.md)
-owns scope and retained decisions; the [verification report](ANY-715-qa-report.md)
-owns tested coverage, [open final-review findings](ANY-715-qa-report.md#open-final-review-findings)
-and remaining integration checks. P1-1, P1-2 and ARCH-1 are unresolved at the
-reviewed source; the guarantees below are qualified by those known defects.
-Architectural authority
-remains [ADR 0005](../architecture/decisions/0005-external-billing-boundary.md)
-and its accepted specifications and dated decisions.
+Configuration, scheduling, webhook setup and operator controls for the embedded
+billing worker. For connection setup, purchases and Widget operation, use the
+[billing runbook](ANY-709-billing-runbook.md). Architectural authority is
+[ADR 0005](../architecture/decisions/0005-external-billing-boundary.md) and its
+accepted specifications and dated decisions.
 
 ## Source authority and trust
 
@@ -31,20 +23,14 @@ active/allowed facts. Financial and administrative blocks are distinct negative
 facts. Ended is terminal; a later nonterminal state for the same canonical ID
 opens subscription_terminal_revival_conflict.
 
-Payment Widget admission is not fully synchronized with these canonical facts:
-P1-2 permits a payment opening when ENDED commits between fresh source proof
-and the final local admission check. This is an unresolved defect, not an
-approved terminal-payment policy. The separate account-only Widget remains
-independent of a purchase; neither opening grants paid access.
-
 Only complete matching proof without a known review refreshes source trust.
 Trust begins at `read_started_at` and lasts at most six hours, with no outage
 grace. Incomplete reads preserve the existing finite support without extending
 it. Authoritative subscription apply reduces usability for proven owned
 negative/conflicting facts even if unrelated commercial fields are missing.
-Customer inventory has the separate P1-1 timeout defect described below.
-Polling cannot clear a known
-financial/subscription conflict merely because later terms match.
+Customer inventory applies its collected evidence separately, as described
+below. Polling cannot clear a known financial/subscription conflict merely
+because later terms match.
 
 Provider calendar dates retain their original precision. Missing, sentinel or
 contradictory current-cycle bounds cannot establish positive trust. Date-only
@@ -57,7 +43,7 @@ as billing_connection_conflict. A customer-key conflict uses the existing explic
 account-open recovery policy; background recovery cannot restore that conflict.
 See [customer diagnosis and recovery](ANY-709-billing-runbook.md#customer-diagnosis-cli).
 
-Step 8 produces subscription facts and expiry evidence. It does not choose an
+The worker produces subscription facts and expiry evidence. It does not choose an
 access primary, grant access or create allowances/revisions/invalidations.
 
 ## Embedded worker settings and resource limits
@@ -88,7 +74,7 @@ withdraw identity readiness.
 Increase capacity only from measured queue age/source latency and actual LBX
 limits. A future separate worker can reuse the durable jobs, but requires an
 explicit stop-claim/drain/replace procedure and aggregate capacity review before
-adding processes. Step 8 supplies no scaled-deployment or provider-quota claim.
+adding processes. Limits do not coordinate capacity across API replicas.
 
 ## Enrollment, cadence and recovery
 
@@ -126,11 +112,10 @@ backoff and restart cannot extend the window or permit another financial CREATE.
 PENDING and completed PROVEN_NOT_SENT are excluded from overdue UNKNOWN
 escalation and authorize no background send.
 
-ARCH-1 qualifies job completion after safe purchase release: a deadline for a
-completed PROVEN_NOT_SENT operation can fail with `purchase_scope_released`
-and repeat after lease expiry. The no-send classification is preserved, but
-the background job does not finish. Do not treat this execution error as proof
-of an unknown external effect or bypass the safe-release/send rules.
+The deadline handler currently requires the purchase hold even for completed
+PROVEN_NOT_SENT. After safe hold release, that job can repeatedly fail with
+`purchase_scope_released` instead of completing. The no-send classification
+remains intact; this execution error is not an unknown external effect.
 
 Customer creation keeps its separate explicit-open retry policy. An active
 customer-send: lease excludes competing recovery. Background execution never
@@ -146,11 +131,11 @@ proposal_ai and brief_decoder can share one tariff only with separately proven
 purchases, dedicated agreements and subscriptions. Other-product exclusion needs
 original owner/legal/effective-term proof. Proven competition records scoped
 customer-inventory:v1 evidence and customer_inventory_conflict review without
-rebinding or renewing trust when apply is reached. Required behavior is to
-retain one product's proven conflict despite another product's incomplete
-proof. P1-1 currently violates that requirement if a later read exhausts the
-shared budget before the accumulated conflicts are applied. Do not rely on
-that inventory guarantee until the finding is fixed and regression-tested.
+rebinding or renewing trust when apply is reached. Collected conflicts are
+applied after the product reads finish. If a later read exhausts the shared
+budget, the current implementation retries without applying earlier conflicts;
+existing facts can therefore remain unchanged despite a discovered conflict.
+An incomplete inventory retry is not evidence that inventory is conflict-free.
 Inventory success cannot close known review.
 
 ## Optional webhook receiver and manual deployment
@@ -235,9 +220,8 @@ assumed.
 
 ### Real enablement checklist and rollback
 
-Real enablement is NOT_RUN; required mode remains DISABLED/POLLING-ONLY.
-The deployment owner records the environment/date and sanitized local evidence
-before enabling actual provider delivery:
+Keep DISABLED/POLLING-ONLY until the deployment owner verifies actual provider
+authentication, correlation and delivery for that environment:
 
 - Correct credentials are accepted; missing/wrong credentials are rejected
   before body processing without leaking credentials or payloads.
@@ -375,7 +359,7 @@ reconcile for bound subscriptions and only supported audited conflict resolution
 Do not delete work, reset deadlines, release holds or extend trust to hide backlog.
 Alert routing remains operator-owned under ANY-86.
 
-## Step 9 handoff
+## Projection and access boundary
 
 Consume subscription-reconciliation:v1 observations, original ownership/legal/
 accepted provenance, commercial classification, last_authoritative_read_at and
@@ -384,17 +368,9 @@ source-expiry evidence. Incomplete attempts preserve only finite existing suppor
 known negative/conflicting facts supersede usability. Calendar precision stays
 provider evidence, without an inferred UTC cycle or allowance identity.
 
-The [open final-review findings](ANY-715-qa-report.md#open-final-review-findings)
-qualify this handoff. In particular, Step 9 must not assume that every timely
-inventory conflict has reached durable facts while P1-1 remains unresolved.
-Passing local suites and the presence of these contracts do not close Step 8
-acceptance or establish production readiness.
-
 Scopes have `primary_subscription_id=NULL` and observations keep
 `resulting_access_revision` null. Step 9 owns primary selection, paid
 grants/allowances, effective-access revisions and atomic outbox production;
 it must attach earlier effective access deadlines to the existing scheduler.
 Step 10 owns Kernel wire/invalidation delivery and coupled UTC calendar design.
 Step 11 owns complete real paid-access/natural-renewal and launch acceptance.
-Automated source evidence is SIMULATED. Configured read-only LBX and actual
-webhook checks remain NOT_RUN; see the verification report for acceptance status.

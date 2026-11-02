@@ -155,7 +155,7 @@ def subparsers(parser: argparse.ArgumentParser) -> dict:
 
 
 def test_billing_recovery_cli_runbook_parser_and_settings_contract() -> None:
-    text = (ROOT / "docs/engineering/ANY-715-billing-operations.md").read_text()
+    text = (ROOT / "docs/engineering/billing-background-operations.md").read_text()
     actions = subparsers(cli.parser())
     wrapper = subparsers(repo.build_parser())["billing-purchase"]
     assert set(next(action.choices for action in wrapper._actions if action.dest == "action")) == set(actions)
@@ -179,7 +179,7 @@ def test_billing_recovery_cli_runbook_parser_and_settings_contract() -> None:
         "restore-original",
         "bind-original",
         "billing-operator-resolution:v1",
-        "Step 9 handoff",
+        "projection_valid_until",
         "release-terminal",
         "DISABLED/POLLING-ONLY",
         "queue age",

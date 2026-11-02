@@ -201,7 +201,7 @@ contracts. ANY-664 adds the Step 6 producer for immutable mapping revisions;
 ANY-709 adds purchase UI/preparation; ANY-715 adds operating reconciliation/recovery.
 Access and usage remain later-step work. See the
 [purchase runbook](../engineering/ANY-709-billing-runbook.md) and
-[current billing operations guide](../engineering/ANY-715-billing-operations.md).
+[current billing operations guide](../engineering/billing-background-operations.md).
 
 ### Stable integration surfaces for parent ANY-504 Steps 6–10
 

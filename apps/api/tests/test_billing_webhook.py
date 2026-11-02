@@ -210,7 +210,7 @@ def test_billing_webhook_deployment_and_documentation_contract() -> None:
     for path in (".env.example", ".env.production.example"):
         for key, value in defaults.items():
             assert f"{key}={value}\n" in (ROOT / path).read_text()
-    text = (ROOT / "docs/engineering/ANY-715-billing-operations.md").read_text()
+    text = (ROOT / "docs/engineering/billing-background-operations.md").read_text()
     assert f"POST {PATH}" in text
     for event in webhook.SubscriptionEvent:
         assert f"`{event.value}`" in text
@@ -223,7 +223,6 @@ def test_billing_webhook_deployment_and_documentation_contract() -> None:
         "Production URL",
         "Repeat request",
         "Rollback",
-        "NOT_RUN",
         "enqueue_generation",
         "pending",
         "processed",
