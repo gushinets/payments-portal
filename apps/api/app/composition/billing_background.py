@@ -14,7 +14,12 @@ from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.customer_conflicts import record_customer_conflict
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases.contracts import PurchaseRefused
-from app.infrastructure.preflight import PreflightAdmission, PreflightBudget
+from app.infrastructure.preflight import (
+    PreflightAdmission,
+    PreflightBudget,
+    PreflightCleanupPending,
+    PreflightDeadlineExceeded,
+)
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.errors import LbxError, LbxScopeMismatch, LbxResponseInvalid
 from app.integrations.lbx.financial import Agreement, Subscription
@@ -107,32 +112,36 @@ async def _inventory_customer(
     # requires its own original ownership and accepted-term proof.
     subscription_points: dict[int, Subscription] = {}
     agreement_points: dict[int, Agreement] = {}
-    for purchase in purchases:
-        try:
-            await _inventory(
-                client,
-                purchase,
-                current,
-                factory,
-                budget=budget,
-                delegate=delegate,
-                inventory=rows,
-                subscription_points=subscription_points,
-                agreement_points=agreement_points,
-            )
-        except (LbxError, PurchaseRefused) as error:
-            budget.check()
-            conflict = isinstance(error, LbxScopeMismatch) or (
-                isinstance(error, PurchaseRefused) and error.code == "purchase_existing_subscription_review"
-            )
-            if conflict:
-                conflicts.append(purchase)
-            else:
-                incomplete = True
+    try:
+        for purchase in purchases:
+            try:
+                await _inventory(
+                    client,
+                    purchase,
+                    current,
+                    factory,
+                    budget=budget,
+                    delegate=delegate,
+                    inventory=rows,
+                    subscription_points=subscription_points,
+                    agreement_points=agreement_points,
+                )
+            except (LbxError, PurchaseRefused) as error:
+                budget.check()
+                conflict = isinstance(error, LbxScopeMismatch) or (
+                    isinstance(error, PurchaseRefused) and error.code == "purchase_existing_subscription_review"
+                )
+                if conflict:
+                    conflicts.append(purchase)
+                else:
+                    incomplete = True
+        budget.check()
+    except (PreflightDeadlineExceeded, PreflightCleanupPending):
+        # Keep conflicts proved within the read window; no late result is adopted.
+        incomplete = True
     # Evaluate every product before changing any purchase's ownership proof.
     # Completing work on the first conflict would starve later product scopes.
     if conflicts or incomplete:
-        budget.check()
         await delegate(
             recovery.apply_inventory,
             factory,

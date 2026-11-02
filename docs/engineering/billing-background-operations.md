@@ -112,10 +112,10 @@ backoff and restart cannot extend the window or permit another financial CREATE.
 PENDING and completed PROVEN_NOT_SENT are excluded from overdue UNKNOWN
 escalation and authorize no background send.
 
-The deadline handler currently requires the purchase hold even for completed
-PROVEN_NOT_SENT. After safe hold release, that job can repeatedly fail with
-`purchase_scope_released` instead of completing. The no-send classification
-remains intact; this execution error is not an unknown external effect.
+Completing a deadline job for an already finished operation does not require
+the original purchase hold. Safe no-send release or a new purchase in that
+product scope does not prevent cleanup. Escalating an unresolved financial
+operation still requires its original hold.
 
 Customer creation keeps its separate explicit-open retry policy. An active
 customer-send: lease excludes competing recovery. Background execution never
@@ -131,12 +131,12 @@ proposal_ai and brief_decoder can share one tariff only with separately proven
 purchases, dedicated agreements and subscriptions. Other-product exclusion needs
 original owner/legal/effective-term proof. Proven competition records scoped
 customer-inventory:v1 evidence and customer_inventory_conflict review without
-rebinding or renewing trust when apply is reached. Collected conflicts are
-applied after the product reads finish. If a later read exhausts the shared
-budget, the current implementation retries without applying earlier conflicts;
-existing facts can therefore remain unchanged despite a discovered conflict.
-An incomplete inventory retry is not evidence that inventory is conflict-free.
-Inventory success cannot close known review.
+rebinding or renewing trust. Collected conflicts are applied together after
+the product reads finish or exhaust their shared budget. A later timeout
+preserves earlier timely conflict proof; unfinished scopes remain incomplete.
+Fenced apply still rejects stale ownership or work. An incomplete inventory
+retry is not evidence that inventory is conflict-free. Inventory success cannot
+close known review.
 
 ## Optional webhook receiver and manual deployment
 
