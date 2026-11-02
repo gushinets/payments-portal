@@ -2,7 +2,7 @@
 
 Status: all five implementation steps delivered locally; real integration checkpoints open
 
-Updated: 2026-11-01
+Updated: 2026-11-02
 
 Issue: [ANY-715](https://linear.app/paveldik/issue/ANY-715)
 
@@ -258,6 +258,24 @@ Verification on the combined source:
   database was used and its test server was stopped after verification.
 
 Local logs and result XML are retained under `.harness/any715-rebase-20261101/`.
+
+## 2026-11-02 — Sequential review corrections
+
+Resolve `P1-1`, `P1-2` and `ARCH-2` on the working tree based on `9d57bc4`:
+refresh deadline state after business locks, retain scoped inventory conflicts
+across another product's incomplete source proof, and atomically check customer
+and purchase during final payment Widget admission. Reuse ANY-709 `cfb1265`'s
+exclusion of diagnostic-only observations from financial admission equality.
+Also replace the removed customer-review alias in the overdue customer path
+with the existing shared writer. No DDL, public API, CREATE permission or
+paid-access change is added.
+
+The [review correction record](ANY-715-review-fixes.md) preserves failed
+reproductions, controls and final evidence: 12 new PostgreSQL regressions pass;
+the final complete `npm run check` exits 0 with 1,689 fast API, 612 PostgreSQL,
+394 component and 38 web boundary tests plus lint/build/architecture/docs and
+generated freshness. API source/test hashes remain unchanged during that run.
+Real read-only LBX, webhook enablement and launch checkpoints remain open.
 
 ## Verification and remaining checkpoints
 

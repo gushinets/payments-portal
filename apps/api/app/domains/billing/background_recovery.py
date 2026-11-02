@@ -9,6 +9,7 @@ from app.core.settings import Settings
 from app.domains.billing import customers, work
 from app.domains.billing.contracts import BillingRefused, CustomerOpen
 from app.domains.billing.customer_scope import connection_account
+from app.domains.billing.customer_reviews import record_customer_review
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
@@ -272,6 +273,9 @@ def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> None:
                 for item in purchases.operations(db, purchase.purchase_intent_id, lock=True)
                 if item.create_operation_id == op.create_operation_id
             )
+        # Initial lookup may have cached POSSIBLE_SEND before another writer
+        # completed. Row locks serialize decisions but do not refresh that cache.
+        db.refresh(op)
         row = work.verify_claim(db, claim)
         now = as_utc(billing_reconciliation.database_now(db))
         deadline = (
@@ -284,7 +288,7 @@ def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> None:
         if due is None and deadline and op.operation_state in {State.POSSIBLE_SEND, State.UNKNOWN}:
             reason = "external_create_outcome_unknown:" + op.operation_kind.value
             if purchase is None:
-                customers._manual_review(db, op, reason)
+                record_customer_review(db, op, reason)
             else:
                 financial._review(db, purchase, op, reason)
         work.finish(db, row, claim, due=due)

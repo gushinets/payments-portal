@@ -315,7 +315,14 @@ async def bootstrap_account(
                         await run_in_threadpool(apply_customer_read, factory, current, ambiguous=True)
                         raise BillingAccountFailure("billing_identity_conflict", 409)
                     budget.check()
-                    await run_in_threadpool(recheck_widget_session, factory, configuration, token, current)
+                    if payment_purchase is not None:
+                        from app.domains.purchases.widget_admission import recheck_payment_purchase
+
+                        await run_in_threadpool(
+                            recheck_payment_purchase, factory, configuration, token, payment_purchase, current
+                        )
+                    else:
+                        await run_in_threadpool(recheck_widget_session, factory, configuration, token, current)
                     budget.check()
                     logger.info(
                         "billing_account_ready",
@@ -324,13 +331,8 @@ async def bootstrap_account(
                         },
                     )
                     if payment_purchase is not None:
-                        from app.domains.purchases.service import recheck_payment_purchase
                         from app.models import ExternalCreateOperationKind
 
-                        await run_in_threadpool(
-                            recheck_payment_purchase, factory, configuration, token, payment_purchase
-                        )
-                        budget.check()
                         agreement = next(
                             op for op in payment_purchase.operations if op.kind == ExternalCreateOperationKind.AGREEMENT
                         )
