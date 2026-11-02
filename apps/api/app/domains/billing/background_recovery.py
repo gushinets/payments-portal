@@ -267,7 +267,6 @@ def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> None:
             purchase = None
         else:
             purchase = purchases.owned(db, customer.user_id, op.purchase_intent_id, lock=True)
-            service._locked(db, service._snapshot(db, purchase))
             op = next(
                 item
                 for item in purchases.operations(db, purchase.purchase_intent_id, lock=True)
@@ -290,6 +289,8 @@ def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> None:
             if purchase is None:
                 record_customer_review(db, op, reason)
             else:
+                # A hold is required for escalation, not for finishing completed work.
+                service._locked(db, service._snapshot(db, purchase))
                 financial._review(db, purchase, op, reason)
         work.finish(db, row, claim, due=due)
         db.commit()

@@ -387,10 +387,10 @@ only for changed accepted terms while **all** financial operations are provably
 unsent under send-claim locks. Other release needs trustworthy audited evidence;
 there is no force-release/grant command or absence inference from zero results.
 
-Final payment admission rechecks session, ownership and operation fences, but
-currently does not recheck a canonical ENDED fact committed after source
-readback. A concurrent reconciliation can therefore end the subscription
-while that payment opening still succeeds. Account-only viewing remains
+Final payment admission rechecks session, ownership, operation fences and the
+canonical subscription under the same locks. An ENDED fact committed after
+source readback refuses payment opening; a healthy reread or financial block
+alone does not invalidate fresh payment proof. Account-only viewing remains
 independent of purchase lifecycle.
 
 ## Browser operation and diagnostics
