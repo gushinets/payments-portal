@@ -1,7 +1,7 @@
 # AnyToolAI Portal Architecture
 
 Status: authoritative current-state map
-Last updated: 2026-11-01
+Last updated: 2026-11-02
 
 ## System boundary
 
@@ -86,6 +86,15 @@ canonical facts or bind the uniquely proven original possible-send operation.
 Fresh proof, expected review/evidence/fences and OS principal are rechecked in the
 shared writer; facts/binding, review audit and scheduling commit atomically.
 No terminal hold release, arbitrary rebind or access authority is introduced.
+
+Implementation presence is not final acceptance. Review of `b202ad3` confirmed
+P1-1 (inventory loses timely conflicts on a later product timeout), P1-2
+(payment Widget admission can miss a concurrently committed ENDED fact) and
+ARCH-1 (a no-send deadline cannot finish after safe hold release). These
+unresolved defects qualify the current-state guarantees and Step 9 handoff;
+see [findings and verification scope](docs/engineering/ANY-715-qa-report.md#open-final-review-findings).
+The required invariants remain unchanged. Configured test-LBX acceptance also
+remains open; webhooks remain DISABLED/POLLING-ONLY.
 
 The canonical target is defined, in precedence order, by
 [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md), the

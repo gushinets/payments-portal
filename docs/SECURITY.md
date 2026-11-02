@@ -156,6 +156,11 @@ It enables only the payment presentation flag; subscription create/edit, autopay
 invoice and stop controls stay disabled. Financial CREATE never inherits the
 customer later-open retry policy, and UNKNOWN keeps its hold and original +2h
 deadline. No operation or Widget outcome grants paid access.
+
+These checks currently omit canonical terminal state at final payment admission:
+[P1-2](engineering/ANY-715-qa-report.md#open-final-review-findings) reproduces an
+opening after reconciliation commits ENDED between readback and admission.
+This is an unresolved defect, not an authorized exception to payment admission.
 Account viewing has no catalog, price, seller-agreement or subscription prerequisite.
 
 Step 4 uses one disposable SDK lifecycle for account and payment views. Opening
