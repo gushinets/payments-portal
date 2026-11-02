@@ -1,7 +1,7 @@
 # Security Requirements
 
 Status: authoritative
-Last verified: 2026-09-24
+Last updated: 2026-11-02
 
 ## Sensitive data
 
@@ -22,8 +22,8 @@ or security purpose requires them, and never add them to metric labels.
 
 ## Telemetry correlation and emission
 
-Current identity/legal diagnostics emit only approved bounded local references.
-Future target billing runtime may emit local `purchase_intent_id`,
+Identity/legal and billing diagnostics emit only approved bounded local references.
+Billing runtime may emit local `purchase_intent_id`,
 `create_operation_id`, `delivery_id`, `work_item_id`, `subscription_id`,
 `observation_id`, or `review_case_id` when the owning flow provides a concrete
 incident lookup. They are diagnostic references only and must never become
@@ -108,9 +108,10 @@ before enablement. Receipt cannot update subscription/access facts.
 - Verify authenticity at every external billing or payment Integration before
   trusting external state. ANY-709 implements real source reads and an explicit
   account Widget bootstrap, accepted-purchase preparation and point-verified
-  payment presentation. ANY-765 Steps 2–3 add local paid derivation, autonomous
+  payment presentation. ANY-765 adds local paid derivation, autonomous
   reductions and audited recovery with immutable accepted quantities and one
-  user-serialized semantic commit. Paid cabinet and Kernel delivery remain deferred.
+  user-serialized semantic commit. The authenticated cabinet reads this committed
+  state; Kernel delivery remains deferred.
 - Treat request IDs and external billing or payment metadata as untrusted input
   with length and character limits.
 - Store session tokens only as hashes.
@@ -118,9 +119,10 @@ before enablement. Receipt cannot update subscription/access facts.
   fragment tokens out of browser persistence and query parameters.
 - Keep external integration secrets in environment or a secret manager, never
   migrations, seed files, telemetry, or source control.
-- Paid access changes only from authenticated, validated authoritative billing
-  facts normalized through the local transition path. Browser returns are
-  informational and never authoritative.
+- Positive paid access requires complete validated authoritative billing proof.
+  Known negative facts and deterministic passage of an already-proven deadline
+  may reduce access. Audited operator resolution selects fresh proven original
+  facts; it cannot invent access or quantity. Browser returns are informational.
 
 ## Account Widget credentials (ANY-709 Step 2)
 
@@ -186,7 +188,8 @@ no loading timer may interrupt an active checkout.
 ANY-715 privileged purchase commands retain the existing OS/deployment access
 boundary. `inspect` is local and read-only; other rechecks use bounded GETs.
 Only fresh original-object proof plus current review/evidence/fence expectations
-permits the two audited resolutions. Principal, bounded reason/reference,
+permits the supported audited resolutions, including ANY-765's proof-based
+`select-primary`. Principal, bounded reason/reference,
 before/after identities and proof summary stay in existing durable review storage,
 atomically with shared apply/bind. Never include secrets/PII in operator text or
 logs. No terminal hold release, arbitrary identity override, admin API, new role,

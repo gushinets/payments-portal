@@ -1,15 +1,18 @@
 # ANY-765 — Paid Access Projection, Allowances, Revision & Invalidation
 
-Status: Steps 1–4 implemented locally; aggregate check FAIL (one unchanged worker test); configured test-LBX acceptance NOT_RUN
+Status: Steps 1–4 DONE (implementation); final aggregate check FAIL; configured test-LBX acceptance NOT_RUN
 Validation: **READY WITH GATES** — validated using the validate-plan skill
 Updated: 2026-11-02
 Issue: [ANY-765](https://linear.app/paveldik/issue/ANY-765)
 Program: [ANY-504](https://linear.app/paveldik/issue/ANY-504)
 
-Planning branch: `ANY-765`, created directly from the current local/published
-`ANY-715` at `b44a45f5a4dc47b5a70c8468df462f016e66be2d`.
-That planning-only task added this file; implementation and verification are
-recorded below.
+The implementation-ready plan is preserved at
+[`96e3b0c`](https://github.com/gushinets/payments-portal/blob/96e3b0c/docs/exec-plans/active/ANY-765-implementation-plan.md).
+The four approved steps and execution prompts below are retained as the scope
+contract. Current delivery and verification replace the superseded per-run
+journals; their detailed history remains in Git through `5eb88c8`.
+Implementation is published in [PR #157](https://github.com/gushinets/payments-portal/pull/157).
+Implementation completion does not close the acceptance gates in Section 6.
 
 ## 1. Goal & Final Expected Outcome
 
@@ -65,101 +68,48 @@ changes and production rollout remain Steps 10–11.
 
 ## 2. Current State & Reusable Implementation
 
-### Inspected baseline
+### Delivered baseline
 
-- Research checkout: `ANY-709`, clean at
-  `a2bcb596652a9668ea118ee4d0aa49f9391e9adb`.
-- Inherited Step 9 baseline and initial `ANY-765` HEAD: current `ANY-715`,
-  `b44a45f5a4dc47b5a70c8468df462f016e66be2d`.
-- Inspected `main`: `ace7c277bbfda46e295fc9651d83e6a3a8fd1787`.
-- [PR #150](https://github.com/gushinets/payments-portal/pull/150): open;
-  Step 7 under review.
-- [PR #154](https://github.com/gushinets/payments-portal/pull/154): open/draft;
-  actual Step 8 implementation exists despite stale plan-only PR wording.
-- [PR #151](https://github.com/gushinets/payments-portal/pull/151): open/draft;
-  preparatory examples, not paid-access runtime.
-- Step 8 migration head: `20261028_0005`, following consolidated Step 7
-  migration `20261029_0003`.
-- Real Kernel manifest implementation:
-  [PR #225](https://github.com/gushinets/anytoolai-platform/pull/225), inspected
-  producer HEAD `e627bf296a6476efcca839a0328cf1a5683555e2`, under review.
+- Portal branch: `ANY-765`; runtime and customer UI delivered through `5eb88c8`.
+- Predecessor: `ANY-715` at `b202ad3`, inherited after the owner-requested rebase.
+  It contains the relevant later Step 7 corrections. No further predecessor
+  integration is required for this implementation. The later local ANY-715
+  commit `3d15297` changes documentation only.
+- Current migration head: `20261031_0006`, following `20261028_0005`.
+- Kernel source inspection on 2026-11-02: local `main` at
+  `331e086ca9e0c72eb757aacc476bad5bacb5bae5`. The manifest producer is present;
+  paid snapshot/invalidation endpoints remain absent from its API composition.
+  Source inspection is not deployed HTTP conformance.
+- Real test-LBX-to-cabinet acceptance is **NOT_RUN**. Synthetic tests and
+  SIMULATED quantities do not establish production enablement.
 
-These SHAs identify inspected evidence, not frozen ancestry. Before
-implementation, refresh the current predecessor branches and record the actual
-inherited state.
+### Implemented seams
 
-The later Step 7 correction at `a2bcb59` is absent from the inspected Step 8
-ancestry. It fixes subscription-inventory admission before subscription send,
-stale unsent-term decisions, selected-price metadata and harness credential
-handling. **Updating ANY-715 itself is not required:** incorporate relevant
-corrections into the implementation baseline of ANY-765 before relying on those
-seams. Do not wait for predecessor merge solely to begin supported development.
-That code/Git integration is not performed by this planning task, and per-step
-execution prompts below do not authorize switching, merging or rebasing.
+- [Purchase acceptance](../../../apps/api/app/domains/purchases/service.py)
+  pins v2 technical terms and their digest while preserving readable v1 history.
+  The dev/test-only 100/300 dataset is outside the Kernel manifest.
+- [Authoritative reconciliation](../../../apps/api/app/domains/billing/reconciliation.py)
+  performs bounded source reads outside database transactions and applies their
+  normalized proof under permanent ownership/fence checks. Preparation cannot
+  authorize access.
+- [Primary selection and paid commit](../../../apps/api/app/domains/billing/paid_access.py)
+  use complete first-selection discovery, frozen cycle allowances and one
+  user-serialized, caller-transaction revision/audit/outbox writer.
+- [Paid deadlines](../../../apps/api/app/domains/billing/paid_deadlines.py)
+  reuse the existing durable worker. Local reductions and deadline repair remain
+  available without LBX configuration. Supported operator actions reuse fresh
+  original-object proof and the same writer.
+- [Customer paid read](../../../apps/api/app/domains/billing/paid_read.py) and
+  [cabinet](../../../apps/web/src/features/billing/AccountBilling.tsx) expose
+  committed local state independently of catalog/LBX availability, with deadline
+  refusal, generated contracts and session lifetime guards.
 
-A separate local mock-alignment worktree contained unfinished preparation
-changes during research. Treat them as work in progress, coordinate their
-eventual delivery and do not modify that worktree or duplicate its completed
-delta.
-
-### Reuse and required changes
-
-The following register provides the input → gap → behavior → verification trace.
-
-- **Purchase acceptance — REUSE / EXTEND.**
-  [Purchase contracts](../../../apps/api/app/domains/purchases/contracts.py),
-  [purchase service](../../../apps/api/app/domains/purchases/service.py) and
-  [purchase composition](../../../apps/api/app/composition/purchases.py)
-  already preserve original commercial/legal/link provenance and idempotency.
-  Technical purchased terms are missing from acceptance and confirmation
-  identity. Step 1 adds versioned acceptance without rewriting history.
-- **Authoritative facts — REUSE.**
-  On ANY-715,
-  [SubscriptionProof](../../../apps/api/app/domains/billing/reconciliation_contracts.py),
-  [claim/apply](../../../apps/api/app/domains/billing/reconciliation.py) and
-  [read_subscription_proof](../../../apps/api/app/integrations/lbx/reconciliation.py)
-  supply normalized ownership, commercial, lifecycle, financial and calendar
-  evidence. Four bounded provider reads occur outside transactions.
-  Preparation remains `unverified` and cannot authorize.
-- **Discovery and primary — EXTEND.**
-  [Background composition](../../../apps/api/app/composition/billing_background.py)
-  reuses bounded customer discovery and point proof, but successful inventory
-  currently does not persist the complete candidate evidence needed for
-  first-primary selection.
-  [apply_inventory](../../../apps/api/app/domains/billing/background_recovery.py)
-  also marks a linked subscription ineligible on a competitor conflict. Step 2
-  adds complete target-product discovery evidence and preserves an already
-  trusted primary when only a newcomer conflicts.
-- **Cycle and allowance storage — EXTEND.**
-  [Allowance model](../../../apps/api/app/models/billing_allowances.py) has
-  immutable rows but timestamp-only periods and nonunique identity indexes.
-  Step 2 introduces lossless calendar evidence, logical uniqueness and tested
-  cycle classification.
-- **Effective state and outbox — BUILD ON EXISTING STORAGE.**
-  [Paid-access models](../../../apps/api/app/models/billing_access.py) provide
-  state/outbox slots, not a writer. Step 2 implements semantic comparison,
-  monotonic revisions, causal audit and atomic coalescing.
-- **Autonomous operation — REUSE / EXTEND.**
-  Step 8's [work](../../../apps/api/app/domains/billing/work.py),
-  background recovery,
-  [BillingWorker](../../../apps/api/app/jobs/billing.py), PostgreSQL
-  claims/generations and operator resolution are implemented. Step 3 attaches
-  the paid-access writer and effective deadlines, including local operation
-  when source configuration is unavailable.
-- **Cabinet — EXTEND.**
-  [AccountBilling](../../../apps/web/src/features/billing/AccountBilling.tsx)
-  currently lists prepared purchases.
-  [ProductBilling](../../../apps/web/src/features/billing/ProductBilling.tsx)
-  still describes paid access as deferred. Step 4 supplies an authenticated
-  local paid-state contract and truthful presentation.
-
-The [Step 8 runbook](../../engineering/ANY-715-billing-operations.md#step-9-handoff)
-records `NOT_RUN / LBX_NOT_CONFIGURED` for its real read-only checkpoint and
-`DISABLED/POLLING-ONLY` webhooks. No fresh live positive or natural-renewal PASS
-is inherited.
-
-Planning evidence is source inspection, not application or live-provider PASS.
-Required implementation validation remains in the steps and Section 6.
+Runtime configuration and incident handling belong to the
+[purchase runbook](../../engineering/ANY-709-billing-runbook.md) and
+[billing operations guide](../../engineering/billing-background-operations.md).
+The [schema reference](../../architecture/payment-portal-data-model.md) owns the
+as-built persistence details; the [Kernel map](../../integrations/platform-kernel.md)
+owns peer evidence and remaining interface boundaries.
 
 ## 3. Architecture, Decisions & Dependencies
 
@@ -181,7 +131,7 @@ Follow root and applicable subtree instructions,
   and [Phase 0 handoff](../../superpowers/phase0/2026-10-14-any-634-lbx-evidence-handoff.md).
 - The inherited [Step 7 plan](../completed/ANY-709-implementation-plan.md),
   [Step 7 runbook](../../engineering/ANY-709-billing-runbook.md),
-  [Step 8 plan](../completed/ANY-715-implementation-plan.md) and operations runbook.
+  [Step 8 delivery history](https://github.com/gushinets/payments-portal/blob/b202ad3/docs/exec-plans/completed/ANY-715-implementation-plan.md) and the current background operations runbook.
 - [Kernel integration map](../../integrations/platform-kernel.md) and
   producer-owned
   [ANY-711 manifest contract](https://github.com/gushinets/anytoolai-platform/blob/e627bf296a6476efcca839a0328cf1a5683555e2/docs/contracts/kernel-capability-manifest/v1/README.md).
@@ -406,13 +356,11 @@ or extend trust.
 The following conditions apply at different points; they are not a blanket
 prerequisite to start coding.
 
-- **Implementation baseline — Portal implementation owner:** consume actual
-  Step 8 code and relevant later Step 7 corrections in ANY-765 before relying
-  on affected seams. Updating ANY-715 itself or waiting for merge is not
-  required. Refresh pending review changes and rerun affected tests.
-- **Mock alignment — preparation owner / Portal implementer:** consume completed
-  bounded alignment work or implement only its missing delta. Uncommitted work
-  is not delivered evidence.
+- **Implementation baseline — SATISFIED:** Step 8 and the relevant later Step 7
+  corrections are inherited through the delivered predecessor in Section 2.
+- **Mock alignment — SATISFIED:** the existing two-product fixture was reused;
+  bounded all-disabled and safe producer-shaped error scenarios are delivered.
+  Mock alignment is not real producer conformance.
 - **Actual Step 9 acceptance — Portal engineer and owner QA:** an available
   supported test-LBX purchase, complete fresh reads and ordinary authenticated
   Portal/cabinet path are required for live acceptance, not for beginning
@@ -460,9 +408,10 @@ prerequisite to start coding.
 
 ## 5. Sequential Implementation Steps
 
-Execute sequentially. Each step updates this plan's implementation record with
-tested HEAD, working-tree status, commands/results and limitations. HEAD alone
-must not be presented as identifying uncommitted implementation changes.
+All four implementation steps below are **DONE**. Their original execution
+prompts are retained for traceability, not as a queue of unfinished work.
+Per-step delivery records identify the resulting commits; Section 6 owns the
+current verification and acceptance status.
 
 Use the repository-managed test environment and shared PostgreSQL fixtures.
 Focused canonical selection can use command-local `PYTEST_ADDOPTS`, for example:
@@ -579,51 +528,18 @@ lookup.
 
 `ANY-765 - Pin consented development metering terms`
 
-### Step 1 implementation record — 2026-10-30
+### Step 1 delivery — DONE
 
-**Baseline and delivery.** Tested base `7ca593b` plus the Step 1 diff; committed
-as `017ab1a`. The initially clean `ANY-765` checkout inherited Step 8 `b44a45f`.
-This step added immutable v2 technical acceptance, the explicit dev/test-only
-100/300 source, review presentation and bounded mock alignment. No paid writer,
-primary selection, allowances or migration were added. Relevant later Step 7
-financial corrections were deferred until their Step 2 point of use.
+Delivered in `85ba988` (the rebased form of original `017ab1a`). V2 acceptance
+pins strict integer quantities, unit/metric ownership, digest and SIMULATED
+provenance. Changed terms refuse new confirmation; saved v1/v2 replays preserve
+history. The explicitly enabled dev/test fixture refuses production use.
+The existing two-product mock was reused and its bounded missing scenarios
+aligned with inspected ANY-711 source. No paid grant was introduced by this step.
 
-The inherited two-product fixture/digest was reused. Missing all-disabled and
-500/503/error-envelope scenarios were aligned with inspected producer ANY-711
-`e627bf296a6476efcca839a0328cf1a5683555e2`; this was source inspection, not a
-real Kernel HTTP PASS. No other worktree or real billing system was mutated.
-Runtime details belong to the [purchase runbook](../../engineering/ANY-709-billing-runbook.md#development-purchase-metering-any-765-step-1).
-
-**Verification.**
-
-- **PASS:** focused API/mock/purchase selection 160; follow-up selections 44 and
-  86; affected purchase PostgreSQL selection 78, with all 7 final Step 1 cases
-  passing in the full PostgreSQL run.
-- **PASS:** purchase/cabinet components 43; broad components 379; web boundaries
-  38; lint/typecheck; Ruff, generation/freshness, architecture/docs and whitespace.
-- **PASS:** synthetic Playwright purchase journey, 14 desktop/mobile cases,
-  including displayed limits, consent, overflow and serious/critical Axe checks.
-  Screenshots were visually inspected. Report: `.harness/playwright-report/`.
-- **FAILED then corrected:** initial mock/checker status assertions; inherited
-  local mock settings also caused configuration-sensitive aggregate failures.
-- **RESULT_UNAVAILABLE:** the first full `npm run check` passed API-fast 1,607
-  and the web build, but was interrupted during PostgreSQL. No aggregate PASS.
-- **FAIL:** final standalone PostgreSQL partition: 474 passed, 1 failed,
-  exit 1. The unchanged customer duplicate-recovery case exceeded its two-second
-  budget; isolated unchanged customer-module rerun **PASS**, 11 cases. The failed
-  aggregate remains a failure; Step 1 customer behavior/timeouts were not changed.
-- **PASS:** final check-environment isolation regression, one case.
-
-Local evidence: `.harness/any765/step1-postgres.{log,xml,exit}` and
-`customer-ensure-rerun.{log,xml,exit}`. The complete Step 1 diff was self-reviewed;
-this did not replace independent review or merge approval. Dedicated browser and
-worktree-local PostgreSQL processes were stopped.
-
-**Limits.** Configured LBX purchase/renewal, real Kernel/deployed conformance,
-API image smoke and production enablement were **NOT_RUN**. Web results used
-installed Next 16.3.1 / Vitest 3.2.7 rather than unchanged lock pins 16.4.2 /
-4.1.12; clean `npm ci` verification was **NOT_RUN**. These are evidence limits,
-not prerequisites for the supported simulated implementation.
+Purchase API/PostgreSQL, component and desktop/mobile synthetic browser checks
+passed. Current aggregate results and remaining limits are consolidated in
+Section 6; earlier run-by-run evidence remains in Git.
 
 ### Step 2 — Derive and atomically commit paid access
 
@@ -763,79 +679,22 @@ semantic revisions and durable invalidation work.
 
 `ANY-765 - Commit paid access with immutable cycle allowances`
 
-### Step 2 implementation record — 2026-10-31; review corrections 2026-11-02
+### Step 2 delivery — DONE
 
-**Baseline and delivery.** Tested base `017ab1a` plus the Step 2 working-tree
-diff, initially clean on `ANY-765`. Migration `20261031_0006` follows inherited
-`20261028_0005`. Implemented the Section 3 paid/primary/cycle rules and one
-caller-owned state/revision/audit/outbox writer for ordinary reconciliation and
-inventory. Remaining deadline/customer/operator paths and cabinet are Steps 3–4.
+Delivered in `f18c279`, with predecessor/rebase corrections in `d005cec`.
+Migration `20261031_0006` adds lossless cycle evidence, logical allowance
+uniqueness and immutable/monotonic storage guards. Reconciliation and inventory
+share the caller-transaction paid writer, causal audit and coalesced outbox.
 
-Inspected predecessor sources: Step 8 PR #154 at `07556e4` and Step 7 PR #150 at
-`a05311d`; these are evidence, not claimed integrated ancestry. Only relevant
-subscription-send inventory and stale-unsent-term corrections, with regression
-coverage, were consumed. Step 1 already supplied the bounded mock alignment.
-No other worktree, normal development/production DB or real billing system was
-mutated; provider tests use synthetic transports and disposable PostgreSQL.
+Complete discovery gates first selection. Ordinary trusted-primary refreshes
+reuse point proof; newcomer conflicts do not replace that primary. Ended
+customer-owned external history may be excluded without fabricated local
+acceptance; unknown nonterminal/local-hidden candidates still prevent unsafe
+selection. Same-cycle recovery reuses frozen IDs and quantities; proven later
+current cycles receive no skipped-period backfill.
 
-**Recorded verification before review corrections (2026-10-31).**
-
-- **PASS:** final `npm run check`, exit 0: 1,645 API-fast, 514 PostgreSQL and
-  379 web component tests, boundaries/lint, web production build, API Ruff,
-  docs, generated freshness and architecture. Browser E2E was explicitly skipped.
-- **PASS:** standalone `check:fast` (1,644 API-fast before the final timestamp
-  unit case); final policy/cycle 38; focused paid/schema PostgreSQL 37;
-  terms/timestamp PostgreSQL 4; all migration/Alembic modules 29.
-- **PASS:** repository generation and complete tracked/untracked diff self-review.
-  Only generated DB schema changed; no new HTTP/TypeScript wire was introduced.
-- **FAILED then corrected:** inventory re-export/import and fixture errors;
-  stale schema/head/calendar assertions; inventory provenance/observation linkage;
-  equivalent zoned timestamp identity. A harness run using invalid mock setting
-  `false` failed two cases; using its required `0` resolved them.
-- **INTERRUPTED:** a 90-case PostgreSQL run exited 143 without a summary; earlier
-  aggregate attempts were stopped for the corrections above. None is a PASS.
-  Sandbox Docker/TCP/subprocess denials were rerun with local permissions.
-
-Evidence: `.harness/any765/step2-check.{log,exit}` and
-`step2-full-tests.xml` (PostgreSQL partition); focused logs remain in that directory.
-
-**Review corrections (2026-11-02).** First-primary discovery is no longer run
-on each positive primary refresh. Within inventory, financial and paid decisions
-reuse the same canonical point reads. Confirmed customer-owned ended external
-history no longer requires a fabricated local acceptance to be excluded.
-Unknown nonterminal candidates and changed primary/fences still fail closed.
-Regression coverage checks request counts, ended/waiting/unknown/wrong-owner
-history, newer negatives and concurrent primary clearing.
-
-**Verification of review corrections (2026-11-02).**
-
-- **PASS:** focused fast selection 96, PostgreSQL selection 97, repository-doc
-  tests 194, Ruff, architecture/docs, generated freshness and whitespace checks.
-- **PASS:** final `npm run check`, exit 0: 1,645 API-fast, 519 PostgreSQL,
-  379 web components, boundaries/lint and production build, static/generated/docs/
-  architecture checks. PostgreSQL took 1301.11 seconds. Browser suite explicitly
-  **SKIP**, not PASS. Runtime tested at `017ab1a` plus the complete Step 2 and
-  review-correction diff; no subsequent-step implementation was added.
-- **FAIL then corrected:** test DB startup first met the sandbox Docker denial,
-  then a stale Docker network binding. Only this worktree's test container was
-  recreated, retaining its volume; startup and both PostgreSQL runs then passed.
-- **PASS:** complete tracked/untracked diff self-review. Documentation status,
-  historical evidence and producer-delivery claims were reconciled; repeated
-  Step 1/2 narratives and duplicate final-check commands were removed. Canonical
-  ownership and future-step gates are unchanged. This is not independent review.
-
-Evidence: `.harness/any765/review-fixes-focused.{log,xml}` and
-`review-fixes-check.{log,exit}`, `review-fixes-full-tests.xml` (PostgreSQL).
-Cleanup **PASS:** the worktree-local test server was stopped without removing
-its volume. No other worktree or real billing system was mutated.
-
-**Remaining limits.** Configured test-LBX purchase/natural renewal, deployed
-Kernel conformance, Step 2 browser acceptance, live metrics/traces, API image
-rebuild, normal development/production migration, rollout and clean lock-pinned
-web installation are **NOT_RUN**. Installed web versions retain the Step 1 limit.
-Production quantities, supported deployment clock budget and coordinated B10
-wire remain acceptance/enablement gates, not Step 2 coding prerequisites.
-No production paid-access readiness is claimed.
+Policy, migration, PostgreSQL/concurrency and source-read regression checks
+passed. Section 6 reports verification of the combined delivered state.
 
 ### Step 3 — Apply autonomous deadlines and controlled recovery
 
@@ -961,224 +820,25 @@ outage or process restart.
 
 `ANY-765 - Enforce paid access deadlines and audited recovery`
 
-### Step 3 implementation record — 2026-11-02
+### Step 3 delivery — DONE
 
-**Baseline and scope.** Repository/branch verified before editing: `ANY-765`,
-clean at `d5f9aac17b47c2744cb8cbb04f3573e7a622d79d`. That HEAD contains Steps 1–2,
-the relevant Step 7 corrections and bounded mock alignment recorded above.
-Tested implementation is that HEAD **plus the uncommitted Step 3 diff**; HEAD
-alone does not identify these changes. Migration head stays `20261031_0006`;
-no new schema or HTTP/TypeScript wire is required. Only this worktree was changed.
-Step 4 and ANY-766 were not started. No stage/commit/push/branch/integration or
-real billing/production mutation was performed.
+Delivered in `0d360d0`, with integration corrections in `d005cec` and `b6c8802`.
+The existing local worker processes conservative source/grant/UTC-allowance
+deadlines and repairs missing work without provider I/O or present-day LBX
+configuration. Timers only reduce; user-first locking and queue checks preserve
+atomic state/revision/audit/outbox commits and stale-owner rollback.
 
-**Implemented behavior.** The existing subscription expiry queue now schedules
-the earliest effective trust/grant/UTC allowance boundary atomically with paid
-facts, including semantic no-op refreshes. Local expiry uses the shared writer,
-rechecks refreshed authority and queue ownership, reduces only dependent facts
-and schedules the next supported boundary. Missing/prematurely completed paid
-deadlines are repaired by the existing bounded enrollment sweep. Source-unconfigured
-startup retains the local lane and uses persisted contour ownership across
-empty/changed source account settings. Source resources and cleanup ownership
-remain isolated; no additional process/scheduler or provider call was introduced.
+Customer identity conflicts reduce dependent products atomically; scoped
+purchase/review failures preserve independent products. Ordinary paired-key
+recovery restores no access before fresh subscription proof. Audited
+`select-primary` accepts only the original linked candidate with current case,
+proof and fence checks. Incomplete inventory remains retryable rather than
+creating a durable ambiguity review; existing review history is preserved.
 
-Customer identity conflicts (interactive/background/reconciliation/integrity-error)
-and financial review transitions now commit paid reductions under user-first
-serialization. Shared identity failure affects all dependent products; a
-purchase-specific review or expiry preserves independent products. Customer-only
-recovery and bind-original remain non-authoritative for paid access.
-Restore-original reuses the source writer and frozen allowance IDs. The existing
-privileged CLI now supports audited `select-primary` only for a linked,
-freshly proven ACTIVE/ALLOWED original candidate and its current primary review.
-It refuses stale/superseded proof, wrong scope, unrelated conflicts, another
-selected primary, block/end/revival and quota/object overrides. Restored original
-cycle proof alone closes metric ambiguity. Production sweeps/source apply omit
-SIMULATED metering while independently proven product grants can survive.
-Local inspection adds revision, primary/basis IDs, effective deadline and lag;
-metric labels remain bounded. Operational details are in the
-[existing runbook](../../engineering/ANY-715-billing-operations.md#any-765-step-3-autonomous-reductions-and-controlled-recovery).
-
-**Verification.** All provider transports/data in these tests are synthetic.
-PostgreSQL runs use the canonical worktree test server and shared fixture lifecycle.
-
-- **PASS:** final focused PostgreSQL selection `-k 'paid_access_recovery'`, 21
-  cases; preceding 20-case selection also covered the inherited raw-trust expiry
-  idempotency regression. Evidence: `.harness/any765/step3-recovery-final.log`
-  and `step3-final-recovery.log`.
-- **PASS:** focused fast/CLI/worker/paid/customer/financial selection, 99 cases;
-  the existing real-local-HTTP harness holds normal worker and new-sale source
-  owners simultaneously while urgent HTTP slots and the local DB limiter remain
-  available. Evidence: `.harness/any765/step3-final-fast.log`.
-- **PASS:** Ruff check/format on changed Python, architecture, documentation,
-  generated freshness and whitespace checks. No generated artifact was hand-edited.
-- **PASS:** canonical `npm run check`, exit 0: 1,646 API-fast, 540 PostgreSQL
-  (1,375.11 seconds), 379 web components, boundaries/lint, production web build,
-  Ruff/static/docs/architecture and generated freshness. Browser suite explicitly
-  **SKIP**, not PASS. Command-local `KERNEL_MOCK_ENABLED=0` and empty
-  `KERNEL_BASE_URL`/`KERNEL_SERVICE_TOKEN` isolate inherited dev configuration;
-  no environment files changed. Evidence: `.harness/any765/step3-check-final.{log,exit}`
-  and `step3-full-tests.xml` (PostgreSQL partition).
-- **PASS / post-check diagnostic follow-up:** 36 focused fast/CLI/HTTP tests
-  and 22 PostgreSQL cases on the final diff. The full aggregate above precedes
-  this diagnostic-only follow-up: an earlier effective allowance/grant boundary
-  now differs from raw source-trust expiry, and local observation summaries expose
-  resulting revision/no-op. Authorization and scheduling are unchanged. The
-  timestamp test uses a future year relative to preparation, removing its fixed
-  November 2026 date dependency. Ruff caught a missing test clock helper; it was
-  corrected and the initial diagnostic PostgreSQL attempt was interrupted, not
-  PASS. Final evidence: `.harness/any765/step3-diagnostics-{fast,postgres}.log`.
-- **FAIL then corrected:** test assumptions about earlier create-deadline work,
-  typed empty secrets and unconfigured-worker behavior; a completed raw-trust
-  expiry was initially reopened by equal incomplete attempts. Explicit paid-only
-  repair now preserves raw expiry idempotency and is covered by the final runs.
-- **FAIL / mixed-version run, not acceptance:** an expanded PostgreSQL run
-  (68 passed, 1 failed) loaded an old writer with a newly edited inventory caller.
-  A later stable regression run reached 109 passed before detecting the raw-expiry
-  reopening above. Neither aggregate is reported as PASS.
-- **FAIL / inherited environment:** first full check stopped at 4 fast failures
-  (1,642 passed), caused by enabled dev Kernel mock in production-setting tests.
-  Disabling only its flag left 2 failures (1,644 passed) from the inherited HTTP
-  Kernel URL. Explicit command-local empty URL/token made both isolated settings
-  tests pass (2/2); the complete isolated check is recorded separately above.
-- **INTERRUPTED:** initial sandbox fast run, 9 passed then exit 2 after a stuck
-  local resource wait; rerun outside that sandbox passed. Docker startup was first
-  denied by the sandbox, then the canonical worktree-only startup succeeded.
-
-**Review and limitations.** Complete tracked/untracked diff self-review covers
-correctness/payment-security checklists, user-first locks, caller-owned rollback,
-source fences, semantic revisions, immutable quota, source/local isolation and
-future-step scope. This is not independent review or human merge approval.
-Configured test-LBX purchase/natural renewal, deployed Kernel conformance,
-normal development/production DB migration, image rebuild, deployed metrics/traces,
-rollout and a clean lock-pinned web installation are **NOT_RUN**. Tested web
-versions remain Next 16.3.1 / Vitest 3.2.7, retaining the Step 1 lock-pin limit.
-Browser and paid
-read-endpoint capacity checks are **NOT_RUN**: no UI/read endpoint is changed here;
-Step 4 must integrate and validate that endpoint, late-read refusal and cabinet.
-Production quantities, supported deployment clock budget and coordinated B10 wire
-remain later acceptance/enablement gates, not Step 3 coding prerequisites.
-No complete live acceptance or production readiness is claimed.
-
-**Final checks and cleanup — PASS.** Post-follow-up Ruff check/format, docs,
-architecture, generated freshness, whitespace and complete diff self-review
-passed. `make test_db_stop` stopped only `payments-cf94dbf9-postgres-1`, retaining
-its volume. Branch/HEAD remain `ANY-765` / `d5f9aac`; the index is unchanged and
-all implementation remains uncommitted. The complete tracked/untracked patch
-is saved at `.harness/any765/step3-complete.diff`.
-
-### Step 3 simplicity review correction — 2026-11-02
-
-**Finding P2 — corrected.** Incomplete first-primary discovery previously
-created `primary_selection_required` whenever multiple candidates were present.
-That durable case made later complete ordinary reads take the known-review
-denial path, turning temporary visibility loss into mandatory operator recovery.
-The writer now creates this case only when discovery and the union with local
-candidates are complete. Incomplete visibility stays retryable and cannot
-select a primary or issue access; a later complete sole eligible linked source
-may select normally. Proven ambiguity and the existing retired-primary rule
-still require audited resolution. Existing open cases are not automatically
-cleared; no review history is rewritten. The operations runbook reflects this
-distinction. No other step or production/external state is changed.
-
-**Regression and verification.** Two PostgreSQL scenarios exercise changing
-list visibility and an unknown candidate followed by a proven ended candidate.
-Both require empty revision 0/no allowance/no review before recovery and an
-ordinary complete revision 1 afterward. Existing incomplete-union coverage now
-also asserts no review, including a hidden local candidate. The operator tests
-use the genuine retired-primary restriction rather than treating an unknown
-object without accepted provenance as a complete owned competitor.
-
-- **FAIL / pre-fix reproduction:** changing-list discovery created one review
-  instead of zero. The other initial test used null lifecycle and failed its
-  candidate-count assertion before reaching the review assertion; that was a
-  test-data error, not a second successful reproduction. Evidence:
-  `.harness/any765/step3-simplicity-red.log`.
-- **FAIL then corrected:** the first 57-case PostgreSQL selection had 49 passed
-  and 8 failed: the null-lifecycle test-data error above and seven operator cases
-  that assumed a product scope already existed after preparation. Unknown
-  accepted provenance is now exercised with an active external candidate; the
-  operator setup creates its scope through ordinary no-clock-budget
-  reconciliation before retiring it. No runtime change was needed for those
-  setup failures. Evidence: `.harness/any765/step3-simplicity-postgres.log`.
-- **PASS:** focused rerun of the two discovery cases and all seven audited
-  primary cases, 9/9; the other 49 cases from the preceding selection are
-  unaffected by the test-data corrections and were not rerun. This is not a
-  single 57-case aggregate PASS. Evidence:
-  `.harness/any765/step3-simplicity-recovery-rerun.log`.
-- **PASS:** canonical `npm run check:fast`, exit 0: 1,646 API-fast, 379 web
-  components, web boundaries/lint, Ruff check/format, architecture, docs and
-  generated freshness. Command-local Kernel settings use the same isolation
-  as the full check above. Subsequent edits only correct PostgreSQL test setup
-  and this verification record; affected Ruff/docs/whitespace checks are rerun.
-  Evidence: `.harness/any765/step3-simplicity-check-fast.log`.
-- **PASS:** focused Ruff check/format on the three affected Python files and
-  whitespace checks.
-- **NOT_RUN after this correction:** full `npm run check`, browser and live
-  LBX/deployed acceptance. Earlier full-suite results above precede this fix;
-  the existing acceptance/enablement limitations remain.
-
-**Handoff.** Reviewed the complete Step 3 tracked/untracked diff and the bounded
-review correction. Branch/HEAD remain `ANY-765` / `d5f9aac`; the index is
-unchanged, all work remains uncommitted and Step 4 is not started. The complete
-patch at `.harness/any765/step3-complete.diff` includes this correction. The
-worktree-local PostgreSQL server is stopped with its volume retained.
-
-### ANY-715 rebase integration record — 2026-11-02
-
-The owner requested rebasing ANY-765 onto the current ANY-715 and resolving
-conflicts against this plan, the ticket and implemented behavior. The four
-original ANY-765 commits were replayed from old predecessor `b44a45f` onto
-`0edd114`. During verification, ANY-715 advanced to `b202ad3` with documentation
-and one documentation-contract unit-test update; the final rebase includes it.
-Original HEAD `d8c61d7` is retained at
-`codex/any765-before-715-rebase-20261102`. The verified intermediate runtime is
-retained at `codex/any765-verified-before-715-docs-20261102` (`8d81673`).
-
-Conflict resolution preserves the newer predecessor's original-key recovery,
-permanent sibling ownership and in-flight preparation rules, product-local
-inventory failures, retained connection scopes, final Widget admission and
-post-lock deadline refresh. The paid writer still owns atomic reductions,
-semantic revisions, immutable allowances and queue checks after business locks.
-Shared inventory points use one conservative read-set start, including across
-products. Existing customer/financial review transitions were kept under one
-owner and split into focused modules to retain the 500-line architecture limit.
-The compact current ANY-715 runbook is retained with the implemented ANY-765
-sections, without restoring its removed historical delivery ledger.
-
-**Verification and corrections.**
-
-- Canonical `npm run check` passed docs, generation, architecture, Python/web
-  lint, 38 web boundaries, 396 components, 1,749 API-fast tests and the production
-  web build/TypeScript stages. Its PostgreSQL stage was interrupted to adapt
-  newly inherited three-value review tuples and pre-Step-9 HTTP-read counts.
-  No complete aggregate `check` PASS is claimed.
-- Full `npm run test:api:postgres`: **682 passed / 2 failed**, 1,790.05 seconds.
-  Both failures were old test expectations allowing automatic recovery from an
-  arbitrary customer identity conflict. They now assert retained review, denied
-  access and refusal of both identity recovery and subscription polling. The
-  stricter ANY-715 original-key policy was preserved, not weakened.
-- Final focused rerun of the complete paid-recovery module plus the three new
-  rebase regressions: **26/26 PASS**, 84.86 seconds. The new cases prove original
-  key recovery requires fresh subscription proof, preserves the same allowance,
-  and cached cross-product reads cannot move source trust past the first read.
-  These 26 overlap the full run; they are not a separate 684-case aggregate PASS.
-- Earlier focused cached-inventory/rebase checks: **5/5 PASS**; concurrent
-  sibling inventory and connection-scope checks: **16/16 PASS**.
-- Final documentation-rebase `npm run check:fast`: **PASS / exit 0**; 1,749
-  API-fast, 396 web components and 38 boundary tests, docs/generated freshness,
-  architecture and Python/web lint. Post-record docs and whitespace checks PASS.
-
-Runtime, migration and PostgreSQL-test files are byte-identical to the verified
-intermediate commit after the final documentation-only predecessor rebase.
-The sole API-file difference is the predecessor's four expected runbook endpoint
-strings in a fast unit test. Local logs are retained under
-`.harness/any765/rebase-20261102/`. The worktree-only PostgreSQL server
-`payments-cf94dbf9-postgres-1` is stopped with its volume retained.
-
-Browser E2E, configured LBX/deployed Kernel acceptance, natural renewal and
-deployment remain **NOT_RUN** in this rebase. Existing enablement gates remain
-unchanged. Step 4 is not started; no production migration or external billing
-mutation was performed. Remote publication is not part of this local rebase.
+PostgreSQL deadline/recovery/fence and real-loopback HTTP capacity checks passed.
+The post-rebase regressions preserve original-key recovery, the common read-set
+trust start and local deadlines across account-scope/configuration conflicts.
+Current final verification and unresolved acceptance remain in Section 6.
 
 ### Step 4 — Expose committed paid state in the cabinet
 
@@ -1298,150 +958,27 @@ and no dependency on live LBX reads.
 
 `ANY-765 - Show committed paid access in the cabinet`
 
-### Step 4 implementation record — 2026-11-02
+### Step 4 delivery — DONE
 
-**Baseline and scope.** Repository and branch were verified before editing:
-`/home/wstanley/www/work_unirec/payments-portal`, `ANY-765`, initially clean at
-`b6c88025752de80ae8b2cdff3d0c6a5ddec0984f` (27 ahead/37 behind the existing
-`origin/ANY-765` tracking ref). Tested delivery is that HEAD **plus the uncommitted
-Step 4 diff**; HEAD alone does not identify this implementation. Steps 1–3,
-the relevant Step 7 corrections and mock alignment are inherited. Current local
-ANY-715 is `3d152972a1318fbbe5024952838e3b1fd6a74f2d`; its sole newer commit is
-documentation-only and is not a runtime prerequisite for this customer read.
-No fetch, stage, commit, push, branch switch, merge or rebase was performed.
-Migration head remains `20261031_0006`; no schema migration is introduced.
+Delivered in `5eb88c8`, based on clean `b6c8802` plus the reviewed Step 4 diff.
+`GET /api/paid-access` uses the existing verified-email session policy and the
+configured user/tenant/region scope. A shared user-row read lock stabilizes the
+committed complete document and deadline/evidence metadata against paid writers.
+After identity bookkeeping, only local SELECTs run; implicit zero creates no
+paid state. Database time is sampled after those reads, so an overdue tuple
+returns correlated no-store `503/paid_access_deadline_pending` without filtering
+or scheduling repair.
 
-Read-only peer inspection found the clean Kernel `main` at
-`331e086ca9e0c72eb757aacc476bad5bacb5bae5`; the integration map records its
-manifest composition and still-absent paid-delivery routes. No other worktree
-was modified. Configured test-LBX acceptance, production metering, real Kernel
-wire and natural renewal are later acceptance/enablement conditions, not coding
-prerequisites. No external production or real billing mutation was performed.
+Generated customer DTOs expose complete grants/allowances and separate bounded
+product evidence. No provider/cycle identifiers, guessed UTC periods or Kernel
+AccessSnapshot wire are exposed. The cabinet refreshes local reads while visible,
+on retry/visibility return and after Widget close, with session replacement/
+logout/unmount guards. Purchase preparation is separate; SIMULATED quantities
+are labeled and actual usage/remaining is unavailable.
 
-**Implemented behavior.** `GET /api/paid-access` uses existing verified-email
-bearer authentication and configured identity scope only. It returns named,
-generated contracts for committed revision, complete grants and allowances with
-opaque ID/product/metric/unit/frozen quantity/provenance, plus separate bounded
-product display evidence and freshness. No state row returns implicit zero
-without billing writes. Preparation/incomplete evidence remains unavailable;
-fresh owned decisive negative evidence may display known absence. A shared user
-read lock stabilizes state/document and deadlines against the user-first writers.
-Identity session bookkeeping remains separate. Any unprocessed effective
-source/grant/UTC allowance deadline refuses with correlated no-store
-`503/paid_access_deadline_pending`, without filtering, mutation or repair enqueue.
-No provider/cycle IDs, guessed UTC calendar periods or internal Kernel wire leak.
-
-The existing cabinet displays paid facts independently of catalog/LBX and of
-purchase preparation; paid products remain visible if purchase inventory fails.
-It refreshes the local read every 30 seconds while visible, on visibility return,
-explicit retry and Widget close. Pending responses and future refreshes are
-invalidated on session replacement/logout/unmount, including silent token
-replacement. Successful views expire conservatively from the server duration.
-Purchased SIMULATED limits are labeled; missing allowances never mean unlimited,
-and actual usage/remaining stays unavailable. Bundle 3, locale parity and existing
-purchase/Manage controls are retained. Product copy directs users to the cabinet.
-
-Architecture, schema, product/RU handoff, integration map and the existing
-operations runbook describe the implemented seam and precise ANY-766 handoff.
-No Kernel networking, captured-revision acknowledgement, cache/revision floor,
-usage API or subsequent implementation step was started.
-
-**Verification.** All provider inputs/transports in automated tests are
-synthetic, including the real loopback HTTP saturation harness. PostgreSQL uses
-the canonical worktree server and shared disposable-database fixtures.
-
-- **PASS:** repository doctor (after the sandbox-only Docker diagnostic denial),
-  focused PostgreSQL/API read suite **6/6**, 19.57 seconds. It covers auth/email/
-  tenant/region isolation, implicit zero, committed paid/empty/unknown evidence,
-  no billing/work/outbox writes, simultaneous reads with an in-flight writer,
-  bounded evidence and local paid serving while normal/new-sale HTTP owners wait.
-  Evidence: `.harness/any765/step4-api-read-complete.log`.
-- **PASS:** focused purchase/cabinet components **73/73**, separate inherited
-  auth/session selection **134/134**, then expanded final session/cabinet guard
-  selection **177/177**. These overlap and are not additive aggregate counts.
-  Evidence: `step4-components-final.log`, `step4-session-regression.log` and
-  `step4-final-session-guard.log` under `.harness/any765/`.
-- **PASS:** final logical-change canonical `npm run check:fast`, exit 0:
-  **1,749 API-fast**, **410 web components**, **38 boundary tests**, Ruff check/
-  format, web lint/typecheck, docs/architecture and generated freshness. Command-
-  local `KERNEL_MOCK_ENABLED=0 KERNEL_BASE_URL= KERNEL_SERVICE_TOKEN=` isolates
-  inherited development settings; no environment files were edited. Evidence:
-  `.harness/any765/step4-check-fast-final.{log,exit}`.
-- **PASS:** production web build/TypeScript and final post-screenshot button-gap
-  follow-up: build, lint and **43/43** affected cabinet/paid components. This
-  layout-only follow-up occurred after the aggregate fast check. Evidence:
-  `.harness/any765/step4-{build,lint,components}-layout-final.log`.
-- **PASS:** final synthetic authenticated Playwright purchase/Widget/paid-cabinet
-  journeys **18/18**, desktop Chromium and Pixel 7 mobile, including no overflow,
-  independent confirmed/unavailable/negative products, deadline refusal/retry and
-  serious/critical Axe checks. Screenshots were visually inspected. Evidence:
-  `.harness/any765/step4-browser-layout-final.{log,exit}` and
-  `.harness/playwright-results/any765-paid-access-*/paid-cabinet*.png`.
-  No live LBX, real Kernel or production request is substituted for this evidence.
-- **PASS:** generation via `npm run generate`, subsequent `generate:check`,
-  standalone architecture/docs, explicit `typecheck:web` and whitespace checks.
-- **FAIL then corrected:** initial test collection imported Base from the wrong
-  module; one scope test attempted an intentionally forbidden physical `us`
-  user instead of testing mismatched deployment scope; TS visibility narrowing,
-  React/language-neutral lint and fake-timer initialization exposed local setup/
-  implementation issues. Corrected runs are listed separately above.
-- **FAIL then corrected:** first full `npm run check` stopped at components:
-  **361 passed / 48 failed**. Old auth/session fetch mocks returned auth JSON for
-  the newly added paid GET. Explicit generated-type paid fixtures preserve their
-  auth assertions; the 134-case rerun and final 410-case aggregate pass above.
-  Evidence: `.harness/any765/step4-check.log`.
-- **FAIL then corrected:** first browser run **18 failed** because the manually
-  started server lacked required `APP_PUBLIC_BASE_URL`; no application PASS was
-  inferred. The next run **16 passed / 2 failed** because a global alert selector
-  also matched Next's route announcer. Scoping to the product region fixes the
-  selector; both subsequent complete 18-case runs passed. Evidence:
-  `.harness/any765/step4-browser.log`, `step4-browser-final.log`,
-  `step4-browser-complete.log` and the final layout run above.
-- **FAIL:** broad `npm run check` retry, exit 1. Static/frontend,
-  **1,749 API-fast**, **409 components** and production build passed; PostgreSQL
-  finished **693 passed / 1 failed**, 1,960.41 seconds. The unchanged inherited
-  `test_billing_worker_on_time_proof_keeps_delayed_apply_owned[False]` failed at
-  line 908 because `latest_observation_id` stayed unchanged. Its source I/O
-  budget is 0.3 seconds; the failed run logged only two of four point reads,
-  consistent with incomplete/over-budget proof, but no definitive root cause is
-  claimed from those logs. No worker behavior or timeout was changed. This
-  aggregate remains FAIL even though the focused rerun below passes. Evidence:
-  `.harness/any765/step4-check-final.{log,exit}`. The aggregate precedes the final
-  local-read deadline sampling refinement and final UI-only refinements; their
-  final verification is recorded separately.
-- **PASS:** final review moved the deadline clock sample after local SELECTs,
-  so a deadline crossed while a query waits also returns 503 without writes.
-  The complete final read suite **7/7** plus both variations of the unchanged
-  failed worker test **2/2** passed together: **9/9**, 27.62 seconds, original
-  worker budgets retained. This does not establish a new 695-case aggregate
-  PASS or prove the cause of the earlier failure. Evidence:
-  `.harness/any765/step4-postgres-deadline-worker-final.{log,exit}`.
-- **PASS:** final `npm run check:fast` after that read refinement, exit 0:
-  **1,749 API-fast**, **410 components**, **38 boundaries**, Ruff, web lint/
-  typecheck, docs/architecture and generated freshness. Evidence:
-  `.harness/any765/step4-check-fast-deadline-final.{log,exit}`.
-
-**Review and limitations.** Complete tracked/untracked diff self-review applies
-correctness, payment/security and UI/accessibility checklists: authenticated
-scope, resource/transaction ownership, user-first serialization, immutable
-revision contents, deadlines, no GET repair, stable provenance, session races,
-locale ownership and later-step boundaries. This is not independent review or
-human merge approval. The index remains unchanged; delivery is uncommitted. The remaining automated
-limitation is the failed broad worker case above, not a hidden aggregate PASS.
-The complete patch is `.harness/any765/step4-complete.diff`.
-The dedicated frontend and canonical worktree PostgreSQL server are stopped;
-the PostgreSQL volume is retained. Final documentation and whitespace checks
-are rerun after this record.
-
-**NOT_RUN / acceptance remains open:** configured actual test-LBX purchase →
-authoritative observation → revision/outbox → ordinary authenticated API/cabinet,
-clean natural renewal, deployed Kernel HTTP conformance, production vocabulary/
-quantity approval, API image smoke and rollout. These are assigned acceptance/
-enablement gates, not omitted local implementation. Actual usage/remaining,
-Kernel networking/ack/cache/revision floor and coordinated B10 wire/spec work
-remain ANY-766/Steps 10–11. No external mutation was attempted. Installed frontend
-verification uses Next **16.3.1** / Vitest **3.2.7** rather than unchanged lock pins
-16.4.2 / 4.1.12; clean `npm ci` verification is **NOT_RUN**.
+The read-only `review-full` pass found no confirmed Step 4 defect and changed no
+files or test results. It does not establish actual-LBX acceptance or human merge
+approval. Verification is consolidated below; Kernel networking was not started.
 
 ## 6. Final Verification & Review
 
@@ -1496,51 +1033,75 @@ PASS, and the ticket must not claim complete functional acceptance. This
 condition does not block supported application implementation and deterministic
 tests.
 
-### Evidence record
+### Current verification — runtime/UI baseline `5eb88c8`
 
-Record:
+All automated provider inputs are synthetic. PostgreSQL uses the worktree's
+shared disposable-database fixtures; the source-capacity harness uses real
+loopback HTTP. Results below were obtained before publication, against the
+corresponding implementation diff. The documentation-only reconciliation does
+not change runtime or require repeating those suites.
 
-- Tested HEAD, working-tree status, migration head and relevant predecessor/
-  peer SHAs.
-- Commands and PASS/FAIL/NOT_RUN/BLOCKED results.
-- Simulated provider tests versus actual LBX observations and real local
-  Kernel HTTP evidence.
-- Revision/allowance/outbox/audit references sufficient for incident
-  reproduction.
-- Remaining conditions, owners and exact enablement thresholds.
+- **PASS:** final `npm run check:fast`: 1,749 API-fast, 410 web components,
+  38 boundaries, Ruff check/format, lint/typecheck, docs/architecture and generated
+  freshness. Local evidence: `.harness/any765/step4-check-fast-deadline-final.{log,exit}`.
+- **PASS:** final PostgreSQL selection, 9/9: all seven paid-read cases plus both
+  variations of the worker case that failed in the aggregate. It covers auth/
+  email/scope, implicit zero, paid/negative/unknown evidence, unchanged billing/
+  work/outbox tables, concurrent writer/read consistency, bounded display
+  evidence, slow-source availability and deadline crossing during local SELECTs.
+  Evidence: `.harness/any765/step4-postgres-deadline-worker-final.{log,exit}`.
+- **PASS:** final synthetic Playwright purchase/Widget/cabinet journeys, 18/18,
+  desktop/mobile, including layout and serious/critical Axe checks; screenshots
+  inspected. Production web build/TypeScript and affected lint/components passed.
+  Evidence: `.harness/any765/step4-browser-layout-final.{log,exit}` and
+  `step4-{build,lint,components}-layout-final.log` in the same directory.
+- **FAIL:** broad `npm run check`: PostgreSQL 693 passed / 1 failed at
+  `test_billing_worker_on_time_proof_keeps_delayed_apply_owned[False]`, line 908;
+  `latest_observation_id` stayed unchanged. That unchanged test has a 0.3-second
+  source budget. The logs do not establish a definitive cause. Its focused
+  rerun passed without changing the budget; the aggregate remains **FAIL**.
+  It precedes the final deadline-clock/UI refinements verified above.
+  Evidence: `.harness/any765/step4-check-final.{log,exit}`.
+- **NOT_RUN:** configured actual test-LBX purchase → authoritative observation →
+  revision/outbox → ordinary API/cabinet; API image smoke and rollout. This leaves
+  ANY-765 functional acceptance open. No real billing mutation was attempted.
+- **NOT_RUN / later enablement:** natural renewal, deployed Kernel conformance,
+  production vocabulary/quantity approval, supported deployment clock budget and
+  the coordinated B10 wire rollout retain the owners in Section 3.7 and the
+  operations handoff. They are not additional unfinished coding steps here.
+- **NOT_RUN:** clean `npm ci` verification. Installed frontend versions were
+  Next 16.3.1 / Vitest 3.2.7 versus unchanged lock pins 16.4.2 / 4.1.12.
 
-### Plan validation record
+The dedicated frontend and worktree PostgreSQL server were stopped; the database
+volume was retained. Earlier execution/rebase journals are historical evidence
+in `5eb88c8`, not current prerequisites or additional acceptance requirements.
 
-The saved plan was checked using the **validate-plan** skill, including its
-execution-prompt checklist. Verdict: **READY WITH GATES**.
+### Plan validation and documentation reconciliation
 
-The review checked the final functional outcome, accepted 100/300 provenance
-and gap-recovery decisions, predecessor reuse, scope/authority boundaries,
-sequential dependencies, substantive acceptance coverage, migration/concurrency/
-recovery checks and all four standalone execution prompts. No unresolved
-material business decision is assigned to the coding agent.
+The original 2026-10-30 plan passed **validate-plan: READY WITH GATES**. That was
+planning self-review, not runtime acceptance. The approved four-step structure,
+authority, scope, calendar/quantity rules and original execution prompts remain.
+The documented first-primary/ordinary-refresh distinction clarifies the delivered
+selection path; it adds no discovery requirement to every primary refresh.
 
-Known conditions are assigned to their actual point of use in Section 3.7:
-relevant Step 7 corrections belong in the ANY-765 implementation baseline;
-configured test-LBX evidence is required for live acceptance; production
-metering and Kernel wire remain later enablement work. No separate research
-report or application implementation was produced by plan validation.
-This is a skill-based self-review, not an independent implementation review
-or a runtime PASS.
+The 2026-11-02 documentation reconciliation removes superseded run/rebase
+narratives, identifies all four delivered steps, consolidates current check
+results and separates open acceptance from later Kernel/production work.
+Current-state architecture/security/reliability/product references and PR #157
+are aligned with the implemented local paid read. No new runtime or wire
+behavior is introduced by that documentation change.
 
-Planning-file checks: documentation validation **PASS** using the existing
-repository virtual environment in PATH; local link targets, four complete step
-structures and all seven mandatory clauses in every execution prompt **PASS**.
-The default shell lacks the `python` command; supplying `.venv/bin` in PATH
-allowed the unchanged canonical `npm run docs:check` command to pass. Application
-tests and `npm run check` were not run for this documentation-only change.
+Documentation follow-up verification: `npm run docs:check` **PASS**;
+`pytest apps/api/tests/test_repository_docs.py` **PASS**, 194 cases; whitespace
+check **PASS**. A comparison with `96e3b0c` confirms all four execution prompts,
+the goal, accepted purchase/decision/cycle/revision rules and functional DoD are
+unchanged. Runtime/API/UI suites were not repeated for documentation-only edits.
 
 ## 7. Handoff to Next Step
 
-Update the existing billing operations runbook with a compact Step 10 handoff,
-rather than creating another research report.
-
-Include:
+The Step 10 handoff is delivered in the existing
+[billing operations runbook](../../engineering/billing-background-operations.md#any-765-step-4-local-cabinet-read-and-step-10-handoff).
+It preserves:
 
 - Exact accepted ACTIVE/unblocked policy and its evidence limits.
 - Preparation-only versus authoritative reconciliation distinction.

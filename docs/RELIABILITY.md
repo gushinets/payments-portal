@@ -1,7 +1,7 @@
 # Reliability Requirements
 
 Status: authoritative operational requirements; target external-billing semantics delegated
-Last updated: 2026-11-01
+Last updated: 2026-11-02
 
 ## Target external-billing authority
 
@@ -19,11 +19,13 @@ The direct-provider runtime and Portal-owned commercial/access lifecycle are
 removed. ANY-709 implements live product links/offers, accepted purchase holds
 and request-driven financial preparation/recovery. ANY-715 implements embedded
 reconciliation and GET-only recovery/inventory with local deadlines. ANY-765
-Steps 2–3 add ordinary reconciliation/inventory paid derivation, atomic
+adds ordinary reconciliation/inventory paid derivation, atomic
 revision/outbox commits, provider-free effective deadlines and audited recovery.
-Paid cabinet reads and invalidation delivery remain deferred. Source-catalog projection tables remain
-inert. Dated delivery evidence belongs to
-[ANY-709](https://linear.app/paveldik/issue/ANY-709).
+The cabinet reads committed local paid state without source calls; overdue
+unprocessed deadlines return 503 without changing the revision's document.
+Invalidation HTTP delivery remains deferred and source-catalog projection tables
+remain inert. Paid-access verification and open acceptance belong to the
+[ANY-765 plan](exec-plans/active/ANY-765-implementation-plan.md).
 
 ## Cross-cutting critical paths
 
@@ -60,8 +62,8 @@ inert. Dated delivery evidence belongs to
 - Webhook receipt, Widget callback, outbound command success, payment state, or
   manual operator input alone never grants paid access.
 
-Webhook receipt
-and coalesced work commit before 200. Complete fenced rereads process only covered
+Webhook receipt and coalesced work commit before 200. Complete fenced rereads
+process only covered
 receipt generations; incomplete reads/crashes retry, and later hints remain due.
 Polling converges independently of delivery, ordering or provider retries. See the
 [real enablement gate and rollback](engineering/billing-background-operations.md#real-enablement-checklist-and-rollback).
@@ -79,8 +81,10 @@ Current transaction boundaries are documented in
 [ARCHITECTURE.md](../ARCHITECTURE.md#current-transaction-map): identity/legal,
 product-link publication, accepted purchases, fenced financial preparation,
 worker reconciliation, webhook receipt and audited operator resolution have
-current writers. Paid-access derivation and invalidation delivery remain later
-work.
+current writers. Paid-access state/revision/audit/outbox changes participate in
+those caller-owned transactions and the local deadline/reduction paths.
+Customer paid reads are read-only after identity bookkeeping. Invalidation HTTP
+delivery remains later work.
 
 Future database retry decisions use these semantics:
 
@@ -118,18 +122,19 @@ correctness, idempotency, reconciliation, or replay store.
   reconciliation/trust and AccessSnapshot deadlines are unchanged.
 - Mapping revisions, accepted purchase evidence and purchased allowances are
   immutable where the clean migration installs PostgreSQL protections.
-  Observation core fields are immutable, while
-  `resulting_access_revision` has only a one-time `NULL`-to-value storage
-  transition; ANY-504 Step 9 owns positivity and semantic/causal validation.
+  Observation core fields are immutable. `resulting_access_revision` permits
+  only one `NULL`-to-positive-value transition; the shared paid writer owns its
+  semantic/causal linkage.
 - Webhook delivery rows contain bounded/redacted correlation and evidence,
   never raw payload, authorization, secret, or card/payment fields.
 - Durable work/lease rows are scheduling state, not commercial/access truth.
-- Paid-access state storage holds a complete provider-neutral document and a
-  non-null revision slot. The clean baseline does not enforce positive or
-  monotonic paid-access transitions; ANY-504 Step 9 owns those runtime
-  semantics. Invalidation storage physically requires a positive pending
-  revision and forbids an acknowledged revision beyond it; later runtime owns
-  coalescing and delivery behavior.
+- Paid-access state storage holds the complete provider-neutral document.
+  Migration `20261031_0006` enforces positive revisions, exactly N+1 material
+  transitions and unchanged semantics at the same revision. The shared writer
+  atomically coalesces the outbox's pending revision without resetting delivery
+  bookkeeping. Storage forbids revision regression, invalid acknowledgement
+  order and deletion/reset. Delivery and captured-revision acknowledgements
+  remain ANY-766.
 - Durable observations and manual-review evidence explain uncertainty/conflict;
   they cannot independently grant access.
 
@@ -180,8 +185,8 @@ Sentry
     -> persisted Payment Portal records
 ```
 
-Current identity/legal diagnostics may correlate only approved local IDs. Future
-billing runtime may add bounded identifiers such as `purchase_intent_id`,
+Identity/legal and billing diagnostics may correlate only approved local IDs.
+Billing diagnostics may use bounded identifiers such as `purchase_intent_id`,
 `create_operation_id`, `delivery_id`, `work_item_id`, `subscription_id`,
 `observation_id`, or `review_case_id`; they must never be metric labels and
 must not expose external/provider identifiers.

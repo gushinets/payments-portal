@@ -97,8 +97,11 @@ reassessment of this assumption.
 
 The former direct-provider runtime has been physically removed. ANY-709 adds
 direct product links, live offers, account Widget and accepted-purchase
-preparation/recovery. Paid access remains later work. Current boundaries are in
-[ARCHITECTURE](../../../ARCHITECTURE.md); dated delivery evidence is in ANY-709.
+preparation/recovery. ANY-765 implements local paid projection, deadlines,
+revision/outbox commits and authenticated cabinet reads; Kernel HTTP delivery
+remains later work. Current boundaries are in
+[ARCHITECTURE](../../../ARCHITECTURE.md); current paid-access evidence and open
+acceptance are in the [ANY-765 plan](../../exec-plans/active/ANY-765-implementation-plan.md).
 The original context above records transition history.
 
 ## Consequences

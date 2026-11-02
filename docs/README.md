@@ -46,10 +46,13 @@ Start with the smallest document that matches the task.
 1. [ADR 0005: External billing boundary](architecture/decisions/0005-external-billing-boundary.md)
 2. [External Billing Boundary Design](superpowers/specs/2026-09-15-external-billing-boundary-design.md)
 3. [Portal ↔ Kernel Access Contract Design](superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
-4. [Accepted live-source commercial admission amendment](superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md) — owner confirmation on 2026-10-20 in ANY-664 / PR #139; narrow source-read/admission supersession, paid trust unchanged. Both specification bodies retain their PR-base content.
+4. [Accepted live-source commercial admission amendment](superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md) — owner confirmation on 2026-10-20 in ANY-664 / PR #139; narrow source-read/admission supersession, paid trust unchanged.
 
 ### Implementation handoffs and references
 
+- [ANY-765 implementation plan and current verification](exec-plans/active/ANY-765-implementation-plan.md)
+  — four implementation steps DONE; configured test-LBX acceptance and the
+  failed aggregate worker check remain open; Kernel delivery belongs to ANY-766
 - [ANY-709 implementation plan and delivery record](exec-plans/completed/ANY-709-implementation-plan.md)
   — Steps 1-4 DONE as implementation milestones; dated source/verification
   evidence, the accepted cabinet layout and open final-review follow-ups.
@@ -101,7 +104,7 @@ Start with the smallest document that matches the task.
 - [Security](SECURITY.md)
 - [Quality score](QUALITY_SCORE.md)
 - [Execution plans](exec-plans/README.md)
-- [Background billing operations](engineering/billing-background-operations.md) — worker settings, scheduling, webhook setup/rollback, operator commands, diagnostics and projection boundaries.
+- [Background billing operations](engineering/billing-background-operations.md) — worker settings, scheduling, local paid projection/cabinet, webhook gate/rollback, operator controls and the Step 10 handoff.
 
 ## Legal
 

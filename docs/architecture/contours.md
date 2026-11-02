@@ -1,7 +1,7 @@
 # Contours
 
 Status: authoritative target architecture; implemented product remains `ru`
-Last updated: 2026-10-06
+Last updated: 2026-11-02
 
 A **contour** is the compliance zone in which this AnyToolAI Portal is deployed.
 It may serve any number of countries assigned to that zone. It is not a locale,
@@ -84,13 +84,14 @@ authenticate a foreign-contour user through the public identity/legal API.
 Implemented today: the `ru` data plane, AnyToolAI Portal public product
 discovery/detail and account/auth surfaces, `docs/legal/ru`, identity/legal
 runtime, and the clean provider-neutral persistence baseline. The repository
-remains pre-production and provider-independent. Direct-provider runtime has
+remains pre-production with a provider-neutral commercial boundary. Direct-provider runtime has
 been removed. ANY-664 provides source reads, restricted immutable mapping
 publication and historical DB-only browsing. ANY-709 Step 1 now adds direct
 links and source-backed discovery/current offers; genuine Kernel conformance and sales
 remain gated. ANY-709 implements purchase preparation and browser Buy/Continue/
 Manage. ANY-715 implements contour-local embedded reconciliation/recovery and
-default-disabled webhook hints; paid-access producers remain later work. See the
+default-disabled webhook hints. ANY-765 implements contour-scoped local paid
+projection and authenticated cabinet reads; Kernel delivery remains later work. See the
 [as-built RU Portal 4F handoff](../product/ru-mvp.md).
 
 Planned, not implemented:

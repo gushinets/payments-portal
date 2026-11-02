@@ -12,9 +12,10 @@ PostgreSQL persistence, and provider-neutral external-billing reconciliation
 and recovery.
 The former CloudPayments/direct-provider runtime and Portal-owned catalog,
 order, payment, subscription, entitlement, and trial architecture have been
-physically removed. The accepted Portal-Kernel access contract is the target
-paid-access boundary, but its runtime implementation remains future program
-work. Platform Kernel code is maintained in the separate
+physically removed. Portal implements local paid-access projection and cabinet
+reads. The accepted Portal-Kernel access contract still awaits HTTP delivery,
+Kernel consumption and enforcement. Platform Kernel code is maintained in the
+separate
 [anytoolai-platform](https://github.com/gushinets/anytoolai-platform) repository.
 
 The repository remains pre-production on the surface established by ANY-636 4F. All thirteen ANY-636 steps are marked `done` in the
@@ -27,9 +28,11 @@ durable embedded polling, GET-only recovery/inventory, default-disabled webhook
 hints and audited operator commands. ANY-765 adds committed local paid access
 and an authenticated cabinet read; Kernel delivery and actual usage/remaining
 remain later program work.
-Delivery and acceptance evidence are in
-[ANY-709](https://linear.app/paveldik/issue/ANY-709); commands, migration transitions
-and diagnostics are in the [billing runbook](docs/engineering/ANY-709-billing-runbook.md).
+Purchase delivery evidence is in [ANY-709](https://linear.app/paveldik/issue/ANY-709);
+paid-access delivery and open acceptance are in the
+[ANY-765 plan](docs/exec-plans/active/ANY-765-implementation-plan.md).
+Commands, migration transitions and diagnostics are in the
+[billing runbook](docs/engineering/ANY-709-billing-runbook.md).
 Background operation and CLI commands are in the
 [background billing operations guide](docs/engineering/billing-background-operations.md).
 For target billing work, follow [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md),
@@ -44,7 +47,8 @@ in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 External Billing owns commercial billing truth and lifecycle. The Portal owns
 identity/legal, subscription observation/projection, reconciliation and recovery,
-and future paid-access delivery. Platform Kernel owns technical product/metric
+local paid-access decisions and future Kernel delivery. Platform Kernel owns
+technical product/metric
 identity, actual usage, and quota enforcement. The component historically named
 “Payments Portal” in the accepted ADR/design records is this Portal backend
 boundary; those records retain their authority and historical names.

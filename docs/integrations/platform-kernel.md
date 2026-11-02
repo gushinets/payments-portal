@@ -41,8 +41,8 @@ The separate Step 4 local peer refresh is recorded below.
 | Operation / request direction | Payload producer | Payload consumer / receiver | Verification status |
 | --- | --- | --- | --- |
 | `GET /internal/v1/capability-manifest`: Portal -> Kernel | Kernel producer implemented at inspected `e627bf2`; Portal retains a separate development mock | Portal typed HTTP client implemented | Source alignment and local mock/client CI PASS; new deployed conformance NOT_RUN |
-| `GET /internal/v1/access-snapshots/{user_id}`: Kernel -> Portal | Portal paid-access producer not implemented | Kernel snapshot client/cache/revision floor not implemented | Target contract only |
-| `POST /internal/v1/access-invalidations`: Portal -> Kernel | Portal invalidation producer/delivery not implemented | Kernel receiver endpoint not implemented | Target contract only |
+| `GET /internal/v1/access-snapshots/{user_id}`: Kernel -> Portal | Local paid projection implemented; snapshot HTTP endpoint not implemented | Kernel snapshot client/cache/revision floor not implemented | Target wire contract only |
+| `POST /internal/v1/access-invalidations`: Portal -> Kernel | Atomic outbox producer implemented; HTTP delivery not implemented | Kernel receiver endpoint not implemented | Local outbox implemented; HTTP integration deferred |
 
 ANY-664 implemented restricted v1 publication and DB-only browsing. ANY-709
 Step 1 now implements direct versioned links, one current product pointer,

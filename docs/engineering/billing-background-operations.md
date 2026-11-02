@@ -18,9 +18,10 @@ payments and charges are not a separate Portal settlement authority.
 
 Commercial proof is `COMPLETE_MATCH`, `COMPLETE_MISMATCH` or `INCOMPLETE`. Waiting/unpaid
 is inactive/blocked and may have null cycle dates. Complete owned ACTIVE/unblocked
-proof with matching terms and coherent cycle evidence records operational
-active/allowed facts. Financial and administrative blocks are distinct negative
-facts. Ended is terminal; a later nonterminal state for the same canonical ID
+proof with matching terms and supported prepaid policy records operational
+active/allowed facts. Calendar classification separately gates new allowances.
+Financial and administrative blocks are distinct negative facts. Ended is terminal;
+a later nonterminal state for the same canonical ID
 opens subscription_terminal_revival_conflict.
 
 Only complete matching proof without a known review refreshes source trust.
@@ -33,8 +34,10 @@ below. Polling cannot clear a known financial/subscription conflict merely
 because later terms match.
 
 Provider calendar dates retain their original precision. Missing, sentinel or
-contradictory current-cycle bounds cannot establish positive trust. Date-only
-facts do not imply a timezone, UTC boundary or allowance identity.
+contradictory current-cycle bounds cannot establish a new metered allowance;
+they do not suppress an independently supported product grant. Waiting/blocked
+lifecycle still denies access. Date-only facts do not imply a timezone or UTC
+boundary.
 
 Purchase consent, original terms, permanent bindings and held product scope
 survive reconciliation, outages and ended state. Existing proven account scope
@@ -385,9 +388,8 @@ observations with null `resulting_access_revision`. ANY-765 now consumes those
 facts through the local paid writer described below, adding primary selection,
 grants/allowances, semantic revisions and atomic outbox production.
 Step 10 owns Kernel wire/invalidation delivery and coupled UTC calendar design.
-Step 11 owns complete real paid-access/natural-renewal and launch acceptance.
-Automated source evidence is SIMULATED. Configured read-only LBX and actual
-webhook checks remain NOT_RUN; see the verification report for acceptance status.
+ANY-765 still owns configured test-LBX purchase-to-cabinet acceptance. Step 11
+owns the broader deployed journey, natural-renewal and launch acceptance.
 
 
 ## ANY-765 Step 2 intermediate local projection
@@ -410,8 +412,9 @@ for immutable allowance shapes and storage guards.
 ANY-765 Step 3 completes local deadlines and customer/review/operator paths
 as described below. Step 4 adds the local paid read/cabinet described below.
 Kernel delivery/acknowledgement and actual usage remain ANY-766. This
-intermediate implementation is not production-ready. Current verification and
-live acceptance limits are recorded in the [canonical plan](../exec-plans/active/ANY-765-implementation-plan.md).
+local implementation has not established production enablement. Current
+verification and live acceptance limits are recorded in the
+[canonical plan](../exec-plans/active/ANY-765-implementation-plan.md).
 
 
 ## ANY-765 Step 3 autonomous reductions and controlled recovery

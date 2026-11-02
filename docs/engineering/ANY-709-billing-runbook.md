@@ -37,7 +37,7 @@ Same-key replay uses saved history; different meaning returns
 `purchase_idempotency_conflict`. Fixture edits or disablement never rewrite it.
 
 Step 2 derives local paid state from saved acceptance; see the
-[operations runbook](ANY-715-billing-operations.md#any-765-step-2-intermediate-local-projection).
+[operations runbook](billing-background-operations.md#any-765-step-2-intermediate-local-projection).
 Production quantities and live acceptance remain separate gates. Legal text
 and legal-event meaning are unchanged.
 
@@ -378,8 +378,10 @@ tariff/period, fixed-service effective price and quantity/total. Today's catalog
 price, price-row/association IDs and mutable subscription `outer_id` are not
 subscription authority. Waiting NULL/1970/3000 calendar values are not paid dates.
 A nonzero connection charge without explicit effective readback stays pending.
-A linked subscription is prepared, financially `unverified`, with no paid trust,
-access primary, grant, allowance or Kernel call. Paid access remains later work.
+Linking alone leaves a subscription financially `unverified`, with no paid
+trust, primary, grant, allowance or Kernel call. Subsequent authoritative
+reconciliation may derive local paid state through ANY-765; see the
+[paid projection and cabinet read](billing-background-operations.md#any-765-step-2-intermediate-local-projection).
 
 ### Recovery and safe continuation
 

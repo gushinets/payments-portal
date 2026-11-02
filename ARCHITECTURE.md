@@ -8,8 +8,8 @@ Last updated: 2026-11-02
 This repository currently owns the `ru` contour's identity, authenticated
 sessions, email verification, password recovery,
 legal-document/version/acceptance records, the AnyToolAI Portal UI, and a
-provider-neutral external-billing persistence baseline and intermediate local
-paid-access projection. It does not own
+provider-neutral external-billing persistence, local paid-access projection and
+authenticated cabinet reads. It does not own
 workflow execution, artifacts, usage consumption, or quota enforcement; those
 belong to the separate Platform Kernel repository.
 
@@ -21,8 +21,9 @@ pre-production. ANY-715 supplies embedded lifecycle polling and GET-only
 recovery/inventory. ANY-765 adds local paid derivation/revision/outbox,
 autonomous deadlines, audited recovery and an authenticated local paid-state
 cabinet. Actual usage/quota and real Kernel delivery/enablement remain later
-work. Delivery and acceptance evidence are recorded in
-[ANY-709](https://linear.app/paveldik/issue/ANY-709).
+work. Purchase delivery evidence is in [ANY-709](https://linear.app/paveldik/issue/ANY-709);
+paid-access verification and open acceptance are in the
+[ANY-765 plan](docs/exec-plans/active/ANY-765-implementation-plan.md).
 
 Each production deployment serves exactly one contour. Region Resolver is a
 separate planned service for contour selection; it is not implemented here.
@@ -443,10 +444,10 @@ and generated contracts over approved immutable mappings. Auth contracts and
 canonical legal assets retain their ownership. Future Portal-owned web APIs
 still follow the ANY-541 rule above.
 
-Generated contracts do not change domain-data ownership. Future web work must
-not mirror or re-author External Billing commercial catalog, pricing, or
-sellability truth; paid-access authority owned by later `ANY-504` steps; or
-Platform Kernel actual usage and remaining-quota truth.
+Generated contracts do not change domain-data ownership. Web presentation must
+not rederive External Billing commercial terms, Portal paid-access decisions or
+Platform Kernel actual usage and remaining-quota facts. It consumes the owning
+backend contract for each fact.
 
 Implementation must stop before inventing a frontend wire contract when the
 required backend API does not exist, the OpenAPI response is unnamed or
@@ -519,8 +520,8 @@ commercial behavior:
 - work items are scheduling state, not business truth;
 - subscription/observation rows retain reconciled facts and allowances freeze
   accepted quantities and classified cycles;
-- paid-access state and the invalidation outbox support later provider-neutral
-  access delivery.
+- paid-access state holds the committed local authority; the invalidation outbox
+  coalesces pending revisions for future Kernel HTTP delivery.
 
 `external_billing_account_id` is an opaque server-resolved connection scope,
 derived from normalized LBX origin within the existing tenant/region deployment,
@@ -575,7 +576,8 @@ payment state, or manual operator input alone never grant paid access.
 | Financial preparation | `claim_financial()` commits permanent possible-send evidence/work before HTTP; fenced point-read apply owns separate short binding/observation transactions. |
 | Subscription reconciliation | Claims commit before source reads; shared fenced apply atomically writes observations, facts, paid state/revision/outbox and effective deadline work under user-first serialization. Audited operator resolutions use that same apply/bind transaction. |
 | Local paid reductions | The existing local worker lane, customer conflicts and financial review paths use the same caller-transaction paid writer. Local deadlines perform no source HTTP; missing source configuration leaves this lane operational. |
-| Other target billing tables | Source-catalog slots are inert; paid-state presentation and Kernel delivery remain later work. |
+| Customer paid-state read | Identity commits its existing session bookkeeping, then `read_paid_access()` takes a shared user lock and reads committed state/evidence/deadlines. No billing writes or source HTTP; overdue effective tuples return 503. |
+| Other target billing tables | Source-catalog slots are inert; Kernel delivery remains later work. |
 
 ## Enforced architecture guards
 
@@ -651,8 +653,8 @@ background task. ANY-715 Step 2 adds a durable billing runner embedded in the AP
 uses isolated worker HTTP/DB resources, PostgreSQL claims/generations and the
 shared fenced reconciliation path. Local enrollment and trust expiry perform
 no provider HTTP. ANY-765 Step 3 commits effective paid reductions and repairs
-deadlines without source configuration. Paid cabinet reads and Kernel delivery
-remain deferred; see the
+deadlines without source configuration. Step 4 serves committed local paid
+state through the authenticated cabinet API. Kernel delivery remains deferred; see the
 [billing operations runbook](docs/engineering/billing-background-operations.md).
 
 The web dependency direction is:

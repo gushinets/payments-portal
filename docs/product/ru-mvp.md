@@ -191,18 +191,19 @@ names and ownership decisions.
 | Actual usage and remaining quota | Platform Kernel; no current runtime source | Unavailable; integration deferred to ANY-504 Step 10 |
 
 The Portal owns identity/legal, the billing anti-corruption, observation/projection,
-reconciliation and recovery boundary, and future paid-access delivery. External Billing
+reconciliation/recovery, local paid-access decisions and future Kernel delivery. External Billing
 owns commercial truth and lifecycle. Platform Kernel owns technical product and
 metric identity, durable actual usage, and quota enforcement. Workflow
 execution and artifacts also remain outside this repository.
 
 Provider-dependent LBX semantics, Widget behavior, paid-access derivation, and
-launch remain gated on Phase 0 PASS under ANY-504, with evidence owned by
-ANY-634. This handoff adds no provider semantics or later-step implementation.
+production launch remain gated on Phase 0 PASS under ANY-504, with evidence owned by
+ANY-634. This handoff describes the implementation without creating new provider semantics.
 Historical 4F changed no backend behavior, persistence, migrations, or
 contracts. ANY-664 adds the Step 6 producer for immutable mapping revisions;
-ANY-709 adds purchase UI/preparation; ANY-715 adds operating reconciliation/recovery.
-Access and usage remain later-step work. See the
+ANY-709 adds purchase UI/preparation; ANY-715 adds operating reconciliation/recovery;
+ANY-765 adds local paid projection and cabinet presentation. Kernel delivery and
+actual usage/remaining remain later-step work. See the
 [purchase runbook](../engineering/ANY-709-billing-runbook.md) and
 [current billing operations guide](../engineering/billing-background-operations.md).
 

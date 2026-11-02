@@ -251,10 +251,10 @@ For each future Portal-owned, web-consumed API: define backend Pydantic
 request/response models, expose durable named OpenAPI components, run
 repository generation, consume the generated TypeScript contract, use the shared
 API transport trust boundary, and keep form/UI/view state local.
-Do not mirror External Billing commercial catalog/pricing/sellability truth,
-future paid-access authority, or Platform Kernel usage/quota truth in the
-Portal. Stop and obtain the owning architecture/API decision when the backend
-API is missing, the OpenAPI schema is unnamed or unsuitable, generation cannot
+Web presentation must not rederive External Billing commercial terms, Portal
+paid-access decisions or Platform Kernel usage/quota facts. Consume the owning
+backend contract. Stop and obtain the owning architecture/API decision when the
+backend API is missing, the OpenAPI schema is unnamed or unsuitable, generation cannot
 faithfully generate the required TypeScript shape, the frontend would need to
 redefine wire meaning, the data belongs to External Billing or Platform Kernel, or a
 transport/auth redesign is required.
