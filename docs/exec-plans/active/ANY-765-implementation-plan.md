@@ -1,6 +1,6 @@
 # ANY-765 — Paid Access Projection, Allowances, Revision & Invalidation
 
-Status: Steps 1–3 implemented and verified locally; Step 4 not started
+Status: Steps 1–4 implemented locally; aggregate check FAIL (one unchanged worker test); configured test-LBX acceptance NOT_RUN
 Validation: **READY WITH GATES** — validated using the validate-plan skill
 Updated: 2026-11-02
 Issue: [ANY-765](https://linear.app/paveldik/issue/ANY-765)
@@ -1297,6 +1297,151 @@ and no dependency on live LBX reads.
 **Proposed commit**
 
 `ANY-765 - Show committed paid access in the cabinet`
+
+### Step 4 implementation record — 2026-11-02
+
+**Baseline and scope.** Repository and branch were verified before editing:
+`/home/wstanley/www/work_unirec/payments-portal`, `ANY-765`, initially clean at
+`b6c88025752de80ae8b2cdff3d0c6a5ddec0984f` (27 ahead/37 behind the existing
+`origin/ANY-765` tracking ref). Tested delivery is that HEAD **plus the uncommitted
+Step 4 diff**; HEAD alone does not identify this implementation. Steps 1–3,
+the relevant Step 7 corrections and mock alignment are inherited. Current local
+ANY-715 is `3d152972a1318fbbe5024952838e3b1fd6a74f2d`; its sole newer commit is
+documentation-only and is not a runtime prerequisite for this customer read.
+No fetch, stage, commit, push, branch switch, merge or rebase was performed.
+Migration head remains `20261031_0006`; no schema migration is introduced.
+
+Read-only peer inspection found the clean Kernel `main` at
+`331e086ca9e0c72eb757aacc476bad5bacb5bae5`; the integration map records its
+manifest composition and still-absent paid-delivery routes. No other worktree
+was modified. Configured test-LBX acceptance, production metering, real Kernel
+wire and natural renewal are later acceptance/enablement conditions, not coding
+prerequisites. No external production or real billing mutation was performed.
+
+**Implemented behavior.** `GET /api/paid-access` uses existing verified-email
+bearer authentication and configured identity scope only. It returns named,
+generated contracts for committed revision, complete grants and allowances with
+opaque ID/product/metric/unit/frozen quantity/provenance, plus separate bounded
+product display evidence and freshness. No state row returns implicit zero
+without billing writes. Preparation/incomplete evidence remains unavailable;
+fresh owned decisive negative evidence may display known absence. A shared user
+read lock stabilizes state/document and deadlines against the user-first writers.
+Identity session bookkeeping remains separate. Any unprocessed effective
+source/grant/UTC allowance deadline refuses with correlated no-store
+`503/paid_access_deadline_pending`, without filtering, mutation or repair enqueue.
+No provider/cycle IDs, guessed UTC calendar periods or internal Kernel wire leak.
+
+The existing cabinet displays paid facts independently of catalog/LBX and of
+purchase preparation; paid products remain visible if purchase inventory fails.
+It refreshes the local read every 30 seconds while visible, on visibility return,
+explicit retry and Widget close. Pending responses and future refreshes are
+invalidated on session replacement/logout/unmount, including silent token
+replacement. Successful views expire conservatively from the server duration.
+Purchased SIMULATED limits are labeled; missing allowances never mean unlimited,
+and actual usage/remaining stays unavailable. Bundle 3, locale parity and existing
+purchase/Manage controls are retained. Product copy directs users to the cabinet.
+
+Architecture, schema, product/RU handoff, integration map and the existing
+operations runbook describe the implemented seam and precise ANY-766 handoff.
+No Kernel networking, captured-revision acknowledgement, cache/revision floor,
+usage API or subsequent implementation step was started.
+
+**Verification.** All provider inputs/transports in automated tests are
+synthetic, including the real loopback HTTP saturation harness. PostgreSQL uses
+the canonical worktree server and shared disposable-database fixtures.
+
+- **PASS:** repository doctor (after the sandbox-only Docker diagnostic denial),
+  focused PostgreSQL/API read suite **6/6**, 19.57 seconds. It covers auth/email/
+  tenant/region isolation, implicit zero, committed paid/empty/unknown evidence,
+  no billing/work/outbox writes, simultaneous reads with an in-flight writer,
+  bounded evidence and local paid serving while normal/new-sale HTTP owners wait.
+  Evidence: `.harness/any765/step4-api-read-complete.log`.
+- **PASS:** focused purchase/cabinet components **73/73**, separate inherited
+  auth/session selection **134/134**, then expanded final session/cabinet guard
+  selection **177/177**. These overlap and are not additive aggregate counts.
+  Evidence: `step4-components-final.log`, `step4-session-regression.log` and
+  `step4-final-session-guard.log` under `.harness/any765/`.
+- **PASS:** final logical-change canonical `npm run check:fast`, exit 0:
+  **1,749 API-fast**, **410 web components**, **38 boundary tests**, Ruff check/
+  format, web lint/typecheck, docs/architecture and generated freshness. Command-
+  local `KERNEL_MOCK_ENABLED=0 KERNEL_BASE_URL= KERNEL_SERVICE_TOKEN=` isolates
+  inherited development settings; no environment files were edited. Evidence:
+  `.harness/any765/step4-check-fast-final.{log,exit}`.
+- **PASS:** production web build/TypeScript and final post-screenshot button-gap
+  follow-up: build, lint and **43/43** affected cabinet/paid components. This
+  layout-only follow-up occurred after the aggregate fast check. Evidence:
+  `.harness/any765/step4-{build,lint,components}-layout-final.log`.
+- **PASS:** final synthetic authenticated Playwright purchase/Widget/paid-cabinet
+  journeys **18/18**, desktop Chromium and Pixel 7 mobile, including no overflow,
+  independent confirmed/unavailable/negative products, deadline refusal/retry and
+  serious/critical Axe checks. Screenshots were visually inspected. Evidence:
+  `.harness/any765/step4-browser-layout-final.{log,exit}` and
+  `.harness/playwright-results/any765-paid-access-*/paid-cabinet*.png`.
+  No live LBX, real Kernel or production request is substituted for this evidence.
+- **PASS:** generation via `npm run generate`, subsequent `generate:check`,
+  standalone architecture/docs, explicit `typecheck:web` and whitespace checks.
+- **FAIL then corrected:** initial test collection imported Base from the wrong
+  module; one scope test attempted an intentionally forbidden physical `us`
+  user instead of testing mismatched deployment scope; TS visibility narrowing,
+  React/language-neutral lint and fake-timer initialization exposed local setup/
+  implementation issues. Corrected runs are listed separately above.
+- **FAIL then corrected:** first full `npm run check` stopped at components:
+  **361 passed / 48 failed**. Old auth/session fetch mocks returned auth JSON for
+  the newly added paid GET. Explicit generated-type paid fixtures preserve their
+  auth assertions; the 134-case rerun and final 410-case aggregate pass above.
+  Evidence: `.harness/any765/step4-check.log`.
+- **FAIL then corrected:** first browser run **18 failed** because the manually
+  started server lacked required `APP_PUBLIC_BASE_URL`; no application PASS was
+  inferred. The next run **16 passed / 2 failed** because a global alert selector
+  also matched Next's route announcer. Scoping to the product region fixes the
+  selector; both subsequent complete 18-case runs passed. Evidence:
+  `.harness/any765/step4-browser.log`, `step4-browser-final.log`,
+  `step4-browser-complete.log` and the final layout run above.
+- **FAIL:** broad `npm run check` retry, exit 1. Static/frontend,
+  **1,749 API-fast**, **409 components** and production build passed; PostgreSQL
+  finished **693 passed / 1 failed**, 1,960.41 seconds. The unchanged inherited
+  `test_billing_worker_on_time_proof_keeps_delayed_apply_owned[False]` failed at
+  line 908 because `latest_observation_id` stayed unchanged. Its source I/O
+  budget is 0.3 seconds; the failed run logged only two of four point reads,
+  consistent with incomplete/over-budget proof, but no definitive root cause is
+  claimed from those logs. No worker behavior or timeout was changed. This
+  aggregate remains FAIL even though the focused rerun below passes. Evidence:
+  `.harness/any765/step4-check-final.{log,exit}`. The aggregate precedes the final
+  local-read deadline sampling refinement and final UI-only refinements; their
+  final verification is recorded separately.
+- **PASS:** final review moved the deadline clock sample after local SELECTs,
+  so a deadline crossed while a query waits also returns 503 without writes.
+  The complete final read suite **7/7** plus both variations of the unchanged
+  failed worker test **2/2** passed together: **9/9**, 27.62 seconds, original
+  worker budgets retained. This does not establish a new 695-case aggregate
+  PASS or prove the cause of the earlier failure. Evidence:
+  `.harness/any765/step4-postgres-deadline-worker-final.{log,exit}`.
+- **PASS:** final `npm run check:fast` after that read refinement, exit 0:
+  **1,749 API-fast**, **410 components**, **38 boundaries**, Ruff, web lint/
+  typecheck, docs/architecture and generated freshness. Evidence:
+  `.harness/any765/step4-check-fast-deadline-final.{log,exit}`.
+
+**Review and limitations.** Complete tracked/untracked diff self-review applies
+correctness, payment/security and UI/accessibility checklists: authenticated
+scope, resource/transaction ownership, user-first serialization, immutable
+revision contents, deadlines, no GET repair, stable provenance, session races,
+locale ownership and later-step boundaries. This is not independent review or
+human merge approval. The index remains unchanged; delivery is uncommitted. The remaining automated
+limitation is the failed broad worker case above, not a hidden aggregate PASS.
+The complete patch is `.harness/any765/step4-complete.diff`.
+The dedicated frontend and canonical worktree PostgreSQL server are stopped;
+the PostgreSQL volume is retained. Final documentation and whitespace checks
+are rerun after this record.
+
+**NOT_RUN / acceptance remains open:** configured actual test-LBX purchase →
+authoritative observation → revision/outbox → ordinary authenticated API/cabinet,
+clean natural renewal, deployed Kernel HTTP conformance, production vocabulary/
+quantity approval, API image smoke and rollout. These are assigned acceptance/
+enablement gates, not omitted local implementation. Actual usage/remaining,
+Kernel networking/ack/cache/revision floor and coordinated B10 wire/spec work
+remain ANY-766/Steps 10–11. No external mutation was attempted. Installed frontend
+verification uses Next **16.3.1** / Vitest **3.2.7** rather than unchanged lock pins
+16.4.2 / 4.1.12; clean `npm ci` verification is **NOT_RUN**.
 
 ## 6. Final Verification & Review
 

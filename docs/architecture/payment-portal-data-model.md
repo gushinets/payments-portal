@@ -1,7 +1,7 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-11-02 (ANY-765 Step 3 local deadlines and recovery)
+Last updated: 2026-11-02 (ANY-765 Step 4 local paid-state read)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
@@ -51,8 +51,8 @@ The schema is a provider-independent storage baseline. Its presence does not
 itself establish runtime acceptance. ANY-709 implements purchase preparation
 and request-driven recovery. ANY-715 adds shared reconciliation, embedded durable
 polling and audited operations; ANY-765 Steps 2–3 add local paid derivation,
-revision/outbox commits, effective deadlines and audited recovery. Paid-state
-presentation and Kernel delivery remain later work.
+revision/outbox commits, effective deadlines and audited recovery. Step 4 reads
+committed paid state for the cabinet; Kernel delivery remains later work.
 
 ## Physical baseline
 
@@ -341,8 +341,13 @@ Migration `20261031_0006` preserves legacy rows and preflights incompatible
 non-null logical duplicates, nonpositive state/observation revisions and negative
 delivered revisions. It fails without repair/deletion. Downgrade refuses to lose
 new calendar, access or pre-scope discovery meaning. Step 3 reuses this schema
-for worker deadlines and customer/operator integration; no further migration,
-paid-state read endpoint or Kernel networking is introduced.
+for worker deadlines and customer/operator integration. Step 4 adds a local
+paid-state read over the same schema; no further migration or Kernel networking
+is introduced. The read takes a shared user-row lock after identity bookkeeping
+to stabilize revision/document, per-product evidence and deadlines against the
+user-first writers. It does not modify billing, state, observations, allowances,
+work or outbox. An overdue effective tuple refuses with
+`503/paid_access_deadline_pending` until the worker commits the next revision.
 
 ## Durable operational tables
 

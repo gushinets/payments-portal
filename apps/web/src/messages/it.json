@@ -173,7 +173,20 @@
       "unavailable": "Impossibile caricare i tuoi acquisti. Puoi aprire la fatturazione separatamente.",
       "loadMore": "Mostra altro",
       "prepared": "Abbonamento predisposto",
-      "pending": "La preparazione dell’acquisto non è completa"
+      "pending": "La preparazione dell’acquisto non è completa",
+      "paid": {
+        "loading": "Verifica dell’accesso a pagamento…",
+        "confirmed": "Accesso a pagamento confermato",
+        "no_paid_access": "Nessun accesso a pagamento a questo prodotto",
+        "unavailable": "Impossibile confermare l’accesso a pagamento. Riprova.",
+        "quantity": "Limite acquistato: {quantity} {unit}",
+        "simulated": "Limite di prova simulato — non è una quota commerciale.",
+        "meteringUnavailable": "Le operazioni a consumo richiedono un limite confermato.",
+        "usageUnavailable": "Utilizzo e quantità residua non disponibili.",
+        "refresh": "Aggiorna accesso a pagamento",
+        "deadlinePending": "L’accesso viene aggiornato dopo una scadenza. Riprova tra poco.",
+        "empty": "Non è ancora presente alcun accesso a pagamento."
+      }
     }
   },
   "PasswordReset": {
@@ -466,7 +479,6 @@
     "reference": "Riferimento acquisto: {id}",
     "acceptedTerms": "Condizioni accettate inizialmente",
     "awaitingVerification": "Il pagamento attende una verifica autorevole. Il controllo dello stato salvato legge solo i dati del Portale e non aggiorna i dati di fatturazione.",
-    "accessDeferred": "Pagamento e accesso al prodotto sono separati. L’accesso a pagamento e l’utilizzo/le quote saranno disponibili nelle fasi successive; questa schermata non conferma l’attivazione.",
     "technicalLimit": "Limite di test per ciclo confermato",
     "simulatedTerms": "SIMULATED · condizioni di test",
     "technicalUnknown": "Limite tecnico non confermato; esecuzione con quota non disponibile.",
@@ -481,6 +493,7 @@
       "failed_before_external_effect": "L’acquisto si è fermato prima della creazione di oggetti finanziari.",
       "manual_review": "L’acquisto richiede recupero o verifica dell’operatore."
     },
-    "managedInAccount": "Il pagamento e la gestione dell’abbonamento sono disponibili nel tuo account."
+    "managedInAccount": "Il pagamento e la gestione dell’abbonamento sono disponibili nel tuo account.",
+    "accessInAccount": "L’accesso a pagamento confermato è visibile nell’account. Utilizzo e quota residua non sono ancora disponibili."
   }
 }

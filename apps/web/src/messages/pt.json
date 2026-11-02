@@ -173,7 +173,20 @@
       "unavailable": "Não foi possível carregar suas compras. Você pode abrir o faturamento separadamente.",
       "loadMore": "Mostrar mais",
       "prepared": "Assinatura preparada",
-      "pending": "A preparação da compra está incompleta"
+      "pending": "A preparação da compra está incompleta",
+      "paid": {
+        "loading": "Verificando o acesso pago…",
+        "confirmed": "Acesso pago confirmado",
+        "no_paid_access": "Sem acesso pago a este produto",
+        "unavailable": "Não foi possível confirmar o acesso pago. Tente novamente.",
+        "quantity": "Limite adquirido: {quantity} {unit}",
+        "simulated": "Limite de teste simulado — não é uma cota comercial.",
+        "meteringUnavailable": "As operações com cota exigem um limite confirmado.",
+        "usageUnavailable": "Uso e quantidade restante indisponíveis.",
+        "refresh": "Atualizar acesso pago",
+        "deadlinePending": "O acesso está sendo atualizado após um prazo. Tente novamente em breve.",
+        "empty": "Ainda não há acesso pago."
+      }
     }
   },
   "PasswordReset": {
@@ -466,7 +479,6 @@
     "reference": "Referência da compra: {id}",
     "acceptedTerms": "Condições aceitas originalmente",
     "awaitingVerification": "O pagamento aguarda verificação oficial. Consultar o estado salvo lê apenas registros do Portal e não atualiza os dados de cobrança.",
-    "accessDeferred": "Pagamento e acesso ao produto são etapas distintas. O acesso pago e o uso/as cotas serão implementados depois; esta tela não confirma ativação.",
     "technicalLimit": "Limite de teste por ciclo confirmado",
     "simulatedTerms": "SIMULATED · condições de teste",
     "technicalUnknown": "Limite técnico não confirmado; execução com cota indisponível.",
@@ -481,6 +493,7 @@
       "failed_before_external_effect": "A compra parou antes da criação de objetos financeiros.",
       "manual_review": "A compra precisa de recuperação ou revisão por um operador."
     },
-    "managedInAccount": "O pagamento e o gerenciamento da assinatura estão disponíveis na sua conta."
+    "managedInAccount": "O pagamento e o gerenciamento da assinatura estão disponíveis na sua conta.",
+    "accessInAccount": "O acesso pago confirmado aparece na sua conta. O uso e a cota restante ainda estão indisponíveis."
   }
 }

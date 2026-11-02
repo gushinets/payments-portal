@@ -1,7 +1,7 @@
 # RU AnyToolAI Portal — As-Built 4F Handoff
 
 Status: authoritative implemented-product specification and deferred-step handoff
-Last updated: 2026-11-01
+Last updated: 2026-11-02
 
 The surface established by ANY-636 4F is a product-centric AnyToolAI Portal:
 public product-first home, catalog/discovery, per-product pages,
@@ -13,8 +13,10 @@ pre-production. ANY-709 adds optional FIO, explicit verified-email account
 Widget viewing without an offer/subscription, immutable purchase consent and
 request-driven preparation/recovery. Buy/Continue/Manage uses one shared cabinet
 Widget with fresh original-purchase proof. ANY-715 adds embedded subscription
-reconciliation, GET-only recovery and audited operations; paid access and actual
-usage/quota remain later work. Delivery and acceptance evidence are in
+reconciliation, GET-only recovery and audited operations. ANY-765 adds local
+paid-access derivation and authenticated cabinet presentation; actual
+usage/remaining and Kernel delivery remain later work. Delivery and acceptance
+evidence are in
 [ANY-709](https://linear.app/paveldik/issue/ANY-709).
 ANY-664's v1 publication/DB-only catalog is historical. Current listing discovers
 enabled Kernel products; details/review read selected live LBX offers.
@@ -150,7 +152,8 @@ documents remain drafts.
 6. Each enabled, linked product shows current source-backed commercial terms.
    ANY-709 adds explicit review/consent, Buy/Continue/Manage and verified payment
    Widget opening; accepted terms and purchase history remain immutable in
-   PostgreSQL. Account access is unverified and usage/quota data is unavailable.
+   PostgreSQL. Account paid access comes from the committed local paid-state API;
+   unavailable evidence remains explicit and usage/remaining is unavailable.
    No product-execution URL, plan badge or usage progress is invented.
 
 Account state is frontend component state: loading, signed out, session error
@@ -184,7 +187,7 @@ names and ownership decisions.
 | Purchase/payment Widget entry | External Billing with Portal orchestration and generated contracts | ANY-709 implements Buy/Continue/Manage, review/consent and fresh verified payment presentation |
 | Subscription/billing state | Step 7 preparation/history plus ANY-715 authoritative normalized observations with finite source trust | Preparation is not payment verification; reconciliation facts are not paid grants; no new UI state contract is claimed |
 | Provider reconciliation/recovery | ANY-715 embedded polling, GET-only recovery/inventory and provider-free deadlines over authoritative External Billing reads | Step 8 implemented; real LBX verification NOT_RUN; webhooks DISABLED/POLLING-ONLY |
-| Confirmed paid-access state and delivery | Portal provider-neutral projection from authoritative facts; no current runtime source | Unknown/not ready; deferred to ANY-504 Step 9 |
+| Confirmed paid-access state and delivery | ANY-765 committed provider-neutral projection through authenticated `GET /api/paid-access` | Confirmed, known negative or unavailable product evidence; purchased quantity/provenance only. Kernel delivery remains Step 10 |
 | Actual usage and remaining quota | Platform Kernel; no current runtime source | Unavailable; integration deferred to ANY-504 Step 10 |
 
 The Portal owns identity/legal, the billing anti-corruption, observation/projection,
@@ -226,16 +229,20 @@ business facts. Their owning steps must supply authoritative data/actions:
    contract or paid-access display. Future UI consumers must use the owning API
    contract. UI returns, callbacks, webhooks and outbound success are signals,
    not commercial or paid-access authority.
-4. **Step 9 — paid access:** populate each product's access slot from the
-   provider-neutral confirmed projection and its accepted authoritative-fact
-   derivation/delivery rules. Authentication or email verification never
+4. **Step 9 — paid access:** ANY-765 populates each product's access slot from
+   the committed provider-neutral projection. The local read performs no source
+   calls or billing writes, refuses overdue deadlines and refreshes every 30
+   seconds while visible, on explicit retry and after Widget close.
+   Authentication or email verification never
    substitutes for this source.
 5. **Step 10 — usage/quota:** populate each product's usage/quota slot from
    actual Platform Kernel usage and remaining-quota facts. Kernel retains
    durable usage and quota enforcement; no guessed zero, allowance or progress
    value may fill a missing source.
 
-Steps 9–10 and genuine Kernel producer enablement remain later program work.
+Step 9 local projection/presentation is implemented; its configured test-LBX
+acceptance remains separate. Step 10 and genuine Kernel enablement remain later
+program work.
 Step 7 acceptance and review status are recorded in ANY-709.
 Provider-dependent semantics and launch retain the Phase 0 gates. No step may
 treat an unavailable source as “no subscription”, “no access”, a default/free

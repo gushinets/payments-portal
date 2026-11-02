@@ -49,6 +49,7 @@ async function syntheticBilling(page: Page, signedIn = true) {
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/auth/session") return route.fulfill({ json: { authenticated: true, user: purchaseUser } });
+    if (path === "/api/paid-access") return route.fulfill({ json: { access_revision: 0, grants: [], allowances: [], products: [], evidence_complete: true, committed_at: null, read_at: new Date().toISOString(), effective_until: null } });
     if (path.startsWith("/api/catalog/products")) return route.fulfill(state.catalogUnavailable
       ? { status: 503, json: { detail: { code: "catalog_unavailable" } } }
       : { json: path === "/api/catalog/products" ? { products: [simulatedProduct] } : simulatedProduct });

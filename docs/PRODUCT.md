@@ -1,7 +1,7 @@
 # Product Scope
 
 Status: authoritative
-Last updated: 2026-11-01
+Last updated: 2026-11-02
 
 AnyToolAI Portal combines public product discovery, direct account entry, and
 identity/legal-consent flows for AnyToolAI products, deployed as one contour
@@ -17,8 +17,9 @@ held accepted purchases. Brief cards link to product details and the full
 catalog remains one link away. Identity/verification/logout context supports
 one wide billing Widget with an explicit purchase selection. Account/session/email-verification,
 password-recovery and legal-acceptance flows remain implemented. Current offers
-come from LBX; accepted purchase terms remain immutable. Paid access is unknown and
-actual usage/quota unavailable. The repository remains pre-production on the
+come from LBX; accepted purchase terms remain immutable. ANY-765 supplies
+committed local paid-state reads and cabinet access/limit presentation; actual
+usage/remaining is unavailable. The repository remains pre-production on the
 surface established by ANY-636 4F. ANY-664 adds
 historical read-only source clients and controlled immutable offer publication.
 ANY-709 Step 1 adds direct versioned links and source-backed catalog/current
@@ -38,7 +39,8 @@ removed. The clean database contains provider-neutral target persistence;
 ANY-664 can append immutable mapping revisions. Purchase orchestration is
 implemented by ANY-709. ANY-715 implements embedded reconciliation, GET-only
 recovery/inventory, optional default-disabled webhook hints and audited operator
-controls; paid-access producers remain later work. See the
+controls. ANY-765 adds local paid derivation and the authenticated cabinet read;
+Kernel paid-access delivery remains later work. See the
 [billing operations guide](engineering/billing-background-operations.md). The sole long-term
 production target is external-billing-managed.
 
@@ -59,7 +61,8 @@ The [Billing Authority and Consistency](architecture/billing-authority.md)
 document is historical/superseded only; it is neither current-state nor target
 authority. Implemented `ru` screens are defined in the
 [as-built RU Portal 4F handoff](product/ru-mvp.md), including the durable
-UI/data-ownership matrix, implemented ANY-504 Steps 6–8 and deferred Steps 9–10.
+UI/data-ownership matrix, implemented local ANY-504 Steps 6–9 and the deferred
+Step 10 integration.
 
 External Billing owns commercial billing truth and lifecycle. The Portal owns
 current identity/legal, the billing anti-corruption, subscription
@@ -134,9 +137,10 @@ trust boundary under ANY-541.
   browsing and Step 7 purchase/payment UI;
   there is no periodic source-catalog mirror. ANY-715 implements Step 8
   reconciliation/recovery. Optional webhooks require deployment-specific
-  authentication and delivery verification before enablement. Paid-access projection and
-  delivery in Step 9 and actual usage/quota integration in Step 10 remain
-  deferred ownership boundaries. They populate the
+  authentication and delivery verification before enablement. ANY-765
+  implements local paid-access projection and cabinet presentation.
+  Kernel delivery and actual usage/quota integration remain Step 10
+  ownership boundaries. They populate the
   existing pricing/product/cabinet commercial, access, usage and action slots
   without redesigning the main cabinet. All thirteen ANY-636 steps are marked
   `done` in the [completed plan](exec-plans/completed/ANY-636-implementation-plan.md);

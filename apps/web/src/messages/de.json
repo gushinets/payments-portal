@@ -173,7 +173,20 @@
       "unavailable": "Deine Käufe konnten nicht geladen werden. Die Abrechnung lässt sich separat öffnen.",
       "loadMore": "Mehr anzeigen",
       "prepared": "Abonnement vorbereitet",
-      "pending": "Die Kaufvorbereitung ist noch nicht abgeschlossen"
+      "pending": "Die Kaufvorbereitung ist noch nicht abgeschlossen",
+      "paid": {
+        "loading": "Bezahlten Zugriff prüfen…",
+        "confirmed": "Bezahlter Zugriff bestätigt",
+        "no_paid_access": "Kein bezahlter Zugriff auf dieses Produkt",
+        "unavailable": "Der bezahlte Zugriff konnte nicht bestätigt werden. Erneut versuchen.",
+        "quantity": "Gekauftes Limit: {quantity} {unit}",
+        "simulated": "Simuliertes Testlimit — kein kommerzielles Kontingent.",
+        "meteringUnavailable": "Kontingentpflichtige Aktionen benötigen ein bestätigtes Limit.",
+        "usageUnavailable": "Verbrauch und Restmenge sind nicht verfügbar.",
+        "refresh": "Bezahlten Zugriff aktualisieren",
+        "deadlinePending": "Der Zugriff wird nach einer Frist aktualisiert. Bitte später erneut versuchen.",
+        "empty": "Es besteht noch kein bezahlter Zugriff."
+      }
     }
   },
   "PasswordReset": {
@@ -466,7 +479,6 @@
     "reference": "Kaufreferenz: {id}",
     "acceptedTerms": "Ursprünglich akzeptierte Bedingungen",
     "awaitingVerification": "Der Zahlungsstatus wartet auf eine verbindliche Prüfung. Die Statusabfrage liest nur Portal-Daten und aktualisiert keine Abrechnungsdaten.",
-    "accessDeferred": "Zahlung und Produktzugang sind getrennt. Bezahlter Zugang sowie Nutzung/Kontingente folgen später; diese Ansicht bestätigt keine Aktivierung.",
     "technicalLimit": "Testlimit je bestätigtem Zyklus",
     "simulatedTerms": "SIMULATED · Testbedingungen",
     "technicalUnknown": "Technisches Limit nicht bestätigt; Ausführung mit Kontingent nicht verfügbar.",
@@ -481,6 +493,7 @@
       "failed_before_external_effect": "Dieser Kauf wurde vor der Erstellung von Finanzobjekten gestoppt.",
       "manual_review": "Der Kauf erfordert Wiederherstellung oder eine Prüfung durch einen Mitarbeiter."
     },
-    "managedInAccount": "Zahlung und Abonnementverwaltung stehen in deinem Konto zur Verfügung."
+    "managedInAccount": "Zahlung und Abonnementverwaltung stehen in deinem Konto zur Verfügung.",
+    "accessInAccount": "Bestätigter bezahlter Zugriff wird im Konto angezeigt. Verbrauch und Restkontingent sind noch nicht verfügbar."
   }
 }

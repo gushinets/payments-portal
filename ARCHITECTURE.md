@@ -18,9 +18,10 @@ an owned-purchase cabinet. ANY-709 implements direct product links, live current
 offers, account Widget, accepted-purchase preparation/recovery and localized
 Buy/Continue/Manage with one shared payment-capable Widget. It remains
 pre-production. ANY-715 supplies embedded lifecycle polling and GET-only
-recovery/inventory. ANY-765 Steps 2–3 add local paid derivation/revision/outbox,
-autonomous deadlines and audited recovery. Paid cabinet, actual usage/quota
-and real Kernel enablement remain later work. Delivery and acceptance evidence are recorded in
+recovery/inventory. ANY-765 adds local paid derivation/revision/outbox,
+autonomous deadlines, audited recovery and an authenticated local paid-state
+cabinet. Actual usage/quota and real Kernel delivery/enablement remain later
+work. Delivery and acceptance evidence are recorded in
 [ANY-709](https://linear.app/paveldik/issue/ANY-709).
 
 Each production deployment serves exactly one contour. Region Resolver is a
@@ -110,7 +111,8 @@ deadlines are unchanged.
 External Billing owns commercial billing truth and lifecycle. The AnyToolAI
 Portal owns implemented identity/legal acceptance and the external-billing
 anti-corruption, subscription observation/projection, reconciliation and recovery
-boundary, plus future provider-neutral paid-access projection and delivery.
+boundary, implemented provider-neutral paid-access projection and future Kernel
+delivery.
 Platform Kernel owns technical product and metric vocabulary, durable actual
 usage, and quota enforcement.
 
@@ -173,6 +175,20 @@ Storage details belong to the [schema reference](docs/architecture/payment-porta
 clock configuration, autonomous reductions and controlled primary recovery belong to the
 [operations runbook](docs/engineering/billing-background-operations.md#any-765-step-2-intermediate-local-projection).
 
+Step 4's `GET /api/paid-access` is a separate customer contract, authenticated
+with the existing verified-email session policy. Presentation owns named DTOs;
+the Application read owns local orchestration; focused query helpers own SQL.
+After identity bookkeeping, a shared user-row lock stabilizes the complete
+committed revision/document and its deadline/evidence metadata against paid
+writers. GET performs no source calls or billing/access/work/outbox mutations.
+It returns implicit zero without inserts and refuses unprocessed effective
+deadlines with `503/paid_access_deadline_pending`, never filtering the same
+revision. Product evidence is bounded and separate from complete grants and
+allowances. Provider/cycle IDs, inferred UTC periods and usage are excluded.
+The cabinet uses generated contracts through shared transport and refreshes
+local state while visible with session lifetime guards. Kernel HTTP delivery
+remains ANY-766; this DTO is not the internal AccessSnapshot.
+
 ## Current domains and API
 
 - **Identity** — contour-local users, hashed sessions, registration, login,
@@ -186,8 +202,8 @@ clock configuration, autonomous reductions and controlled primary recovery belon
   direct immutable product links with one current product head and live catalog reads;
   accepted purchase evidence and fenced request-driven preparation/recovery are
   implemented. ANY-715 adds embedded reconciliation/recovery, durable webhook
-  hints and audited operator resolutions. Paid-access derivation and invalidation
-  delivery remain later stages.
+  hints and audited operator resolutions. ANY-765 adds paid derivation and the
+  local cabinet read. Invalidation delivery remains a later stage.
 - **Presentation** — locale-prefixed product-first home, catalog,
   product detail pages, pricing placeholder, direct account/auth entry,
   product-centric cabinet, recovery, verification, and
@@ -231,8 +247,9 @@ details own review, consent and preparation. Prepared purchases link to
 `/account?purchase=<id>#billing`; the cabinet owns one wide disposable Widget.
 Every payment entry uses the same original-purchase bootstrap and fresh proof.
 ANY-715 reconciles subscription facts and recovers uncertain operations in the
-background. Confirmed paid-access derivation and actual usage/quota remain
-deferred to Steps 9–10; the cabinet does not present Step 8 facts as paid access.
+background. The cabinet reads committed paid state through `GET /api/paid-access`,
+independently of catalog/LBX availability. Prepared purchases remain separate
+from paid grants; actual usage/remaining stays unavailable pending Step 10.
 
 `/pricing` and public Pricing navigation are presentation-only: localized
 metadata, an honest unavailable/not-ready state and home/products links. The

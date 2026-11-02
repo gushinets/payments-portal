@@ -408,8 +408,8 @@ atomically. See the [schema reference](../architecture/payment-portal-data-model
 for immutable allowance shapes and storage guards.
 
 ANY-765 Step 3 completes local deadlines and customer/review/operator paths
-as described below. The paid read/cabinet remains Step 4. Kernel
-delivery/acknowledgement and actual usage remain ANY-766. This
+as described below. Step 4 adds the local paid read/cabinet described below.
+Kernel delivery/acknowledgement and actual usage remain ANY-766. This
 intermediate implementation is not production-ready. Current verification and
 live acceptance limits are recorded in the [canonical plan](../exec-plans/active/ANY-765-implementation-plan.md).
 
@@ -506,8 +506,73 @@ Use these local IDs with review/observation summaries; no IDs become metric labe
 Worker backlog/lag includes persisted local deadlines even when today's account
 setting differs. A due observation/revision/outbox identifies the atomic
 reduction; null resulting revision records a semantic no-op. Late reads must
-fail closed until the reduction commits; that customer read contract remains
-Step 4 and is not implemented by this step. No new customer endpoint or B10 wire
-is introduced. See the canonical plan for passed, failed and unexecuted evidence;
+fail closed until the reduction commits; Step 4 implements that customer read
+contract below. No B10 wire is introduced. See the canonical plan for passed, failed and unexecuted evidence;
 configured test-LBX, natural renewal and deployed Kernel acceptance remain
 separate from synthetic PostgreSQL/HTTP tests.
+
+## ANY-765 Step 4 local cabinet read and Step 10 handoff
+
+`GET /api/paid-access` requires a current verified-email bearer session. Tenant,
+region and user come from authenticated identity and deployment configuration;
+there is no caller-selected user scope. It returns `Cache-Control: no-store`,
+committed revision, the complete provider-neutral grants, and allowances with
+opaque ID/product/metric/unit/purchased quantity and immutable provenance. It
+exposes no provider or cycle IDs, calendar-to-UTC guesses, usage or remaining.
+This customer contract is separate from the future internal AccessSnapshot.
+
+No state row is implicit empty revision 0. A later empty document retains its
+positive revision. Product evidence is separate: `confirmed`, `no_paid_access`
+from still-current owned decisive negative proof, or `unavailable` for preparation,
+incomplete/expired or unresolved evidence. Current effective contents can be
+empty while a purchase's evidence remains unavailable. Evidence lists at most
+100 products and sets `evidence_complete=false` on truncation; grants/allowances
+are always complete. Unlisted product evidence must not be treated as absence.
+`read_at`, `committed_at`, product `observed_at` and effective deadlines describe
+freshness without changing authorization meaning or creating a revision.
+
+Identity owns its existing session `last_seen_at` commit. After that boundary,
+the read takes a shared user-row lock against the user-first paid writers and
+performs local SELECTs only. It never reads LBX/Kernel, schedules work, repairs
+state or mutates paid/billing tables. Any unprocessed effective source/grant/UTC
+allowance deadline returns `503/paid_access_deadline_pending`, with a safe
+correlated error. GET never filters an old revision. Inspect the local worker's
+deadline/backlog and allow its ordinary reducing commit to finish; do not extend
+trust, delete queue rows or alter the stored document to make GET succeed.
+
+The existing cabinet displays paid status independently of purchase preparation
+and source/catalog availability. Local reads refresh every 30 seconds while
+visible, on explicit retry/visibility return and after Widget close. Session
+replacement/logout/unmount invalidates pending results and stops refreshes.
+The client expires its successful view conservatively using the server's remaining
+deadline duration. Widget events authorize nothing. SIMULATED purchased limits
+are labeled; missing allowance never means unlimited, and used/remaining remains
+unavailable. Product purchase controls link to this cabinet rather than claiming
+that preparation activated access.
+
+**ANY-766 receives** the implemented primary/cycle/allowance, semantic-revision,
+audit, autonomous-deadline and atomic coalesced-outbox semantics described above.
+Supported ACTIVE/unblocked proof still requires complete original ownership,
+accepted effective terms and prepaid policy; preparation/binding is insufficient.
+V2 technical acceptance/digest and legacy v1 without invented metering remain
+unchanged. Same-cycle recovery reuses frozen IDs/quantity/unit; later proven
+current cycles skip backfill. The existing audited recovery commands do not
+accept arbitrary objects, dates, quota or access overrides.
+
+Step 10 still owns HTTP AccessSnapshot/invalidation delivery, acknowledgements
+of the captured sent revision only, Kernel cache/revision floor, authenticated
+runtime enforcement and actual usage/remaining. Its coordinated **B10** change
+must reconcile the canonical specs' legacy UTC allowance clauses with the
+Portal-internal lossless calendar evidence, then update producer/consumer DTOs,
+fixtures, hashes and compatibility together. Preserve finite UTC trust/grant/
+snapshot deadlines, six-hour source trust, the five-minute snapshot ceiling and
+durable usage identity. This cabinet DTO must not become that internal wire.
+
+Synthetic PostgreSQL/API/component/browser evidence and failed/unexecuted checks
+are recorded in the [canonical plan](../exec-plans/active/ANY-765-implementation-plan.md).
+Configured test-LBX-to-cabinet acceptance remains a distinct owner-QA checkpoint;
+100/300 SIMULATED quantities cannot satisfy production metering approval.
+ANY-711/Steps 10–11 own real vocabulary/quantity approval, Kernel conformance,
+natural renewal and deployment acceptance. Webhook enablement remains ANY-715's
+disabled/polling-only gate. No real billing or production mutation is authorized
+by this read or handoff.

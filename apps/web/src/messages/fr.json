@@ -173,7 +173,20 @@
       "unavailable": "Impossible de charger vos achats. La facturation reste accessible séparément.",
       "loadMore": "Afficher plus",
       "prepared": "Abonnement préparé",
-      "pending": "La préparation de l’achat est incomplète"
+      "pending": "La préparation de l’achat est incomplète",
+      "paid": {
+        "loading": "Vérification de l’accès payant…",
+        "confirmed": "Accès payant confirmé",
+        "no_paid_access": "Aucun accès payant à ce produit",
+        "unavailable": "Impossible de confirmer l’accès payant. Réessayez.",
+        "quantity": "Limite achetée : {quantity} {unit}",
+        "simulated": "Limite de test simulée — pas un quota commercial.",
+        "meteringUnavailable": "Les opérations avec quota nécessitent une limite confirmée.",
+        "usageUnavailable": "Utilisation et solde indisponibles.",
+        "refresh": "Actualiser l’accès payant",
+        "deadlinePending": "L’accès est en cours de mise à jour après une échéance. Réessayez bientôt.",
+        "empty": "Aucun accès payant pour le moment."
+      }
     }
   },
   "PasswordReset": {
@@ -466,7 +479,6 @@
     "reference": "Référence de l’achat : {id}",
     "acceptedTerms": "Conditions initialement acceptées",
     "awaitingVerification": "Le paiement attend une vérification auprès de la facturation. La consultation de l’état enregistré lit uniquement le Portail et n’actualise pas les données de facturation.",
-    "accessDeferred": "Le paiement et l’accès au produit sont distincts. L’accès payant et le suivi de l’utilisation/des quotas seront livrés ultérieurement ; cet écran ne confirme aucune activation.",
     "technicalLimit": "Limite de test par cycle confirmé",
     "simulatedTerms": "SIMULATED · conditions de test",
     "technicalUnknown": "Limite technique non confirmée ; exécution avec quota indisponible.",
@@ -481,6 +493,7 @@
       "failed_before_external_effect": "Cet achat s’est arrêté avant toute création financière.",
       "manual_review": "Cet achat nécessite une récupération ou une vérification par un opérateur."
     },
-    "managedInAccount": "Le paiement et la gestion de l’abonnement sont disponibles dans votre compte."
+    "managedInAccount": "Le paiement et la gestion de l’abonnement sont disponibles dans votre compte.",
+    "accessInAccount": "L’accès payant confirmé est affiché dans votre compte. L’utilisation et le quota restant sont encore indisponibles."
   }
 }

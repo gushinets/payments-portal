@@ -24,7 +24,8 @@ verified-email account Widget, immutable purchase consent and request-driven
 financial preparation/recovery. Localized Buy/Continue/Manage uses one shared
 cabinet Widget after fresh ownership/effective-term verification. ANY-715 adds
 durable embedded polling, GET-only recovery/inventory, default-disabled webhook
-hints and audited operator commands. Confirmed paid access and actual usage/quota
+hints and audited operator commands. ANY-765 adds committed local paid access
+and an authenticated cabinet read; Kernel delivery and actual usage/remaining
 remain later program work.
 Delivery and acceptance evidence are in
 [ANY-709](https://linear.app/paveldik/issue/ANY-709); commands, migration transitions
@@ -50,9 +51,9 @@ boundary; those records retain their authority and historical names.
 
 The durable [RU Portal 4F handoff](docs/product/ru-mvp.md) records the current
 UI/data sources and step ownership. Steps 6–8 supply source-backed offers,
-purchase/Widget actions and reconciliation/recovery; Steps 9–10 will populate
-confirmed access and usage/quota in the existing per-product slots and pricing
-surface without redesigning the main cabinet. UI “not ready/unknown” does not establish
+purchase/Widget actions and reconciliation/recovery. ANY-765 populates committed
+paid access and purchased limits in the cabinet. Step 10 will supply actual
+usage/remaining without redesigning the main cabinet. UI “not ready/unknown” does not establish
 no subscription, no access, or zero usage/quota. The approved RU mockup supplies
 product/visual direction; evolved Bundle 3 is its canonical implementation
 design system, using navy/amber, flat dark panels and compact styling.
@@ -174,8 +175,8 @@ do not use `alembic stamp`, downgrade, or an upgrade bridge.
   cabinet, recovery, verification, and canonical RU legal pages.
 - `apps/api` — FastAPI identity, password-reset, legal, health, metrics and billing
   API; accepted-purchase preparation, embedded reconciliation/recovery,
-  optional webhook hints and privileged operator commands. Paid-access
-  derivation and Kernel delivery remain future work.
+  optional webhook hints and privileged operator commands; committed local
+  paid-access derivation and cabinet reads. Kernel delivery remains future work.
 - `apps/api/alembic` — PostgreSQL schema and first-install legal seed.
 - `docs` — authoritative product, architecture, design, reliability, security,
   legal, planning, and generated documentation.
@@ -336,6 +337,7 @@ repository. No direct-provider runtime exists in this repository.
   verified email, paired customer identity and Client readiness. It requires no
   product price or subscription; see the runbook for human acceptance.
 - Accepted purchases can be prepared/recovered and opened for verified payment
-  presentation. Paid-access state and usage/quota await their owning program
-  steps; provider-dependent work remains subject to Phase 0 gates.
+  presentation. The cabinet reads committed local paid state independently of
+  source availability; actual usage/remaining and Kernel delivery await Step 10.
+  Provider-dependent enablement remains subject to Phase 0 gates.
 - Legal documents are drafts until reviewed and approved by counsel.
