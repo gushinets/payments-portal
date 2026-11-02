@@ -1,5 +1,12 @@
 # ANY-664 Step 3 handoff
 
+**Current setup:** use the [ANY-709 billing runbook](../../../../../docs/engineering/ANY-709-billing-runbook.md).
+The original read-client handoff below retains historical inventory/configuration
+facts. Its manual account-ID requirement is superseded: current runtime resolves
+the trusted provider-origin scope and uses normal connection settings. ANY-709
+Steps 2–4 add customer/purchase preparation and the shared payment-capable SDK.
+Dated acceptance evidence is recorded in [ANY-709](https://linear.app/paveldik/issue/ANY-709).
+
 Implementation source only; tests, checks and live LBX requests have **not**
 been run for this step. This boundary grants no commercial or paid-access
 approval. Step 4 owns complete selected-offer normalization and classification.
@@ -90,11 +97,39 @@ refresh tasks. Per-HTTP sublimits never extend the absolute work deadline.
 
 ## Failures and future boundary
 
+All Server API methods use the same bounded decoder for success and failure.
+An LBX error envelope (`code`, `response.error`) is a provider refusal even at
+HTTP 500 or inside HTTP 200. Unknown nonempty error text becomes the safe
+`provider_rejected` category; it is never retained. Authentication/permission,
+rate limit, malformed response, no-response network failure and timeout remain
+distinct. Missing error text alone is not success: the success DTO must validate.
+
+Classification and retries are independent: unknown transient HTTP/LBX codes
+retain bounded GET retries and the provider error class/codes; known permanent
+rejections do not retry. A 5xx without a readable LBX refusal retains bounded
+unavailability retries; malformed error fields remain invalid responses with
+bounded GET retries at transient codes. POST never automatically retries. An error envelope does
+not prove that CREATE had no effect; customer send fencing and GET recovery
+remain authoritative for handling an uncertain outcome.
+
+`LbxResponseFacts` and the existing `lbx_http` event carry HTTP/LBX codes,
+error-field presence, safe reason/failure category, GET retry eligibility,
+method/allowlisted endpoint template and request/create-operation correlation.
+No response is represented by null codes. Arbitrary body text, provider IDs,
+URLs, credentials and request values never enter these diagnostics.
+
+Each existing `lbx_http` event also includes numeric `duration_ms`, measured with
+`perf_counter` around one HTTP attempt, including pool wait, response-body
+decoding and stream close. Preflight admission and retry backoff are outside
+that interval. The value is log-only: it is not stored in response facts,
+recovery evidence or purchase snapshots and does not affect retries/deadlines.
+
 `errors.py` contains safe `AppError` subclasses. `LbxNotConfigured` and
 `LbxClosed` indicate resource misuse/absence; `LbxAuthenticationFailed` is
 unauthorized auth or persistent GET 401; `LbxScopeForbidden` is 403;
-`LbxScopeMismatch` rejects invalid requested or mismatched returned identities;
-`LbxResponseInvalid` rejects malformed/enlarged/unsupported envelopes and
+`LbxScopeMismatch` rejects invalid requested identities and out-of-scope catalog,
+discovery or financial responses; `LbxResponseInvalid` rejects
+malformed/enlarged/unsupported envelopes and
 payloads; `LbxRateLimited`, `LbxUnavailable`, `LbxTimeout` classify exhausted
 transient reads; `LbxAttemptsExhausted` refuses further exchanges when the total
 limit is spent between successful auth and the next GET. Shared
@@ -106,12 +141,35 @@ I/O/close context, including debug response headers and raw transport errors.
 Other tasks keep their logger settings and diagnostics. No raw body or header
 is emitted by this Integration.
 
+For point reads, LBX selects the requested user, tariff, agreement or subscription
+through its resource URL and the Integration decodes the corresponding wire
+schema. There is no separate response-ID-to-URL equality check. The shared
+customer flow still verifies the persisted binding and original `outer_id`;
+financial proof still checks owner, seller and accepted effective terms.
+`LbxRead` context comes from this client's configuration, request arguments and
+UTC clock; it is not a second provider scope assertion to revalidate in current
+offer normalization.
+
 Existing `ExternalCreateOperationKind` already defines customer, agreement and
 subscription operation identities in `app.models`; no speculative parallel
 operation vocabulary/response DTO or callable mutation is needed by this read
 consumer. Future program Steps 7/8 must persist the operation before CREATE;
 an uncertain result stays UNKNOWN and is discovered read-only, never blindly
-retried. No CREATE transport is supplied here.
+retried. That was the original read-consumer boundary. ANY-709 Step 2 now adds
+only fenced customer CREATE, users discovery/point reads and Client user
+readiness on this same real client. That Step 2 slice supplies no financial mutation. ANY-709 Step 3 now adds
+filtered agreement/subscription GETs and their permanently fenced CREATE on the
+same transport/decoder. POST does not retry; receipts are only candidates until
+point proof. Financial UNKNOWN never inherits customer later-open retries.
+Payment APIs remain provider-owned. See the
+[purchase runbook](../../../../../docs/engineering/ANY-709-billing-runbook.md#purchase-api-and-financial-recovery-step-3)
+for current commands, migration transitions and financial GET-only recovery. `LbxCreateNotSent` proves a before-dispatch failure;
+every dispatched failure remains uncertain. Customer responses accept the
+operation-specific 200/201 envelope and must be point-verified before binding.
+Technical login/password are generated only for one POST; JWT signing uses
+type 7, the proven canonical ID and fresh `iat`. Account traffic has separate
+bounded admission/pool capacity from offer reads. See the
+[normal account runbook](../../../../../docs/engineering/ANY-709-billing-runbook.md#human-account-widget-checkpoint-step-2).
 
 Selected-account currency/scale, historically applicable policy, rollback
 guarantees and actual account/credential deployment remain unverified. B1 and

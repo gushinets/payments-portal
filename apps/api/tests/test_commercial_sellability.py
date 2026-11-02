@@ -13,8 +13,8 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy.exc import OperationalError
 
-from app.cli import commercial_mappings as cli
-from app.composition.mapping_operator import (
+from apps.api.tests.support import v1_cli as cli
+from apps.api.tests.support.v1_mapping_operator import (
     MappingProposal,
     authorize_operator,
     fresh_mapping_evaluation,

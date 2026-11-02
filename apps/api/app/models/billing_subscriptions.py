@@ -149,7 +149,7 @@ class ExternalSubscription(Base):
             name="ck_external_subscriptions_lifecycle_status",
         ),
         CheckConstraint(
-            "financial_access_status IN ('allowed', 'blocked')",
+            "financial_access_status IN ('allowed', 'blocked', 'unverified')",
             name="ck_external_subscriptions_financial_access_status",
         ),
         CheckConstraint(
@@ -201,6 +201,8 @@ class ExternalSubscription(Base):
             "external_billing_account_id",
         ),
         Index("ix_external_subscriptions_external_id", "external_subscription_id"),
+        UniqueConstraint("external_billing_account_id", "external_subscription_id", name="uq_subscription_provider"),
+        UniqueConstraint("external_billing_account_id", "external_agreement_id", name="uq_subscription_agreement"),
         Index("ix_external_subscriptions_agreement_id", "external_agreement_id"),
         Index("ix_external_subscriptions_lifecycle_status", "lifecycle_status"),
         Index("ix_external_subscriptions_financial_status", "financial_access_status"),

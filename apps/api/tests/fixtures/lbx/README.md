@@ -1,6 +1,6 @@
-# Simulated selected LBX reads
+# Selected LBX read fixtures
 
-These are invented account/tariff/service/period/price values for isolated
+The root files and `selected_offer/` contain invented account/tariff/service/period/price values for isolated
 transport and Step 4 normalization tests. They are not recorded provider traffic
 or production approval. Runtime code must never import them.
 
@@ -23,3 +23,18 @@ and large numeric lexemes reach the Integration decoder unchanged.
 Missing/null optional fields must remain unknown. Tests may remove/change
 individual values to exercise refusal; no fixture supplies Kernel technical
 allowances or a real sellability decision.
+
+## Retained readiness responses
+
+`readiness/e04-services.json` and `readiness/e05-prices.json` are the HTTP
+response bodies extracted without number re-encoding from the sanitized
+E04/E05 logs cited by `ANY709-LBX043-readonly-readiness.md` (2026-10-25):
+
+- E04: `20261025T000102Z_004_get_tariffs_32_services_216161487ba941e8bce11c66485f6b13.json`.
+- E05: `20261025T000102Z_005_get_tariffs_32_services_1_prices_ac48dd85522e4f54a757164c63c44aa8.json`.
+
+These preserve the observed `1.0` bounds, local-midnight inline start and
+year/month history fields in their actual locations. No fresh LBX request was
+made. The test helper combines these two bodies with synthetic tariff/period,
+Kernel and authentication support, and explicitly does not claim the combined
+recording is a captured complete stand snapshot or production approval.

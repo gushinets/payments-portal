@@ -5,10 +5,14 @@ import type { Page } from "@playwright/test";
 import ru from "../src/messages/ru.json";
 import pt from "../src/messages/pt.json";
 import { simulatedProduct } from "../tests/fixtures/catalog";
+import { savedPurchase } from "../tests/fixtures/purchase";
+import type { AccountPurchaseResponse } from "../src/generated/api-contracts/types.gen";
 
 async function mockCatalog(page: Page, path: "" | "/products" | "/account") {
-  const state = { products: [simulatedProduct], unavailable: false };
+  const owned: AccountPurchaseResponse = { purchase_intent_id: savedPurchase.purchase_intent_id, product_id: savedPurchase.product_id, state: "linked", created_at: "2026-10-27T12:00:00Z" };
+  const state = { products: [simulatedProduct], unavailable: false, purchases: [owned], inventoryUnavailable: false, catalogReads: 0 };
   await page.route("**/api/catalog/products{,/*}", async (route) => {
+    state.catalogReads += 1;
     expect(route.request().headers().authorization).toBeUndefined();
     const productId = new URL(route.request().url()).pathname.split("/")[4];
     await route.fulfill(state.unavailable
@@ -22,15 +26,41 @@ async function mockCatalog(page: Page, path: "" | "/products" | "/account") {
       user: {
         tenant_id: "anytoolai", region: "ru",
         user_id: "11111111-1111-4111-8111-111111111111",
-        email: "catalog@example.com", email_verified: false
+        email: "catalog@example.com", email_verified: true
       }
     } }));
   }
+  await page.route("**/api/purchase-intents", (route) => route.fulfill(state.inventoryUnavailable
+    ? { status: 503, json: { detail: { code: "unavailable" } } }
+    : { json: { purchases: state.purchases, next_cursor: null } }));
+  await page.route("**/api/purchase-intents/current?*", (route) => route.fulfill({ json: { purchase: savedPurchase } }));
   return state;
 }
 
+test("catalog detail survives a healthy source response beyond five seconds", async ({ page }, testInfo) => {
+  let reads = 0;
+  await page.route("**/api/catalog/products/proposal_ai", async (route) => {
+    reads += 1;
+    // A synthetic successful Portal response, with real browser time/fetch.
+    await new Promise((resolve) => setTimeout(resolve, 5709));
+    await route.fulfill({ json: simulatedProduct });
+  });
+  await page.goto("/ru/products/proposal_ai");
+  const main = page.getByRole("main");
+  await expect(main.getByText(ru.CatalogPreview.simulated)).toBeVisible({ timeout: 15000 });
+  await expect(main.getByText(ru.CatalogPreview.failed)).toHaveCount(0);
+  expect(reads).toBe(1);
+  await page.getByRole("button", { name: ru.CookieBanner.acceptAction, exact: true }).click();
+  const accessibility = await new AxeBuilder({ page }).analyze();
+  expect(accessibility.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await testInfo.attach("delayed-catalog-detail", {
+    body: await page.screenshot({ fullPage: true }), contentType: "image/png"
+  });
+});
+
 for (const locale of ["ru", "pt"] as const) {
-  for (const path of ["", "/products", "/account"] as const) {
+  for (const path of ["", "/products"] as const) {
     test(`${locale}${path || "/"} displays all published products with exact localized terms`, async ({ page }, testInfo) => {
       const messages = locale === "pt" ? pt : ru;
       const state = await mockCatalog(page, path);
@@ -49,24 +79,15 @@ for (const locale of ["ru", "pt"] as const) {
         await expect(card.getByText(locale === "ru" ? "9 007 199 254 740 993,01 RUB" : "9.007.199.254.740.993,01 RUB")).toBeVisible();
         await expect(card.getByText(locale === "ru" ? "1 месяц" : "1 mês", { exact: true })).toBeVisible();
         await expect(card.getByText(messages.CatalogPreview.periodAnchors.instance_start, { exact: true })).toBeVisible();
-        await expect(card.getByText("25 generation", { exact: true })).toBeVisible();
+        await expect(card.getByText(messages.CatalogPreview.quantity).locator("..")).toContainText("1");
         await expect(card.getByRole("link", { name: messages.CatalogPreview.details }))
           .toHaveAttribute("href", `/${locale}/products/${product.product_id}`);
         for (const slot of ["access", "usage"] as const) {
           const status = messages.Account.products.state[slot];
-          if (path === "/account") {
-            await expect(card.getByText(status.label, { exact: true })).toBeVisible();
-            await expect(card.getByText(status.description, { exact: true })).toBeVisible();
-          } else {
-            await expect(card.getByText(status.label, { exact: true })).toHaveCount(0);
-            await expect(card.getByText(status.description, { exact: true })).toHaveCount(0);
-          }
+          await expect(card.getByText(status.label, { exact: true })).toHaveCount(0);
+          await expect(card.getByText(status.description, { exact: true })).toHaveCount(0);
         }
         await expect(card.getByText(messages.Account.products.state.commercial.description, { exact: true })).toHaveCount(0);
-      }
-      if (path === "/account") {
-        await expect(main.getByRole("heading", { name: messages.EmailVerification.pending.title })).toBeVisible();
-        await expect(main.getByRole("progressbar")).toHaveCount(0);
       }
       await page.getByRole("button", { name: messages.CookieBanner.acceptAction, exact: true }).click();
       const accessibility = await new AxeBuilder({ page }).analyze();
@@ -113,6 +134,51 @@ for (const locale of ["ru", "pt"] as const) {
       await expect(main.getByRole("article")).toHaveCount(0);
     });
   }
+  test(`${locale}/account lists only owned purchases despite new catalog publications`, async ({ page }, testInfo) => {
+    const messages = locale === "pt" ? pt : ru;
+    const state = await mockCatalog(page, "/account");
+    await page.goto(`/${locale}/account`);
+    const products = page.getByRole("region", { name: messages.Account.products.title });
+    await expect(products.getByRole("article")).toHaveCount(1);
+    state.products.push({ ...simulatedProduct, product_id: "new_published_tool" });
+    await page.reload();
+    await expect(products.getByRole("article")).toHaveCount(1);
+    await expect(products.getByText("new_published_tool", { exact: true })).toHaveCount(0);
+    await expect(products.getByRole("link", { name: messages.Account.products.detailAction })).toHaveAttribute("href", `/${locale}/products/proposal_ai`);
+    await expect(products.getByRole("link", { name: messages.Account.products.allProducts })).toHaveAttribute("href", `/${locale}/products`);
+    await expect(products.getByText(messages.Account.products.prepared)).toBeVisible();
+    expect(state.catalogReads).toBe(0);
+    await page.getByRole("button", { name: messages.CookieBanner.acceptAction, exact: true }).click();
+    const accessibility = await new AxeBuilder({ page }).analyze();
+    expect(accessibility.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await testInfo.attach("owned-products", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
+  });
+
+  test(`${locale}/account opens product detail and distinguishes unavailable inventory from empty`, async ({ page }) => {
+    const messages = locale === "pt" ? pt : ru;
+    const state = await mockCatalog(page, "/account");
+    await page.goto(`/${locale}/account`);
+    await page.getByRole("button", { name: messages.CookieBanner.acceptAction, exact: true }).click();
+    const products = page.getByRole("region", { name: messages.Account.products.title });
+    await products.getByRole("link", { name: messages.Account.products.detailAction }).click();
+    await expect(page).toHaveURL(new RegExp(`/${locale}/products/proposal_ai$`), { timeout: 20000 });
+    await expect(page.getByRole("link", { name: messages.Purchase.manage })).toBeVisible();
+    state.unavailable = true;
+    await page.goto(`/${locale}/account`);
+    await expect(products.getByRole("article")).toHaveCount(1);
+    state.inventoryUnavailable = true;
+    await page.reload();
+    await expect(products.getByText(messages.Account.products.unavailable)).toBeVisible();
+    await expect(products.getByText(messages.Account.products.empty)).toHaveCount(0);
+    state.inventoryUnavailable = false;
+    await products.getByRole("button", { name: messages.Purchase.retry }).click();
+    await expect(products.getByRole("article")).toHaveCount(1);
+    state.purchases = [];
+    await page.reload();
+    await expect(products.getByText(messages.Account.products.empty)).toBeVisible();
+    await expect(products.getByRole("article")).toHaveCount(0);
+  });
 }
 
 // Browser regression with a visibly simulated Portal HTTP response. Real

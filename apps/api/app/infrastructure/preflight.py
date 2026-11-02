@@ -148,11 +148,19 @@ class PreflightBudget:
             # wait() bounds this waiter without pretending the task was stopped.
             await asyncio.wait({task}, timeout=remaining)
 
-    async def run(self, source: Callable[[], Coroutine[Any, Any, T]]) -> T:
+    async def run(
+        self,
+        source: Callable[[], Coroutine[Any, Any, T]],
+        *,
+        on_schedule: Callable[[asyncio.Task[T]], None] | None = None,
+    ) -> T:
         """Await genuine outer I/O, token-lock waits or retry waits on this budget.
 
         The source owns all its HTTP resources, including close in finally.
         Never pass blocking work, DB sessions or detached workers here.
+        on_schedule synchronously exposes this call's counted task before the
+        first waiter await. Admission refusal creates no task. After scheduling,
+        only task.done(), not waiter failure, proves it cannot send later.
         """
         self.check()
         if not self._admitted or self._tasks:
@@ -161,6 +169,8 @@ class PreflightBudget:
         self._tasks.add(task)
         task.add_done_callback(self._source_done)
         try:
+            if on_schedule is not None:
+                on_schedule(task)
             done, _ = await asyncio.wait({task}, timeout=self.remaining_seconds())
             if not done:
                 raise PreflightDeadlineExceeded()

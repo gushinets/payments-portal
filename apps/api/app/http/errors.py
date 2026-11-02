@@ -88,6 +88,7 @@ def _internal_server_error_response() -> JSONResponse:
     return JSONResponse(
         status_code=500,
         content={"detail": {"code": INTERNAL_ERROR_CODE}},
+        headers={"Cache-Control": "no-store"},
     )
 
 

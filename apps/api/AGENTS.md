@@ -8,13 +8,13 @@ before backend work.
 For new billing work, follow the target authority chain before consulting any
 retained billing document:
 
-1. [ADR 0005](../../docs/architecture/decisions/0005-external-billing-boundary.md)
+1. [ADR 0005](../../docs/architecture/decisions/0005-external-billing-boundary.md),
+   including its exact dated ANY-504 decision references.
 2. [External Billing Boundary Design](../../docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md)
 3. [Portal ↔ Kernel Access Contract Design](../../docs/superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
 4. [Accepted live-source admission amendment](../../docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
-   narrowly supersedes source-catalog mirroring/new-sale TTL: live Kernel/LBX
-   reads for publication/new purchase, PostgreSQL for immutable approved terms
-   and catalog browsing. No change to subscription trust or AccessSnapshot.
+
+Operational commands are in the [billing runbook](../../docs/engineering/ANY-709-billing-runbook.md).
 
 The [payment-provider document](../../docs/architecture/payment-providers.md)
 is historical characterization of the physically removed direct-provider
@@ -119,9 +119,10 @@ database lifecycle.
 - Target paid access changes only from the authoritative sources
   permitted by ADR 0005 and the accepted designs; a browser return, Widget
   callback, webhook, outbound request success, or payment state alone is not
-  access authority. Restricted immutable mapping publication is implemented;
-  purchase, reconciliation, paid-access and billing-callback runtime remain
-  future work.
+  access authority. Direct product links, live catalog reads, account Widget,
+  accepted purchases and request-driven financial preparation/recovery are
+  implemented. Reconciliation workers, paid access and billing callbacks remain
+  later work. See the [runbook](../../docs/engineering/ANY-709-billing-runbook.md).
 - Never log authentication tokens, authorization headers, secrets, card fields,
   or unredacted webhook bodies.
 - Legal acceptance records are append-only.

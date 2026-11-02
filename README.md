@@ -7,7 +7,7 @@ Each production deployment serves one contour (compliance zone). This
 repository currently implements the `ru` contour; route locale does not select
 a contour.
 
-It contains a Next.js web application, a FastAPI identity/legal API, PostgreSQL
+It contains a Next.js web application, a FastAPI identity/legal/purchase-preparation API, PostgreSQL
 persistence, and the clean provider-neutral external-billing storage baseline.
 The former CloudPayments/direct-provider runtime and Portal-owned catalog,
 order, payment, subscription, entitlement, and trial architecture have been
@@ -16,14 +16,16 @@ paid-access boundary, but its runtime implementation remains future program
 work. Platform Kernel code is maintained in the separate
 [anytoolai-platform](https://github.com/gushinets/anytoolai-platform) repository.
 
-The repository remains pre-production and provider-independent on the current
-ANY-636 4F surface. All thirteen ANY-636 steps are marked `done` in the
+The repository remains pre-production on the surface established by ANY-636 4F. All thirteen ANY-636 steps are marked `done` in the
 [completed plan](docs/exec-plans/completed/ANY-636-implementation-plan.md).
-External Billing/provider runtime, commercial
-catalog, purchase/Widget, confirmed paid access, and actual usage/quota
-integration are not implemented. There are no production direct-provider
-subscribers or subscriptions to migrate. The fifteen target billing tables
-start empty and no current application behavior populates them.
+ANY-709 adds source-backed current offers, direct product links, explicit
+verified-email account Widget, immutable purchase consent and request-driven
+financial preparation/recovery. Localized Buy/Continue/Manage uses one shared
+cabinet Widget after fresh ownership/effective-term verification. Confirmed paid
+access, billing workers and actual usage/quota remain later program work.
+Delivery and acceptance evidence are in
+[ANY-709](https://linear.app/paveldik/issue/ANY-709); commands, migration transitions
+and diagnostics are in the [billing runbook](docs/engineering/ANY-709-billing-runbook.md).
 For target billing work, follow [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md),
 the accepted [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md),
 and the accepted
@@ -318,10 +320,15 @@ repository. No direct-provider runtime exists in this repository.
   real Kernel producer delivery and conformance remain future enablement gates.
 - The owner-approved [live-source admission amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
   requires live Kernel/LBX checks for offer publication and each new purchase,
-  without periodic source-catalog mirrors. Approved immutable offer terms are
-  stored and browsed from PostgreSQL without source requests. Paid-access,
+  without periodic source-catalog mirrors. ANY-709 Step 1 now uses direct versioned product links, source-backed Kernel
+  discovery and selected current LBX offers. Immutable links/history stay in
+  PostgreSQL; ordinary repricing needs no link republication. See the
+  [normal LBX runbook](docs/engineering/ANY-709-billing-runbook.md). Paid-access,
   subscription trust/reconciliation and AccessSnapshot rules are unchanged.
-- Purchase/Widget, billing state, paid-access state, and usage/quota remain
-  unavailable until their owning external-billing/Kernel integration steps;
-  provider-dependent work remains subject to Phase 0 gates.
+- Account-only Widget viewing uses the real configured SDK after explicit open,
+  verified email, paired customer identity and Client readiness. It requires no
+  product price or subscription; see the runbook for human acceptance.
+- Accepted purchases can be prepared/recovered and opened for verified payment
+  presentation. Paid-access state and usage/quota await their owning program
+  steps; provider-dependent work remains subject to Phase 0 gates.
 - Legal documents are drafts until reviewed and approved by counsel.

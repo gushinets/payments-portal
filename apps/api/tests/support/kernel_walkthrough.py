@@ -19,8 +19,8 @@ from pydantic import ValidationError
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.cli import commercial_mappings as cli
-from app.composition.mapping_operator import (
+from apps.api.tests.support import v1_cli as cli
+from apps.api.tests.support.v1_mapping_operator import (
     FreshMappingEvaluation,
     MappingProposal,
     account_billing_date,
@@ -28,10 +28,11 @@ from app.composition.mapping_operator import (
     fresh_mapping_evaluation,
     load_operator_input,
 )
-from app.composition import mapping_operator
+from apps.api.tests.support import v1_mapping_operator as mapping_operator
 from app.core.errors import AppError
 from app.infrastructure.operator_preflight import operator_preflight_lock
-from app.core.settings import AppEnv, Settings
+from app.core.settings import AppEnv
+from apps.api.tests.support.commercial_mappings import HistoricalOperatorSettings as Settings
 from app.domains.catalog.mapping_evidence import ApprovedMapping
 from app.domains.catalog.publication import publish_mapping
 from app.integrations.lbx.offer_inputs import SelectedOfferInputs

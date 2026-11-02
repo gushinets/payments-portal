@@ -24,6 +24,13 @@ class SelectedOfferRefused(AppError):
         self.reason = reason
 
 
+class SelectedOfferSourceFailed(SelectedOfferRefused):
+    """A selected read failed or drifted, rather than describing an invalid offer."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(OfferRefusalKind.INCOMPLETE, reason)
+
+
 class CommercialEvidenceBasis(StrEnum):
     DOCUMENTED = "DOCUMENTED"
     ACCOUNT_EVIDENCE = "ACCOUNT_EVIDENCE"

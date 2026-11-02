@@ -43,7 +43,7 @@ def anyio_backend() -> str:
             '"tariff_service_id":1002',
             "component_membership_missing_or_ambiguous",
         ),
-        ("services", '"discounts":[]', '"discounts":null', "discounts_unknown"),
+        ("services", '"discounts":[]', '"discounts":null', "discounts_null"),
         ("services", '"enabled_by_default":1,', "", "component_enabled_by_default_unknown"),
         ("services", '"enabled_by_default":1', '"enabled_by_default":null', "component_enabled_by_default_unknown"),
         ("services", '"enabled_by_default":1', '"enabled_by_default":2', "component_enabled_by_default_unknown"),
@@ -292,7 +292,7 @@ async def test_partial_lists_and_wrong_account_do_not_pass() -> None:
         async with owner.operation() as budget:
             with pytest.raises(SelectedOfferRefused, match="partial_selected_lists"):
                 await read_selected_offer(client, selection=simulated_selection(), inputs=partial, budget=budget)
-    async with lbx_source(httpx.MockTransport(recording.respond), lbx_external_billing_account_id="wrong-account") as (
+    async with lbx_source(httpx.MockTransport(recording.respond), fixture_account_id="wrong-account") as (
         client,
         owner,
     ):

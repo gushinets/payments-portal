@@ -207,23 +207,21 @@ async def test_invalid_selected_id_makes_no_http_request(tariff_id: Any) -> None
                 await client.get_tariff(tariff_id=tariff_id, budget=budget)
 
 
-@pytest.mark.parametrize("suffix", ["/tariffs", f"/tariffs/{TARIFF}", f"/tariffs/{TARIFF}/services"])
+@pytest.mark.parametrize("suffix", ["/tariffs", f"/tariffs/{TARIFF}/services"])
 async def test_wrong_tariff_scope_is_refused(suffix: str) -> None:
     def respond(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/auth"):
             return fixture_response("auth")
         item = {"tariff_id": 999, "tariff_service_id": SERVICE} if suffix.endswith("services") else {"tariff_id": 999}
-        return httpx.Response(200, json={"code": 200, "response": item if suffix.endswith(str(TARIFF)) else [item]})
+        return httpx.Response(200, json={"code": 200, "response": [item]})
 
     async with lbx_source(httpx.MockTransport(respond)) as (client, owner):
         async with owner.operation() as budget:
             with pytest.raises(LbxScopeMismatch):
                 if suffix == "/tariffs":
                     await client.list_tariffs(tariff_id=TARIFF, budget=budget)
-                elif suffix.endswith("services"):
-                    await client.list_tariff_services(tariff_id=TARIFF, budget=budget)
                 else:
-                    await client.get_tariff(tariff_id=TARIFF, budget=budget)
+                    await client.list_tariff_services(tariff_id=TARIFF, budget=budget)
 
 
 @pytest.mark.parametrize("fixture", ["periods", "services", "prices"])
@@ -253,7 +251,6 @@ async def test_duplicate_source_identity_is_refused(fixture: str) -> None:
     "overrides",
     [
         {"lbx_base_url": ""},
-        {"lbx_external_billing_account_id": ""},
         {"lbx_server_username": ""},
         {"lbx_server_password": ""},
         {"lbx_base_url": "http://name:secret@lbx.test"},
@@ -264,7 +261,19 @@ async def test_duplicate_source_identity_is_refused(fixture: str) -> None:
         {"lbx_base_url": "ftp://lbx.test"},
         {"lbx_server_username": "bad:username"},
         {"lbx_server_password": "bad\r\npassword"},
-        {"lbx_external_billing_account_id": "wrong account"},
+    ],
+)
+def test_invalid_connection_is_a_safe_billing_error_without_breaking_auth(overrides: dict[str, Any]) -> None:
+    configuration = lbx_settings(**overrides)
+    assert configuration.lbx_configuration_error is not None
+    with pytest.raises(LbxNotConfigured):
+        LbxServerClient(configuration)
+    assert PASSWORD not in repr(configuration) and USERNAME not in repr(configuration)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
         {"lbx_read_timeout_seconds": float("nan")},
         {"lbx_connect_timeout_seconds": 0},
         {"lbx_max_response_bytes": 0},
@@ -272,31 +281,33 @@ async def test_duplicate_source_identity_is_refused(fixture: str) -> None:
         {"lbx_max_retry_delay_seconds": float("inf")},
     ],
 )
-def test_invalid_configuration_is_safe(overrides: dict[str, Any]) -> None:
-    with pytest.raises(ValidationError) as error:
+def test_invalid_resource_bounds_remain_configuration_errors(overrides: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError):
         lbx_settings(**overrides)
-    assert PASSWORD not in str(error.value)
-    assert USERNAME not in str(error.value)
 
 
 def test_configuration_is_optional_and_no_client_is_required_for_startup() -> None:
     configuration = lbx_settings(
-        lbx_base_url="", lbx_external_billing_account_id="", lbx_server_username="", lbx_server_password=""
+        lbx_base_url="",
+        lbx_server_username="",
+        lbx_server_password="",
+        lbx_widget_signing_secret="",
+        lbx_seller_organization_id="",
     )
+    assert configuration.lbx_configuration_error == "lbx_not_configured"
     with pytest.raises(LbxNotConfigured):
         LbxServerClient(configuration)
-    assert PASSWORD not in repr(lbx_settings())
 
 
 @pytest.mark.parametrize("url", ["http://lbx.example.test", "https://localhost"])
 def test_production_requires_normal_public_tls_origin(url: str) -> None:
-    with pytest.raises(ValidationError):
-        lbx_settings(
-            app_env="production",
-            app_public_base_url="https://portal.example.test",
-            cors_allow_origins=("https://portal.example.test",),
-            lbx_base_url=url,
-        )
+    configuration = lbx_settings(
+        app_env="production",
+        app_public_base_url="https://portal.example.test",
+        cors_allow_origins=("https://portal.example.test",),
+        lbx_base_url=url,
+    )
+    assert configuration.lbx_configuration_error == "lbx_base_url_requires_public_https"
 
 
 def test_production_accepts_explicit_scoped_lbx_configuration_without_enabling_sales() -> None:
@@ -304,10 +315,52 @@ def test_production_accepts_explicit_scoped_lbx_configuration_without_enabling_s
         app_env="production",
         app_public_base_url="https://portal.example.test",
         cors_allow_origins=("https://portal.example.test",),
-        lbx_base_url="https://billing.example.test",
     )
     assert configuration.lbx_external_billing_account_id == ACCOUNT
-    assert configuration.kernel_base_url == ""
+    assert configuration.lbx_configuration_error is None and configuration.kernel_base_url == ""
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"lbx_widget_signing_secret": "", "lbx_seller_organization_id": ""},
+        {"lbx_seller_organization_id": "not-an-id"},
+        {"lbx_currency_id": "unknown", "lbx_currency": "EUR"},
+    ],
+)
+async def test_server_get_depends_only_on_server_connection_settings(overrides: dict[str, str]) -> None:
+    configuration = lbx_settings(**overrides)
+    assert configuration.lbx_configuration_error is None
+    async with lbx_source(httpx.MockTransport(respond_with_fixture), **overrides) as (client, owner):
+        async with owner.operation() as budget:
+            tariff = await client.get_tariff(tariff_id=TARIFF, budget=budget)
+    assert tariff.value.tariff_id == TARIFF
+
+
+def test_widget_and_purchase_readiness_are_independent_of_catalog_applicability() -> None:
+    no_widget = lbx_settings(lbx_widget_signing_secret="", lbx_seller_organization_id="")
+    assert no_widget.lbx_configuration_error is None
+    assert no_widget.lbx_widget_configuration_error == "lbx_widget_signing_secret_required"
+    account_only = lbx_settings(lbx_seller_organization_id="", lbx_currency="unsupported")
+    assert account_only.lbx_widget_configuration_error is None
+    assert account_only.lbx_purchase_configuration_error == "lbx_seller_organization_id_required"
+    invalid_seller = lbx_settings(lbx_seller_organization_id="-1")
+    assert invalid_seller.lbx_widget_configuration_error is None
+    assert invalid_seller.lbx_purchase_configuration_error == "lbx_seller_organization_id_invalid"
+    no_password = lbx_settings(lbx_server_password="")
+    assert no_password.lbx_widget_configuration_error == "lbx_connection_fields_required"
+    assert no_password.lbx_purchase_configuration_error == "lbx_connection_fields_required"
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [{"lbx_currency": "rub"}, {"lbx_currency": "USD"}, {"lbx_currency_id": "abc"}, {"lbx_currency_id": "0"}],
+)
+def test_invalid_currency_blocks_purchase_configuration_but_not_account_view(overrides: dict[str, str]) -> None:
+    configuration = lbx_settings(lbx_seller_organization_id="21", **overrides)
+    assert configuration.lbx_configuration_error is None
+    assert configuration.lbx_widget_configuration_error is None
+    assert configuration.lbx_purchase_configuration_error == "lbx_currency_invalid"
 
 
 async def test_close_owns_transport_and_closed_client_refuses_new_work() -> None:

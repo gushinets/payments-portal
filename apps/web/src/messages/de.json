@@ -41,7 +41,10 @@
       "passwordPlaceholder": "Passwort eingeben",
       "newPasswordPlaceholder": "12–128 Zeichen",
       "passwordConfirmLabel": "Passwort wiederholen",
-      "passwordConfirmPlaceholder": "Passwort erneut eingeben"
+      "passwordConfirmPlaceholder": "Passwort erneut eingeben",
+      "firstNameLabel": "Vorname (optional)",
+      "surnameLabel": "Nachname (optional)",
+      "patronymicLabel": "Vatersname (optional)"
     },
     "passwordRequirements": {
       "label": "Passwortanforderungen",
@@ -144,8 +147,8 @@
       "emailUnverified": "E-Mail nicht bestätigt"
     },
     "products": {
-      "title": "Produkte",
-      "description": "Veröffentlichte Produkte und ihre gespeicherten Konditionen. Informationen zu Abonnements, Zugang und Nutzung folgen später.",
+      "title": "Meine Produkte",
+      "description": "Deine angenommenen Käufe. Zahlungs- und Abonnementstatus findest du in der Abrechnung.",
       "detailAction": "Produktdetails ansehen",
       "state": {
         "commercial": {
@@ -163,7 +166,14 @@
       },
       "action": {
         "description": "Öffnen Sie die Informationsseite des Produkts."
-      }
+      },
+      "allProducts": "Alle Produkte",
+      "loading": "Deine Produkte werden geladen…",
+      "empty": "Noch keine angenommenen Käufe. Wähle ein Produkt im Katalog.",
+      "unavailable": "Deine Käufe konnten nicht geladen werden. Die Abrechnung lässt sich separat öffnen.",
+      "loadMore": "Mehr anzeigen",
+      "prepared": "Abonnement vorbereitet",
+      "pending": "Die Kaufvorbereitung ist noch nicht abgeschlossen"
     }
   },
   "PasswordReset": {
@@ -239,7 +249,7 @@
     "eyebrow": "KI-Tools",
     "hero": {
       "heading": "KI-Werkzeuge für <em>den Arbeitsalltag</em>",
-      "description": "Entdecken Sie veröffentlichte KI-Tools und ihre gespeicherten Konditionen. Wählen Sie ein Tool für Ihre Aufgabe.",
+      "description": "Entdecken Sie aktive KI-Tools und deren aktuelle Bedingungen in den Details. Wählen Sie ein Tool für Ihre Aufgabe.",
       "primaryAction": "Konto öffnen",
       "secondaryAction": "Werkzeuge entdecken"
     },
@@ -251,18 +261,23 @@
     }
   },
   "CatalogPreview": {
-    "loading": "Genehmigte Angebotsvorschauen werden geladen…",
-    "empty": "Es sind keine genehmigten Angebotsvorschauen verfügbar.",
-    "failed": "Angebotsvorschauen sind nicht verfügbar. Versuchen Sie es erneut.",
+    "loading": "Produkte werden geladen…",
+    "empty": "Keine aktiven Produkte verfügbar.",
+    "failed": "Produkte oder aktuelle Angebote nicht verfügbar. Erneut versuchen.",
     "retry": "Erneut versuchen",
-    "notFound": "Für dieses Produkt wurde kein genehmigtes Angebot gefunden.",
+    "notFound": "Dieses Produkt ist nicht verfügbar.",
     "ambiguous": "Nicht verfügbar: Für dieses Produkt gibt es mehrere genehmigte Angebote.",
-    "simulated": "SIMULATION — nur Testvorschau",
-    "unverified": "Genehmigte Konditionen — aktuelle Verfügbarkeit ungeprüft",
-    "previewNote": "Gespeicherte Konditionen dienen zur Information. Ein Kauf ist nicht verfügbar; diese Vorschau gewährt keinen Produktzugang.",
+    "simulated": "Produktquelle: Testdienst",
+    "unverified": "Aktuelles LBX-Angebot — Bestätigung erforderlich",
+    "previewNote": "Aktuelle Abrechnungswerte werden angezeigt. Kaufbedingungen müssen separat bestätigt werden; die Ansicht gewährt keinen Zugang.",
+    "detailsRequired": "Öffnen Sie die Details, um das aktuelle Angebot zu prüfen.",
+    "unmapped": "Kauf nicht verfügbar: kein Abrechnungsangebot verknüpft.",
+    "unsupported": "Kauf nicht verfügbar: diese Angebotsbedingungen werden nicht unterstützt.",
+    "incomplete": "Kauf nicht verfügbar: das aktuelle Angebot konnte nicht vollständig geprüft werden.",
+    "quantity": "Anzahl der Serviceeinheiten",
     "productTitle": "Produkt",
     "fallback": "Dieses Produkt wird durch seine kanonische ID identifiziert. Weitere Produktinformationen sind noch nicht verfügbar.",
-    "details": "Konditionen ansehen",
+    "details": "Details ansehen",
     "recurring": "Wiederkehrender Betrag",
     "connection": "Separate Anschlussgebühr",
     "period": "Abrechnungszeitraum",
@@ -273,7 +288,10 @@
     "prepaid": "Vorauszahlung",
     "paymentUnspecified": "Siehe genehmigte Konditionen",
     "tax": "Steuerbehandlung",
-    "taxValues": { "included": "Im Betrag enthalten", "not_applicable": "Nicht anwendbar" },
+    "taxValues": {
+      "included": "Im Betrag enthalten",
+      "not_applicable": "Nicht anwendbar"
+    },
     "periodAnchors": {
       "calendar_month": "Nach Kalendermonaten",
       "instance_start": "Ab Beginn der Instanz",
@@ -290,7 +308,7 @@
     "page": {
       "eyebrow": "Katalog",
       "title": "KI-Werkzeuge",
-      "description": "Sehen Sie gespeicherte genehmigte Angebotskonditionen ein. Die aktuelle Verfügbarkeit ist ungeprüft."
+      "description": "Entdecken Sie aktive Produkte und ihre aktuellen Abrechnungsbedingungen."
     },
     "signInAction": "Konto öffnen",
     "backToCatalog": "Zurück zu den Produkten",
@@ -379,5 +397,87 @@
     "versioningHelp": "Das Dokument wird in einer separaten versionierten Datei veröffentlicht.",
     "revision": "Fassung: {version}",
     "tableAccessibilityLabel": "Scrollbare Tabelle des Rechtsdokuments"
+  },
+  "Billing": {
+    "title": "Abrechnungsdetails",
+    "description": "Ein Abrechnungskonto für alle deine Produkte. Wähle einen Kauf zur Zahlung; Vertrag und Verkäufer werden vor dem Öffnen geprüft.",
+    "open": "Abrechnung öffnen",
+    "refresh": "Abrechnung aktualisieren",
+    "refreshHint": "Aktualisiere nach Abschluss der Zahlung die Abrechnung, um deinen aktuellen Kontostand und den Zahlungsverlauf zu sehen.",
+    "close": "Abrechnung schließen",
+    "loading": "Wird geöffnet…",
+    "frameTitle": "Abrechnungskonto",
+    "verificationRequired": "Bestätigen Sie vor dem Öffnen Ihre E-Mail-Adresse.",
+    "requestId": "Anfrage-ID: {id}",
+    "errors": {
+      "session": "Melden Sie sich erneut an.",
+      "verification": "Bestätigen Sie zuerst Ihre E-Mail-Adresse.",
+      "identity": "Die Abrechnungsidentität muss geprüft werden. Kontaktieren Sie den Support.",
+      "pending": "Die Kontoerstellung läuft möglicherweise noch. Öffnen Sie die Abrechnung erneut für eine sichere Prüfung.",
+      "review": "Das Konto muss geprüft werden. Seine Identität bleibt reserviert.",
+      "serverAuth": "Der Abrechnungsdienst hat die Server-Zugangsdaten abgelehnt. Wenden Sie sich an den Support.",
+      "rejected": "Der Abrechnungsdienst hat die Anfrage abgelehnt. Wende dich an den Support.",
+      "response": "Der Abrechnungsdienst hat eine ungültige Antwort zurückgegeben. Wenden Sie sich an den Support.",
+      "client": "Ihr Abrechnungskonto ist noch nicht bereit. Kontaktieren Sie den Support; beim erneuten Öffnen wird dasselbe Konto verwendet.",
+      "configuration": "Die Abrechnungskonfiguration ist unvollständig. Kontaktieren Sie den Support.",
+      "unavailable": "Die Abrechnung ist vorübergehend nicht verfügbar. Versuchen Sie es erneut.",
+      "sdk": "Das Widget konnte nicht geladen werden. Öffnen Sie die Abrechnung erneut.",
+      "termsChanged": "Das Angebot oder erforderliche Dokumente haben sich geändert. Prüfen und akzeptieren Sie die aktuellen Bedingungen erneut.",
+      "purchaseConflict": "Der ursprüngliche Kauf oder seine Zuordnung muss geprüft werden. Prüfen Sie den gespeicherten Status und kontaktieren Sie den Support.",
+      "notPrepared": "Die Zahlungsbereitschaft des Kaufs ist nicht bestätigt. Prüfen Sie den gespeicherten Status oder setzen Sie die Wiederherstellung fort.",
+      "consent": "Die ursprüngliche rechtliche Zustimmung konnte nicht geprüft werden. Kontaktieren Sie den Support.",
+      "offer": "Das aktuelle Angebot ist nicht verfügbar oder wird nicht unterstützt. Versuchen Sie es später erneut.",
+      "financialPending": "Der Finanzvorgang ist ungeklärt. Prüfen Sie den ursprünglichen Kauf oder setzen Sie die Wiederherstellung fort; legen Sie keinen Ersatzkauf an."
+    },
+    "paymentTarget": "Bezahlen Sie nur den vorgesehenen Vertrag {agreement}, Verkäufer {seller}.",
+    "paymentTargetNote": "Diese Ansicht umfasst das gesamte Kundenkonto. Wählen Sie den angegebenen Vertrag im Widget; es gibt keinen Produktfilter.",
+    "selectedPurchase": "Ausgewählter Kauf",
+    "accountView": "Konto ohne ausgewählten Kauf ansehen",
+    "selectionUnavailable": "Der ausgewählte Kauf konnte nicht geprüft werden. Wähle ihn aus der Liste oder öffne die Produktseite.",
+    "purchaseOption": "{product} · Kauf {id}",
+    "selectedProduct": "Ausgewähltes Produkt: {product}",
+    "preparationRequired": "Schließe zuerst die Kaufvorbereitung auf der Produktseite ab."
+  },
+  "Purchase": {
+    "title": "Produktabrechnung",
+    "loading": "Ihr Kauf wird geladen…",
+    "guest": "Melden Sie sich an, um die Bedingungen zu prüfen und das Produkt zu kaufen. Öffentliche Bedingungen bleiben zugänglich.",
+    "signIn": "Anmelden oder registrieren",
+    "sessionFailed": "Ihre Sitzung konnte nicht geprüft werden. Der Kaufstatus ist unbekannt.",
+    "retry": "Erneut versuchen",
+    "verification": "Bestätigen Sie Ihre E-Mail vor dem Kauf oder dem Öffnen der Abrechnung.",
+    "verifyAction": "Konto öffnen und E-Mail bestätigen",
+    "buy": "Kaufen",
+    "refresh": "Gespeicherten Status prüfen",
+    "working": "Ihr Kauf wird vorbereitet…",
+    "unknown": "Der Kaufstatus ist nicht verfügbar. Prüfen Sie ihn vor einem neuen Kauf.",
+    "reviewTitle": "Vor dem Kauf prüfen",
+    "draftLegal": "Diese Rechtsdokumente sind Entwürfe und wurden rechtlich nicht freigegeben.",
+    "consents": "Erforderliche Zustimmungen",
+    "confirm": "Bedingungen akzeptieren und kaufen",
+    "retryConfirm": "Dieselbe Bestätigung erneut senden",
+    "confirmationUncertain": "Die Bestätigung könnte abgeschlossen sein. Prüfen Sie den gespeicherten Status oder senden Sie dieselbe Bestätigung erneut; die akzeptierten Bedingungen bleiben erhalten.",
+    "continue": "Fortsetzen",
+    "recover": "Wiederherstellung fortsetzen",
+    "manage": "Abonnement verwalten",
+    "termsChanged": "Die Bedingungen haben sich vor der Vorbereitung geändert. Prüfen Sie das aktuelle Angebot und stimmen Sie erneut zu.",
+    "pending": "Die Vorbereitung ist ungeklärt. Setzen Sie diesen Kauf fort; es wird kein Ersatzkauf angelegt.",
+    "reviewRequired": "Dieser Kauf muss geprüft werden. Bewahren Sie die Referenz für den Support auf.",
+    "reference": "Kaufreferenz: {id}",
+    "acceptedTerms": "Ursprünglich akzeptierte Bedingungen",
+    "awaitingVerification": "Der Zahlungsstatus wartet auf eine verbindliche Prüfung. Die Statusabfrage liest nur Portal-Daten und aktualisiert keine Abrechnungsdaten.",
+    "accessDeferred": "Zahlung und Produktzugang sind getrennt. Bezahlter Zugang sowie Nutzung/Kontingente folgen später; diese Ansicht bestätigt keine Aktivierung.",
+    "fullFunding": "Vollständige Deckung ist erforderlich.",
+    "fundingUnspecified": "Anforderungen zur Deckung sind nicht angegeben.",
+    "states": {
+      "created": "Kauf akzeptiert. Setzen Sie die Vorbereitung fort.",
+      "preparing": "Vorbereitung läuft. Fahren Sie für eine sichere Prüfung fort.",
+      "awaiting_external_result": "Das Abrechnungsergebnis ist unbekannt. Der ursprüngliche Kauf bleibt reserviert.",
+      "linked": "Abonnement vorbereitet",
+      "resolved_no_external_effect": "Dieser Kauf wurde ohne externe Auswirkung abgeschlossen.",
+      "failed_before_external_effect": "Dieser Kauf wurde vor der Erstellung von Finanzobjekten gestoppt.",
+      "manual_review": "Der Kauf erfordert Wiederherstellung oder eine Prüfung durch einen Mitarbeiter."
+    },
+    "managedInAccount": "Zahlung und Abonnementverwaltung stehen in deinem Konto zur Verfügung."
   }
 }

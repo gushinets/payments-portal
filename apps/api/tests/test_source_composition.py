@@ -155,6 +155,24 @@ async def test_lifespan_owns_one_resource_set_without_any_startup_http(monkeypat
     assert sources.preflight.closed
 
 
+async def test_partial_billing_configuration_leaves_portal_identity_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import main
+    from apps.api.tests.support.any709_step1 import step1_settings
+
+    monkeypatch.setenv("SKIP_LEGAL_SEED", "true")
+    monkeypatch.setattr(main, "settings", step1_settings(lbx_server_password="", lbx_widget_signing_secret=""))
+    application = main.create_app()
+    async with main.lifespan(application):
+        assert application.state.sources.lbx is None
+        assert application.state.sources.lbx_error == "lbx_connection_fields_required"
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=application), base_url="http://portal.test"
+        ) as browser:
+            response = await browser.get("/api/auth/session")
+        assert response.status_code == 401
+        assert application.state.sources.preflight.active_count == 0
+
+
 async def test_real_local_http_route_runs_while_new_source_admission_is_saturated(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -225,6 +243,25 @@ def test_production_basic_startup_allows_absent_source_but_forbids_provisional_s
     }
     configuration = kernel_settings(**production, kernel_base_url="", kernel_service_token="")
     assert configuration.kernel_base_url == ""
-    for url in ("http://kernel.test", "https://localhost", "https://kernel.example.test"):
+    for url in ("http://kernel.test", "https://localhost"):
         with pytest.raises(ValidationError):
             kernel_settings(**production, kernel_base_url=url)
+    with pytest.raises(ValidationError):
+        kernel_settings(**production, kernel_base_url="https://kernel.example.test", kernel_mock_enabled=True)
+
+
+async def test_production_configured_source_is_constructible_and_has_its_own_provenance() -> None:
+    configuration = kernel_settings(
+        app_env="production",
+        app_public_base_url="https://portal.example.test",
+        cors_allow_origins=("https://portal.example.test",),
+        kernel_base_url="https://kernel.example.test",
+    )
+    assert not configuration.kernel_mock_enabled
+    async with source_resources(
+        configuration,
+        kernel_transport=httpx.MockTransport(lambda request: httpx.Response(200, json=manifest_fixture())),
+    ) as sources:
+        async with sources.preflight.operation() as budget:
+            result = await sources.require_kernel().fetch_manifest(budget=budget)
+    assert result.provenance is SourceProvenance.CONFIGURED_SOURCE

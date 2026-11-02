@@ -15,6 +15,23 @@ x-api-environment: &api-environment
   APP_ENV: production
   INSTANCE_TENANT_ID: ${INSTANCE_TENANT_ID:?INSTANCE_TENANT_ID is required}
   INSTANCE_REGION: ${INSTANCE_REGION:?INSTANCE_REGION is required}
+  KERNEL_MOCK_ENABLED: ${KERNEL_MOCK_ENABLED:-0}
+  KERNEL_BASE_URL: ${KERNEL_BASE_URL:-}
+  KERNEL_SERVICE_TOKEN: ${KERNEL_SERVICE_TOKEN:-}
+  LBX_BASE_URL: ${LBX_BASE_URL:-}
+  LBX_SERVER_USERNAME: ${LBX_SERVER_USERNAME:-}
+  LBX_SERVER_PASSWORD: ${LBX_SERVER_PASSWORD:-}
+  LBX_WIDGET_SIGNING_SECRET: ${LBX_WIDGET_SIGNING_SECRET:-}
+  LBX_SELLER_ORGANIZATION_ID: ${LBX_SELLER_ORGANIZATION_ID:-}
+  LBX_CURRENCY_ID: ${LBX_CURRENCY_ID:-1}
+  LBX_CURRENCY: ${LBX_CURRENCY:-RUB}
+  LBX_CONNECT_TIMEOUT_SECONDS: ${LBX_CONNECT_TIMEOUT_SECONDS:-1}
+  LBX_READ_TIMEOUT_SECONDS: ${LBX_READ_TIMEOUT_SECONDS:-2}
+  LBX_MAX_RESPONSE_BYTES: ${LBX_MAX_RESPONSE_BYTES:-524288}
+  LBX_MAX_GET_ATTEMPTS: ${LBX_MAX_GET_ATTEMPTS:-5}
+  LBX_RETRY_DELAY_SECONDS: ${LBX_RETRY_DELAY_SECONDS:-0.1}
+  LBX_MAX_RETRY_DELAY_SECONDS: ${LBX_MAX_RETRY_DELAY_SECONDS:-2}
+  MAPPING_OPERATOR_LOCK_FILE: ${MAPPING_OPERATOR_LOCK_FILE:-/run/payments-portal/operator.lock}
   POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
   POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
@@ -86,6 +103,8 @@ services:
       migrate:
         condition: service_completed_successfully
     environment: *api-environment
+    volumes:
+      - mapping_operator_locks:/run/payments-portal
     networks:
       - edge
       - backend
@@ -145,6 +164,7 @@ services:
       - edge
 
 volumes:
+  mapping_operator_locks:
   postgres18_prod_data:
   caddy_data:
   caddy_config:

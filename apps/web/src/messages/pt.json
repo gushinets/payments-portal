@@ -41,7 +41,10 @@
       "passwordPlaceholder": "Digite sua senha",
       "newPasswordPlaceholder": "De 12 a 128 caracteres",
       "passwordConfirmLabel": "Repita a senha",
-      "passwordConfirmPlaceholder": "Digite a senha novamente"
+      "passwordConfirmPlaceholder": "Digite a senha novamente",
+      "firstNameLabel": "Nome (opcional)",
+      "surnameLabel": "Sobrenome (opcional)",
+      "patronymicLabel": "Patronímico (opcional)"
     },
     "passwordRequirements": {
       "label": "Requisitos da senha",
@@ -144,8 +147,8 @@
       "emailUnverified": "E-mail não verificado"
     },
     "products": {
-      "title": "Produtos",
-      "description": "Produtos publicados e suas condições salvas. As informações sobre assinaturas, acesso e uso estarão disponíveis mais adiante.",
+      "title": "Meus produtos",
+      "description": "Suas compras aceitas. Consulte os pagamentos e as assinaturas no faturamento.",
       "detailAction": "Ver detalhes do produto",
       "state": {
         "commercial": {
@@ -163,7 +166,14 @@
       },
       "action": {
         "description": "Abra a página de informações do produto."
-      }
+      },
+      "allProducts": "Todos os produtos",
+      "loading": "Carregando seus produtos…",
+      "empty": "Você ainda não tem compras aceitas. Escolha um produto no catálogo.",
+      "unavailable": "Não foi possível carregar suas compras. Você pode abrir o faturamento separadamente.",
+      "loadMore": "Mostrar mais",
+      "prepared": "Assinatura preparada",
+      "pending": "A preparação da compra está incompleta"
     }
   },
   "PasswordReset": {
@@ -239,7 +249,7 @@
     "eyebrow": "Ferramentas de IA",
     "hero": {
       "heading": "Ferramentas de IA para <em>o dia a dia</em>",
-      "description": "Explore as ferramentas de IA publicadas e suas condições salvas. Escolha uma ferramenta para sua tarefa.",
+      "description": "Explore as ferramentas de IA ativas e suas condições atuais nos detalhes. Escolha uma ferramenta para sua tarefa.",
       "primaryAction": "Abrir conta",
       "secondaryAction": "Explorar ferramentas"
     },
@@ -251,18 +261,23 @@
     }
   },
   "CatalogPreview": {
-    "loading": "Carregando as ofertas aprovadas…",
-    "empty": "Não há prévias de ofertas aprovadas disponíveis.",
-    "failed": "As prévias das ofertas estão indisponíveis. Tente novamente.",
+    "loading": "Carregando produtos…",
+    "empty": "Nenhum produto ativo disponível.",
+    "failed": "Produtos ou ofertas atuais indisponíveis. Tente novamente.",
     "retry": "Tentar novamente",
-    "notFound": "Nenhuma oferta aprovada foi encontrada para este produto.",
+    "notFound": "Este produto está indisponível.",
     "ambiguous": "Indisponível: existe mais de uma oferta aprovada para este produto.",
-    "simulated": "SIMULAÇÃO — apenas prévia de teste",
-    "unverified": "Condições aprovadas — disponibilidade atual não verificada",
-    "previewNote": "As condições salvas são exibidas para consulta. A compra está indisponível; esta prévia não concede acesso ao produto.",
+    "simulated": "Fonte dos produtos: serviço de teste",
+    "unverified": "Oferta LBX atual — sujeita a confirmação",
+    "previewNote": "São exibidos os valores atuais de cobrança. As condições de compra exigem confirmação separada; visualizar uma oferta não concede acesso.",
+    "detailsRequired": "Abra os detalhes para verificar a oferta atual.",
+    "unmapped": "Compra indisponível: nenhuma oferta de cobrança vinculada.",
+    "unsupported": "Compra indisponível: estas condições não são compatíveis.",
+    "incomplete": "Compra indisponível: não foi possível verificar totalmente a oferta atual.",
+    "quantity": "Quantidade de unidades do serviço",
     "productTitle": "Produto",
     "fallback": "Este produto é identificado pelo seu ID canônico. Informações adicionais ainda não estão disponíveis.",
-    "details": "Ver condições",
+    "details": "Ver detalhes",
     "recurring": "Cobrança recorrente",
     "connection": "Cobrança de conexão separada",
     "period": "Período de cobrança",
@@ -273,7 +288,10 @@
     "prepaid": "Pagamento antecipado",
     "paymentUnspecified": "Consulte as condições aprovadas",
     "tax": "Tratamento tributário",
-    "taxValues": { "included": "Incluído no valor", "not_applicable": "Não se aplica" },
+    "taxValues": {
+      "included": "Incluído no valor",
+      "not_applicable": "Não se aplica"
+    },
     "periodAnchors": {
       "calendar_month": "Por mês civil",
       "instance_start": "A partir do início da instância",
@@ -290,7 +308,7 @@
     "page": {
       "eyebrow": "Catálogo",
       "title": "Ferramentas de IA",
-      "description": "Consulte as condições aprovadas salvas. A disponibilidade atual não foi verificada."
+      "description": "Explore os produtos ativos e suas condições atuais de cobrança."
     },
     "signInAction": "Abrir conta",
     "backToCatalog": "Voltar aos produtos",
@@ -379,5 +397,87 @@
     "versioningHelp": "O documento é publicado em um arquivo separado e versionado.",
     "revision": "Revisão: {version}",
     "tableAccessibilityLabel": "Tabela rolável do documento jurídico"
+  },
+  "Billing": {
+    "title": "Dados de cobrança",
+    "description": "Um único espaço de faturamento para todos os seus produtos. Selecione uma compra para pagar; o contrato e o vendedor serão verificados antes da abertura.",
+    "open": "Abrir cobrança",
+    "refresh": "Atualizar cobrança",
+    "refreshHint": "Após concluir o pagamento, atualize a cobrança para ver seu saldo atual e o histórico de pagamentos.",
+    "close": "Fechar cobrança",
+    "loading": "Abrindo cobrança…",
+    "frameTitle": "Conta de cobrança",
+    "verificationRequired": "Verifique seu email antes de abrir a cobrança.",
+    "requestId": "ID da solicitação: {id}",
+    "errors": {
+      "session": "Entre novamente para abrir a cobrança.",
+      "verification": "Verifique seu email primeiro.",
+      "identity": "A identidade de cobrança precisa de revisão. Fale com o suporte.",
+      "pending": "A criação da conta pode estar em andamento. Abra a cobrança novamente para verificar com segurança.",
+      "review": "A conta precisa de revisão. Sua identidade continua reservada.",
+      "serverAuth": "O serviço recusou as credenciais do servidor. Entre em contato com o suporte.",
+      "rejected": "O serviço de faturamento recusou a solicitação. Entre em contato com o suporte.",
+      "response": "O serviço de cobrança retornou uma resposta inválida. Entre em contato com o suporte.",
+      "client": "Sua conta de cobrança ainda não está pronta. Fale com o suporte; a reabertura usará a mesma conta.",
+      "configuration": "A configuração de cobrança está incompleta. Fale com o suporte.",
+      "unavailable": "A cobrança está temporariamente indisponível. Tente novamente.",
+      "sdk": "Não foi possível carregar o widget. Abra a cobrança novamente.",
+      "termsChanged": "A oferta ou os documentos obrigatórios mudaram. Revise e aceite as condições atuais novamente.",
+      "purchaseConflict": "A compra original ou seu vínculo precisa de revisão. Consulte o estado salvo e fale com o suporte.",
+      "notPrepared": "Não foi confirmado que a compra está pronta para pagamento. Consulte o estado salvo ou continue a recuperação.",
+      "consent": "Não foi possível verificar o consentimento jurídico original. Fale com o suporte.",
+      "offer": "A oferta atual está indisponível ou não é compatível. Tente revisá-la mais tarde.",
+      "financialPending": "A operação financeira está sem resolução. Consulte a compra original ou continue a recuperação; não crie uma substituta."
+    },
+    "paymentTarget": "Pague somente o contrato indicado {agreement}, vendedor {seller}.",
+    "paymentTargetNote": "Esta visão abrange toda a conta do cliente. Selecione o contrato indicado no widget; não há filtro por produto.",
+    "selectedPurchase": "Compra selecionada",
+    "accountView": "Ver a conta sem selecionar uma compra",
+    "selectionUnavailable": "Não foi possível verificar a compra selecionada. Selecione-a na lista ou abra a página do produto.",
+    "purchaseOption": "{product} · compra {id}",
+    "selectedProduct": "Produto selecionado: {product}",
+    "preparationRequired": "Primeiro conclua a preparação da compra na página do produto."
+  },
+  "Purchase": {
+    "title": "Cobrança do produto",
+    "loading": "Carregando sua compra…",
+    "guest": "Entre para revisar as condições e comprar este produto. As condições públicas continuam disponíveis.",
+    "signIn": "Entrar ou criar conta",
+    "sessionFailed": "Não foi possível verificar sua sessão. O estado da compra é desconhecido.",
+    "retry": "Tentar novamente",
+    "verification": "Verifique seu e-mail antes de comprar ou abrir a cobrança.",
+    "verifyAction": "Abrir a conta e verificar o e-mail",
+    "buy": "Comprar",
+    "refresh": "Consultar o estado salvo",
+    "working": "Preparando sua compra…",
+    "unknown": "O estado da compra está indisponível. Consulte-o antes de iniciar uma compra.",
+    "reviewTitle": "Revisar antes de comprar",
+    "draftLegal": "Estes documentos jurídicos são rascunhos sem aprovação jurídica.",
+    "consents": "Consentimentos obrigatórios",
+    "confirm": "Aceitar as condições e comprar",
+    "retryConfirm": "Repetir a mesma confirmação",
+    "confirmationUncertain": "A confirmação pode ter sido concluída. Consulte o estado salvo ou repita a mesma confirmação; as condições aceitas serão preservadas.",
+    "continue": "Continuar",
+    "recover": "Continuar recuperação",
+    "manage": "Gerenciar assinatura",
+    "termsChanged": "As condições mudaram antes da preparação. Revise a oferta atual e aceite novamente.",
+    "pending": "A preparação continua sem resolução. Continue esta compra; nenhuma substituta será criada.",
+    "reviewRequired": "Esta compra precisa de revisão. Guarde a referência para falar com o suporte.",
+    "reference": "Referência da compra: {id}",
+    "acceptedTerms": "Condições aceitas originalmente",
+    "awaitingVerification": "O pagamento aguarda verificação oficial. Consultar o estado salvo lê apenas registros do Portal e não atualiza os dados de cobrança.",
+    "accessDeferred": "Pagamento e acesso ao produto são etapas distintas. O acesso pago e o uso/as cotas serão implementados depois; esta tela não confirma ativação.",
+    "fullFunding": "É necessário cobrir o valor integral.",
+    "fundingUnspecified": "Os requisitos de cobertura não foram informados.",
+    "states": {
+      "created": "Compra aceita. Continue a preparação.",
+      "preparing": "Preparação em andamento. Continue para verificar com segurança.",
+      "awaiting_external_result": "O resultado na cobrança é desconhecido. A compra original continua reservada.",
+      "linked": "Assinatura preparada",
+      "resolved_no_external_effect": "A compra foi resolvida sem efeito externo.",
+      "failed_before_external_effect": "A compra parou antes da criação de objetos financeiros.",
+      "manual_review": "A compra precisa de recuperação ou revisão por um operador."
+    },
+    "managedInAccount": "O pagamento e o gerenciamento da assinatura estão disponíveis na sua conta."
   }
 }

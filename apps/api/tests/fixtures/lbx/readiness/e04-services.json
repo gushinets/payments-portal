@@ -1,0 +1,35 @@
+{
+    "code": 200,
+    "response": [
+      {
+        "archive": 0,
+        "bulk_service": false,
+        "catalog_id": 5,
+        "catalog_service_id": 19,
+        "description": "НЕ УДАЛЯТЬ | ANY504 | TEST | proposal_ai | MONTHLY ACCESS",
+        "discounts": [],
+        "enabled_by_default": 1,
+        "full_description": "Тестовый месячный доступ к proposal_ai для локальной интеграции ANY-504. НЕ УДАЛЯТЬ.",
+        "hidden_for_user": 0,
+        "max_multiplicator": 1.0,
+        "min_multiplicator": 1.0,
+        "outer_id": "ANY504_RU_PROPOSAL_AI_MONTHLY_ACCESS_V1",
+        "payment_object": 0,
+        "periodic_service": 1,
+        "prices": [
+          {
+            "bulk_include_amount": 0,
+            "bulk_price": 0.0,
+            "connection_price": 0.0,
+            "period_id": 1,
+            "price": 100.0,
+            "price_start_date": "2026-10-01 00:00:00"
+          }
+        ],
+        "tariff_id": 32,
+        "tariff_service_id": 1,
+        "user_available": 0,
+        "user_can_set_mul": 0
+      }
+    ]
+  }

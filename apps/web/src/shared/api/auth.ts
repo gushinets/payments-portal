@@ -28,6 +28,9 @@ export type SubmitAuthValues = {
   password: string;
   personalConsent: boolean;
   offerConsent: boolean;
+  firstName?: string;
+  surname?: string;
+  patronymic?: string;
 };
 
 export type SubmitAuthOptions = {
@@ -61,7 +64,10 @@ export async function submitAuth(
       email: values.email,
       password: values.password,
       personal_consent: values.personalConsent,
-      offer_consent: values.offerConsent
+      offer_consent: values.offerConsent,
+      ...(values.firstName ? { first_name: values.firstName } : {}),
+      ...(values.surname ? { surname: values.surname } : {}),
+      ...(values.patronymic ? { patronymic: values.patronymic } : {})
     };
     return postJson<RegisterResponse>(
       "/api/auth/register",

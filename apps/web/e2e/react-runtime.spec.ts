@@ -5,6 +5,8 @@ import { simulatedProduct } from "../tests/fixtures/catalog";
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/catalog/products", (route) => route.fulfill({ json: { products: [simulatedProduct] } }));
+  await page.route("**/api/purchase-intents", (route) => route.fulfill({ json: { purchases: [], next_cursor: null } }));
+  await page.route("**/api/purchase-intents/current?*", (route) => route.fulfill({ json: { purchase: null } }));
 });
 
 const sessionTokenStorageKey = "anytoolai_session_token_v1";
@@ -123,9 +125,9 @@ test("public portal and account cabinet render without runtime warnings", async 
     page.getByRole("main").getByText(email, { exact: true })
   ).toBeVisible();
   const products = page.getByRole("main").getByRole("region", { name: ruMessages.Account.products.title });
-  await expect(products.getByText("proposal_ai", { exact: true })).toBeVisible();
-  await expect(products.getByRole("article")).toHaveCount(1);
-  await expect(products.getByText(ruMessages.CatalogPreview.simulated)).toBeVisible();
+  await expect(products.getByText(ruMessages.Account.products.empty)).toBeVisible();
+  await expect(products.getByRole("article")).toHaveCount(0);
+  await expect(products.getByRole("link", { name: ruMessages.Account.products.allProducts })).toHaveAttribute("href", "/ru/products");
   await captureVisualEvidence(page, testInfo, "account");
 
   expect(runtimeIssues).toEqual([]);

@@ -15,12 +15,12 @@ and the accepted
 cross-cutting operational constraints; it does not redefine target commercial
 ownership, persistence, or paid-access derivation.
 
-The direct-provider/CloudPayments runtime and Portal-owned commercial/access
-lifecycle have been physically removed. The target persistence graph exists,
-starts empty, and ANY-664's restricted publication path commits immutable
-commercial mapping revisions. Purchase orchestration, subscription
-reconciliation, paid-access derivation and invalidation delivery remain
-unimplemented. The two source-catalog projection tables remain inert.
+The direct-provider runtime and Portal-owned commercial/access lifecycle are
+removed. ANY-709 implements live product links/offers, accepted purchase holds
+and request-driven financial preparation/recovery. Billing workers, paid-access
+derivation and invalidation delivery remain later work. Source-catalog
+projection tables remain inert. Dated delivery evidence belongs to
+[ANY-709](https://linear.app/paveldik/issue/ANY-709).
 
 ## Cross-cutting critical paths
 
@@ -57,9 +57,9 @@ unimplemented. The two source-catalog projection tables remain inert.
 - Webhook receipt, Widget callback, outbound command success, payment state, or
   manual operator input alone never grants paid access.
 
-These are target constraints. Provider command flows, webhook processing,
-reconciliation workers, paid-access derivation, and invalidation delivery are
-not current runtime behavior.
+These constraints govern implemented customer/financial commands and later
+webhook processing, reconciliation workers, paid-access derivation and
+invalidation delivery. The latter producers are not implemented by ANY-709.
 
 ## Transaction, idempotency, and retry contract
 
@@ -71,10 +71,10 @@ first helper the logical owner, and helpers do not finalize the outer
 transaction.
 
 Current transaction boundaries are documented in
-[ARCHITECTURE.md](../ARCHITECTURE.md#current-transaction-map). In addition to
-identity/legal writes, the restricted ANY-664 publication path commits
-`commercial_mapping_revisions`; the remaining target billing producers are
-future work.
+[ARCHITECTURE.md](../ARCHITECTURE.md#current-transaction-map): identity/legal,
+product-link publication, accepted purchases and fenced financial preparation
+have current writers. Worker reconciliation and paid-access delivery remain
+later work.
 
 Future database retry decisions use these semantics:
 
@@ -106,8 +106,9 @@ correctness, idempotency, reconciliation, or replay store.
 - Under the [accepted live-source amendment](superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md),
   complete live Kernel/LBX reads are required for publication and genuinely new
   purchases. Failed/partial reads refuse that operation without catalog-age or
-  stored-source fallback. Approved immutable terms remain available for DB-only
-  browsing; the two source-catalog projection tables are inert. Subscription
+  stored-source fallback. Under the precise ticket decisions linked by ADR 0005,
+  current browsing reads sources; PostgreSQL preserves immutable links/accepted
+  history. The two source-catalog projection tables are inert. Subscription
   reconciliation/trust and AccessSnapshot deadlines are unchanged.
 - Mapping revisions, accepted purchase evidence and purchased allowances are
   immutable where the clean migration installs PostgreSQL protections.

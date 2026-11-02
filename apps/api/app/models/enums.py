@@ -49,6 +49,15 @@ class PurchaseIntentState(StrEnum):
     MANUAL_REVIEW = "manual_review"
 
 
+class ExternalCreateOperationState(StrEnum):
+    PENDING = "pending"
+    PROVEN_NOT_SENT = "proven_not_sent"
+    POSSIBLE_SEND = "possible_send"
+    UNKNOWN = "unknown"
+    BOUND = "bound"
+    MANUAL_REVIEW = "manual_review"
+
+
 class ExternalCreateOperationKind(StrEnum):
     CUSTOMER = "customer"
     AGREEMENT = "agreement"
@@ -62,6 +71,7 @@ class ExternalSubscriptionLifecycleStatus(StrEnum):
 
 
 class ExternalSubscriptionFinancialAccessStatus(StrEnum):
+    UNVERIFIED = "unverified"
     ALLOWED = "allowed"
     BLOCKED = "blocked"
 
@@ -83,6 +93,7 @@ __all__ = [
     "BillingStateObservationKind",
     "ExternalBillingCustomerBindingState",
     "ExternalCreateOperationKind",
+    "ExternalCreateOperationState",
     "ExternalSubscriptionCommercialAccessStatus",
     "ExternalSubscriptionFinancialAccessStatus",
     "ExternalSubscriptionLifecycleStatus",

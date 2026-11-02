@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 
-import type { CatalogProductResponse } from "@/generated/api-contracts/types.gen";
+import type { CatalogProductResponse, SessionUserResponse } from "@/generated/api-contracts/types.gen";
+import { ProductBilling } from "@/features/billing";
 import { Link } from "@/i18n/navigation";
 import { useIntlLocale } from "@/i18n/use-formatting-locale";
 import { getCatalogProduct, getCatalogProducts } from "@/shared/api/catalog";
@@ -21,20 +22,26 @@ function OfferPreview({ product }: { product: CatalogProductResponse }) {
   const intlLocale = useIntlLocale();
   const offer = product.offer;
 
-  if (!offer || product.availability === "UNAVAILABLE_AMBIGUOUS_OFFERS") {
+  if (!offer) {
+    const stateKey = {
+      DETAILS_REQUIRED: "detailsRequired",
+      UNMAPPED: "unmapped",
+      OFFER_UNSUPPORTED: "unsupported",
+      OFFER_INCOMPLETE: "incomplete",
+      CURRENT_OFFER: "incomplete"
+    } as const;
     return (
       <div className="approved-offer">
-        {product.evidence_mode === "SIMULATED" && <p className="badge badge-demo">{t("simulated")}</p>}
-        <p className="card-copy">{t("ambiguous")}</p>
+        {product.kernel_provenance === "SIMULATED" && <p className="badge badge-demo">{t("simulated")}</p>}
+        <p className="card-copy">{t(stateKey[product.availability])}</p>
       </div>
     );
   }
 
   return (
     <div className="approved-offer">
-      <p className="badge badge-demo">
-        {t(product.availability === "SIMULATED_PREVIEW" ? "simulated" : "unverified")}
-      </p>
+      {product.kernel_provenance === "SIMULATED" && <p className="badge badge-demo">{t("simulated")}</p>}
+      <p className="badge badge-demo">{t("unverified")}</p>
       <p className="card-copy">{t("previewNote")}</p>
       <dl className="approved-offer-terms">
         <div>
@@ -54,15 +61,13 @@ function OfferPreview({ product }: { product: CatalogProductResponse }) {
           </dd>
         </div>
         <div>
-          <dt>{t("allowance")}</dt>
-          <dd>{t("allowanceValue", { quantity: String(offer.allowance.quantity), unit: offer.allowance.unit })}</dd>
+          <dt>{t("quantity")}</dt>
+          <dd>{offer.commercial_quantity}</dd>
         </div>
-        <div><dt>{t("metric")}</dt><dd>{offer.allowance.metric_key}</dd></div>
         <div>
           <dt>{t("terms")}</dt>
-          <dd>{t(offer.terms.prepaid ? "prepaid" : "paymentUnspecified")}</dd>
+          <dd>{t(offer.prepaid ? "prepaid" : "paymentUnspecified")}</dd>
         </div>
-        <div><dt>{t("tax")}</dt><dd>{t(`taxValues.${offer.terms.tax_treatment}`)}</dd></div>
       </dl>
     </div>
   );
@@ -71,10 +76,14 @@ function OfferPreview({ product }: { product: CatalogProductResponse }) {
 export function CatalogPreviewClient({
   productId,
   headingLevel = 2,
-  accountStatuses
+  accountStatuses,
+  billingUser,
+  onOfferAvailability
 }: {
   productId?: string;
   headingLevel?: 2 | 3;
+  billingUser?: SessionUserResponse;
+  onOfferAvailability?: (available: boolean) => void;
   accountStatuses?: {
     [slot in "access" | "usage"]: { label: string; description: string };
   };
@@ -87,6 +96,7 @@ export function CatalogPreviewClient({
 
   useEffect(() => {
     let current = true;
+    onOfferAvailability?.(false);
     const request = productId === undefined
       ? getCatalogProducts().then((response) => response.products)
       : getCatalogProduct(productId).then((product) => [product]);
@@ -95,6 +105,7 @@ export function CatalogPreviewClient({
         if (current) {
           setLoadedId(productId);
           setState({ kind: "ready", products });
+          onOfferAvailability?.(products[0]?.availability === "CURRENT_OFFER");
         }
       },
       (error: unknown) => {
@@ -107,7 +118,7 @@ export function CatalogPreviewClient({
       }
     );
     return () => { current = false; };
-  }, [productId, attempt]);
+  }, [productId, attempt, onOfferAvailability]);
 
   const ProductHeading = headingLevel === 2 ? "h2" : "h3";
   const visible: PreviewState = loadedId === productId ? state : { kind: "loading" };
@@ -145,6 +156,7 @@ export function CatalogPreviewClient({
                   ))}
                 </dl>
               )}
+              {billingUser && <ProductBilling productId={product.product_id} offerAvailable={product.availability === "CURRENT_OFFER"} user={billingUser} headingLevel={4} />}
               {productId === undefined && (
                 <div className="tool-card-bottom">
                   <Link className="tool-detail-action" href={`/products/${encodeURIComponent(product.product_id)}`}>

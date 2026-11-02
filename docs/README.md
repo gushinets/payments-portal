@@ -1,7 +1,7 @@
 # Documentation Index
 
 Status: authoritative index
-Last verified: 2026-09-25
+Last verified: 2026-11-01
 
 Start with the smallest document that matches the task.
 
@@ -12,6 +12,8 @@ Start with the smallest document that matches the task.
   boundary design, then the accepted Portal-Kernel access-contract design.
   The accepted live-source amendment narrowly supersedes their source-catalog
   mirroring/new-sale TTL requirements; paid-access rules are unchanged.
+  ADR 0005 links only the dated ANY-504 C1-C4 exceptions and ANY-709 results;
+  apply those precise exceptions before affected baseline rules.
   Retained billing documents cannot override that target authority chain.
 - `ARCHITECTURE.md` is the factual current-state map and records clearly
   labelled target or transitional constraints where needed.
@@ -23,8 +25,9 @@ Start with the smallest document that matches the task.
 - `CODING_CONVENTIONS.md` is the ratchet for new and changed code.
 - `AGENTS.md` files provide concise working instructions and navigation; their
   instruction precedence is defined by the root guide.
-- Linear issues and execution plans define temporary implementation scope, not
-  permanent architecture authority.
+- Ordinary Linear issue text and execution plans define implementation scope.
+  Only the fixed dated decision section explicitly linked by ADR 0005
+  supplies the ANY-709 contract exceptions; reports and checkboxes do not.
 
 ## Product and design
 
@@ -43,10 +46,16 @@ Start with the smallest document that matches the task.
 1. [ADR 0005: External billing boundary](architecture/decisions/0005-external-billing-boundary.md)
 2. [External Billing Boundary Design](superpowers/specs/2026-09-15-external-billing-boundary-design.md)
 3. [Portal ↔ Kernel Access Contract Design](superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md)
-4. [Accepted live-source commercial admission amendment](superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md) — owner confirmation on 2026-10-20 in ANY-664 / PR #139; narrow source-read/admission supersession, paid trust unchanged.
+4. [Accepted live-source commercial admission amendment](superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md) — owner confirmation on 2026-10-20 in ANY-664 / PR #139; narrow source-read/admission supersession, paid trust unchanged. Both specification bodies retain their PR-base content.
 
 ### Implementation handoffs and references
 
+- [ANY-709 implementation plan and delivery record](exec-plans/completed/ANY-709-implementation-plan.md)
+  — Steps 1-4 DONE as implementation milestones; dated source/verification
+  evidence, the accepted cabinet layout and open final-review follow-ups.
+  The original proposal remains in Git. Normative dated C1-C4 decisions are in
+  [ANY-504](https://linear.app/paveldik/issue/ANY-504); ticket acceptance remains in
+  [ANY-709](https://linear.app/paveldik/issue/ANY-709).
 - [ANY-664 completed implementation plan](exec-plans/completed/ANY-664-implementation-plan.md)
   — all eight Portal steps DONE; implementation-commit CI evidence, retained
   real-enablement gates and handoff to ANY-504 program Step 7
@@ -70,7 +79,7 @@ Start with the smallest document that matches the task.
 - [Billing authority](architecture/billing-authority.md) — historical/superseded
   reference only; not current-state or target authority
 - [Payment Portal data model](architecture/payment-portal-data-model.md) —
-  authoritative current as-built 25-table schema reference
+  authoritative current as-built 27-table schema reference
 - [Platform Kernel contract boundary](architecture/platform-kernel-contract.md)
   — superseded planned contract; retained historical context
 
@@ -84,6 +93,7 @@ Start with the smallest document that matches the task.
 ## Engineering
 
 - [Development](engineering/DEVELOPMENT.md)
+- [Billing operations](engineering/ANY-709-billing-runbook.md) — current configuration, commands, migration transitions, diagnosis and recovery.
 - [Testing](engineering/TESTING.md)
 - [Agent workflow](engineering/AGENT_WORKFLOW.md)
 - [Coding conventions](engineering/CODING_CONVENTIONS.md)

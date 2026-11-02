@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -19,7 +21,12 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures/lbx"
 USERNAME = "simulated-lbx-server-user"
 PASSWORD = "simulated-lbx-server-password"
 TOKEN = "simulated-lbx-session-token"
-ACCOUNT = "simulated-ru-lbx-account"
+ACCOUNT = (
+    "lbx-connection:v2:"
+    + hashlib.sha256(
+        json.dumps(["anytoolai", "ru", "https://lbx-client.test"], separators=(",", ":")).encode()
+    ).hexdigest()
+)
 TARIFF = 701
 SERVICE = 1001
 
@@ -29,10 +36,12 @@ def lbx_settings(**overrides: Any) -> Settings:
     values.update(
         kernel_base_url="",
         kernel_service_token="",
+        kernel_mock_enabled=False,
         lbx_base_url="https://lbx-client.test",
-        lbx_external_billing_account_id=ACCOUNT,
         lbx_server_username=USERNAME,
         lbx_server_password=PASSWORD,
+        lbx_widget_signing_secret="simulated-widget-secret",
+        lbx_seller_organization_id="21",
         lbx_retry_delay_seconds=0,
     )
     values.update(overrides)
@@ -73,7 +82,16 @@ def admission(configuration: Settings) -> PreflightAdmission:
 async def lbx_source(
     transport: httpx.AsyncBaseTransport, **overrides: Any
 ) -> AsyncIterator[tuple[LbxServerClient, PreflightAdmission]]:
+    fixture_account_id = overrides.pop("fixture_account_id", None)
     config = lbx_settings(**overrides)
+    if fixture_account_id is not None:
+
+        class FixtureScopedSettings(Settings):
+            @property
+            def lbx_external_billing_account_id(self) -> str:
+                return fixture_account_id
+
+        config = FixtureScopedSettings(_env_file=None, **config.model_dump())
     owner = admission(config)
     client = LbxServerClient(config, transport=transport)
     try:

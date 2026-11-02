@@ -4,6 +4,7 @@ import ruMessages from "../src/messages/ru.json";
 import { simulatedProduct } from "../tests/fixtures/catalog";
 
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/purchase-intents", (route) => route.fulfill({ json: { purchases: [], next_cursor: null } }));
   await page.route("**/api/catalog/products", (route) => route.fulfill({ json: { products: [simulatedProduct] } }));
 });
 
@@ -134,17 +135,9 @@ test("account logout revokes the session and returns to the signed-out account s
     await expect(
       accountMain.getByRole("heading", { name: "Подтвердите email", exact: true })
     ).toBeVisible();
-    const products = accountMain.getByRole("region", { name: "Продукты" });
-    await expect(products.getByText("proposal_ai", { exact: true })).toBeVisible();
-    await expect(products.getByRole("article")).toHaveCount(1);
-    await expect(products.getByText(ruMessages.CatalogPreview.simulated)).toBeVisible();
-    await expect(products.getByRole("link", { name: ruMessages.CatalogPreview.details }))
-      .toHaveAttribute("href", "/ru/products/proposal_ai");
-    const card = products.getByRole("article");
-    for (const slot of ["access", "usage"] as const) {
-      await expect(card.getByText(ruMessages.Account.products.state[slot].label, { exact: true })).toBeVisible();
-      await expect(card.getByText(ruMessages.Account.products.state[slot].description, { exact: true })).toBeVisible();
-    }
+    const products = accountMain.getByRole("region", { name: ruMessages.Account.products.title });
+    await expect(products.getByRole("article")).toHaveCount(0);
+    await expect(products.getByRole("link", { name: ruMessages.Account.products.allProducts })).toHaveAttribute("href", "/ru/products");
 
     await accountMain.getByRole("button", { name: /Выйти/ }).click();
     await expect(

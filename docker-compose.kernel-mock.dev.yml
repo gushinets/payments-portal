@@ -43,11 +43,7 @@ services:
 
   api:
     environment:
+      KERNEL_MOCK_ENABLED: "1"
       KERNEL_BASE_URL: ${KERNEL_BASE_URL:-http://kernel-mock:8091}
       KERNEL_SERVICE_TOKEN: ${KERNEL_SERVICE_TOKEN:?explicit development service token required}
-      MAPPING_OPERATOR_UIDS: ${MAPPING_OPERATOR_UIDS:?explicit CLI execution UID allowlist required}
-      MAPPING_APPROVAL_FILE: /app/.kernel-walkthrough/approval.json
-      MAPPING_SOURCE_INPUTS_FILE: /app/.kernel-walkthrough/inputs.json
-    volumes:
-      - ./.harness/kernel-walkthrough:/app/.kernel-walkthrough
     # Deliberately no depends_on: missing sources never gate Portal startup.

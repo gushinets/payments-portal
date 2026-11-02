@@ -64,6 +64,9 @@ class User(Base):
     tenant_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     region: Mapped[str] = mapped_column(ForeignKey("regions.code"), nullable=False, index=True)
     email: Mapped[str] = mapped_column(String(320), nullable=False)
+    first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    surname: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    patronymic: Mapped[str | None] = mapped_column(String(100), nullable=True)
     email_normalized: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[UserStatus] = mapped_column(

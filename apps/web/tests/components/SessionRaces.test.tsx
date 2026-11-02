@@ -22,7 +22,7 @@ function deferred() {
 function renderEntry(entry: string) {
   window.history.replaceState(null, "", entry === "verification" ? "/ru/verify-email#token=capability" : "/ru/account");
   return renderWithIntl(entry === "account" ? <AccountClient languageTag="ru" /> : entry === "header" ? <HeaderAccount languageTag="ru" /> : <EmailVerificationClient languageTag="ru" />, {
-    locale: "ru", messages: { Auth: ruMessages.Auth, Account: ruMessages.Account, CatalogPreview: ruMessages.CatalogPreview, EmailVerification: ruMessages.EmailVerification }
+    locale: "ru", messages: { Auth: ruMessages.Auth, Account: ruMessages.Account, Billing: ruMessages.Billing, Purchase: ruMessages.Purchase, CatalogPreview: ruMessages.CatalogPreview, EmailVerification: ruMessages.EmailVerification }
   });
 }
 async function login(entry: string, root = document.body, emailAddress = "old@example.com", mode: "login" | "register" = "login") {
@@ -46,7 +46,7 @@ function changeSession(token: string | null, event: "same-tab" | "storage" = "sa
 }
 
 describe.each(["account", "header", "verification"])("%s session races", (entry) => {
-  beforeEach(() => { window.localStorage.clear(); fetchMock.mockReset(); vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/catalog/products") ? Promise.resolve(json({ products: [] })) : fetchMock(input, init)) satisfies typeof fetch); });
+  beforeEach(() => { window.localStorage.clear(); fetchMock.mockReset(); vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/purchase-intents") ? Promise.resolve(json({ purchases: [], next_cursor: null })) : fetchMock(input, init)) satisfies typeof fetch); });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   it.each(["success", "failure"])("ignores stale login %s after a newer session", async (result) => {
@@ -149,7 +149,7 @@ describe.each(["account", "header", "verification"])("%s session races", (entry)
 });
 
 describe.each(["account", "verification"])("%s and header auth ownership", (entry) => {
-  beforeEach(() => { window.localStorage.clear(); fetchMock.mockReset(); vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/catalog/products") ? Promise.resolve(json({ products: [] })) : fetchMock(input, init)) satisfies typeof fetch); });
+  beforeEach(() => { window.localStorage.clear(); fetchMock.mockReset(); vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/purchase-intents") ? Promise.resolve(json({ purchases: [], next_cursor: null })) : fetchMock(input, init)) satisfies typeof fetch); });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   const cases = (["page", "header"] as const).flatMap((first) =>
@@ -173,7 +173,7 @@ describe.each(["account", "verification"])("%s and header auth ownership", (entr
     renderWithIntl(<>
       <header><HeaderAccount languageTag="ru" /></header>
       <main>{entry === "account" ? <AccountClient languageTag="ru" /> : <EmailVerificationClient languageTag="ru" />}</main>
-    </>, { locale: "ru", messages: { Auth: ruMessages.Auth, Account: ruMessages.Account, CatalogPreview: ruMessages.CatalogPreview, EmailVerification: ruMessages.EmailVerification } });
+    </>, { locale: "ru", messages: { Auth: ruMessages.Auth, Account: ruMessages.Account, Billing: ruMessages.Billing, Purchase: ruMessages.Purchase, CatalogPreview: ruMessages.CatalogPreview, EmailVerification: ruMessages.EmailVerification } });
     const page = screen.getByRole("main");
     const header = screen.getByRole("banner");
     const firstRoot = first === "page" ? page : header;
@@ -216,7 +216,7 @@ describe.each(["account", "verification"])("%s and header auth ownership", (entr
 });
 
 describe("adjacent mutation lifetime guards", () => {
-  beforeEach(() => { window.localStorage.clear(); fetchMock.mockReset(); vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/catalog/products") ? Promise.resolve(json({ products: [] })) : fetchMock(input, init)) satisfies typeof fetch); });
+  beforeEach(() => { window.localStorage.clear(); fetchMock.mockReset(); vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/purchase-intents") ? Promise.resolve(json({ purchases: [], next_cursor: null })) : fetchMock(input, init)) satisfies typeof fetch); });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   it("only auth attempts participate in shared ownership", () => {
@@ -295,7 +295,7 @@ describe("adjacent mutation lifetime guards", () => {
 });
 
 describe.each(["account", "verification"])("%s explicit logout", (entry) => {
-  beforeEach(() => { window.localStorage.clear(); fetchMock.mockReset(); vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/catalog/products") ? Promise.resolve(json({ products: [] })) : fetchMock(input, init)) satisfies typeof fetch); });
+  beforeEach(() => { window.localStorage.clear(); fetchMock.mockReset(); vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/purchase-intents") ? Promise.resolve(json({ purchases: [], next_cursor: null })) : fetchMock(input, init)) satisfies typeof fetch); });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
   const logoutLabel = entry === "account"

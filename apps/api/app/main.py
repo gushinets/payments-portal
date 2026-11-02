@@ -16,10 +16,12 @@ from app.core.observability import (
     request_context_middleware,
 )
 from app.core.settings import AppEnv, settings
+from app.domains.billing.router import router as billing_router
 from app.domains.catalog.router import router as catalog_router
 from app.domains.identity.password_reset import router as password_reset_router
 from app.domains.identity.router import router as auth_router
 from app.domains.legal.router import router as legal_router
+from app.domains.purchases.router import router as purchases_router
 from app.http.errors import app_error_handler, unexpected_failure_middleware
 from app.http.health import health_router
 from app.http.metrics import metrics_router
@@ -82,6 +84,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    app.include_router(billing_router)
+    app.include_router(purchases_router)
     app.include_router(catalog_router)
     app.include_router(auth_router)
     app.include_router(password_reset_router)

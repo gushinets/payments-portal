@@ -147,6 +147,7 @@ def test_target_reconciliation_model_columns_are_exact() -> None:
         "payload_document",
         "priority",
         "next_attempt_at",
+        "active_recovery_deadline_at",
         "attempt_count",
         "work_state",
         "lease_owner",
@@ -205,6 +206,7 @@ def test_nullable_slots_are_limited_to_the_approved_contract() -> None:
         "last_error_classification",
     }
     assert _nullable_columns(BillingWorkItem) == {
+        "active_recovery_deadline_at",
         "coalescing_key",
         "lease_owner",
         "lease_expires_at",
@@ -224,6 +226,8 @@ def test_access_scope_subscription_and_observation_keys_are_exact() -> None:
         ("user_id", "product_id"),
     }
     assert _unique_keys(ExternalSubscription) == {
+        ("external_billing_account_id", "external_subscription_id"),
+        ("external_billing_account_id", "external_agreement_id"),
         ("subscription_id", "product_id"),
         ("subscription_id", "user_id", "product_id"),
         ("subscription_id", "external_billing_account_id", "user_id", "product_id"),
@@ -497,6 +501,7 @@ def test_lookup_indexes_cover_the_fixed_contract() -> None:
         "ix_billing_work_items_kind_state_due": ("work_kind", "work_state", "next_attempt_at"),
         "ix_billing_work_items_scope": ("scope_kind", "scope_reference"),
         "ix_billing_work_items_coalescing_key": ("coalescing_key",),
+        "uq_billing_work_items_create_recovery": ("coalescing_key",),
         "ix_billing_work_items_priority_retry": ("work_state", "priority", "next_attempt_at"),
         "ix_billing_work_items_lease_expiry": ("lease_expires_at",),
         "ix_billing_work_items_claim_scan": (
