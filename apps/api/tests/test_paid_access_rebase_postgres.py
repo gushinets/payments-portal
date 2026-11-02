@@ -1,6 +1,7 @@
 """Inherited customer recovery must preserve Step 9 access and quota semantics."""
 
 import pytest
+from copy import deepcopy
 from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -15,7 +16,7 @@ from app.domains.purchases import service
 from app.domains.billing.work_contracts import WorkLane
 from app.domains.identity.services.auth import as_utc
 from app.jobs.billing import BillingWorker
-from app.models import ExternalSubscription, ManualReviewCase, PurchasedAllowance
+from app.models import AccessInvalidationOutbox, ExternalSubscription, ManualReviewCase, PurchasedAllowance
 from apps.api.tests.test_any709_step3_postgres import TOKEN
 from apps.api.tests.test_paid_access_postgres import effective, reconcile
 from apps.api.tests.test_billing_background_recovery_postgres import (
@@ -108,3 +109,32 @@ async def test_shared_inventory_points_never_move_source_trust_past_the_first_re
         sum(request.url.path.endswith(("/subscriptions/567", "/subscriptions/568")) for request in transport.requests)
         == 2
     )
+
+
+async def test_inventory_competitor_cannot_hide_owned_block_or_reissue_paid_allowance(
+    paid_scenario: tuple, postgres_session_factory: sessionmaker[Session]
+) -> None:
+    factory = postgres_session_factory
+    transport, sources, config, subscription_id, _ = paid_scenario
+    await reconcile(paid_scenario, factory)
+    revision, document = effective(factory)
+    assert revision == 1 and document["allowances"][0]["quantity"] == 100
+    original = document["allowances"][0]["allowance_id"]
+    transport.subscriptions[0]["current_blocking"] = 1
+    competitor = deepcopy(transport.subscriptions[0])
+    competitor["subscription_id"] = 999
+    transport.subscriptions.append(competitor)
+    background_recovery.repair_batch(factory, config)
+    transport.requests.clear()
+    worker = BillingWorker(config, factory, sources.require_lbx())
+    try:
+        assert await worker.tick(WorkLane.NORMAL)
+    finally:
+        await worker.aclose()
+    assert effective(factory) == (revision + 1, {"grants": [], "allowances": []})
+    with factory() as db:
+        assert db.get(ExternalSubscription, subscription_id).financial_access_status == "blocked"
+        assert db.scalar(select(AccessInvalidationOutbox.pending_revision)) == revision + 1
+        allowance = db.scalars(select(PurchasedAllowance)).one()
+        assert str(allowance.allowance_id) == original and allowance.quantity == 100
+    assert all(request.method == "GET" for request in transport.requests)

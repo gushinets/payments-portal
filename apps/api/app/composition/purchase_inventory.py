@@ -90,7 +90,6 @@ async def inventory(
     budget: PreflightBudget,
     delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
     inventory: tuple[Subscription, ...] | None = None,
-    points: tuple[tuple[Subscription, Agreement], ...] | None = None,
     subscription_points: dict[int, Subscription] | None = None,
     agreement_points: dict[int, Agreement] | None = None,
 ) -> None:
@@ -99,17 +98,24 @@ async def inventory(
         if inventory is not None
         else await client.discover_subscriptions(user_id=int(customer.provider_id), budget=budget)
     )
-    if points is None:
+    relevant = [row for row in rows if row.tariff_id == purchase.accepted.selection.tariff_id]
+    if len(relevant) > MAX_RELEVANT_SUBSCRIPTIONS:
+        raise PurchaseInventoryIncomplete()
+    subscription_points = {} if subscription_points is None else subscription_points
+    agreement_points = {} if agreement_points is None else agreement_points
+    for candidate in relevant:
+        # Apply each checked point before another candidate can exhaust the
+        # shared budget; paid discovery reuses these same attempt-local reads.
         points = await read_inventory_points(
             client,
             purchase,
             customer,
             budget=budget,
-            rows=rows,
+            rows=(candidate,),
             subscription_points=subscription_points,
             agreement_points=agreement_points,
         )
-    for point, agreement in points:
+        point, agreement = points[0]
         try:
             terminal = inventory_terminal(point)
         except LbxResponseInvalid:

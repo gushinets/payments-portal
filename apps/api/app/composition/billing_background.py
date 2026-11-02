@@ -122,6 +122,30 @@ async def _inventory_customer(
     try:
         for purchase in purchases:
             try:
+                try:
+                    await _inventory(
+                        client,
+                        purchase,
+                        current,
+                        factory,
+                        budget=budget,
+                        delegate=delegate,
+                        inventory=rows,
+                        subscription_points=subscription_points,
+                        agreement_points=agreement_points,
+                    )
+                except (LbxError, PurchaseRefused) as error:
+                    budget.check()
+                    conflict = isinstance(error, LbxScopeMismatch) or (
+                        isinstance(error, PurchaseRefused) and error.code == "purchase_existing_subscription_review"
+                    )
+                    if conflict:
+                        conflicts.append(purchase)
+                    else:
+                        incomplete = True
+                        continue
+                # Preserve timely admission conflicts even if the remaining
+                # paid discovery times out; still apply owned negative proof.
                 points = await read_inventory_points(
                     client,
                     purchase,
@@ -166,18 +190,9 @@ async def _inventory_customer(
                             generation=claim.generation,
                         )
                     )
-                await _inventory(
-                    client, purchase, current, factory, budget=budget, delegate=delegate, inventory=rows, points=points
-                )
-            except (LbxError, PurchaseRefused) as error:
+            except (LbxError, PurchaseRefused):
                 budget.check()
-                conflict = isinstance(error, LbxScopeMismatch) or (
-                    isinstance(error, PurchaseRefused) and error.code == "purchase_existing_subscription_review"
-                )
-                if conflict:
-                    conflicts.append(purchase)
-                else:
-                    incomplete = True
+                incomplete = True
         budget.check()
     except (PreflightDeadlineExceeded, PreflightCleanupPending):
         # Keep conflicts proved within the read window; no late result is adopted.
