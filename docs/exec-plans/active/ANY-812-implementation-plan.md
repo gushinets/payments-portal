@@ -1,6 +1,6 @@
 # ANY-812 — Canonical enum guard and internal-contract rules
 
-Status: active; planning complete; implementation not started.
+Status: active; Step 1 complete; Step 2 not started.
 Created: 2026-11-03
 Owner: ANY-812 delivery agent
 Execution branch: `ANY-812`
@@ -311,8 +311,8 @@ validation evidence separately within this one plan.
   actual main; resolve main/ANY-715 inventory and representation differences.
 - [x] Establish the isolated main-based branch and save this plan; record the
   plan-only validation below.
-- [ ] Add checked-in failing Step-1 regressions before the correction.
-- [ ] Complete Step 1 with current/future inventory, facade paths, root isolation,
+- [x] Add checked-in failing Step-1 regressions before the correction.
+- [x] Complete Step 1 with current/future inventory, facade paths, root isolation,
   authority diagnostics, permitted cases and historical guards passing.
 - [ ] Complete Step 2 with all agreed rules, examples, exception/escalation
   guidance and consistent authoritative/review surfaces.
@@ -341,8 +341,8 @@ condition for launching LBX Billing.
 - Saved this single plan with repository-relative links. The original dirty
   ANY-715 checkout was left unchanged; no branch-wide changes were transferred.
 - The saved plan incorporates its self-validation and the complete agreed
-  rules. Implementation remains unstarted. The only intended branch change is
-  this execution-plan file.
+  rules. At this preparation checkpoint implementation was unstarted; the only
+  intended branch change was this execution-plan file.
 - Plan-only verification: `npm run docs:check` passed; the new-file whitespace
   check reported no errors. Links are repository-relative and engineering text
   is English.
@@ -353,8 +353,29 @@ No implementation step is complete merely because this document exists.
 
 ### Step 1 implementation evidence
 
-Pending: pre-fix failing regression output, correction diff, post-fix focused
-results and historical/positive guard evidence.
+Completed 2026-11-03 on `ANY-812` from baseline `f961dd4`.
+Only sections B–C were executed; Step 2 remains unstarted.
+
+- Guard: derive canonical names from the supplied root's AST on every call;
+  protect all 14 current declarations and future additions. Preserve the 21
+  independent historical prohibitions. No runtime, schema or wire changes.
+- Regression-first: **12 failed, 90 passed** before the fix. Failures covered
+  omitted/future duplicate and absolute/relative facade imports, per-root
+  discovery and authority diagnostics. After the fix: **102 guard tests passed**;
+  the four focused modules: **352 passed**. Diff review found no blocking issues.
+- Passed: docs, architecture, generated freshness, Ruff, whitespace, production
+  web build and `npm run check:fast` (**1641 API**, **38 web boundary** and
+  **395 component tests**).
+- Canonical runs required execution outside the sandbox and process-only
+  `KERNEL_MOCK_ENABLED=0 KERNEL_BASE_URL= KERNEL_SERVICE_TOKEN=` to avoid sandbox
+  `EPERM` and inherited development settings. Tracked configuration was unchanged.
+- Full `npm run check`: **425 PostgreSQL tests passed, 1 failed** with
+  `statement timeout` in
+  `test_any709_step1_postgres.py::test_any709_step1_restart_and_credential_rotation_preserve_current_link_and_history`.
+  Its isolated repeat passed. The full check remains failed; no ANY-709 repair
+  was attempted. Browser E2E was unreached.
+- Test PostgreSQL was stopped. Detailed local logs and JUnit files remain under
+  `.harness/evidence/ANY-812-step-1/`.
 
 ### Step 2 implementation evidence
 
