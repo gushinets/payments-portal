@@ -1,6 +1,6 @@
 # ANY-812 — Canonical enum guard and internal-contract rules
 
-Status: active; Step 1 complete; Step 2 not started.
+Status: active; Steps 1–2 implemented; full-check failure and final delivery pending.
 Created: 2026-11-03
 Owner: ANY-812 delivery agent
 Execution branch: `ANY-812`
@@ -38,6 +38,17 @@ Verified on 2026-11-03:
   `ExternalBillingWebhookDelivery.processing_state` and
   `ManualReviewCase.case_state` as plain strings. The draft's two-field inventory
   must be corrected when transferred.
+
+Revalidated for the 2026-11-10 rebase: target `main` is
+`0b4d150314fd29da515865524573dfbd8c705e37` and includes merged ANY-715 and ANY-765. It has
+15 canonical enums, including `WebhookDeliveryState`; only
+`BillingWorkItem.work_state` and `ManualReviewCase.case_state` remain
+plain-string ORM states. The dated baseline and earlier verification below
+describe the original source snapshots, not the current target. Preserve the
+integrated worker, retained webhook enum/schema, generations, indexes, leases,
+recovery behavior and ANY-765 paid-access derivation/schema while applying this
+ticket's ownership/policy changes. The dated full-check PASS below belongs to
+the November 3 base and does not certify this new target.
 
 Planning evidence, obtained from temporary clean main snapshots:
 
@@ -227,14 +238,15 @@ Specific reconciliation:
 
 - Update [ARCHITECTURE.md](../../../ARCHITECTURE.md) and the
   [data-model reference](../../architecture/payment-portal-data-model.md) to
-  describe main's three plain-string state fields and related
-  kind/scope/classification debt truthfully. Do not copy ANY-715-only schema or
-  runtime claims. TEXT/VARCHAR storage and existing `PersistedEnumType` remain;
+  describe the actual target's plain-string state fields and related
+  kind/scope/classification debt truthfully. Preserve integrated ANY-715 schema
+  and runtime facts without introducing additional runtime changes.
+  TEXT/VARCHAR storage and existing `PersistedEnumType` remain;
   do not introduce PostgreSQL native ENUM.
 - In [the reconciliation model test](../../../apps/api/tests/test_billing_reconciliation_models.py),
   rename the test and its “open” variables/comments to describe current
   enum/plain-text representation. Preserve every physical-schema assertion,
-  including main's plain-text webhook state. Existing debt does not permit new
+  including the target's text-backed `WebhookDeliveryState`. Existing debt does not permit new
   arbitrary runtime states, and this wording change does not implement narrowing.
 - Replace the draft's “guard gap remains future work” wording with the completed
   ownership guarantee only after Step C passes. Other enforcement and migration
@@ -314,11 +326,11 @@ validation evidence separately within this one plan.
 - [x] Add checked-in failing Step-1 regressions before the correction.
 - [x] Complete Step 1 with current/future inventory, facade paths, root isolation,
   authority diagnostics, permitted cases and historical guards passing.
-- [ ] Complete Step 2 with all agreed rules, examples, exception/escalation
+- [x] Complete Step 2 with all agreed rules, examples, exception/escalation
   guidance and consistent authoritative/review surfaces.
-- [ ] Confirm that documentation/test wording distinguishes current
+- [x] Confirm that documentation/test wording distinguishes current
   representation debt from semantic openness and completed enforcement.
-- [ ] Confirm that no runtime/schema/wire change, Python checker rollout,
+- [x] Confirm that no runtime/schema/wire change, Python checker rollout,
   generator migration, broad literal cleanup, factory/payload redesign or
   ANY-800 steps 3–8 entered the diff. No new paid-access authority, UI/legal
   change, speculative framework or unrelated baseline repair is authorized.
@@ -443,10 +455,106 @@ or push was performed.
 
 ### Step 2 implementation evidence
 
-Pending: rule-to-document/review coverage, truthful current-state reconciliation,
-review findings and validation results.
+Execution baseline: `7bfdb4d3fd845c72af4796097e57bb010cd52873` on 2026-11-03,
+with a clean working tree. The current request explicitly enables section D,
+the ticket's Step 2; ANY-800 steps 3–8 remain outside scope.
+
+- Validated the prior B–C delivery before editing: all four focused modules
+  passed (**352 tests**, 3.55 seconds). Existing red/green evidence and the
+  read-only full review above remain applicable; no guard/runtime source has
+  changed since those checks.
+- Pre-edit coverage assessment: existing physical-schema/model assertions are
+  sufficient characterization for the wording-only test change. Step 2 adds
+  policy and review inputs, not runtime behavior, so no artificial runtime
+  regression or new checker is introduced. Documentation links, review
+  configuration, requirement coverage and assertion preservation need explicit
+  verification.
+- The original uncommitted rule draft is unavailable in the current neighboring
+  worktrees. The original checkout now uses ANY-765; the retained ANY-715
+  recovery worktree has unrelated changes. Neither was modified or transferred.
+  Implementation follows the complete saved requirements and ANY-812.
+
+- Requirement-to-surface review covers all twelve ANY-812 rules:
+  - Rules 1, 6–8: conventions' structure/validation/construction section and
+    examples retain concrete required/optional/nested contracts, typed helper
+    paths, proportional construction and bounded maps/opaque-request seams.
+  - Rules 2–4: conventions' single-vocabulary section covers all Portal-owned
+    model states, singleton outcomes, symbolic use paths, defaults and active
+    SQL parity; the correctness checklist reviews these same paths.
+  - Rules 5, 9–10: source ownership/compatibility covers Integration numeric
+    symbols and unknown handling, provider independence, omitted/null and
+    history/identity/lease invariants, and the existing generated wire chain.
+  - Rules 11–12: proportionality/exception/evidence guidance preserves
+    KISS/YAGNI, incremental application, existing debt ownership, bounded
+    exceptions, routine autonomy and focused owner escalation without
+    speculative mechanisms or a new waiver system.
+- Root/API/web AGENTS link the detailed owner instead of duplicating it.
+  Architecture and data-model references name the three actual plain-string
+  state fields, related representation debt and the completed AST guard,
+  without importing ANY-715-only schema or claiming runtime narrowing.
+  Type-only frontend generation remains explicit debt.
+- Workflow now requires pre-edit coverage assessment, bug regression-first
+  evidence and behavior-preserving characterization, links the correctness
+  checklist, and records actual check statuses. Testing guidance retains
+  shared fixture/resource lifecycle ownership while removing blanket factory
+  migration on touched tests. Documentation navigation links the detailed
+  rules and checklist.
+- AI-review `policy.always` now includes the existing correctness checklist;
+  parsed YAML confirms the three required always-inputs exist and the scoped
+  API/web inputs remain intact.
+- Characterization: the complete reconciliation-model test AST equals its
+  baseline after normalizing only the approved test/local-variable renames.
+  Every physical-schema assertion, including the plain-text webhook state,
+  remains unchanged. All five Python example blocks compile; the positive
+  result example preserves symbolic JSON serialization and omitted/null
+  distinctions. No new production example types were introduced.
+- Self-review against the ticket, boundaries and correctness checklist found
+  one wording ambiguity: the API digest could imply textual enums for numeric
+  vendor protocols. It was corrected to distinguish Portal-owned enums,
+  textual `StrEnum` and Integration-owned numeric symbols. No remaining
+  findings were identified; no runtime/schema/wire, paid-access, legal/UI,
+  checker rollout or generator migration entered this Step-2 diff.
+- Passed: focused modules **352 tests** (3.54 seconds), docs,
+  architecture, generated freshness and `npm run check:fast` (**1641 API**,
+  **38 web boundary**, **395 component tests**, plus Ruff and web lint).
+  The complete check also passed these stages and production web build/
+  TypeScript before reaching PostgreSQL.
+  Final evidence-only documentation and whitespace checks passed as well.
+- Full `npm run check`: **failed**, with **424 PostgreSQL passed, 2 failed**
+  (1023.54 seconds). Both failures are in
+  `test_billing_customer_ensure_postgres.py::test_customer_ensure_find_create_recover`:
+  `[new]` raised `PreflightDeadlineExceeded: preflight_deadline_exceeded` and
+  `[old_review]` raised `BillingAccountFailure: billing_customer_pending`.
+  In one focused repeat of those two cases, `[old_review]` **passed** and
+  `[new]` **failed again** with `billing_customer_pending` (**1 passed,
+  1 failed**, 6.21 seconds). These tests configure a 0.6-second preflight
+  budget; the cause of the deadline expiry is not established. Their source,
+  runtime and configuration are unchanged by Step 2. No runtime repair,
+  timeout relaxation or test weakening was attempted. The earlier
+  `statement timeout` and `duplicate_invisible` failures did not recur.
+  Browser E2E was unreached. The worktree-local PostgreSQL server was stopped
+  successfully after the focused repeat.
+- Implementation criteria for section D are satisfied. The full-check failure
+  remains an unresolved validation limitation; these results do not establish
+  overall merge readiness or production/provider conformance.
+- Tested revision: HEAD `7bfdb4d3fd845c72af4796097e57bb010cd52873` plus the
+  Step-2 working-tree changes. The non-plan patch SHA-256 is
+  `b488be0cba7ed543e165ae67bf6f05d139711f93ab82b682268198c06efc17a9`;
+  `verification-source.json` records per-file hashes. Evidence-only plan
+  updates are excluded from that hash. At this verification checkpoint, Step 2
+  had not been committed or pushed.
+- Separate Step-2 local logs and characterization evidence are under
+  `.harness/evidence/ANY-812-step-2/`. Browser/provider journeys and live
+  observability probes are not applicable to this documentation/review-input
+  change and are not claimed as runtime validation.
 
 ### Final delivery evidence
 
-Pending: final base/head SHAs, canonical passed/failed/blocked/skipped results,
-residual risks, PR link and human merge decision.
+The implementation branch is based on
+`366d902635a699c18b90e0a619f74bb6b0e680c2`. Steps 1–2 are implemented, with
+separate evidence above. The Step-2 implementation is included in this change's
+commit; its pre-commit verification is identified by the source hashes above.
+No further implementation step is planned within ANY-812. Remaining delivery
+work is final-SHA verification and disposition of the full-check failures,
+one PR targeting main, and human merge approval. The plan stays active until
+those delivery items are resolved. ANY-800 steps 3–8 remain unstarted here.

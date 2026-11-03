@@ -1,7 +1,7 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-11-09 (ANY-765 accepted terms and paid-access schema)
+Last updated: 2026-11-10 (ANY-765 accepted terms and paid-access schema; ANY-812 policy clarification)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
@@ -362,12 +362,14 @@ history but has no receiver or inbox-processing writer. Historical JSON schemas
 polling does not change those rows. No raw provider payload or authorization/card
 material belongs here, and receipt state never grants access.
 
-`billing_work_items` stores open work/scope/state vocabularies, bounded typed
+`billing_work_items` stores work/scope/state fields as plain text, bounded typed
 payloads, priority, due time, attempt count, paired lease owner/expiry and nullable
 `active_recovery_deadline_at` for the current financial send. This active deadline
-changes only in the locked send claim; GET recovery never renews it. It
-is scheduling state, not commercial or access authority. Its work/state
-vocabularies remain open for concrete billing jobs. ANY-715 Step 2 adds
+is independent of mutable retry scheduling and changes only in the locked,
+fenced financial send claim; GET recovery never renews it. It
+is scheduling state, not commercial or access authority. The implemented
+worker selects fixed work meanings; text storage does not make these decisions
+semantically open. ANY-715 Step 2 adds
 nonnegative `enqueue_generation`, nullable `last_attempt_started_at` and a partial
 unique `(work_kind, coalescing_key)` index for subscription reconciliation/trust
 expiry, enrollment sweep and the reserved inventory/create-deadline kinds.
@@ -414,10 +416,30 @@ Closed text-backed enums are defined only in `app.models.enums`:
   `BillingStateObservationKind`;
 - webhook inbox: `WebhookDeliveryState`.
 
-Other operational classifications remain open text until their owning runtime
-step closes them. The repository guard prevents duplicate definitions of the
-closed persisted vocabularies and prevents restoration of removed billing enum
-facades.
+Current plain-string state attributes are `BillingWorkItem.work_state` and
+`ManualReviewCase.case_state`. Related work kinds, scope kinds, observation
+completeness/result classifications, review reasons and error classifications
+also retain plain-text representation. Recognized Portal decision subsets need
+an explicit vocabulary owner; arbitrary source codes are not automatically
+enums. This is existing representation debt under ANY-800 and the owning runtime
+deliveries, not a permanent open-vocabulary exemption or permission for new
+arbitrary states.
+
+New/materially changed persisted contracts follow the
+[internal-contract conventions](../engineering/CODING_CONVENTIONS.md#internal-contracts):
+canonical enums with `PersistedEnumType`, symbolic use throughout producers,
+consumers and active SQL, with focused parity checks when literal DDL is
+necessary. PostgreSQL remains TEXT/VARCHAR. Frozen migrations and independent
+wire/history assertions retain compatibility literals. Application retains
+transition, transaction, lease and fencing ownership.
+
+The repository guard derives the canonical inventory from the supplied root's
+top-level declarations on every call. It prevents duplicate definitions and
+protected imports through removed billing enum facades, including future
+declarations without another inventory edit. Historical removed-enum
+prohibitions remain independent. The guard is not a runtime assignment checker
+or Python typechecker. This clarification does not implement enum narrowing,
+change physical constraints or migrate any stored value.
 
 ## Bootstrap and runtime boundary
 

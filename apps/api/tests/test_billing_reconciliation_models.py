@@ -376,7 +376,7 @@ def test_access_scope_subscription_and_observation_keys_are_exact() -> None:
     }
 
 
-def test_closed_and_open_vocabularies_are_explicit() -> None:
+def test_enum_and_plain_text_column_representations_are_explicit() -> None:
     enum_columns = {
         ExternalSubscription.__table__.c.lifecycle_status: ExternalSubscriptionLifecycleStatus,
         ExternalSubscription.__table__.c.financial_access_status: ExternalSubscriptionFinancialAccessStatus,
@@ -388,7 +388,8 @@ def test_closed_and_open_vocabularies_are_explicit() -> None:
         assert isinstance(column.type, PersistedEnumType)
         assert column.type.enum_cls is enum_cls
 
-    open_columns = (
+    # Characterize existing representation debt, not permission for arbitrary states.
+    plain_text_columns = (
         BillingStateObservation.__table__.c.completeness_classification,
         BillingStateObservation.__table__.c.result_classification,
         BillingWorkItem.__table__.c.work_kind,
@@ -398,7 +399,7 @@ def test_closed_and_open_vocabularies_are_explicit() -> None:
         ManualReviewCase.__table__.c.scope_kind,
         ManualReviewCase.__table__.c.case_state,
     )
-    assert all(not isinstance(column.type, PersistedEnumType) for column in open_columns)
+    assert all(not isinstance(column.type, PersistedEnumType) for column in plain_text_columns)
 
 
 def test_step_4_safe_checks_are_exact() -> None:

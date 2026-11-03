@@ -1,7 +1,7 @@
 # AnyToolAI Portal Architecture
 
 Status: authoritative current-state map
-Last updated: 2026-11-09
+Last updated: 2026-11-10
 
 ## System boundary
 
@@ -475,6 +475,25 @@ rules. Persistence and Integrations implement outer capabilities.
 persisted vocabularies are exported explicitly from that package; there is no
 parallel pure-domain entity graph. The authoritative current inventory is the
 [as-built data model](docs/architecture/payment-portal-data-model.md).
+
+The [internal-contract conventions](docs/engineering/CODING_CONVENTIONS.md#internal-contracts)
+own the detailed rules for concrete shared/consumed structures, one symbolic
+owner for finite meanings, validation at actual boundaries, and proportionate
+construction. They apply to changed contracts and affected producers/consumers.
+Enums define vocabulary; Application continues to own transitions, related
+fields and transaction decisions. Provider protocols and normalization stay
+Integration-owned, and the existing generated HTTP authority stays unchanged.
+
+Current representation is not full enforcement of those rules.
+`BillingWorkItem.work_state` and
+`ManualReviewCase.case_state` still use plain-string Python attributes over
+TEXT storage. Related work/scope/kind/classification fields also retain
+representation debt under ANY-800 and their owning runtime deliveries.
+These are not permission to add arbitrary states. Narrowing them requires
+their affected use paths and compatibility evidence; this rule delivery does
+not change models, schema, runtime values or transactions. Existing
+`PersistedEnumType` keeps canonical enum attributes text-backed without
+PostgreSQL native ENUM.
 
 `app.infrastructure.queries` owns focused SQLAlchemy read mechanics such as
 query construction, filtering, ordering, loading, and requested row locks.

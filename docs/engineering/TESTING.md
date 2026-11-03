@@ -1,7 +1,7 @@
 # Testing Strategy
 
 Status: authoritative
-Last verified: 2026-08-28
+Last verified: 2026-11-03
 
 ## Layers
 
@@ -74,10 +74,17 @@ the shared test-database safety validation before connecting or executing SQL.
 
 ## Test data factories
 
-New API tests should build Pydantic DTOs, ORM models, and reusable payloads
-through typed factories under `apps/api/tests/factories/`. Existing tests may
-continue using inline setup until they are touched for a related change, then
-they should migrate only the affected setup to factories.
+Assess existing coverage and setup before changing a contract. For a bug, run
+a focused failing regression before its fix; for behavior-preserving work,
+characterize existing results and compatibility. A vocabulary or type change
+does not authorize new serialized keys, nulls, values, defaults or identities.
+
+Reuse typed factories under `apps/api/tests/factories/` for repeated object
+shapes, defaults and construction invariants. Extract a missing factory only
+when a current consumer/invariant justifies it. Simple one-off setup may remain
+inline. Touching a related test does not mandate factory migration; move only
+setup whose repeated knowledge or changed invariant benefits from one owner.
+Do not add a factory framework or migrate unrelated tests to satisfy wording.
 
 Use factories for object shape and default test data. Use fixtures for resource
 lifecycle, dependency overrides, environment changes, database sessions, and

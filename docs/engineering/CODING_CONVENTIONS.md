@@ -1,7 +1,7 @@
 # Coding Conventions
 
 Status: authoritative
-Last verified: 2026-09-29
+Last verified: 2026-11-03
 
 How to write **new and changed** code so types, states, and trust boundaries
 stay explicit. This is not a backlog and not a mass-migration plan.
@@ -24,8 +24,10 @@ Related documents:
 
 ## Ratchet
 
-Rules apply to new and changed code. Fixing existing debt requires its own
-Linear ticket. Do not expand a feature PR into a conventions cleanup.
+Rules apply to new or materially changed contracts and their affected producers
+and consumers, not every untouched declaration in a touched file. Keep existing
+debt under its owning delivery; unrelated cleanup requires its own Linear scope.
+Do not expand a feature PR into a conventions cleanup.
 
 All new or materially changed Python functions and methods must have explicit
 parameter and return annotations. Untouched Python code does not require a
@@ -61,17 +63,214 @@ boundary validation.
    Unhandled exceptions are logged once at the system boundary without raw
    inputs or secrets.
 
+## Internal contracts
+
+These rules govern Portal-owned shared structures and finite decision values.
+Start with a current consumer, invariant and concrete failure or drift risk.
+Use KISS/YAGNI; apply DRY to repeated knowledge and invariants rather than
+similar syntax. A sufficient primitive or small typed result needs no wrapper.
+
+### Structure, validation and construction
+
+- Known shared inputs, results and snapshots declare required and optional
+  fields, including the nested shapes actually consumed. Use a concrete
+  dataclass/value object, an owning-boundary model/decoder, or a serialized
+  `TypedDict` as appropriate. Bare dictionaries, broad aliases and erased
+  dataclass fields do not establish a contract.
+- Validate external data and structurally consumed retained data once at their
+  actual boundary. Preserve useful nested, argument, result, helper and callable
+  types inward instead of erasing them with `Any`, broad aliases or casts.
+  Annotations and `frozen=True` do not validate runtime input. Do not revalidate
+  every trusted internal call or decode retained data that no consumer reads.
+- Give repeated related identity and initialization invariants one concrete
+  construction owner. Direct ORM construction remains appropriate when no
+  shared invariant justifies extraction. Preserve intentional use-case
+  differences and Application ownership of transitions and transactions.
+- Genuine maps, opaque original-request snapshots, physical JSON storage and
+  necessary SDK/raw-decoding/redaction seams may stay broad with an identifiable
+  owner, consumer and reason. A known-key object is not a genuine map.
+  Preserve empty stored payloads as `{}` absent an actual consumer requirement.
+
+### One owner for finite meanings
+
+- Closed states, outcomes, kinds, scopes and other finite decision vocabularies
+  have an owning enum. Textual Python vocabularies use `StrEnum`. All
+  Portal-owned ORM, dataclass and boundary/response model status/state fields
+  use enums, including singleton states and fields without transition code.
+  This covers queue, review, observation, operator, catalog, health,
+  diagnostics/metrics and local UI concepts wherever the slice owns finite
+  meanings.
+- Reuse symbolic members in annotations, construction, client/server defaults,
+  assignments/transitions, comparisons, membership, `match`, queries,
+  DML/upserts and results. `str`, `Mapped[str]` or a parallel
+  `Literal["resolved", "already_resolved"]` business vocabulary is insufficient.
+  `Literal[ResolutionOutcome.RESOLVED]` can narrow a variant. Boolean literals
+  and actual fixed schema/protocol tags remain legitimate; an owner constant
+  can suffice for a single tag or diagnostic identifier. A singleton response
+  status/outcome is not a schema-tag exception.
+- Persisted vocabularies reuse the canonical `app.models` owner and existing
+  `PersistedEnumType`. Physical PostgreSQL columns remain TEXT/VARCHAR, not
+  native ENUM. Enums define vocabulary; Application still owns valid
+  transitions, related fields, transactions, leases and fencing.
+- Review the complete use path, including positive factories/fixtures,
+  serialization and UI consumers. Active ORM CHECK constraints and partial-index
+  SQL derive relevant values from their owner or have focused parity checks
+  when literal DDL is necessary. Use existing SQLAlchemy facilities, not a
+  generic SQL generator. Frozen migrations and independent expected wire/history
+  assertions retain literals where they protect compatibility.
+
+### Source ownership and compatibility
+
+- Portal contracts express provider-neutral Portal concepts across regional
+  contours. Integrations own vendor DTOs, numeric protocol symbols (`IntEnum`
+  where appropriate), normalization and unknown-value handling. Raw external
+  strings/numbers stay raw until their owning decoder. Do not duplicate a whole
+  vendor DTO in Domain or make LBX fields, calendars or currency policy
+  universal Portal requirements.
+- Opaque IDs, arbitrary source codes/currencies, user text and ordinary
+  quantities are not automatically enums. A locally recognized decision subset
+  has an explicit owner. Legal, locale and capability values retain their
+  existing source/generation ownership.
+- Preserve the backend → OpenAPI → generated frontend wire authority and shared
+  transport boundary described below. Local UI finite vocabularies use local
+  symbols with exhaustive handling; backend wire enums are not hand-copied.
+  Existing type-only frontend enum generation is explicit debt, not a reason
+  to create another wire authority or force a generator migration in this step.
+- Preserve serialized keys, omitted/null distinctions, spelling, versions,
+  equality/coalescing, digests/fingerprints, original identities, receipts,
+  immutable history, transactions, leases/fences, enqueue generations, counters
+  and deadlines. Do not merge or rename `done`/`completed`. A meaning or
+  representation change requires an explicit decision and relevant tests.
+
+### Examples
+
+Use symbolic outcomes and explicit optionality for a known serialized result:
+
+```python
+from enum import StrEnum
+from typing import NotRequired, TypedDict
+
+
+class ResolutionOutcome(StrEnum):
+    RESOLVED = "resolved"
+    ALREADY_RESOLVED = "already_resolved"
+
+
+class ResolutionResult(TypedDict):
+    review_case_id: str
+    outcome: ResolutionOutcome
+    observation_id: NotRequired[str | None]
+
+
+result: ResolutionResult = {
+    "review_case_id": str(case_id),
+    "outcome": ResolutionOutcome.RESOLVED,
+}
+```
+
+Omitting `observation_id` differs from sending it as null; the type permits both
+without instructing a producer to add a key. The existing canonical model
+pattern also applies to singleton statuses such as `UserStatus.ACTIVE`:
+
+```python
+status: Mapped[UserStatus] = mapped_column(
+    PersistedEnumType(UserStatus), nullable=False
+)
+user.status = UserStatus.ACTIVE
+```
+
+The following patterns erase a known contract or scatter its vocabulary:
+
+```python
+from dataclasses import dataclass
+from typing import Any
+
+outcome = "resolved"
+case.case_state = "done"
+if result["outcome"] == "already_resolved":
+    pass
+
+snapshot: dict[str, Any] = {
+    "review_case_id": str(case_id),
+    "outcome": "resolved",
+}
+
+
+@dataclass(frozen=True)
+class ErasedEvidence:
+    subject: Any
+    observation: dict
+```
+
+Retain consumed nested fields; these trusted dataclasses still need validation
+when their values originate at an untrusted boundary:
+
+```python
+@dataclass(frozen=True)
+class ObservationEvidence:
+    observation_id: str
+    generation: int
+
+
+@dataclass(frozen=True)
+class ResolutionEvidence:
+    observation: ObservationEvidence
+```
+
+A mapping with arbitrary metric keys is a genuine map. An Integration-owned
+retained request may remain opaque while the envelope and consumed evidence
+are concrete; decode the consumed facts once when needed and export only their
+normalized meaning inward, without mirroring the whole vendor DTO in Domain:
+
+```python
+allowance_by_metric: dict[str, int] = {"source-defined-metric": 10}
+
+
+class ConsumedCreateEvidence(TypedDict):
+    request_key: str
+    provider_object_id: str | None
+
+
+class RetainedRequest(TypedDict):
+    # Integration owns retention; the request body is not inspected by this consumer.
+    original_request: dict[str, object]
+    consumed: ConsumedCreateEvidence
+```
+
+These examples describe patterns, not additional required production models.
+
+### Proportionality, exceptions and evidence
+
+Do not introduce speculative models, validators, factories, state machines,
+retries, registries, adapters or configuration solely to satisfy rule wording.
+Explain bounded technical exceptions near the code or in the PR, reusing
+existing debt ownership. Do not add per-field waiver registries, blanket casts
+or suppressions, or weaken required guarantees.
+
+Resolve routine reversible implementation choices autonomously. Escalate only
+an unresolved new decision about behavior, supported/retained values,
+storage/wire compatibility, trust, authorization, ownership or unavoidable scope
+growth. Present the smallest viable option and tradeoff, and continue independent
+work. Do not ask again for an existing explicit decision.
+
+Distinguish a confirmed rule/enforcement gap from a reproduced runtime defect.
+A green suite or additional classes do not establish a missing guarantee.
+Documentation alone does not install a Python checker or migrate runtime
+contracts; the implemented guards and remaining limits are listed below.
+
 ## API / Python
 
 1. JSON request bodies and ordinary JSON responses use Pydantic models. FastAPI
    must expose a named response schema through `response_model=` **or** a
    Pydantic return annotation. Check the generated OpenAPI schema, not the
    keyword alone.
-2. `dict[str, Any]` is allowed only at a genuinely untrusted raw external or
-   Integration boundary. Convert to a validated internal model before
-   Application or Domain logic.
-3. Use `StrEnum` for states the slice compares or transitions. A one-off
-   discriminator may stay `Literal`.
+2. Follow the internal-contract rules above for concrete shared shapes and
+   bounded broad-data seams. Validate consumed external/retained structure at
+   its owning boundary, then retain the type through Application and Domain.
+3. Use owning enums for finite meanings and all Portal-owned model status/state
+   fields, including singleton states. Textual Python vocabularies use
+   `StrEnum`; Integration numeric protocols retain their own symbols. Use
+   literal narrowing and schema/protocol tags only as described above.
 4. Persisted Python attributes use the canonical enums exported by
    `app.models`. Physical PostgreSQL columns keep evolving statuses as
    `TEXT`/`VARCHAR`; that storage choice does not permit callers to bypass the
@@ -202,8 +401,9 @@ boundary validation.
    successful JSON error handling; do not add browser runtime wire schemas.
 4. Import HTTP wire DTOs from generated contracts. A component must not declare
    its own copy of a backend response type.
-5. Model UI states as a union or `as const` vocabulary and handle them
-   exhaustively.
+5. Give local finite UI states/outcomes/kinds symbolic owners, such as an
+   `as const` vocabulary with a derived union, and handle them exhaustively.
+   Keep generated backend wire meanings under their existing authority.
 6. Inspect errors through `ApiError.status` and `detail.code`, never
    `message.includes(...)`.
 7. Define a repeated timeout, storage key, or poll interval once, with the
@@ -354,3 +554,19 @@ only numeric/boolean location metadata, never free-form identifiers.
    literal `aria-label`, `title`, `placeholder`, and `alt` values. Intentional
    source-owned brand/example exceptions are exact path/surface/value entries;
    new ordinary Portal copy belongs in the locale catalogs.
+7. The canonical persisted-model guard derives names from top-level class
+   declarations in `apps/api/app/models/enums.py` for the supplied root on each
+   call. It rejects external duplicate definitions and protected billing-facade
+   symbol imports, including future declarations without an export-list edit.
+   Missing, invalid or empty authority fails visibly; historical removed-enum
+   prohibitions remain independent.
+
+This ownership guard is not runtime assignment analysis or a Python typechecker.
+Existing plain-string state/kind/scope/classification paths remain representation
+debt under ANY-800 and their owning runtime deliveries. The current two
+plain-string ORM state fields are listed in the
+[as-built data model](../architecture/payment-portal-data-model.md#persisted-vocabularies);
+their presence does not permit new arbitrary states. Frontend generation still
+produces type-only enum representations; lint and review do not prove symbolic
+use of every backend or UI value. This delivery changes policy and ownership
+enforcement, not those runtime representations or the generator.
