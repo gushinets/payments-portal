@@ -225,6 +225,26 @@ def test_canonical_persisted_model_guard_rejects_removed_enum_facades(api_root: 
     assert any("imports the removed legal enum façade" in error for error in errors)
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import app.domains.billing.enums\n",
+        "import app.domains.billing.enums as billing_enums\n",
+        "import enum, app.domains.billing.enums as billing_enums\n",
+    ],
+    ids=["direct", "aliased", "multiple-modules"],
+)
+def test_canonical_persisted_model_guard_rejects_direct_billing_enum_import(api_root: Path, source: str) -> None:
+    """Reject direct facade imports, including aliases and multi-module imports."""
+    _write_api_source(api_root, "feature.py", source)
+
+    errors = check_canonical_persisted_model_layer(api_root)
+
+    assert errors == [
+        "apps/api/app/feature.py:1 imports the removed billing enum façade; import persisted enums from app.models"
+    ]
+
+
 def test_canonical_persisted_model_guard_allows_canonical_definition(api_root: Path) -> None:
     assert check_canonical_persisted_model_layer(api_root) == []
 
