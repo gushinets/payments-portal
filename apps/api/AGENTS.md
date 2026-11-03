@@ -32,12 +32,23 @@ authority chain or defines later external-billing runtime behavior.
   rejects active ordinary JSON success responses without a named component,
   explicitly covers readiness `503`, and keeps metrics outside OpenAPI. There
   is no legacy untyped-route escape list.
-- Keep `dict[str, Any]` only at an untrusted external/integration edge; decode
-  to a validated internal type before Application or Domain logic.
-- New or changed errors use `detail: {"code": "..."}`. Use `StrEnum` only for
-  states the slice compares or transitions. Persisted Python attributes use
-  the canonical enums exported by `app.models`, while physical evolving
-  database status columns remain `TEXT`/`VARCHAR`.
+- Follow the [internal-contract rules](../../docs/engineering/CODING_CONVENTIONS.md#internal-contracts):
+  declare consumed shared/nested shapes, validate external or consumed retained
+  data once at its owner, and preserve types inward. Genuine maps, opaque
+  retained requests and necessary broad-data seams need an owner, consumer and
+  reason; known-key objects are concrete contracts.
+- New or changed errors use `detail: {"code": "..."}`. Finite vocabularies and
+  all Portal-owned model status/state fields use owning enums, including
+  singleton states without transitions. Textual Python vocabularies use
+  `StrEnum`; numeric vendor protocols retain Integration-owned symbols.
+  Persisted Python attributes
+  reuse `app.models` and `PersistedEnumType`; physical evolving status columns
+  remain `TEXT`/`VARCHAR`. Review defaults, writes, branches, queries, SQL and
+  serialization; preserve compatibility and existing transaction ownership.
+- Keep construction proportional to repeated invariants and apply the ratchet
+  to affected contracts/consumers. Do not add speculative factories or
+  revalidate trusted internal calls; bounded exceptions and unresolved owner
+  decisions follow the detailed conventions.
 - New or materially changed Python functions and methods must have explicit
   parameter and return annotations. Untouched code does not require a typing
   sweep.

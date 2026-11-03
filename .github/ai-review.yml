@@ -4,6 +4,7 @@ policy:
   always:
     - AGENTS.md
     - docs/engineering/CODING_CONVENTIONS.md
+    - docs/engineering/review-checklists/correctness.md
   scoped:
     - paths:
         - apps/api/**
