@@ -377,6 +377,70 @@ Only sections B–C were executed; Step 2 remains unstarted.
 - Test PostgreSQL was stopped. Detailed local logs and JUnit files remain under
   `.harness/evidence/ANY-812-step-1/`.
 
+### Sections B–C revalidation evidence
+
+Revalidated on 2026-11-03 at
+`a7547854ec787f45c54c64363226df1cc0fc2b34`. Sections B–C were already implemented
+in that commit before this execution. This pass is limited to their regression,
+guard and verification evidence; section D (the ticket's Step 2) and ANY-800
+Step 3 remain unstarted. No new tooling correction was necessary, and no commit
+or push was performed.
+
+- Reassessed the existing coverage before making any tracked edit: all 14
+  canonical declarations, future declarations without export changes,
+  absolute/relative facade imports, permitted canonical/provider cases,
+  repeated calls across roots, and absent/invalid/empty/unreadable authority
+  sources are covered. The 21 historical prohibitions remain independent.
+- Reproduced the regression-first result using an isolated `git archive` of
+  pre-fix `f961dd48a0b517b82fd49f12499a68360d263809`, with only the current
+  checked-in `test_repository_docs.py` copied into that temporary snapshot:
+  **12 failed, 90 passed, 184 deselected**. The live checkout's guard was never
+  reverted. The failures were:
+  - missing duplicate-definition and absolute/relative facade diagnostics for
+    `ExternalCreateOperationState` (three failed `any(...)` assertions);
+  - the future declaration's duplicate and two facade imports returned no
+    errors instead of one (three failed `len(errors) == 1` assertions);
+  - root-specific discovery missed `RootSpecificState` (one failed diagnostic
+    assertion);
+  - missing, syntactically invalid, empty and nested-only authority sources
+    lacked the required path/reason/remediation diagnostic (four assertions);
+  - the unreadable authority raised `IsADirectoryError` instead of returning
+    an actionable diagnostic (one failure).
+  The pre-fix removed-direct-provider and legacy-model architecture regressions
+  also remained green: **2 passed, 49 deselected**.
+- The same checked-in tests against the existing correction: **102 passed**.
+  The complete repository-documentation, model-enum, reconciliation-model and
+  architecture modules: **352 passed**.
+- Passed: `npm run docs:check`, `npm run architecture:check`,
+  `npm run generate:check` and `npm run check:fast` (**1641 API**, **38 web
+  boundary**, **395 component tests**, plus Ruff and web lint).
+- Full `npm run check`: **failed** after passing all preceding stages, including
+  production web build/TypeScript. PostgreSQL: **425 passed, 1 failed** in
+  `test_billing_customer_ensure_postgres.py::test_customer_ensure_find_create_recover[duplicate_invisible]`,
+  line 111: expected one POST, observed zero (`assert 0 == 1`). Its single
+  isolated repeat **passed** in 3.58 seconds; this does not turn the full check
+  green. The cause of the full-run failure is not established. The test and
+  customer runtime are unchanged; no runtime repair or timeout adjustment was
+  attempted. The previous Step-1 `statement timeout` did not recur. Browser E2E
+  was unreached. The worktree-local test PostgreSQL was stopped successfully.
+- Verification uses the canonical root `.venv` on `PATH` and process-only
+  `KERNEL_MOCK_ENABLED=0 KERNEL_BASE_URL= KERNEL_SERVICE_TOKEN=`. Canonical
+  checks run outside the sandbox because the earlier execution established
+  sandbox `EPERM` failures. No tracked environment/configuration was changed.
+- Review against B–C and the correctness checklist found no further ownership,
+  compatibility or unnecessary-machinery issue: the guard reads only source
+  AST from each supplied root, has no application imports or cached inventory,
+  and preserves import resolution and historical restrictions. Runtime,
+  schema, persisted values and generated contracts remain unchanged. Browser
+  journeys and live provider/observability probes are not acceptance checks
+  for this tooling-only scope and were not run.
+- Final evidence-only documentation and whitespace checks passed. HEAD remains
+  `a7547854ec787f45c54c64363226df1cc0fc2b34`; the only new tracked working-tree
+  change is this plan. The full-check failure remains an unresolved validation
+  limitation, separate from the passing B–C regressions.
+- Local logs, JUnit results and the pre-fix snapshot/command/test-hash metadata
+  are under `.harness/evidence/ANY-812-bc-revalidation/`.
+
 ### Step 2 implementation evidence
 
 Pending: rule-to-document/review coverage, truthful current-state reconciliation,
