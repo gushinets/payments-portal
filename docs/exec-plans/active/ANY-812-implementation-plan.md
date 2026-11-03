@@ -1,0 +1,367 @@
+# ANY-812 — Canonical enum guard and internal-contract rules
+
+Status: active; planning complete; implementation not started.
+Created: 2026-11-03
+Owner: ANY-812 delivery agent
+Execution branch: `ANY-812`
+
+## 1. Objective, authority and verified baseline
+
+Deliver only [ANY-800](https://linear.app/paveldik/issue/ANY-800) steps 1–2 in
+one reviewable PR targeting `main`: repair canonical enum ownership enforcement
+and reconcile development/review rules. The owning delivery issue is
+[ANY-812](https://linear.app/paveldik/issue/ANY-812).
+
+Follow Mikhail Gushinets's approval of 2026-11-02 in ANY-800, the narrower agreed
+rules in ANY-812, applicable [root AGENTS](../../../AGENTS.md),
+[documentation AGENTS](../../AGENTS.md), API/web AGENTS where applicable,
+[delivery workflow](../../engineering/AGENT_WORKFLOW.md),
+[coding conventions](../../engineering/CODING_CONVENTIONS.md) and
+[testing guidance](../../engineering/TESTING.md).
+Architectural authority remains [ADR 0005](../../architecture/decisions/0005-external-billing-boundary.md),
+the accepted external-billing and Portal–Kernel design baselines, and the narrow
+live-source amendment linked by that ADR. This ticket changes none of their
+commercial, trust or paid-access decisions.
+
+Verified on 2026-11-03:
+
+- GitHub `main` and local `origin/main` identify
+  `366d902635a699c18b90e0a619f74bb6b0e680c2`. The local branch named `main` was
+  older; do not use it without updating.
+- The source checkout for the research/draft is `ANY-715` at
+  `76ea1a73125c0ef44f3145df2c3a1bfb882c138c`, with an uncommitted Step-2 draft
+  and unrelated branch changes. Preserve that working tree.
+- Main declares 14 canonical enums; the guard inventories 13, omitting
+  `ExternalCreateOperationState`. `WebhookDeliveryState` belongs to the parallel
+  branch and must not be introduced by this ticket.
+- Main still represents `BillingWorkItem.work_state`,
+  `ExternalBillingWebhookDelivery.processing_state` and
+  `ManualReviewCase.case_state` as plain strings. The draft's two-field inventory
+  must be corrected when transferred.
+
+Planning evidence, obtained from temporary clean main snapshots:
+
+- `test_repository_docs.py`, `test_model_enums.py` and
+  `test_billing_reconciliation_models.py`: **209 passed** with
+  `KERNEL_MOCK_ENABLED=0`.
+- Documentation and architecture commands: **passed**.
+- Existing direct-provider and removed-model architecture regressions:
+  **2 passed**, 49 deselected.
+- Old guard incorrectly accepts the omitted enum's duplicate, absolute/relative
+  facade imports, and a future canonical declaration's duplicate/facade import.
+  The canonical/provider positive probe remains accepted.
+- Full canonical checks were not run during planning. Earlier ANY-715 results,
+  including the TypeScript tooling failure, remain historical evidence.
+
+Existing tests cover one canonical duplicate, removed facades, relative imports,
+provider exceptions, approved enum values and text-backed persistence. They do
+**not** establish complete inventory coverage, future-addition protection,
+per-root discovery or authority-source failure handling. Reuse the existing
+persistence assertions; add the missing guard regressions.
+
+The prior research canvas, audit inventory and local draft are dated supporting
+evidence, not prerequisites or normative sources. All essential requirements are
+recorded here and in ANY-812. Planning validation returned **READY WITH GATES**:
+before code edits, save this plan with repository-relative links and establish
+an isolated branch from verified remote main. This document does not claim that
+either approved implementation step is complete.
+
+## 2. Ordered implementation
+
+### A. Establish an isolated delivery baseline
+
+- Create a clean `ANY-812` branch from freshly verified remote main using an
+  isolated worktree. Preserve the dirty ANY-715 checkout; do not stash or move
+  its changes into this delivery.
+- Record the actual starting SHA and any intervening relevant changes here.
+  Reassess affected tests before editing tooling.
+- Keep this single English plan under `docs/exec-plans/active`; retain progress,
+  discoveries, decisions and separate Step-1/Step-2 evidence here.
+- Compare the uncommitted draft against its ANY-715 base and current main.
+  Transfer only approved rule/review changes; do not cherry-pick the branch or
+  import its worker, webhook, schema or operational documentation changes.
+  If the local draft is unavailable, use the complete rules below and ANY-812
+  rather than making that unpublished artifact a delivery dependency.
+
+Completion: a clean, independently reviewable main-based branch contains this
+plan, with no inherited ANY-715 implementation changes.
+
+### B. Add regressions before correcting the guard
+
+Extend [test_repository_docs.py](../../../apps/api/tests/test_repository_docs.py),
+retaining the existing fixture approach.
+
+- Supply realistic canonical authority source in ordinary synthetic
+  repositories. Keep authority-absence fixtures intentionally incomplete.
+- Parameterize duplicate-definition and forbidden facade-import cases over
+  every canonical declaration in the execution baseline, including
+  `ExternalCreateOperationState`.
+- Add a future enum only to a fixture's canonical source, without updating
+  `__all__`, exports or another inventory. Reject its external duplicate and
+  absolute/relative facade imports.
+- Exercise distinct supplied roots in the same process to expose
+  checkout-global or cached inventory discovery.
+- Cover missing, syntactically invalid and empty authority sources with
+  actionable diagnostics.
+- Preserve positive cases: canonical definitions, canonical imports/re-exports
+  and unrelated Integration/provider enums. Preserve existing relevant
+  absolute/relative forbidden-import paths.
+- Retain removed-model, historical-enum and direct-provider restrictions.
+
+Run the new cases against unchanged tooling. Record expected failures and their
+precise assertions. Positive cases and unrelated existing guards must remain
+green. These checked-in failures provide the required regression evidence;
+planning probes alone do not replace them.
+
+Completion: the missing guarantees have reproducible failing tests before the
+tooling correction, with existing permitted behavior characterized.
+
+### C. Implement the smallest ownership correction
+
+Change [scripts/repo.py](../../../scripts/repo.py):
+
+- Read and parse `apps/api/app/models/enums.py` relative to the supplied `root`
+  on each checker invocation.
+- Derive the inventory from top-level class declarations in this dedicated
+  enum-owner module; require a readable, parseable, nonempty authority when an
+  API application tree is present. Preserve the existing no-application-tree
+  no-op behavior.
+- Use that inventory consistently for duplicate detection and forbidden
+  billing-facade symbol imports.
+- Retain historical removed enum names as an independent fixed prohibition
+  set. Preserve their use by removed-architecture checks.
+- Remove the manually synchronized current-enum inventory and its dependent
+  static union.
+- Preserve `check_canonical_persisted_model_layer(root: Path = ROOT) -> list[str]`,
+  existing import resolution and normal repository diagnostics. Missing or
+  malformed authority must fail visibly rather than silently disable protection.
+
+Do not import application/ORM modules, introduce a general enum-discovery
+framework or add runtime assignment analysis. Public APIs, models, migrations,
+persisted values and generated contracts remain unchanged.
+
+Completion: all Step-B regressions pass, future declarations acquire protection
+without another inventory edit, permitted cases still pass, and historical
+removed-architecture guards remain effective.
+
+### D. Reconcile rules and review inputs
+
+Use [CODING_CONVENTIONS.md](../../engineering/CODING_CONVENTIONS.md) as the
+detailed rule owner. Reconcile architecture/data-model explanations,
+root/API/web AGENTS digests, delivery workflow, correctness checklist, review
+configuration and documentation navigation.
+
+The consolidated rules must establish:
+
+- **Concrete shared structures:** required/optional fields and consumed nested
+  shapes; appropriate dataclasses/value objects, boundary models/decoders or
+  serialized `TypedDict`. Bare dictionaries, broad aliases and erased dataclass
+  fields are insufficient; sufficient primitives need no wrapper.
+- **Single vocabulary ownership:** enums for closed states/outcomes/kinds/scopes,
+  `StrEnum` for textual Python vocabularies, canonical `app.models` ownership
+  for persisted vocabulary. Use symbolic members throughout annotations,
+  construction, defaults, assignments/transitions, comparisons/membership/match,
+  queries/DML/upserts and results.
+- **All model statuses/states:** include singleton ORM, dataclass and response
+  states, even without transition code. Raw string types or string `Literal`
+  unions are insufficient. Enum-member narrowing, boolean literals and actual
+  schema/protocol tags remain legitimate; an owner constant can suffice for a
+  single tag or diagnostic identifier. A singleton outcome is not a schema-tag
+  loophole. Cover queue, review, observation, operator, catalog, health,
+  diagnostics/metrics and local UI concepts where the slice owns finite meanings.
+- **Complete use-path review:** cover client/server defaults, positive
+  factories, CHECK constraints, partial indexes, serialization and UI consumers.
+  Derive active SQL values from their owner or provide focused parity checks;
+  use existing SQLAlchemy facilities. Retain historical migration and
+  independent compatibility literals.
+- **Actual boundaries:** validate external and structurally consumed retained
+  data once, then preserve useful nested, helper and callable types inward.
+  Annotations and `frozen=True` do not validate runtime input. Avoid repeated
+  internal validation and decoders for unread retained data.
+- **Proportionate construction and exceptions:** centralize repeated identity
+  and initialization invariants without requiring factories everywhere; preserve
+  intentional use-case differences and Application transition/transaction
+  ownership. Permit genuine maps, opaque requests, physical JSON and necessary
+  SDK/raw-decoding/redaction seams with an identifiable owner, consumer and
+  reason. Known-key objects are not genuine maps. Preserve empty payloads absent
+  a consumer requirement.
+- **Compatibility:** preserve keys, omitted/null distinctions, spelling,
+  versions, equality/coalescing, digests/fingerprints, identities, receipts,
+  history, transactions, leases/fences, enqueue generations, counters and
+  deadlines. Do not merge or rename `done`/`completed`.
+- **Provider independence:** Portal concepts stay provider-neutral; Integration
+  owns vendor DTOs, numeric protocol symbols (`IntEnum` where appropriate),
+  normalization and unknown-value handling. Raw source values stay raw until
+  their owning decoder; opaque IDs, arbitrary source codes/currencies, user text
+  and ordinary quantities are not automatically enums. Locally recognized
+  decision subsets have an owner. Do not impose LBX fields, calendars or
+  currency policy on other integrations.
+- **Generated authority:** preserve backend → OpenAPI → generated frontend
+  contracts and the shared transport boundary. Local UI vocabularies have local
+  symbols; backend enums are not hand-copied. Legal/locale/capability values
+  retain their existing source/generation ownership. Type-only frontend
+  generation remains explicit debt.
+- **Incremental application:** apply rules to new/materially changed contracts
+  and affected producers/consumers, not every declaration in a touched file.
+  Require a current consumer/invariant benefit and KISS/YAGNI; apply DRY to
+  repeated knowledge rather than similar syntax. Do not introduce speculative
+  models, validators, factories, state machines, retries, registries, adapters
+  or configuration. Explain bounded exceptions near code or in the PR, reuse
+  existing debt ownership, and avoid per-field waiver registries or blanket
+  casts/suppressions. Routine choices need no approval; unresolved behavior,
+  supported/retained-value, compatibility, trust, authorization, ownership or
+  unavoidable scope decisions require focused escalation with the smallest
+  viable option. Do not request approval again for an existing decision.
+- **Honest evidence:** distinguish a confirmed rule/enforcement gap from a
+  reproduced runtime defect. A green suite or additional classes do not prove a
+  missing guarantee. Documentation alone does not install a Python checker or
+  migrate existing runtime contracts.
+
+Include positive and negative examples: `ResolutionOutcome`/`ResolutionResult`
+with optional `observation_id`, singleton `UserStatus`/`PersistedEnumType`
+mapping, scattered raw outcomes, a fixed snapshot typed as `dict`, erased nested
+dataclass fields, a legitimate map and an opaque provider request with typed
+consumed evidence. Do not duplicate the full vendor DTO in Domain.
+
+Specific reconciliation:
+
+- Update [ARCHITECTURE.md](../../../ARCHITECTURE.md) and the
+  [data-model reference](../../architecture/payment-portal-data-model.md) to
+  describe main's three plain-string state fields and related
+  kind/scope/classification debt truthfully. Do not copy ANY-715-only schema or
+  runtime claims. TEXT/VARCHAR storage and existing `PersistedEnumType` remain;
+  do not introduce PostgreSQL native ENUM.
+- In [the reconciliation model test](../../../apps/api/tests/test_billing_reconciliation_models.py),
+  rename the test and its “open” variables/comments to describe current
+  enum/plain-text representation. Preserve every physical-schema assertion,
+  including main's plain-text webhook state. Existing debt does not permit new
+  arbitrary runtime states, and this wording change does not implement narrowing.
+- Replace the draft's “guard gap remains future work” wording with the completed
+  ownership guarantee only after Step C passes. Other enforcement and migration
+  limits remain explicit under ANY-800.
+- Add [the correctness checklist](../../engineering/review-checklists/correctness.md)
+  to the existing [AI-review configuration](../../../.github/ai-review.yml)
+  `policy.always` inputs and link it from the delivery workflow. Keep AGENTS
+  summaries concise and link the detailed rule owner; update
+  [documentation navigation](../../README.md).
+- Make pre-edit coverage assessment, bug regression-first evidence and
+  behavior-preserving characterization explicit in the workflow. Reconcile
+  testing guidance's blanket factory-migration wording with proportionate setup
+  reuse, retaining shared fixture/resource lifecycle ownership.
+- Keep essential requirements in committed guidance; do not add redundant rule
+  systems or depend on unpublished audit artifacts.
+
+Completion: conventions, current-state explanations, AGENTS digests, development
+guidance and actual review inputs agree on every ANY-812 rule, with examples and
+bounded exceptions; runtime and schema assertions remain truthful.
+
+## 3. Verification and review
+
+Run focused regressions before and after the fix, then the complete
+repository-documentation, model-enum, reconciliation-model and architecture
+test modules. For direct focused runs from the delivery worktree root:
+
+```bash
+PATH="$PWD/.venv/bin:$PATH" KERNEL_MOCK_ENABLED=0 PYTHONPATH=apps/api:. python -m pytest -q apps/api/tests/test_repository_docs.py -k canonical_persisted_model_guard
+PATH="$PWD/.venv/bin:$PATH" KERNEL_MOCK_ENABLED=0 PYTHONPATH=apps/api:. python -m pytest -q apps/api/tests/test_repository_docs.py apps/api/tests/test_model_enums.py apps/api/tests/test_billing_reconciliation_models.py apps/api/tests/test_architecture.py
+```
+
+Use the delivery worktree's canonical root `.venv` on PATH and
+`KERNEL_MOCK_ENABLED=0` for repository commands. Obtain dependencies using the
+documented setup workflow; do not copy another checkout's runtime configuration.
+Run:
+
+```bash
+npm run docs:check
+npm run architecture:check
+npm run generate:check
+npm run check:fast
+npm run check
+git diff --check
+```
+
+- For the full check, use the supported worktree-local PostgreSQL lifecycle
+  where available. Record passed, failed, blocked, skipped and unreached stages
+  against the actual SHA.
+- Recheck the historical TypeScript tooling failure on the clean execution
+  baseline. If reproduced, isolate its evidence and owning delivery; do not fix
+  unrelated tooling or weaken checks in this PR.
+- No new persistence guarantee is introduced. PostgreSQL becomes mandatory for
+  any actual persistence/migration change, which would require scope
+  reassessment. SQLite probes are not concurrency evidence.
+- Browser/provider journeys are not acceptance tests for this
+  tooling/documentation-only change. Record them as not run unless required by
+  another actual change. Local verification does not prove provider conformance
+  or production launch readiness.
+
+Review the full diff for correctness, ownership, compatibility, provider
+independence and unnecessary machinery using the repository's independent review
+guidance. Check all agreed rules against authoritative text, digests and actual
+review inputs. Resolve findings and rerun affected checks; finish with the
+broadest supported canonical verification. Record Step-1 and Step-2 review and
+validation evidence separately within this one plan.
+
+## 4. Progress, completion criteria and handoff
+
+- [x] Read ANY-812, ANY-800 and Mikhail's approval; use the existing research and
+  local draft without treating their branch snapshots as current main.
+- [x] Revalidate main, assess existing tests and reproduce the ownership escapes
+  using temporary repositories before implementation.
+- [x] Self-validate the plan against the ticket, applicable instructions and
+  actual main; resolve main/ANY-715 inventory and representation differences.
+- [x] Establish the isolated main-based branch and save this plan; record the
+  plan-only validation below.
+- [ ] Add checked-in failing Step-1 regressions before the correction.
+- [ ] Complete Step 1 with current/future inventory, facade paths, root isolation,
+  authority diagnostics, permitted cases and historical guards passing.
+- [ ] Complete Step 2 with all agreed rules, examples, exception/escalation
+  guidance and consistent authoritative/review surfaces.
+- [ ] Confirm that documentation/test wording distinguishes current
+  representation debt from semantic openness and completed enforcement.
+- [ ] Confirm that no runtime/schema/wire change, Python checker rollout,
+  generator migration, broad literal cleanup, factory/payload redesign or
+  ANY-800 steps 3–8 entered the diff. No new paid-access authority, UI/legal
+  change, speculative framework or unrelated baseline repair is authorized.
+- [ ] Record final-SHA checks and review findings with explicit dispositions;
+  unresolved verification is not reported as passing.
+- [ ] Prepare one PR targeting main, titled
+  `ANY-812 - Fix canonical enum guard and internal-contract rules`, linking
+  ANY-812 and presenting separate Step-1/Step-2 evidence. Retain human merge
+  approval; do not push/publish during this plan-only preparation.
+
+Update this same plan throughout delivery and move it to `completed` only when
+completion is supported by evidence. Do not mark the broader ANY-800 program
+complete or introduce speculative child tickets. Broad refactoring is not a
+condition for launching LBX Billing.
+
+### Plan-only preparation evidence
+
+- Created isolated branch `ANY-812` at the independently verified remote main
+  SHA `366d902635a699c18b90e0a619f74bb6b0e680c2` on 2026-11-03.
+- Saved this single plan with repository-relative links. The original dirty
+  ANY-715 checkout was left unchanged; no branch-wide changes were transferred.
+- The saved plan incorporates its self-validation and the complete agreed
+  rules. Implementation remains unstarted. The only intended branch change is
+  this execution-plan file.
+- Plan-only verification: `npm run docs:check` passed; the new-file whitespace
+  check reported no errors. Links are repository-relative and engineering text
+  is English.
+  Runtime/canonical implementation suites are not repeated for this document
+  save; their execution remains required above when implementation occurs.
+
+No implementation step is complete merely because this document exists.
+
+### Step 1 implementation evidence
+
+Pending: pre-fix failing regression output, correction diff, post-fix focused
+results and historical/positive guard evidence.
+
+### Step 2 implementation evidence
+
+Pending: rule-to-document/review coverage, truthful current-state reconciliation,
+review findings and validation results.
+
+### Final delivery evidence
+
+Pending: final base/head SHAs, canonical passed/failed/blocked/skipped results,
+residual risks, PR link and human merge decision.
