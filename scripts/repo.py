@@ -2836,6 +2836,14 @@ def check_canonical_persisted_model_layer(root: Path = ROOT) -> list[str]:
                         "app.domains.billing.models; import them from app.models"
                     )
                 if any(
+                    module_matches(target, "app.domains.billing.enums")
+                    for target in imported_targets
+                ):
+                    errors.append(
+                        f"{relative}:{node.lineno} imports the removed billing enum façade; "
+                        "import persisted enums from app.models"
+                    )
+                if any(
                     module_matches(target, "app.domains.legal.enums")
                     for target in imported_targets
                 ):
