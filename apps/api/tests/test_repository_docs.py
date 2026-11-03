@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import os
 import subprocess
 import sys
@@ -173,101 +174,226 @@ def _write_api_source(root: Path, relative: str, source: str) -> None:
     path.write_text(source, encoding="utf-8")
 
 
-def test_canonical_persisted_model_guard_rejects_billing_model_facade(tmp_path: Path) -> None:
-    _write_api_source(tmp_path, "domains/billing/models.py", "from app.models import Order\n")
+_CANONICAL_ENUM_SOURCE = (repo.ROOT / "apps/api/app/models/enums.py").read_text(encoding="utf-8")
+_CANONICAL_ENUM_NAMES = tuple(
+    node.name for node in ast.parse(_CANONICAL_ENUM_SOURCE).body if isinstance(node, ast.ClassDef)
+)
 
-    errors = check_canonical_persisted_model_layer(tmp_path)
+
+@pytest.fixture
+def api_root(tmp_path: Path) -> Path:
+    _write_api_source(tmp_path, "models/enums.py", _CANONICAL_ENUM_SOURCE)
+    return tmp_path
+
+
+def test_canonical_persisted_model_guard_rejects_billing_model_facade(api_root: Path) -> None:
+    _write_api_source(api_root, "domains/billing/models.py", "from app.models import Order\n")
+
+    errors = check_canonical_persisted_model_layer(api_root)
 
     assert any("domains/billing/models.py is forbidden" in error for error in errors)
 
 
-def test_canonical_persisted_model_guard_rejects_billing_model_import(tmp_path: Path) -> None:
-    _write_api_source(tmp_path, "feature.py", "from app.domains.billing.models import Order\n")
+def test_canonical_persisted_model_guard_rejects_billing_model_import(api_root: Path) -> None:
+    _write_api_source(api_root, "feature.py", "from app.domains.billing.models import Order\n")
 
-    errors = check_canonical_persisted_model_layer(tmp_path)
+    errors = check_canonical_persisted_model_layer(api_root)
 
     assert any("imports ORM models through app.domains.billing.models" in error for error in errors)
 
 
-def test_canonical_persisted_model_guard_rejects_duplicate_enum_definition(tmp_path: Path) -> None:
-    _write_api_source(tmp_path, "feature.py", "class PurchaseIntentState: pass\n")
+@pytest.mark.parametrize("enum_name", _CANONICAL_ENUM_NAMES)
+def test_canonical_persisted_model_guard_rejects_duplicate_enum_definition(api_root: Path, enum_name: str) -> None:
+    _write_api_source(api_root, "feature.py", f"class {enum_name}: pass\n")
 
-    errors = check_canonical_persisted_model_layer(tmp_path)
+    errors = check_canonical_persisted_model_layer(api_root)
 
-    assert any("defines protected persisted enum PurchaseIntentState" in error for error in errors)
+    assert any(f"defines protected persisted enum {enum_name}" in error for error in errors)
 
 
-def test_canonical_persisted_model_guard_rejects_removed_enum_facades(tmp_path: Path) -> None:
+@pytest.mark.parametrize("enum_name", _CANONICAL_ENUM_NAMES)
+def test_canonical_persisted_model_guard_rejects_removed_enum_facades(api_root: Path, enum_name: str) -> None:
     _write_api_source(
-        tmp_path,
+        api_root,
         "feature.py",
-        "from app.domains.billing.enums import PurchaseIntentState\n"
-        "from app.domains.legal.enums import AcceptanceKind\n",
+        f"from app.domains.billing.enums import {enum_name}\nfrom app.domains.legal.enums import AcceptanceKind\n",
     )
 
-    errors = check_canonical_persisted_model_layer(tmp_path)
+    errors = check_canonical_persisted_model_layer(api_root)
 
-    assert any("imports PurchaseIntentState through the removed billing enum façade" in error for error in errors)
+    assert any(f"imports {enum_name} through the removed billing enum façade" in error for error in errors)
     assert any("imports the removed legal enum façade" in error for error in errors)
 
 
-def test_canonical_persisted_model_guard_allows_canonical_definition(tmp_path: Path) -> None:
-    _write_api_source(tmp_path, "models/enums.py", "class PurchaseIntentState: pass\n")
-
-    assert check_canonical_persisted_model_layer(tmp_path) == []
+def test_canonical_persisted_model_guard_allows_canonical_definition(api_root: Path) -> None:
+    assert check_canonical_persisted_model_layer(api_root) == []
 
 
-def test_canonical_persisted_model_guard_allows_unrelated_provider_enum(tmp_path: Path) -> None:
+def test_canonical_persisted_model_guard_allows_unrelated_provider_enum(api_root: Path) -> None:
     _write_api_source(
-        tmp_path,
+        api_root,
         "domains/billing/enums.py",
         "from enum import StrEnum\n\nclass ProviderSubscriptionState(StrEnum):\n    ACTIVE = 'active'\n",
     )
 
-    assert check_canonical_persisted_model_layer(tmp_path) == []
+    assert check_canonical_persisted_model_layer(api_root) == []
 
 
-def test_canonical_persisted_model_guard_rejects_relative_billing_model_import(tmp_path: Path) -> None:
-    _write_api_source(tmp_path, "domains/checkout/feature.py", "from ..billing.models import Order\n")
+def test_canonical_persisted_model_guard_rejects_relative_billing_model_import(api_root: Path) -> None:
+    _write_api_source(api_root, "domains/checkout/feature.py", "from ..billing.models import Order\n")
 
-    errors = check_canonical_persisted_model_layer(tmp_path)
+    errors = check_canonical_persisted_model_layer(api_root)
 
     assert any("imports ORM models through app.domains.billing.models" in error for error in errors)
 
 
-def test_canonical_persisted_model_guard_rejects_relative_billing_enum_import(tmp_path: Path) -> None:
+@pytest.mark.parametrize("enum_name", _CANONICAL_ENUM_NAMES)
+def test_canonical_persisted_model_guard_rejects_relative_billing_enum_import(api_root: Path, enum_name: str) -> None:
     _write_api_source(
-        tmp_path,
+        api_root,
         "domains/checkout/feature.py",
-        "from ..billing.enums import PurchaseIntentState\n",
+        f"from ..billing.enums import {enum_name}\n",
     )
 
-    errors = check_canonical_persisted_model_layer(tmp_path)
+    errors = check_canonical_persisted_model_layer(api_root)
 
-    assert any("imports PurchaseIntentState through the removed billing enum façade" in error for error in errors)
+    assert any(f"imports {enum_name} through the removed billing enum façade" in error for error in errors)
 
 
-def test_canonical_persisted_model_guard_rejects_relative_legal_enum_import(tmp_path: Path) -> None:
-    _write_api_source(tmp_path, "domains/checkout/feature.py", "from ..legal.enums import AcceptanceKind\n")
+def test_canonical_persisted_model_guard_rejects_relative_legal_enum_import(api_root: Path) -> None:
+    _write_api_source(api_root, "domains/checkout/feature.py", "from ..legal.enums import AcceptanceKind\n")
 
-    errors = check_canonical_persisted_model_layer(tmp_path)
+    errors = check_canonical_persisted_model_layer(api_root)
 
     assert any("imports the removed legal enum façade" in error for error in errors)
 
 
-def test_canonical_persisted_model_guard_allows_relative_provider_enum_import(tmp_path: Path) -> None:
+def test_canonical_persisted_model_guard_allows_relative_provider_enum_import(api_root: Path) -> None:
     _write_api_source(
-        tmp_path,
+        api_root,
         "domains/billing/enums.py",
         "from enum import StrEnum\n\nclass ProviderSubscriptionState(StrEnum):\n    ACTIVE = 'active'\n",
     )
     _write_api_source(
-        tmp_path,
+        api_root,
         "domains/checkout/feature.py",
         "from ..billing.enums import ProviderSubscriptionState\n",
     )
 
+    assert check_canonical_persisted_model_layer(api_root) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "class FuturePersistedState: pass\n",
+        "from app.domains.billing.enums import FuturePersistedState\n",
+        "from ..billing.enums import FuturePersistedState\n",
+    ],
+    ids=["duplicate", "absolute-facade", "relative-facade"],
+)
+def test_canonical_persisted_model_guard_protects_future_declaration(api_root: Path, source: str) -> None:
+    # Deliberately do not add the future declaration to __all__ or package exports.
+    _write_api_source(
+        api_root,
+        "models/enums.py",
+        _CANONICAL_ENUM_SOURCE + "\nclass FuturePersistedState(StrEnum):\n    READY = 'ready'\n",
+    )
+    _write_api_source(api_root, "domains/checkout/feature.py", source)
+
+    errors = check_canonical_persisted_model_layer(api_root)
+
+    assert len(errors) == 1
+    assert "FuturePersistedState" in errors[0]
+    assert "apps/api/app/domains/checkout/feature.py:1" in errors[0]
+    expected = "define it only" if source.startswith("class") else "removed billing enum façade"
+    assert expected in errors[0]
+
+
+def test_canonical_persisted_model_guard_discovers_each_root_on_each_call(tmp_path: Path) -> None:
+    first_root, second_root = tmp_path / "first", tmp_path / "second"
+    future_authority = _CANONICAL_ENUM_SOURCE + "\nclass RootSpecificState(StrEnum):\n    READY = 'ready'\n"
+    for root, authority in [(first_root, future_authority), (second_root, _CANONICAL_ENUM_SOURCE)]:
+        _write_api_source(root, "models/enums.py", authority)
+        _write_api_source(root, "feature.py", "class RootSpecificState: pass\n")
+
+    for root in (first_root, second_root, first_root):
+        errors = check_canonical_persisted_model_layer(root)
+        if root == first_root:
+            assert any("defines protected persisted enum RootSpecificState" in error for error in errors)
+        else:
+            assert errors == []
+
+    _write_api_source(second_root, "models/enums.py", future_authority)
+    assert any(
+        "defines protected persisted enum RootSpecificState" in error
+        for error in check_canonical_persisted_model_layer(second_root)
+    )
+
+
+@pytest.mark.parametrize(
+    ("authority", "diagnostic"),
+    [
+        (None, "cannot read canonical enum authority"),
+        ("class Broken(\n", "cannot parse canonical enum authority"),
+        ("", "canonical enum authority declares no top-level classes"),
+        (
+            "from enum import StrEnum\n\ndef helper():\n    class NestedState(StrEnum):\n        READY = 'ready'\n",
+            "canonical enum authority declares no top-level classes",
+        ),
+    ],
+    ids=["missing", "syntax-error", "empty", "no-top-level-classes"],
+)
+def test_canonical_persisted_model_guard_requires_authority(
+    tmp_path: Path, authority: str | None, diagnostic: str
+) -> None:
+    _write_api_source(tmp_path, "feature.py", "# API tree exists\n")
+    if authority is not None:
+        _write_api_source(tmp_path, "models/enums.py", authority)
+
+    errors = check_canonical_persisted_model_layer(tmp_path)
+
+    assert any("apps/api/app/models/enums.py" in error and diagnostic in error and "; " in error for error in errors)
+
+
+def test_canonical_persisted_model_guard_reports_unreadable_authority(tmp_path: Path) -> None:
+    # A directory is deterministically unreadable as a source file, even when run as root.
+    (tmp_path / "apps/api/app/models/enums.py").mkdir(parents=True)
+
+    errors = check_canonical_persisted_model_layer(tmp_path)
+
+    assert any(
+        "apps/api/app/models/enums.py" in error and "cannot read canonical enum authority" in error for error in errors
+    )
+
+
+def test_canonical_persisted_model_guard_without_application_tree_is_noop(tmp_path: Path) -> None:
     assert check_canonical_persisted_model_layer(tmp_path) == []
+
+
+def test_canonical_persisted_model_guard_allows_canonical_imports_and_reexports(api_root: Path) -> None:
+    _write_api_source(api_root, "models/__init__.py", "from .enums import ExternalCreateOperationState\n")
+    _write_api_source(
+        api_root,
+        "domains/checkout/feature.py",
+        "from app.models import ExternalCreateOperationState\n"
+        "from app.models.enums import PurchaseIntentState\n"
+        "from ...models.enums import AcceptanceKind\n",
+    )
+
+    assert check_canonical_persisted_model_layer(api_root) == []
+
+
+@pytest.mark.parametrize("enum_name", sorted(repo.REMOVED_LEGACY_PERSISTED_ENUM_NAMES))
+@pytest.mark.parametrize("module", ["app.domains.billing.enums", "..billing.enums"])
+def test_canonical_persisted_model_guard_rejects_historical_enum_imports(
+    api_root: Path, enum_name: str, module: str
+) -> None:
+    _write_api_source(api_root, "domains/checkout/feature.py", f"from {module} import {enum_name}\n")
+
+    errors = check_canonical_persisted_model_layer(api_root)
+
+    assert any(f"imports {enum_name} through the removed billing enum façade" in error for error in errors)
 
 
 def test_consistent_knowledge_fixture_passes() -> None:
