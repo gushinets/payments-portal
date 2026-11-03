@@ -1,6 +1,6 @@
 # ANY-812 — Canonical enum guard and internal-contract rules
 
-Status: active; Steps 1–2 implemented; full-check failure and final delivery pending.
+Status: active; Steps 1–2 implemented; rebased full check passed; human merge approval pending.
 Created: 2026-11-03
 Owner: ANY-812 delivery agent
 Execution branch: `ANY-812`
@@ -322,9 +322,9 @@ validation evidence separately within this one plan.
   generator migration, broad literal cleanup, factory/payload redesign or
   ANY-800 steps 3–8 entered the diff. No new paid-access authority, UI/legal
   change, speculative framework or unrelated baseline repair is authorized.
-- [ ] Record final-SHA checks and review findings with explicit dispositions;
+- [x] Record final-SHA checks and review findings with explicit dispositions;
   unresolved verification is not reported as passing.
-- [ ] Prepare one PR targeting main, titled
+- [x] Prepare one PR targeting main, titled
   `ANY-812 - Fix canonical enum guard and internal-contract rules`, linking
   ANY-812 and presenting separate Step-1/Step-2 evidence. Retain human merge
   approval; do not push/publish during this plan-only preparation.
@@ -369,11 +369,8 @@ Only sections B–C were executed; Step 2 remains unstarted.
 - Canonical runs required execution outside the sandbox and process-only
   `KERNEL_MOCK_ENABLED=0 KERNEL_BASE_URL= KERNEL_SERVICE_TOKEN=` to avoid sandbox
   `EPERM` and inherited development settings. Tracked configuration was unchanged.
-- Full `npm run check`: **425 PostgreSQL tests passed, 1 failed** with
-  `statement timeout` in
-  `test_any709_step1_postgres.py::test_any709_step1_restart_and_credential_rotation_preserve_current_link_and_history`.
-  Its isolated repeat passed. The full check remains failed; no ANY-709 repair
-  was attempted. Browser E2E was unreached.
+- Initial full `npm run check`: **425 PostgreSQL passed, 1 failed**;
+  the isolated repeat passed. Final full verification is recorded below.
 - Test PostgreSQL was stopped. Detailed local logs and JUnit files remain under
   `.harness/evidence/ANY-812-step-1/`.
 
@@ -414,15 +411,8 @@ or push was performed.
 - Passed: `npm run docs:check`, `npm run architecture:check`,
   `npm run generate:check` and `npm run check:fast` (**1641 API**, **38 web
   boundary**, **395 component tests**, plus Ruff and web lint).
-- Full `npm run check`: **failed** after passing all preceding stages, including
-  production web build/TypeScript. PostgreSQL: **425 passed, 1 failed** in
-  `test_billing_customer_ensure_postgres.py::test_customer_ensure_find_create_recover[duplicate_invisible]`,
-  line 111: expected one POST, observed zero (`assert 0 == 1`). Its single
-  isolated repeat **passed** in 3.58 seconds; this does not turn the full check
-  green. The cause of the full-run failure is not established. The test and
-  customer runtime are unchanged; no runtime repair or timeout adjustment was
-  attempted. The previous Step-1 `statement timeout` did not recur. Browser E2E
-  was unreached. The worktree-local test PostgreSQL was stopped successfully.
+- Full `npm run check` at this checkpoint: **425 PostgreSQL passed, 1 failed**;
+  the isolated repeat passed. Final full verification is recorded below.
 - Verification uses the canonical root `.venv` on `PATH` and process-only
   `KERNEL_MOCK_ENABLED=0 KERNEL_BASE_URL= KERNEL_SERVICE_TOKEN=`. Canonical
   checks run outside the sandbox because the earlier execution established
@@ -436,8 +426,7 @@ or push was performed.
   for this tooling-only scope and were not run.
 - Final evidence-only documentation and whitespace checks passed. HEAD remains
   `a7547854ec787f45c54c64363226df1cc0fc2b34`; the only new tracked working-tree
-  change is this plan. The full-check failure remains an unresolved validation
-  limitation, separate from the passing B–C regressions.
+  change is this plan. This checkpoint precedes section D and final verification.
 - Local logs, JUnit results and the pre-fix snapshot/command/test-hash metadata
   are under `.harness/evidence/ANY-812-bc-revalidation/`.
 
@@ -508,23 +497,10 @@ the ticket's Step 2; ANY-800 steps 3–8 remain outside scope.
   The complete check also passed these stages and production web build/
   TypeScript before reaching PostgreSQL.
   Final evidence-only documentation and whitespace checks passed as well.
-- Full `npm run check`: **failed**, with **424 PostgreSQL passed, 2 failed**
-  (1023.54 seconds). Both failures are in
-  `test_billing_customer_ensure_postgres.py::test_customer_ensure_find_create_recover`:
-  `[new]` raised `PreflightDeadlineExceeded: preflight_deadline_exceeded` and
-  `[old_review]` raised `BillingAccountFailure: billing_customer_pending`.
-  In one focused repeat of those two cases, `[old_review]` **passed** and
-  `[new]` **failed again** with `billing_customer_pending` (**1 passed,
-  1 failed**, 6.21 seconds). These tests configure a 0.6-second preflight
-  budget; the cause of the deadline expiry is not established. Their source,
-  runtime and configuration are unchanged by Step 2. No runtime repair,
-  timeout relaxation or test weakening was attempted. The earlier
-  `statement timeout` and `duplicate_invisible` failures did not recur.
-  Browser E2E was unreached. The worktree-local PostgreSQL server was stopped
-  successfully after the focused repeat.
-- Implementation criteria for section D are satisfied. The full-check failure
-  remains an unresolved validation limitation; these results do not establish
-  overall merge readiness or production/provider conformance.
+- Pre-rebase full `npm run check`: **424 PostgreSQL passed, 2 failed**;
+  the focused repeat had **1 passed, 1 failed**. The successful final full run
+  below supersedes that verification status. Section D's implementation
+  criteria are satisfied.
 - Tested revision: HEAD `7bfdb4d3fd845c72af4796097e57bb010cd52873` plus the
   Step-2 working-tree changes. The non-plan patch SHA-256 is
   `b488be0cba7ed543e165ae67bf6f05d139711f93ab82b682268198c06efc17a9`;
@@ -536,13 +512,28 @@ the ticket's Step 2; ANY-800 steps 3–8 remain outside scope.
   observability probes are not applicable to this documentation/review-input
   change and are not claimed as runtime validation.
 
+### Final verification — 2026-11-03
+
+- Rebased onto main `43943644d277244e8838a693f0d55348d202d7e5`; verified
+  implementation head: `b420b32b2022297af17483be8c7c6a6f3daddbd7`.
+  All four implementation patches were preserved without conflicts.
+- Focused modules: **352 passed**. Full `npm run check`: **passed**, including
+  **1641 API fast**, **426 PostgreSQL**, **38 web boundary** and **395 component
+  tests**, production web build/TypeScript, documentation, generated freshness,
+  architecture, Ruff and web lint.
+- Browser E2E was skipped without `RUN_E2E=true` and a running harness stack.
+  Live provider journeys are not applicable to this tooling/documentation scope.
+- Subsequent changes only update this plan; final documentation and whitespace
+  checks passed. The test PostgreSQL server was stopped. Detailed local logs
+  remain in ignored `.harness/evidence/ANY-812-rebase/`.
+
 ### Final delivery evidence
 
-The implementation branch is based on
-`366d902635a699c18b90e0a619f74bb6b0e680c2`. Steps 1–2 are implemented, with
-separate evidence above. The Step-2 implementation is included in this change's
-commit; its pre-commit verification is identified by the source hashes above.
-No further implementation step is planned within ANY-812. Remaining delivery
-work is final-SHA verification and disposition of the full-check failures,
-one PR targeting main, and human merge approval. The plan stays active until
-those delivery items are resolved. ANY-800 steps 3–8 remain unstarted here.
+The original implementation base was
+`366d902635a699c18b90e0a619f74bb6b0e680c2`; the current rebase base and verified
+implementation SHA are recorded above. Steps 1–2 are implemented, with separate
+evidence. [PR #160](https://github.com/gushinets/payments-portal/pull/160)
+targets main and includes the ticket, template sections and current verification
+results. No further implementation step is planned within ANY-812. Remaining
+delivery work is CI disposition and human merge approval. The plan stays active
+until those delivery items are resolved. ANY-800 steps 3–8 remain unstarted here.
