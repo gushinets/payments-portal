@@ -93,7 +93,12 @@ state and local contention remain retryable. Enrollment needs no provider HTTP.
 - Normal subscription reconciliation runs approximately every 15 minutes.
 - Never-positive, blocked, incomplete, conflicted or near-expiry subscriptions
   are urgent, with at most five minutes between scheduled attempts. Near expiry
-  means source trust has 30 minutes or less remaining.
+  means source trust or the latest proven finite allowance has 30 minutes or
+  less remaining. Normal scheduling wakes at entry into that window. Existing
+  normal work is promoted without bypassing live leases or attempt spacing.
+  Local omission of expired metering retains urgent source recovery until a
+  later proven cycle moves the deadline beyond the window. Calendar-only
+  cycles supply no inferred UTC deadline; legacy UTC rows do not establish one.
 - Stable customer inventory runs approximately every six hours; incomplete or
   conflicting inventory retries urgently within five minutes.
 - Source-trust expiry and uncertain-create escalation run locally without
@@ -149,6 +154,10 @@ preserves earlier timely conflict proof; unfinished scopes remain incomplete.
 Fenced apply still rejects stale ownership or work. An incomplete inventory
 retry is not evidence that inventory is conflict-free. Inventory success cannot
 close known review.
+
+Failure, timeout or cleanup delay in the final membership reread preserves
+timely owned negative point proof through the same fenced apply. It cannot
+select a new primary or extend effective paid access; retry remains pending.
 
 ## Optional webhook receiver and manual deployment
 

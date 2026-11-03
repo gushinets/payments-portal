@@ -12,6 +12,14 @@ def grant_document(product: str) -> dict:
     return EffectiveState(grants=(PaidGrant(product_id=product),)).model_dump(mode="json")
 
 
+def timestamp_cycle(year: int) -> dict[str, str]:
+    return {
+        "subscription_instance_start_date": f"{year}-01-31T12:34:56.123456+03:00",
+        "last_tariffication_period_start": f"{year}-10-31T12:34:56.123456+03:00",
+        "last_tariffication_period_end": f"{year}-11-30T12:34:56.123456+03:00",
+    }
+
+
 def reader_identity(
     token: str, *, verified: bool = True, tenant: str = "anytoolai", region: str = "ru"
 ) -> tuple[User, AuthSession]:

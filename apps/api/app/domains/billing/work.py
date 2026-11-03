@@ -163,7 +163,8 @@ def claim_work(factory: SessionFactory, configuration: Settings, lane: WorkLane)
             local_scope=(configuration.instance_tenant_id, configuration.instance_region)
             if lane == WorkLane.LOCAL
             else None,
-            trust_urgent_before=now + URGENT_TRUST_WINDOW,
+            urgent_before=now + URGENT_TRUST_WINDOW,
+            urgent_attempt_before=now - timedelta(seconds=URGENT_SECONDS),
         )
         if row is None:
             return None
@@ -239,17 +240,28 @@ def schedule_reconciliation(
 ) -> None:
     now = as_utc(billing_reconciliation.database_now(db))
     scope = billing_reconciliation.scope(db, sub.user_id, sub.product_id)
-    urgent = (
-        not complete
-        or sub.financial_access_status != Financial.ALLOWED
-        or as_utc(sub.projection_valid_until) <= now + URGENT_TRUST_WINDOW
+    allowance_end = (
+        db.scalar(paid_access.latest_paid_allowance_end(sub.subscription_id))
+        if scope and scope.primary_subscription_id == sub.subscription_id
+        else None
     )
+    boundary = min([as_utc(sub.projection_valid_until)] + ([as_utc(allowance_end)] if allowance_end else []))
+    urgent = not complete or sub.financial_access_status != Financial.ALLOWED or boundary <= now + URGENT_TRUST_WINDOW
+
+    def next_due(identity: UUID, started_at: datetime, interval: int) -> datetime:
+        due = started_at + timedelta(seconds=spread_seconds(identity, interval))
+        if not urgent:
+            # Wake at entry into the urgent window rather than one normal
+            # interval later. Date-only allowances supply no inferred deadline.
+            due = min(due, boundary - URGENT_TRUST_WINDOW)
+        return max(now + timedelta(seconds=1), due)
+
     if claim is not None:
         row = verify_claim(db, claim)
         interval = URGENT_SECONDS if urgent else NORMAL_SECONDS
         if not complete:
             interval = min(URGENT_SECONDS, 30 * 2 ** min(row.attempt_count - 1, 4))
-        due = max(now + timedelta(seconds=1), claim.started_at + timedelta(seconds=spread_seconds(claim.id, interval)))
+        due = next_due(claim.id, claim.started_at, interval)
         finish(db, row, claim, due=due, error=None if complete else "source_incomplete")
         row.priority = int(urgent or row.enqueue_generation != claim.generation)
     else:
@@ -262,11 +274,7 @@ def schedule_reconciliation(
             key=key(sub),
             scope_kind="subscription",
             reference=str(sub.subscription_id),
-            due=max(
-                now + timedelta(seconds=1),
-                (attempt_started_at or now)
-                + timedelta(seconds=spread_seconds(sub.subscription_id, URGENT_SECONDS if urgent else NORMAL_SECONDS)),
-            ),
+            due=next_due(sub.subscription_id, attempt_started_at or now, URGENT_SECONDS if urgent else NORMAL_SECONDS),
             priority=int(urgent),
             payload={},
             hint=urgent,

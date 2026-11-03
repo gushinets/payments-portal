@@ -1,8 +1,9 @@
 """Focused paid projection reads and locks. Caller owns user lock/transaction."""
 
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import JSON, exists, or_, select, Text, cast
+from sqlalchemy import JSON, SQLColumnExpression, Select, exists, or_, select, Text, cast
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -54,6 +55,23 @@ def allowances(db: Session, subscription_id: UUID, component: str, metric: str) 
             )
             .order_by(PurchasedAllowance.created_at, PurchasedAllowance.allowance_id)
         )
+    )
+
+
+def latest_paid_allowance_end(subscription_id: UUID | SQLColumnExpression[UUID]) -> Select[tuple[datetime | None]]:
+    """Keep the latest issued cycle relevant after effective metering expires.
+
+    Match issuance ordering. Calendar-only cycles return no UTC bound, while
+    legacy UTC rows without proven calendar meaning never establish urgency.
+    """
+    return (
+        select(PurchasedAllowance.period_end)
+        .where(
+            PurchasedAllowance.subscription_id == subscription_id,
+            PurchasedAllowance.cycle_schema_version.in_(("calendar:v1", "timestamp:v1")),
+        )
+        .order_by(PurchasedAllowance.created_at.desc(), PurchasedAllowance.allowance_id.desc())
+        .limit(1)
     )
 
 

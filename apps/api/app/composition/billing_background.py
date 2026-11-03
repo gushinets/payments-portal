@@ -211,31 +211,23 @@ async def _inventory_customer(
             allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
         )
         return
-    again = await client.discover_subscriptions(user_id=int(current.provider_id), budget=budget)
-    if {(row.subscription_id, row.agreement_id, row.tariff_id) for row in rows} != {
-        (row.subscription_id, row.agreement_id, row.tariff_id) for row in again
-    }:
-        # Retain independently proven negatives. An unstable list cannot admit
-        # a primary or refresh paid access, even if an earlier discovery was complete.
-        await delegate(
-            recovery.apply_inventory,
-            factory,
-            claim,
-            (),
-            "inventory_incomplete",
-            discovery_ids=tuple(discovery_ids),
-            clock_skew_seconds=None,
-            allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
-        )
-        return
-    budget.check()
+    try:
+        again = await client.discover_subscriptions(user_id=int(current.provider_id), budget=budget)
+        budget.check()
+        stable = {(row.subscription_id, row.agreement_id, row.tariff_id) for row in rows} == {
+            (row.subscription_id, row.agreement_id, row.tariff_id) for row in again
+        }
+    except (LbxError, PreflightDeadlineExceeded, PreflightCleanupPending):
+        stable = False
+    # Failed, late or changed membership cannot admit a primary or extend paid
+    # access. Timely owned negatives still reach the same fenced apply transaction.
     await delegate(
         recovery.apply_inventory,
         factory,
         claim,
         (),
-        None,
+        None if stable else "inventory_incomplete",
         discovery_ids=tuple(discovery_ids),
-        clock_skew_seconds=configuration.paid_access_clock_skew_seconds,
+        clock_skew_seconds=configuration.paid_access_clock_skew_seconds if stable else None,
         allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
     )

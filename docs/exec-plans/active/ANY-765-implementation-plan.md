@@ -898,6 +898,40 @@ and no dependency on live LBX reads.
 
 ## 6. Final Verification & Review
 
+### Review follow-up — 2026-11-03
+
+The final review identified two additional scoped corrections:
+
+- **P1-1:** preserve timely owned negative proof when the final inventory list
+  reread fails, exhausts its budget or cannot complete cleanup. Apply through
+  the existing fenced writer without allowing first-primary admission or paid
+  deadline extension from incomplete membership.
+- **P2-1:** use the latest proven frozen allowance deadline for urgent
+  reconciliation, including entry into the 30-minute window and existing normal
+  queue rows. Keep recovery urgent after local metering expiry until a proven
+  later cycle moves the deadline forward; preserve live leases, attempt spacing,
+  immutable history and date-only precision.
+
+The regression scenarios cover successful/error inventory controls, stale work,
+final budget checks, near/far allowance bounds, queue promotion, local expiry and
+later-cycle recovery.
+
+Verification for this follow-up:
+
+- The focused PostgreSQL run passed **29/29**. All 29 also passed in the full
+  regression run.
+- `npm run check` passed documentation, generated contracts, architecture,
+  Ruff, 38 web boundary tests, 410 component tests, web lint/build and 1,759 fast
+  API tests. PostgreSQL finished **742 passed / 2 failed**: the existing
+  `test_unknown_subscription_remains_get_only_despite_new_competing_inventory[recovery]`
+  hit the purchase preparation deadline, and
+  `test_customer_recovery_never_turns_failed_reads_or_terminal_evidence_into_create[discovery_down]`
+  hit the 25 ms client cleanup timeout. Both complete affected modules passed
+  **18/18** on an isolated repeat; the full aggregate result remains non-green.
+
+Configured actual test-LBX acceptance remains NOT_RUN; these corrections do not
+change the Step 10/11 enablement boundaries.
+
 ### Review follow-up — 2026-11-02
 
 The review of `74935d02fba2` against ANY-715 identified four corrections:
