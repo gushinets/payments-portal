@@ -77,7 +77,8 @@ jobs:
   production-gate:
     name: Production gate
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # PostgreSQL tests take about 15 minutes; leave time for image build/smoke.
+    timeout-minutes: 30
     env:
       UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/.venv
       UV_PYTHON_DOWNLOADS: "never"

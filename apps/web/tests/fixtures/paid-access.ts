@@ -11,3 +11,10 @@ export function paidState(overrides: Partial<PaidAccessResponse> = {}): PaidAcce
     ...overrides
   };
 }
+
+export function emptyPaidState(): PaidAccessResponse {
+  return paidState({
+    access_revision: 0, grants: [], allowances: [], products: [],
+    committed_at: null, effective_until: null
+  });
+}

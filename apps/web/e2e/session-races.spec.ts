@@ -1,9 +1,11 @@
 import { expect, test } from "@playwright/test";
 import ruMessages from "../src/messages/ru.json";
+import { emptyPaidState } from "../tests/fixtures/paid-access";
 
 test.beforeEach(async ({ context }) => {
   await context.route("**/api/catalog/products", (route) => route.fulfill({ json: { products: [] } }));
   await context.route("**/api/purchase-intents", (route) => route.fulfill({ json: { purchases: [], next_cursor: null } }));
+  await context.route("**/api/paid-access", (route) => route.fulfill({ json: emptyPaidState() }));
 });
 
 const key = "anytoolai_session_token_v1";

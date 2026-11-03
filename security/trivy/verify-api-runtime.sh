@@ -32,12 +32,15 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
+# This liveness-only check has no migrated database; CI's production gate
+# separately exercises the enabled worker against migrated PostgreSQL.
 container_id=$(docker run --detach --publish 127.0.0.1::8000 \
   --env APP_ENV=test \
   --env APP_PUBLIC_BASE_URL=http://localhost:3000 \
   --env INSTANCE_TENANT_ID=anytoolai \
   --env INSTANCE_REGION=ru \
   --env DATABASE_URL=sqlite+pysqlite:///:memory: \
+  --env BILLING_WORKER_ENABLED=false \
   --env POSTGRES_DB=anytoolai_test \
   --env POSTGRES_USER=anytoolai \
   --env POSTGRES_PASSWORD=anytoolai \

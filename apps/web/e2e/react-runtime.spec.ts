@@ -2,11 +2,16 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 import ruMessages from "../src/messages/ru.json";
 import { simulatedProduct } from "../tests/fixtures/catalog";
+import { emptyPaidState } from "../tests/fixtures/paid-access";
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/catalog/products", (route) => route.fulfill({ json: { products: [simulatedProduct] } }));
   await page.route("**/api/purchase-intents", (route) => route.fulfill({ json: { purchases: [], next_cursor: null } }));
   await page.route("**/api/purchase-intents/current?*", (route) => route.fulfill({ json: { purchase: null } }));
+  await page.route("**/api/paid-access", (route) => route.fulfill({
+    headers: { "Cache-Control": "no-store" },
+    json: emptyPaidState()
+  }));
 });
 
 const sessionTokenStorageKey = "anytoolai_session_token_v1";
@@ -126,6 +131,7 @@ test("public portal and account cabinet render without runtime warnings", async 
   ).toBeVisible();
   const products = page.getByRole("main").getByRole("region", { name: ruMessages.Account.products.title });
   await expect(products.getByText(ruMessages.Account.products.empty)).toBeVisible();
+  await expect(products.getByText(ruMessages.Account.products.paid.empty, { exact: true })).toBeVisible();
   await expect(products.getByRole("article")).toHaveCount(0);
   await expect(products.getByRole("link", { name: ruMessages.Account.products.allProducts })).toHaveAttribute("href", "/ru/products");
   await captureVisualEvidence(page, testInfo, "account");
