@@ -9,7 +9,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.domains.purchases.contracts import Purchase
+from app.domains.purchases.contracts import FinancialRequestDocument, Purchase
 from app.domains.billing.reconciliation_contracts import SubscriptionProof
 
 RESOLUTION_SCHEMA = "billing-operator-resolution:v1"
@@ -53,6 +53,23 @@ class ResolutionRequest(BaseModel):
 
 
 @dataclass(frozen=True)
+class InventoryPurchase:
+    purchase: Purchase
+    reviews: tuple[tuple[UUID, str, str], ...]
+    original_request: FinancialRequestDocument | None = None
+    review_group_supported: bool = False
+
+
+@dataclass(frozen=True)
+class ReviewInventoryProof:
+    read_started_at: datetime
+    read_finished_at: datetime
+    purchases: tuple[InventoryPurchase, ...]
+    membership_digest: str
+    candidate_count: int
+
+
+@dataclass(frozen=True)
 class ReviewResolution:
     request: ResolutionRequest
     principal: str
@@ -63,7 +80,9 @@ class ReviewResolution:
     before: dict
     started_at: datetime
     expires_at: datetime
+    requires_inventory: bool
     related_case_digests: tuple[tuple[UUID, str], ...] = ()
+    inventory: ReviewInventoryProof | None = None
 
 
 @dataclass(frozen=True)

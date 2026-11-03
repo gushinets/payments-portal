@@ -1,12 +1,14 @@
 """Privileged entrypoints reuse the worker's proof, fenced apply and bind paths."""
 
 from uuid import UUID
+from dataclasses import replace
 
 from starlette.concurrency import run_in_threadpool
 
 from app.composition.purchase_observation import prepared_subscription_observation
 from app.composition.purchases import _connection, _find_financial, _operation
 from app.composition.reconciliation import reconcile_subscription
+from app.composition.billing_review_inventory import read_review_inventory
 from app.composition.sources import SourceResources
 from app.core.settings import Settings
 from app.core.time import utc_now
@@ -55,14 +57,27 @@ async def resolve_review(
     purchase = resolution.purchase
     _connection(purchase, configuration)
     if request.resolution == "restore-original":
-        observation_id = await reconcile_subscription(
-            sources.require_lbx(),
-            sources.billing,
-            configuration,
-            factory=factory,
-            subscription_id=UUID(resolution.before["subscription_id"]),
-            resolution=resolution,
-        )
+        async with sources.billing.operation(bound_scope=False) as budget:
+            if resolution.requires_inventory:
+                current = await run_in_threadpool(service.customer_for_purchase, factory, configuration, purchase)
+                inventory = await read_review_inventory(
+                    sources.require_lbx(),
+                    factory,
+                    resolution,
+                    current,
+                    resolution.before["external_subscription_id"],
+                    budget=budget,
+                )
+                resolution = replace(resolution, inventory=inventory)
+            observation_id = await reconcile_subscription(
+                sources.require_lbx(),
+                sources.billing,
+                configuration,
+                factory=factory,
+                subscription_id=UUID(resolution.before["subscription_id"]),
+                resolution=resolution,
+                budget=budget,
+            )
         return {"review_case_id": str(request.case_id), "outcome": "resolved", "observation_id": str(observation_id)}
     operation = next(op for op in purchase.operations if op.id == request.operation_id)
     async with sources.billing.operation() as budget:
@@ -108,6 +123,13 @@ async def resolve_review(
                 str(provider_id),
             )
             proof = await read_subscription_proof(sources.require_lbx(), subject, configuration, budget=budget)
+        if resolution.requires_inventory:
+            if subscription is None:
+                raise PurchaseRefused("billing_review_proof_incomplete", 409)
+            inventory = await read_review_inventory(
+                sources.require_lbx(), factory, resolution, customer, str(provider_id), budget=budget
+            )
+            resolution = replace(resolution, inventory=inventory)
         budget.check()
         binding_proof = OriginalOperationProof(started, utc_now(), digest(expected), proof)
     await run_in_threadpool(

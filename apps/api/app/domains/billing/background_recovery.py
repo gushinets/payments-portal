@@ -350,6 +350,7 @@ def apply_inventory(
             )
         now = as_utc(billing_reconciliation.database_now(db))
         interval = work.URGENT_SECONDS if reason else INVENTORY_SECONDS
+        queue.priority = int(reason is not None or queue.enqueue_generation != claim.generation)
         work.finish(
             db,
             queue,

@@ -8,6 +8,15 @@ from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
 from app.domains.billing.customers import lock_customer, lock_user
+from app.domains.billing import operator_inventory
+from app.domains.billing.operator_case_groups import (
+    FINANCIAL_CONFLICTS,
+    INVENTORY_CONFLICT,
+    SUBSCRIPTION_CONFLICTS,
+    inventory_group,
+    original_possible_send,
+    possible_send_case,
+)
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.operator_contracts import (
     RESOLUTION_SCHEMA,
@@ -35,13 +44,8 @@ from app.models import (
     PurchaseIntentState,
 )
 
-RESTORABLE = {
-    "subscription_identity_conflict",
-    "subscription_commercial_mismatch",
-    "financial_binding_conflict",
-    "accepted_terms_changed_after_preparation",
-}
-BINDABLE = {"financial_binding_conflict", "accepted_terms_changed_after_preparation"}
+RESTORABLE = FINANCIAL_CONFLICTS | SUBSCRIPTION_CONFLICTS
+BINDABLE = FINANCIAL_CONFLICTS
 
 
 def digest(value: object) -> str:
@@ -62,40 +66,6 @@ def case_digest(case: ManualReviewCase) -> str:
 
 def command_digest(request: ResolutionRequest, principal: str) -> str:
     return digest({"request": request.model_dump(mode="json"), "principal": principal})
-
-
-def possible_send_case(case: ManualReviewCase) -> bool:
-    evidence = case.evidence_document
-    if not isinstance(evidence, dict) or evidence.get("operation_state_at_conflict") not in {
-        State.POSSIBLE_SEND.value,
-        State.UNKNOWN.value,
-    }:
-        return False
-    try:
-        return str(UUID(evidence["send_fence_at_conflict"])) == evidence["send_fence_at_conflict"]
-    except (KeyError, TypeError, ValueError, AttributeError):
-        return False
-
-
-def original_possible_send(case: ManualReviewCase, related: list[ManualReviewCase], purchase: Purchase) -> bool:
-    evidence = case.evidence_document
-    if (
-        case.evidence_schema_version != "financial-review:v1"
-        or not isinstance(evidence, dict)
-        or evidence.get("purchase_intent_id") != str(purchase.id)
-        or evidence.get("create_operation_id") != case.scope_reference
-    ):
-        return False
-    if possible_send_case(case):
-        return True
-    # Deadline escalation rotates the send fence and moves the operation to
-    # MANUAL_REVIEW. Its preserved earlier evidence still proves possible-send;
-    # no new send can be authorized while this review is open. Database-created
-    # timestamps reflect transaction starts, not the causal order of these
-    # locked transitions; the saved prior states establish that order.
-    return evidence.get("operation_state_at_conflict") == State.MANUAL_REVIEW.value and any(
-        possible_send_case(previous) for previous in related
-    )
 
 
 def customer_digest(db: Session, purchase: Purchase) -> str:
@@ -194,6 +164,10 @@ def _validate_case(
     ):
         raise PurchaseRefused("billing_review_stale", 409)
     related = [item for item in cases if item.review_case_id != case.review_case_id]
+    if inventory_group(
+        cases, purchase, subscription.subscription_id if subscription else None, operation_id=request.operation_id
+    ):
+        return case, related
     target = next((op for op in operations if op.create_operation_id == request.operation_id), None)
     for previous in related:
         evidence = previous.evidence_document
@@ -316,7 +290,8 @@ def prepare_resolution(
             identities(operations, subscription),
             now,
             now + timedelta(seconds=io_timeout_seconds + 30),
-            tuple((item.review_case_id, case_digest(item)) for item in related),
+            requires_inventory=any(item.reason_code == INVENTORY_CONFLICT for item in (case, *related)),
+            related_case_digests=tuple((item.review_case_id, case_digest(item)) for item in related),
         )
 
 
@@ -378,6 +353,8 @@ def authorize_resolution(
     case, related = _validate_case(db, request, resolution.purchase, subscription, operations)
     if tuple((item.review_case_id, case_digest(item)) for item in related) != resolution.related_case_digests:
         raise PurchaseRefused("billing_review_stale", 409)
+    if any(item.reason_code == INVENTORY_CONFLICT for item in (case, *related)):
+        operator_inventory.verify(db, resolution)
     service._verify_original_consent(db, row, resolution.purchase.accepted)
     if subscription is not None:
         if (
@@ -399,12 +376,18 @@ def authorize_resolution(
         row.state_updated_at = now
     # The case and resulting facts commit together. Failure anywhere rolls both back.
     document = {
+        **operator_inventory.audit(resolution),
         "command_digest": command_digest(request, resolution.principal),
         "resolution": request.resolution,
         "reason": request.reason,
         "reference": request.reference,
         "before": resolution.before,
-        "related_deadline_cases": [{"id": str(item.review_case_id), "digest": case_digest(item)} for item in related],
+        "related_cases": [{"id": str(item.review_case_id), "digest": case_digest(item)} for item in related],
+        "related_deadline_cases": [
+            {"id": str(item.review_case_id), "digest": case_digest(item)}
+            for item in related
+            if item.reason_code.startswith("external_create_outcome_unknown:")
+        ],
     }
     for item in (case, *related):
         item.case_state = "resolved"
@@ -431,7 +414,7 @@ def audit_resolution(
         "observation_id": str(observation_id) if observation_id else None,
         "proof": proof,
     }
-    for related in case.resolution_document["related_deadline_cases"]:
+    for related in case.resolution_document["related_cases"]:
         previous = queries.review(db, UUID(related["id"]), lock=True)
         previous.resolution_document = {
             **case.resolution_document,

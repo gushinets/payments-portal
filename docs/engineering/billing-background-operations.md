@@ -304,7 +304,8 @@ Examples; replace placeholders with local IDs and current expectations:
 `--expected-reconciliation-fence`, with no operation override. Supported cases are
 subscription_identity_conflict, subscription_commercial_mismatch, or an original
 already-bound operation's financial_binding_conflict /
-accepted_terms_changed_after_preparation. All original bindings and fresh complete
+accepted_terms_changed_after_preparation, and customer_inventory_conflict on an
+original bound subscription. All original bindings and fresh complete
 owned original-term/prepaid proof must hold. It restores facts and linked state
 without rebinding. Blocked/ended facts remain blocked/ended and held; terminal
 revival has no override.
@@ -312,7 +313,8 @@ revival has no override.
 `bind-original` also requires `--operation-id` and `--expected-operation-fence`, with
 no reconciliation expectations. Supported cases are financial_binding_conflict /
 accepted_terms_changed_after_preparation on an unbound possible-send financial
-operation. Complete bounded discovery must prove exactly one original candidate,
+operation, and customer_inventory_conflict on an original possible-send
+subscription. Complete bounded discovery must prove exactly one original candidate,
 even with a saved receipt. Saved request/correlation/accepted terms, original
 agreement date and supported subscription lifecycle/policy must match. Binding
 enrolls reconciliation without itself renewing trust.
@@ -326,14 +328,27 @@ atomically with facts/binding, related-case resolution and scheduling. An identi
 completed request by the same operator replays without writes/source calls;
 a changed or stale repeat refuses.
 
+Inventory review additionally requires fresh bounded customer discovery, point
+ownership/effective-term proof and stable discovery membership, within the same
+resolution read budget. The original subscription must be present. An unexplained
+nonterminal competitor, incomplete reads or changed local purchase/review witnesses
+refuse resolution. Other-product original subscriptions may be recognized while
+their inventory reviews remain open. An unbound neighbor additionally requires
+its preserved possible-send evidence, exact original request and a unique
+candidate under its dedicated agreement; this does not bind or resolve that
+neighbor. Unrelated reviews still refuse. Each purchase is resolved explicitly.
+The shared writer rechecks all local witnesses under the user lock and records
+`review-inventory:v1` proof in the atomic operator audit. A clean background
+inventory still does not close a known review automatically.
+
 Refusals include stale evidence, incomplete/capped/ambiguous discovery, foreign
 or already-bound objects, unsupported policy, customer identity conflict,
 unrelated open cases, terminal revival and changed accepted requests. Diagnose
 billing_review_stale, billing_review_unrelated_cases, billing_review_proof_incomplete,
 billing_review_terminal, purchase_history_unproven and ordinary source/busy errors;
 do not bypass them. There is no release-terminal, force-release, arbitrary rebind,
-commercial reacceptance, manual paid or quota command. Terminal and inventory
-conflict overrides remain deferred. Existing Step 7 proven-unsent automatic
+commercial reacceptance, manual paid or quota command. Terminal revival overrides
+remain deferred. Existing Step 7 proven-unsent automatic
 release keeps its separate rule.
 
 ## Alerts and outage diagnosis

@@ -260,6 +260,8 @@ def retry_work(
         # finite expiry; never promote an old result or extend source trust.
         due = max(now + timedelta(seconds=30), claim.expires_at + timedelta(seconds=1))
         finish(db, row, claim, due=due, error=error)
+        if claim.kind == "customer_inventory":
+            row.priority = 1
         if invalid:
             row.work_state = "invalid"
             row.last_error_classification = "subscription_provenance_unproven"

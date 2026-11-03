@@ -123,12 +123,18 @@ async def test_billing_background_recovery_inventory_checks_all_affected_product
     transport.subscriptions.append({**transport.subscriptions[index], "subscription_id": 999})
     recovery.repair_batch(factory, step1_settings())
     bindings = {p.id: tuple((op.id, op.bound_id, op.key) for op in p.operations) for p in (first, second)}
+    # Reconciliation is invoked explicitly below. Its initial urgent enrollment
+    # must not preempt the inventory attempts whose effects this test inspects.
+    with factory() as db:
+        for row in db.scalars(select(BillingWorkItem).where(BillingWorkItem.work_kind == work.RECONCILIATION)):
+            row.next_attempt_at = datetime.now(UTC) + timedelta(days=1)
+        db.commit()
     count = len(transport.requests)
     worker = BillingWorker(step1_settings(), factory, sources.require_lbx())
     try:
         for attempt in range(3):
             due(factory, recovery.INVENTORY, first.customer_id)
-            assert await worker.tick(WorkLane.NORMAL)
+            assert await worker.tick(WorkLane.NORMAL if attempt == 0 else WorkLane.URGENT)
             inventory_job = job(factory, recovery.INVENTORY, first.customer_id)
             assert inventory_job.attempt_count == attempt + 1
             assert inventory_job.work_state == "pending" and inventory_job.lease_owner is None
@@ -246,7 +252,8 @@ async def test_billing_background_recovery_expired_claim_late_io_cannot_apply(
     assert await second.tick(WorkLane.URGENT)
     saved = service.read_purchase(factory, purchase.user_id, purchase.id)
     release.set()
-    assert await asyncio.wait_for(task, 5)
+    with pytest.raises(BillingRefused, match="billing_work_stale"):
+        await asyncio.wait_for(task, 5)
     assert service.read_purchase(factory, purchase.user_id, purchase.id) == saved
     assert next(item for item in saved.operations if item.id == op.id).state == State.BOUND
     with factory() as db:

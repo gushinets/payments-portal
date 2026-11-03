@@ -21,7 +21,7 @@ from app.domains.billing.work_contracts import WorkLane
 from app.domains.catalog.link_publication import publish_product_link
 from app.domains.purchases import financial, service
 from app.domains.purchases.contracts import Purchase
-from app.integrations.lbx.financial import Subscription
+from app.integrations.lbx.financial import NewSubscription, Subscription
 from app.jobs.billing import BillingWorker
 from app.models import (
     BillingWorkItem,
@@ -122,6 +122,15 @@ def historical_link(
         request = (
             {"user_id": 345, "agreement_number": op.key, "create_date": "2026-10-28"}
             if kind == Kind.AGREEMENT
+            else NewSubscription(
+                agreement_id=agreement_id,
+                tariff_id=purchase.accepted.selection.tariff_id,
+                period_id=purchase.accepted.selection.period_id,
+                tariff_service_id=purchase.accepted.selection.tariff_service_id,
+                quantity=purchase.accepted.selection.quantity,
+                outer_id=op.key,
+            ).request_document()
+            if uncertain_subscription
             else {"agreement_id": agreement_id}
         )
         claimed = financial.claim_financial(factory, purchase, op, request, configuration=config, token=TOKEN)
