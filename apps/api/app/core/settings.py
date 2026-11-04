@@ -100,7 +100,8 @@ class Settings(BaseSettings):
     billing_worker_enabled: bool = True
     billing_worker_urgent_concurrency: int = Field(default=2, ge=1, le=16)
     billing_worker_normal_concurrency: int = Field(default=1, ge=1, le=16)
-    billing_worker_io_timeout_seconds: float = Field(default=60, gt=0, le=600, allow_inf_nan=False)
+    # Leave room for the claim/apply margin and refusal retry within urgent cadence.
+    billing_worker_io_timeout_seconds: float = Field(default=60, gt=0, le=240, allow_inf_nan=False)
     billing_worker_scan_batch_size: int = Field(default=100, ge=1, le=100)
     lbx_base_url: str = ""
     lbx_server_username: SecretStr = SecretStr("")

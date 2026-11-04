@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 import yaml
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.composition.billing_worker import billing_worker_resources
 from app.core.time import utc_now
@@ -21,8 +25,17 @@ from app.infrastructure.preflight import (
 from app.jobs.billing import BillingWorker
 from app.http import health
 from app.domains.billing.work import spread_seconds
+from app.domains.billing import work
 from app.domains.billing.work_contracts import WorkLane
+from app.infrastructure.queries import billing_reconciliation
 from app.main import create_app
+from app.models import (
+    BillingWorkItem,
+    CommercialProductHead,
+    ExternalBillingCustomer,
+    ExternalCreateOperation,
+    ExternalSubscription,
+)
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.support.lbx import lbx_settings
 from apps.api.tests.factories.reconciliation import subject_factory
@@ -45,11 +58,68 @@ def anyio_backend() -> str:
         ("billing_worker_normal_concurrency", 17),
         ("billing_worker_io_timeout_seconds", float("inf")),
         ("billing_worker_io_timeout_seconds", 0.1),
+        ("billing_worker_io_timeout_seconds", 241),
+        ("billing_worker_io_timeout_seconds", 300),
+        ("billing_worker_io_timeout_seconds", 600),
     ],
 )
 def test_billing_worker_settings_refuse_unbounded_or_invalid(field: str, value: float) -> None:
     with pytest.raises(ValidationError):
         step1_settings(**{field: value})
+
+
+@pytest.mark.parametrize("elapsed_seconds", [0, 269], ids=["immediate-refusal", "near-lease-expiry"])
+def test_billing_worker_maximum_io_budget_keeps_refusal_retry_urgent(
+    monkeypatch: pytest.MonkeyPatch, elapsed_seconds: int
+) -> None:
+    configuration = step1_settings(billing_worker_io_timeout_seconds=240)
+    started = now = datetime(2026, 11, 4, tzinfo=UTC)
+
+    def database_now(_db: Session) -> datetime:
+        return now
+
+    monkeypatch.setattr(billing_reconciliation, "database_now", database_now)
+    # Exercise persisted scheduling only; PostgreSQL tests own locking/concurrency.
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    try:
+        for model in (
+            CommercialProductHead,
+            ExternalBillingCustomer,
+            ExternalCreateOperation,
+            ExternalSubscription,
+            BillingWorkItem,
+        ):
+            model.__table__.create(engine)
+        factory = sessionmaker(bind=engine, autoflush=False)
+        identity, subscription_id = uuid4(), uuid4()
+        with factory() as db:
+            db.add(
+                BillingWorkItem(
+                    work_item_id=identity,
+                    work_kind=work.RECONCILIATION,
+                    scope_kind="subscription",
+                    scope_reference=str(subscription_id),
+                    coalescing_key=f"{configuration.lbx_external_billing_account_id}:{subscription_id}",
+                    payload_schema_version="billing-work:v1",
+                    payload_document={},
+                    priority=1,
+                    next_attempt_at=started - timedelta(seconds=1),
+                    work_state="pending",
+                )
+            )
+            db.commit()
+        claim = work.claim_work(factory, configuration, WorkLane.URGENT)
+        assert claim is not None
+        now = started + timedelta(seconds=elapsed_seconds)
+        assert work.retry_work(factory, claim, error="billing_busy")
+        with factory() as db:
+            row = db.get(BillingWorkItem, identity)
+            due = row.next_attempt_at.replace(tzinfo=UTC)
+            assert now < due <= started + timedelta(seconds=work.URGENT_SECONDS)
+            assert row.work_state == "pending" and row.last_error_classification == "billing_busy"
+            assert row.lease_owner is None and row.lease_expires_at is None
+    finally:
+        engine.dispose()
 
 
 def test_billing_worker_settings_propagate_and_match_documentation() -> None:

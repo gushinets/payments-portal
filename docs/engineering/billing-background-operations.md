@@ -57,7 +57,8 @@ There is no separate process to launch or standalone worker command/container.
 - `BILLING_WORKER_URGENT_CONCURRENCY=2`: urgent source slots, range 1–16.
 - `BILLING_WORKER_NORMAL_CONCURRENCY=1`: normal source slots, range 1–16.
 - `BILLING_WORKER_IO_TIMEOUT_SECONDS=60`: total source/cleanup budget; greater
-  than the cleanup reserve and at most 600 seconds.
+  than the cleanup reserve and at most 240 seconds, leaving room for the lease
+  margin and refusal retry within the five-minute urgent cadence.
 - `BILLING_WORKER_SCAN_BATCH_SIZE=100`: local enrollment/repair batch, range 1–100.
 
 `PREFLIGHT_CLEANUP_TIMEOUT_SECONDS` reserves cleanup within the total I/O budget.
