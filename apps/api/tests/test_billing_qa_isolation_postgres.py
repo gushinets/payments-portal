@@ -12,10 +12,12 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.composition.billing import bootstrap_account
 from app.composition.sources import SourceResources, source_resources
-from app.domains.billing import work
+from app.domains.billing import background_recovery, work
 from app.domains.billing.work_contracts import WorkLane
 from app.domains.purchases import service
+from app.domains.purchases.financial import financial_pending
 from app.domains.purchases.contracts import Purchase
 from app.jobs.billing import BillingWorker
 from app.models import (
@@ -27,11 +29,13 @@ from app.models import (
     ManualReviewCase,
     PaidAccessState,
     PurchasedAllowance,
+    ExternalCreateOperationKind as Kind,
 )
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.support.any709_step3 import PurchaseTransport
 from apps.api.tests.test_billing_subscription_reconciliation_postgres import scenario as scenario
 from apps.api.tests.test_billing_worker_postgres import historical_link
+from apps.api.tests.test_any709_step3_postgres import TOKEN
 
 pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
 PRODUCTS = ("proposal_ai", "brief_decoder")
@@ -130,6 +134,119 @@ def assert_no_access_writes(factory: sessionmaker[Session]) -> None:
             assert db.scalar(select(func.count()).select_from(model)) == 0
         assert all(scope.primary_subscription_id is None for scope in db.scalars(select(BillingProductAccessScope)))
         assert all(item.resulting_access_revision is None for item in db.scalars(select(BillingStateObservation)))
+
+
+async def review_product(
+    factory: sessionmaker[Session],
+    transport: PurchaseTransport,
+    purchase: Purchase,
+    worker: BillingWorker,
+    conflict: str,
+) -> None:
+    if conflict == "commercial":
+        subscription = subscription_for(factory, purchase.accepted.selection.product_id)
+        source = next(
+            row
+            for row in transport.subscriptions
+            if str(row["subscription_id"]) == subscription.external_subscription_id
+        )
+        original = deepcopy(source)
+        source["services"][0]["price"] = 15
+        make_due(factory, subscription.subscription_id)
+        assert await worker.tick(WorkLane.URGENT)
+        source.clear()
+        source.update(original)
+    else:
+        operation = next(op for op in purchase.operations if op.kind == Kind(conflict))
+        financial_pending(factory, purchase, operation, conflict=True)
+
+
+@pytest.mark.parametrize("product", PRODUCTS)
+@pytest.mark.parametrize("conflict", ("commercial", "agreement", "subscription"))
+async def test_clean_inventory_preserves_other_product_and_payment_while_review_stays_open(
+    two_products: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    product: str,
+    conflict: str,
+) -> None:
+    transport, sources, purchases, worker = two_products
+    factory = postgres_session_factory
+    reviewed = next(purchase for purchase in purchases if purchase.accepted.selection.product_id == product)
+    other = next(purchase for purchase in purchases if purchase.id != reviewed.id)
+    untouched = product_snapshot(factory, other.accepted.selection.product_id)
+    history = retained_history(factory, purchases)
+    await review_product(factory, transport, reviewed, worker, conflict)
+    before = service.read_purchase(factory, reviewed.user_id, reviewed.id)
+    assert before.state == "manual_review"
+    reviewed_facts = product_snapshot(factory, product)
+    with factory() as db:
+        reviews = tuple(db.scalars(select(ManualReviewCase.review_case_id)))
+    request_start = len(transport.requests)
+    background_recovery.repair_batch(factory, step1_settings())
+    assert await worker.tick(WorkLane.NORMAL)
+    assert product_snapshot(factory, other.accepted.selection.product_id) == untouched
+    assert product_snapshot(factory, product) == reviewed_facts
+    assert service.read_purchase(factory, reviewed.user_id, reviewed.id) == before
+    widget = await bootstrap_account(sources, step1_settings(), factory=factory, token=TOKEN, purchase_id=other.id)
+    assert widget.purchase_id == other.id and widget.credential
+    assert product_snapshot(factory, product) == reviewed_facts
+    assert service.read_purchase(factory, reviewed.user_id, reviewed.id) == before
+    with factory() as db:
+        assert tuple(db.scalars(select(ManualReviewCase.review_case_id))) == reviews
+        assert all(case.case_state == "open" for case in db.scalars(select(ManualReviewCase)))
+        inventory = db.scalars(
+            select(BillingWorkItem).where(BillingWorkItem.work_kind == background_recovery.INVENTORY)
+        ).one()
+        assert inventory.last_error_classification is None and inventory.priority == 0
+    assert retained_history(factory, purchases) == history
+    assert all(request.method == "GET" for request in transport.requests[request_start:])
+    assert_no_access_writes(factory)
+
+
+@pytest.mark.parametrize("failure", ("terms", "foreign", "incomplete", "duplicate"))
+async def test_reviewed_other_product_still_requires_fresh_owned_effective_term_proof(
+    two_products: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    failure: str,
+) -> None:
+    transport, _, purchases, worker = two_products
+    factory = postgres_session_factory
+    reviewed, other = purchases
+    history = retained_history(factory, purchases)
+    await review_product(factory, transport, reviewed, worker, "commercial")
+    subscription = subscription_for(factory, reviewed.accepted.selection.product_id)
+    source = next(
+        row for row in transport.subscriptions if str(row["subscription_id"]) == subscription.external_subscription_id
+    )
+    if failure == "terms":
+        source["services"][0]["price"] = 15
+    elif failure == "foreign":
+        next(row for row in transport.agreements if row["agreement_id"] == source["agreement_id"])["user_id"] = 999
+    elif failure == "incomplete":
+        source["services"] = None
+    else:
+        transport.subscriptions.append({**deepcopy(source), "subscription_id": 999})
+    untouched = product_snapshot(factory, other.accepted.selection.product_id)
+    request_start = len(transport.requests)
+    background_recovery.repair_batch(factory, step1_settings())
+    assert await worker.tick(WorkLane.NORMAL)
+    with factory() as db:
+        inventory = db.scalars(
+            select(BillingWorkItem).where(BillingWorkItem.work_kind == background_recovery.INVENTORY)
+        ).one()
+        assert inventory.last_error_classification == (
+            "inventory_incomplete" if failure == "incomplete" else "inventory_conflict"
+        )
+        assert inventory.priority == 1
+        assert all(case.case_state == "open" for case in db.scalars(select(ManualReviewCase)))
+    if failure == "incomplete":
+        assert product_snapshot(factory, other.accepted.selection.product_id) == untouched
+    else:
+        assert service.read_purchase(factory, other.user_id, other.id).state == "manual_review"
+    assert service.read_purchase(factory, reviewed.user_id, reviewed.id).state == "manual_review"
+    assert retained_history(factory, purchases) == history
+    assert all(request.method == "GET" for request in transport.requests[request_start:])
+    assert_no_access_writes(factory)
 
 
 @pytest.mark.parametrize("product", PRODUCTS)

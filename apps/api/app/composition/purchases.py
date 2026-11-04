@@ -178,7 +178,7 @@ async def _inventory(
                     selection=other.accepted.selection,
                     offer=other.accepted.offer,
                 )
-                if original_candidate or other.state != PurchaseIntentState.LINKED:
+                if _operation(other, Kind.SUBSCRIPTION).bound_id is None:
                     if sum(row.agreement_id == point.agreement_id for row in rows) != 1:
                         raise PurchaseRefused("purchase_existing_subscription_review", 409)
                     # Recovery alone can bind an original uncertain command.

@@ -59,12 +59,18 @@ def other_inventory_purchase(
             not other.held
             or other.accepted.provider_origin != purchase.accepted.provider_origin
             or not {Kind.AGREEMENT, Kind.SUBSCRIPTION}.issubset(bindings)
-            or bindings[Kind.AGREEMENT].state != State.BOUND
+            or bindings[Kind.AGREEMENT].state not in {State.BOUND, State.MANUAL_REVIEW}
             or bindings[Kind.AGREEMENT].bound_id != str(agreement_id)
         ):
             return None
         subscription = bindings[Kind.SUBSCRIPTION]
-        if other.state == IntentState.LINKED and subscription.state == State.BOUND:
+        # Review does not erase a permanent binding to another product. The
+        # caller still proves its original agreement and effective terms.
+        if (
+            subscription.bound_id is not None
+            and other.state in {IntentState.LINKED, IntentState.MANUAL_REVIEW}
+            and subscription.state in {State.BOUND, State.MANUAL_REVIEW}
+        ):
             return other if subscription.bound_id == str(provider_id) else None
         # LBX can expose a successful send before its receipt or final binding
         # commits locally. This only identifies work to wait for, never a binding
@@ -77,6 +83,7 @@ def other_inventory_purchase(
                 )
                 or _deadline_only_review(db, other)
             )
+            and bindings[Kind.AGREEMENT].state == State.BOUND
             and subscription.bound_id is None
             and subscription.candidate_id in {None, str(provider_id)}
         ):
