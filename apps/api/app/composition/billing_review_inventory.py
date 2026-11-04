@@ -84,7 +84,7 @@ async def read_review_inventory(
         agreement = await client.get_agreement(agreement_id=point.agreement_id, budget=budget)
         if agreement.user_id != int(current.provider_id):
             raise PurchaseRefused("purchase_existing_subscription_review", 409)
-        if inventory_terminal(point):
+        if inventory_terminal(point, agreement):
             continue
         subject = _owner(subjects, resolution, str(candidate.subscription_id), str(point.agreement_id), original_id)
         purchase = subject.purchase

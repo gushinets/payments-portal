@@ -7,12 +7,14 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from app.domains.billing.contracts import BillingRefused
-from app.infrastructure.queries.billing_customers import open_customer_reviews
+from app.infrastructure.queries.billing_customers import customer_subscriptions, open_customer_reviews
 from app.models import (
     ExternalBillingCustomer,
     ExternalBillingCustomerBindingState as Binding,
     ExternalCreateOperation,
     ExternalCreateOperationState as State,
+    ExternalSubscriptionCommercialAccessStatus as Commercial,
+    ExternalSubscriptionFinancialAccessStatus as Financial,
     ManualReviewCase,
 )
 
@@ -106,3 +108,12 @@ def record_customer_conflict(
     customer.binding_state = Binding.IDENTITY_CONFLICT
     operation.send_fence = uuid4()  # Invalidate all earlier in-flight proof.
     record_customer_review(db, operation, CUSTOMER_KEY_REVIEW if original_id else "customer_identity_conflict")
+    # Every caller holds the user/customer locks. The same transaction withdraws
+    # usability for the entire slot; restoring the pair alone cannot restore it.
+    # Keep the last subscription proof and its finite deadline as historical evidence.
+    from app.domains.billing.work import enroll_subscription
+
+    for subscription in customer_subscriptions(db, customer.customer_id):
+        subscription.commercial_access_status = Commercial.INELIGIBLE
+        subscription.financial_access_status = Financial.BLOCKED
+        enroll_subscription(db, subscription, hint=True)

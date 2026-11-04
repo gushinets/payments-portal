@@ -16,6 +16,7 @@ from app.models import (
     ExternalCreateOperation,
     ExternalCreateOperationKind,
     ExternalCreateOperationState,
+    ExternalSubscription,
     ManualReviewCase,
     User,
 )
@@ -23,6 +24,17 @@ from app.models import (
 
 CUSTOMER_LOCK_TIMEOUT_MS = 1000
 CUSTOMER_STATEMENT_TIMEOUT_MS = 2000
+
+
+def customer_subscriptions(db: Session, customer_id: UUID) -> list[ExternalSubscription]:
+    return list(
+        db.scalars(
+            select(ExternalSubscription)
+            .where(ExternalSubscription.customer_id == customer_id)
+            .order_by(ExternalSubscription.subscription_id)
+            .with_for_update()
+        )
+    )
 
 
 class BillingRowLockBusy(Exception):

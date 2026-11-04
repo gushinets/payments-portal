@@ -30,6 +30,8 @@ from apps.api.tests.support.any709_step1 import step1_settings
         (2, 1, "active", "blocked", "financial_block"),
         (2, 3, "active", "blocked", "administrative_block"),
         (3, 0, "ended", "blocked", "ended"),
+        (3, 1, "ended", "blocked", "ended"),
+        (3, 3, "ended", "blocked", "ended"),
     ],
 )
 def test_billing_subscription_reconciliation_lifecycle(

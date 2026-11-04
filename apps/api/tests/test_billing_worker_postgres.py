@@ -693,10 +693,10 @@ async def test_billing_worker_link_and_sweep_interleave_without_partial_enrollme
     entered, release = Event(), Event()
     original = financial.enroll_subscription
 
-    def pause(db: Session, subscription: ExternalSubscription) -> None:
+    def pause(db: Session, subscription: ExternalSubscription, *, hint: bool = False) -> None:
         entered.set()
         assert release.wait(5)
-        original(db, subscription)
+        original(db, subscription, hint=hint)
 
     monkeypatch.setattr(financial, "enroll_subscription", pause)
     task = asyncio.create_task(run_in_threadpool(historical_link, factory, purchase, transport, "brief_decoder", 1))

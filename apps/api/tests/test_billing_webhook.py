@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator
 import json
+import os
 from pathlib import Path
 from uuid import uuid4
 
@@ -262,6 +263,7 @@ def test_billing_webhook_harness_forwards_private_settings(
     assert {name: written[name] for name in expected} == expected
     public = json.loads(repo.RUNTIME_JSON.read_text())
     assert not set(expected).intersection(public)
-    assert repo.RUNTIME_ENV.stat().st_mode & 0o077 == 0
+    if os.name != "nt":
+        assert repo.RUNTIME_ENV.stat().st_mode & 0o077 == 0
     output = capsys.readouterr()
     assert expected["LBX_WEBHOOK_AUTH_VALUE"] not in output.out + output.err + json.dumps(public)

@@ -40,6 +40,7 @@ class PreparedSubscriptionObservation:
     services: tuple[EffectiveServiceEvidence, ...]
     calendar: dict[str, str | None]
     paid_verified: Literal[False] = False
+    terminal: bool = False
 
 
 class PurchaseRefused(BillingRefused):

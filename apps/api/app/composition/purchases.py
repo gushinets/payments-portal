@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from uuid import UUID
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -44,11 +45,19 @@ from app.integrations.lbx.financial import (
     prove_subscription,
     prove_effective_terms,
     inventory_terminal,
+    agreement_closed,
 )
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State, PurchaseIntentState
 
 
 MAX_RELEVANT_SUBSCRIPTIONS = 20
+
+
+@dataclass(frozen=True)
+class FinancialMatch:
+    provider_id: int
+    subscription: Subscription | None
+    terminal: bool
 
 
 async def review_purchase(
@@ -140,7 +149,7 @@ async def _inventory(
         if agreement.user_id != int(customer.provider_id):
             raise LbxScopeMismatch()
         try:
-            terminal = inventory_terminal(point)
+            terminal = inventory_terminal(point, agreement)
         except LbxResponseInvalid:
             raise PurchaseInventoryIncomplete() from None
         if not terminal and str(point.subscription_id) != own:
@@ -206,7 +215,8 @@ async def _find_financial(
     *,
     budget: PreflightBudget,
     require_discovery: bool = False,
-) -> tuple[int, Subscription | None] | None:
+    allow_terminal: bool = False,
+) -> FinancialMatch | None:
     user_id = int(customer.provider_id)
     agreement_op = _operation(purchase, Kind.AGREEMENT)
     if operation.kind == Kind.AGREEMENT:
@@ -223,17 +233,29 @@ async def _find_financial(
         if require_discovery and saved and ids != (int(saved),):
             raise LbxScopeMismatch()
         point = await client.get_agreement(agreement_id=ids[0], budget=budget)
-        prove_agreement(point, user_id=user_id, seller_id=purchase.accepted.seller_id, number=operation.key)
+        prove_agreement(
+            point,
+            user_id=user_id,
+            seller_id=purchase.accepted.seller_id,
+            number=operation.key,
+            allow_terminal=allow_terminal,
+        )
         if require_discovery and (
             operation.agreement_create_date is None or point.create_date != operation.agreement_create_date.isoformat()
         ):
             raise LbxResponseInvalid()
-        return point.agreement_id, None
+        return FinancialMatch(point.agreement_id, None, agreement_closed(point))
     if agreement_op.bound_id is None:
         raise PurchaseRefused("purchase_pending", 409)
     agreement_id = int(agreement_op.bound_id)
     agreement = await client.get_agreement(agreement_id=agreement_id, budget=budget)
-    prove_agreement(agreement, user_id=user_id, seller_id=purchase.accepted.seller_id, number=agreement_op.key)
+    prove_agreement(
+        agreement,
+        user_id=user_id,
+        seller_id=purchase.accepted.seller_id,
+        number=agreement_op.key,
+        allow_terminal=allow_terminal,
+    )
     rows = await client.discover_subscriptions(user_id=user_id, agreement_id=agreement_id, budget=budget)
     ids = tuple(row.subscription_id for row in rows)
     saved = operation.bound_id or operation.candidate_id
@@ -250,9 +272,13 @@ async def _find_financial(
         return None
     point = await client.get_subscription(subscription_id=ids[0], budget=budget)
     prove_subscription(
-        point, agreement_id=agreement_id, selection=purchase.accepted.selection, offer=purchase.accepted.offer
+        point,
+        agreement_id=agreement_id,
+        selection=purchase.accepted.selection,
+        offer=purchase.accepted.offer,
+        allow_terminal=allow_terminal,
     )
-    return point.subscription_id, point
+    return FinancialMatch(point.subscription_id, point, inventory_terminal(point, agreement))
 
 
 async def _prepare(

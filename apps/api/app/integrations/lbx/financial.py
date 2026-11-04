@@ -7,7 +7,7 @@ are incomplete proof; mutable outer_id and catalog tariff_price are not identity
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
@@ -133,7 +133,21 @@ class NewSubscription(PrivateDto):
         }
 
 
-def prove_agreement(point: Agreement, *, user_id: int, seller_id: int, number: str) -> None:
+def agreement_closed(point: Agreement) -> bool:
+    if point.close_date in {None, "", "0000-00-00", "0000-00-00 00:00:00", "1970-01-01", "1970-01-01 00:00:00"}:
+        return False
+    try:
+        if len(point.close_date) not in {10, 19}:
+            raise ValueError("invalid calendar shape")
+        datetime.fromisoformat(point.close_date)
+    except ValueError:
+        raise LbxResponseInvalid() from None
+    return True
+
+
+def prove_agreement(
+    point: Agreement, *, user_id: int, seller_id: int, number: str, allow_terminal: bool = False
+) -> None:
     if point.organization_id is None or point.agreement_number is None or point.is_offer is None:
         raise LbxResponseInvalid()
     if (point.user_id, point.organization_id, point.agreement_number, point.is_offer) != (
@@ -143,12 +157,17 @@ def prove_agreement(point: Agreement, *, user_id: int, seller_id: int, number: s
         False,
     ):
         raise LbxScopeMismatch()
-    if point.close_date not in {None, "", "0000-00-00", "0000-00-00 00:00:00", "1970-01-01", "1970-01-01 00:00:00"}:
+    if agreement_closed(point) and not allow_terminal:
         raise LbxFinancialEnded()
 
 
 def prove_subscription(
-    point: Subscription, *, agreement_id: int, selection: ProductLinkRequest, offer: CurrentOffer
+    point: Subscription,
+    *,
+    agreement_id: int,
+    selection: ProductLinkRequest,
+    offer: CurrentOffer,
+    allow_terminal: bool = False,
 ) -> None:
     # Preparation deliberately excludes terminal subscriptions. Lifecycle reads
     # share the effective-term proof below without inheriting this restriction.
@@ -156,7 +175,9 @@ def prove_subscription(
         raise LbxResponseInvalid()
     if point.state == 3 and point.current_blocking in {0, 1, 3}:
         prove_effective_terms(point, agreement_id=agreement_id, selection=selection, offer=offer)
-        raise LbxFinancialEnded()
+        if not allow_terminal:
+            raise LbxFinancialEnded()
+        return
     if point.state not in {-2, -1, 0, 2} or point.current_blocking not in {0, 1, 3}:
         raise LbxScopeMismatch()
     prove_effective_terms(point, agreement_id=agreement_id, selection=selection, offer=offer)
@@ -221,7 +242,7 @@ def prove_effective_terms(
         raise LbxResponseInvalid()
 
 
-def inventory_terminal(point: Subscription) -> bool:
+def inventory_terminal(point: Subscription, agreement: Agreement) -> bool:
     if point.state not in {-2, -1, 0, 2, 3}:
         raise LbxResponseInvalid()
-    return point.state == 3
+    return point.state == 3 or agreement_closed(agreement)

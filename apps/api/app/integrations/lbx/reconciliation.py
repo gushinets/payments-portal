@@ -18,7 +18,7 @@ from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.customer import LbxUser
 from app.integrations.lbx.dto import LbxRead, LbxTariff
 from app.integrations.lbx.errors import LbxError, LbxResponseInvalid, LbxScopeMismatch
-from app.integrations.lbx.financial import Agreement, Subscription, prove_effective_terms
+from app.integrations.lbx.financial import Agreement, Subscription, agreement_closed, prove_effective_terms
 from app.integrations.lbx.selected_offer import PERIOD_ANCHORS
 from app.models import (
     ExternalSubscriptionFinancialAccessStatus as Financial,
@@ -167,25 +167,44 @@ def normalize_subscription(
             "proportional_rent": 0,
         }
         mapping = configuration.lbx_currency_mapping
-        if (
-            any(getattr(policy, field) is None for field in (*flags, "currency_id", "float_period"))
-            or any(
-                getattr(policy, field) not in {0, 1}
-                for field in ("payment_type", "balance_blocks", "dynamic_rent_unblock_type", "proportional_rent")
+        recognized = {
+            "payment_type": {0, 1},
+            "balance_blocks": {0, 1},
+            "dynamic_rent": {0, 1, 2},
+            "dynamic_rent_unblock_type": {0, 1},
+            "proportional_rent": {0, 1},
+        }
+        contradiction = (
+            any(
+                getattr(policy, field) is not None
+                and getattr(policy, field) != expected
+                and (field not in recognized or getattr(policy, field) in recognized[field])
+                for field, expected in flags.items()
             )
-            or policy.dynamic_rent not in {0, 1, 2}
+            or (
+                mapping is not None
+                and (
+                    (policy.currency_id is not None and policy.currency_id != mapping.provider_currency_id)
+                    or mapping.iso_currency != accepted.offer.money.currency
+                    or mapping.scale != accepted.offer.money.decimal_places
+                )
+            )
+            or (
+                policy.float_period in PERIOD_ANCHORS
+                and PERIOD_ANCHORS[policy.float_period] != accepted.offer.period.anchor
+            )
+        )
+        if contradiction:
+            commercial = CommercialProof.MISMATCH
+            reasons.append("unsupported_prepaid_policy")
+        elif (
+            any(getattr(policy, field) is None for field in (*flags, "currency_id", "float_period"))
+            or any(getattr(policy, field) not in values for field, values in recognized.items())
             or policy.float_period not in PERIOD_ANCHORS
         ):
             policy_incomplete = True
             reasons.append("tariff_policy_incomplete")
-        elif (
-            any(getattr(policy, field) != value for field, value in flags.items())
-            or mapping is None
-            or policy.currency_id != mapping.provider_currency_id
-            or mapping.iso_currency != accepted.offer.money.currency
-            or mapping.scale != accepted.offer.money.decimal_places
-            or PERIOD_ANCHORS.get(policy.float_period) != accepted.offer.period.anchor
-        ):
+        elif mapping is None:
             commercial = CommercialProof.MISMATCH
             reasons.append("unsupported_prepaid_policy")
     if policy_incomplete and commercial != CommercialProof.MISMATCH:
@@ -205,24 +224,23 @@ def normalize_subscription(
             (2, 1): (Lifecycle.ACTIVE, Financial.BLOCKED, "financial_block"),
             (2, 3): (Lifecycle.ACTIVE, Financial.BLOCKED, "administrative_block"),
             (3, 0): (Lifecycle.ENDED, Financial.BLOCKED, "ended"),
+            (3, 1): (Lifecycle.ENDED, Financial.BLOCKED, "ended"),
+            (3, 3): (Lifecycle.ENDED, Financial.BLOCKED, "ended"),
         }
         if pair in states:
             lifecycle, financial, reason = states[pair]
             reasons.append(reason)
         else:
             reasons.append("lifecycle_unknown")
-        if agreement.close_date not in EMPTY_CALENDAR:
-            # Closed agreements are ordinary negative evidence, unlike preparation.
-            try:
-                if len(agreement.close_date) not in {10, 19}:
-                    raise ValueError("invalid calendar shape")
-                datetime.fromisoformat(agreement.close_date)
-            except ValueError:
-                reasons.append("agreement_calendar_incomplete")
-                agreement_calendar_complete = False
-                if financial != Financial.BLOCKED:
-                    lifecycle, financial = None, None
-            else:
+        try:
+            closed = agreement_closed(agreement)
+        except LbxResponseInvalid:
+            reasons.append("agreement_calendar_incomplete")
+            agreement_calendar_complete = False
+            if financial != Financial.BLOCKED:
+                lifecycle, financial = None, None
+        else:
+            if closed:
                 lifecycle, financial = Lifecycle.ENDED, Financial.BLOCKED
                 calendar["agreement_close_date"] = agreement.close_date
                 reasons.append("agreement_closed")

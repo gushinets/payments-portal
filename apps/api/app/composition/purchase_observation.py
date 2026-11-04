@@ -5,7 +5,9 @@ from app.domains.purchases.contracts import EffectiveServiceEvidence, PreparedSu
 from app.integrations.lbx.financial import Subscription
 
 
-def prepared_subscription_observation(point: Subscription, purchase: Purchase) -> PreparedSubscriptionObservation:
+def prepared_subscription_observation(
+    point: Subscription, purchase: Purchase, *, terminal: bool = False
+) -> PreparedSubscriptionObservation:
     # Deliberately excludes balance, provider text and PII. Dates remain provider calendar evidence.
     return PreparedSubscriptionObservation(
         subscription_id=str(point.subscription_id),
@@ -35,4 +37,5 @@ def prepared_subscription_observation(point: Subscription, purchase: Purchase) -
                 "last_tariffication_period_end",
             )
         },
+        terminal=terminal,
     )

@@ -38,7 +38,6 @@ from app.models import (
     ExternalCreateOperationKind as Kind,
     ExternalCreateOperationState as State,
     ExternalSubscription,
-    ExternalSubscriptionLifecycleStatus as Lifecycle,
     ManualReviewCase,
     PurchaseIntent,
     PurchaseIntentState,
@@ -320,7 +319,6 @@ def authorize_original_binding(
                 or not proof.subscription.complete
                 or proof.subscription.identity != IdentityProof.MATCH
                 or proof.subscription.commercial != CommercialProof.MATCH
-                or proof.subscription.lifecycle == Lifecycle.ENDED
             )
         )
     ):

@@ -108,11 +108,17 @@ async def resolve_review(
         if resolution.saved_request != expected:
             raise PurchaseRefused("purchase_history_unproven", 409)
         found = await _find_financial(
-            sources.require_lbx(), purchase, operation, customer, budget=budget, require_discovery=True
+            sources.require_lbx(),
+            purchase,
+            operation,
+            customer,
+            budget=budget,
+            require_discovery=True,
+            allow_terminal=True,
         )
         if found is None:
             raise PurchaseRefused("billing_review_proof_incomplete", 409)
-        provider_id, subscription = found
+        provider_id, subscription = found.provider_id, found.subscription
         proof = None
         if subscription is not None:
             subject = SubscriptionCandidateSubject(
@@ -138,7 +144,9 @@ async def resolve_review(
         purchase,
         operation,
         provider_id,
-        observation=prepared_subscription_observation(subscription, purchase) if subscription else None,
+        observation=prepared_subscription_observation(subscription, purchase, terminal=found.terminal)
+        if subscription
+        else None,
         resolution=resolution,
         resolution_proof=binding_proof,
     )

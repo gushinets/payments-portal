@@ -37,7 +37,9 @@ async def _recover_one(
     from app.composition.purchases import _find_financial
 
     try:
-        found = await _find_financial(client, purchase, operation, customer, budget=budget)
+        found = await _find_financial(
+            client, purchase, operation, customer, budget=budget, allow_terminal=not payment_presentation
+        )
     except LbxScopeMismatch as error:
         if payment_presentation and operation.state == State.BOUND and isinstance(error, LbxFinancialEnded):
             # A previously bound object ending is not a financial identity conflict.
@@ -69,17 +71,25 @@ async def _recover_one(
         await delegate(financial.financial_pending, factory, purchase, operation, conflict=True, work_claim=work_claim)
         return False
     budget.check()
-    provider_id, point = found
+    point = found.subscription
     await delegate(
         financial.bind_financial,
         factory,
         purchase,
         operation,
-        provider_id,
+        found.provider_id,
         work_claim=work_claim,
-        observation=prepared_subscription_observation(point, purchase) if point else None,
+        observation=prepared_subscription_observation(point, purchase, terminal=found.terminal) if point else None,
     )
-    return True
+    # A closed agreement permits only recovery of an already possibly sent or
+    # bound subscription. It cannot authorize preparing the next financial object.
+    return not found.terminal or (
+        operation.kind == Kind.AGREEMENT
+        and any(
+            op.kind == Kind.SUBSCRIPTION and op.state not in {State.PENDING, State.PROVEN_NOT_SENT}
+            for op in purchase.operations
+        )
+    )
 
 
 async def recover_financial(

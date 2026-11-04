@@ -401,10 +401,10 @@ def _bind_financial(
                 product_id=row.product_id,
                 subscription_id=sub.subscription_id,
                 observed_at=now,
-                evidence_schema_version="prepared-subscription:v1",
+                evidence_schema_version="financial-terminal:v1" if observation.terminal else "prepared-subscription:v1",
                 evidence_document=asdict(observation),
-                completeness_classification="preparation_only",
-                result_classification="not_paid_verified",
+                completeness_classification="original_terms_only" if observation.terminal else "preparation_only",
+                result_classification="terminal_not_paid" if observation.terminal else "not_paid_verified",
             )
             db.add(evidence)
             db.flush()
@@ -413,8 +413,8 @@ def _bind_financial(
             if sub.reconciliation_fencing_token == 0:
                 sub.lifecycle_status = Lifecycle.ACTIVE if observation.state == 2 else Lifecycle.INACTIVE
                 sub.latest_observation_id = evidence.observation_id
-            if new_subscription:
-                enroll_subscription(db, sub)
+            if new_subscription or observation.terminal:
+                enroll_subscription(db, sub, hint=observation.terminal)
             # No paid trust extension, financial eligibility, access scope, grant or allowance.
             row.state = IntentState.LINKED
             row.state_updated_at = now
