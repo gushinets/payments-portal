@@ -42,6 +42,8 @@ survives credential rotation at the same origin; ambiguous/foreign scope refuses
 as billing_connection_conflict. A customer-key conflict uses the existing explicit
 account-open recovery policy; background recovery cannot restore that conflict.
 See [customer diagnosis and recovery](ANY-709-billing-runbook.md#customer-diagnosis-cli).
+Restoring the original customer pair does not restore subscription eligibility;
+fresh authoritative reconciliation is still required.
 
 The worker produces subscription facts and expiry evidence. It does not choose an
 access primary, grant access or create allowances/revisions/invalidations.
@@ -329,6 +331,8 @@ subscription. Complete bounded discovery must prove exactly one original candida
 even with a saved receipt. Saved request/correlation/accepted terms, original
 agreement date and supported subscription lifecycle/policy must match. Binding
 enrolls reconciliation without itself renewing trust.
+An ended/closed original outcome may be resolved with complete matching proof;
+it remains negative and held, with payment presentation refused.
 
 The conflict evidence must retain original POSSIBLE_SEND/UNKNOWN state and send
 fence; the same operation's deadline-review evidence may supply it. Missing
