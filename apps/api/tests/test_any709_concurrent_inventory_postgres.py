@@ -124,11 +124,20 @@ async def test_sibling_inventory_waits_for_original_preparation_without_hiding_c
             factory: SessionFactory,
             *,
             budget: PreflightBudget,
+            payment_presentation: bool = False,
         ) -> bool:
             if purchase.id == first.id and operation.kind == Kind.SUBSCRIPTION:
                 entered.set()
                 await release.wait()
-            return await recover_one(client, purchase, operation, customer, factory, budget=budget)
+            return await recover_one(
+                client,
+                purchase,
+                operation,
+                customer,
+                factory,
+                budget=budget,
+                payment_presentation=payment_presentation,
+            )
 
         if checkpoint == "before_receipt":
             monkeypatch.setattr(client, "create_subscription", pause_before_receipt)

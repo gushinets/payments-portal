@@ -21,6 +21,10 @@ from app.integrations.lbx.errors import LbxResponseInvalid, LbxScopeMismatch
 Id = Annotated[int, Field(strict=True, gt=0)]
 
 
+class LbxFinancialEnded(LbxScopeMismatch):
+    """Matching terminal objects fail preparation but are ordinary payment refusal."""
+
+
 class Agreement(PrivateDto):
     agreement_id: Id
     user_id: Id
@@ -140,7 +144,7 @@ def prove_agreement(point: Agreement, *, user_id: int, seller_id: int, number: s
     ):
         raise LbxScopeMismatch()
     if point.close_date not in {None, "", "0000-00-00", "0000-00-00 00:00:00", "1970-01-01", "1970-01-01 00:00:00"}:
-        raise LbxScopeMismatch()
+        raise LbxFinancialEnded()
 
 
 def prove_subscription(
@@ -150,6 +154,9 @@ def prove_subscription(
     # share the effective-term proof below without inheriting this restriction.
     if point.state is None or point.current_blocking is None:
         raise LbxResponseInvalid()
+    if point.state == 3 and point.current_blocking in {0, 1, 3}:
+        prove_effective_terms(point, agreement_id=agreement_id, selection=selection, offer=offer)
+        raise LbxFinancialEnded()
     if point.state not in {-2, -1, 0, 2} or point.current_blocking not in {0, 1, 3}:
         raise LbxScopeMismatch()
     prove_effective_terms(point, agreement_id=agreement_id, selection=selection, offer=offer)

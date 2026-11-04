@@ -11,13 +11,11 @@ from starlette.concurrency import run_in_threadpool
 from app.composition.billing import ensure_customer
 from app.composition.catalog import catalog_preview
 from app.composition.purchase_offer import live_original, require_configured_seller
-from app.composition.purchase_recovery import recover_financial as recover_financial
-from app.composition.purchase_observation import prepared_subscription_observation
+from app.composition.purchase_recovery import _recover_one, recover_financial as recover_financial
 from app.composition.sources import SourceResources
 from app.core.errors import AppError
 from app.core.settings import Settings
 from app.domains.billing.contracts import BillingAccountFailure, CustomerOpen
-from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.customers import reserve_customer, recheck_widget_session
 from app.domains.catalog.link_publication import StoredProductLink
 from app.domains.catalog.product_link import CurrentOffer
@@ -257,60 +255,6 @@ async def _find_financial(
     return point.subscription_id, point
 
 
-async def _recover_one(
-    client: LbxServerClient,
-    purchase: Purchase,
-    operation: FinancialOperation,
-    customer: CustomerOpen,
-    factory: SessionFactory,
-    *,
-    budget: PreflightBudget,
-    work_claim: WorkClaim | None = None,
-    delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
-) -> bool:
-    try:
-        found = await _find_financial(client, purchase, operation, customer, budget=budget)
-    except LbxScopeMismatch:
-        await delegate(financial.financial_pending, factory, purchase, operation, conflict=True, work_claim=work_claim)
-        return False
-    except LbxError as error:
-        facts = error.response_facts
-        await delegate(
-            financial.financial_pending,
-            factory,
-            purchase,
-            operation,
-            work_claim=work_claim,
-            failure_facts={
-                "code": error.code,
-                "http_status": facts.http_status if facts else None,
-                "lbx_code": facts.lbx_code if facts else None,
-                "reason": facts.reason if facts else "unknown",
-            },
-        )
-        return False
-    if found is None:
-        if operation.state not in {State.PENDING, State.PROVEN_NOT_SENT}:
-            await delegate(financial.financial_pending, factory, purchase, operation, work_claim=work_claim)
-        return False
-    # No absent/unsent financial operation is adopted from a coincidental object.
-    if operation.state in {State.PENDING, State.PROVEN_NOT_SENT}:
-        await delegate(financial.financial_pending, factory, purchase, operation, conflict=True, work_claim=work_claim)
-        return False
-    budget.check()
-    provider_id, point = found
-    await delegate(
-        financial.bind_financial,
-        factory,
-        purchase,
-        operation,
-        provider_id,
-        work_claim=work_claim,
-        observation=prepared_subscription_observation(point, purchase) if point else None,
-    )
-    return True
-
-
 async def _prepare(
     sources: SourceResources,
     configuration: Settings,
@@ -330,7 +274,15 @@ async def _prepare(
         operation = _operation(purchase, kind)
         with customer_diagnostics(str(operation.id)):
             if operation.state not in {State.PENDING, State.PROVEN_NOT_SENT}:
-                if not await _recover_one(client, purchase, operation, customer, factory, budget=budget):
+                if not await _recover_one(
+                    client,
+                    purchase,
+                    operation,
+                    customer,
+                    factory,
+                    budget=budget,
+                    payment_presentation=require_payment_proof,
+                ):
                     break
                 verified.add(kind)
                 continue
