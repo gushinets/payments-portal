@@ -129,9 +129,20 @@ candidates under one read budget. Capped, duplicate, unstable or partial results
 are incomplete, never evidence of absence. A tariff is not product identity:
 proposal_ai and brief_decoder can share one tariff only with separately proven
 purchases, dedicated agreements and subscriptions. Other-product exclusion needs
-original owner/legal/effective-term proof. Proven competition records scoped
-customer-inventory:v1 evidence and customer_inventory_conflict review without
-rebinding or renewing trust. Collected conflicts are applied together after
+original owner/legal/effective-term proof. A unique matching original
+POSSIBLE_SEND/UNKNOWN candidate under its bound dedicated agreement, consistent
+with any saved receipt, waits for GET-only recovery, including after deadline-only
+review escalation. Inventory checks the remaining candidates and cannot bind it.
+
+Proven competition records scoped customer-inventory:v1 evidence without
+rebinding or renewing trust. For an unbound subscription command in
+PENDING/PROVEN_NOT_SENT, it records `admission_blocked` and retries urgently while
+preserving no-send history. The same transaction rotates all unsent-operation
+fences so an earlier admission cannot claim a CREATE. Explicit continuation
+repeats fresh admission and remains blocked while competition persists.
+Competition involving other operation states or an existing binding opens
+customer_inventory_conflict review.
+Collected conflicts are applied together after
 the product reads finish or exhaust their shared budget. A later timeout
 preserves earlier timely conflict proof; unfinished scopes remain incomplete.
 Fenced apply still rejects stale ownership or work. An incomplete inventory

@@ -145,27 +145,16 @@ async def test_sibling_inventory_waits_for_original_preparation_without_hiding_c
                 transport.subscriptions[0]["period_length"] = 99
             elif conflict == "receipt":
                 transport.subscriptions[0]["subscription_id"] = 999
-            expected = (
-                "purchase_existing_subscription_review" if conflict == "receipt" else "purchase_inventory_incomplete"
-            )
-            if conflict in {"seller", "terms"}:
+            expected = "purchase_existing_subscription_review" if conflict else "purchase_inventory_incomplete"
+            with pytest.raises(PurchaseRefused, match=expected):
                 await purchases.advance_purchase(
                     sources, configuration, factory=factory, token=TOKEN, purchase_id=second.id
                 )
-            else:
-                with pytest.raises(PurchaseRefused, match=expected):
-                    await purchases.advance_purchase(
-                        sources, configuration, factory=factory, token=TOKEN, purchase_id=second.id
-                    )
             pending = service.read_purchase(factory, second.user_id, second.id)
             assert pending.held and pending.accepted == second.accepted
             assert transport.creates("/agreements") == transport.creates("/subscriptions") == 1
             if conflict:
-                assert pending.state.value == "manual_review"
-                assert all(
-                    operation.state == State.MANUAL_REVIEW or operation.state == State.PENDING
-                    for operation in pending.operations
-                )
+                assert pending == second  # A blocked no-send admission stays retryable.
             else:
                 assert pending.state.value == "awaiting_external_result"
                 assert all(operation.state == State.PENDING for operation in pending.operations)
@@ -173,14 +162,21 @@ async def test_sibling_inventory_waits_for_original_preparation_without_hiding_c
             completed = await task
             if not conflict:
                 assert completed.state.value == "linked"
-            resumed = await purchases.advance_purchase(
-                sources, configuration, factory=factory, token=TOKEN, purchase_id=second.id
-            )
+            if conflict:
+                with pytest.raises(PurchaseRefused, match="purchase_existing_subscription_review"):
+                    await purchases.advance_purchase(
+                        sources, configuration, factory=factory, token=TOKEN, purchase_id=second.id
+                    )
+                resumed = service.read_purchase(factory, second.user_id, second.id)
+            else:
+                resumed = await purchases.advance_purchase(
+                    sources, configuration, factory=factory, token=TOKEN, purchase_id=second.id
+                )
             assert resumed.id == second.id and resumed.accepted == second.accepted and resumed.held
             assert [operation.id for operation in resumed.operations] == [
                 operation.id for operation in second.operations
             ]
-            assert resumed.state.value == ("manual_review" if conflict else "linked")
+            assert resumed.state == (second.state if conflict else "linked")
             assert transport.creates("/agreements") == transport.creates("/subscriptions") == (1 if conflict else 2)
         finally:
             release.set()

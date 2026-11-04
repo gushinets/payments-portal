@@ -113,23 +113,17 @@ async def test_subscription_send_rechecks_inventory_after_agreement_preparation(
             result = service.read_purchase(factory, purchase.user_id, purchase.id)
             operation = next(op for op in result.operations if op.kind == Kind.SUBSCRIPTION)
             assert transport.creates("/subscriptions") == 0
-            if external_state is None:
-                assert result.state != Intent.MANUAL_REVIEW
-                assert operation.state == (State.PROVEN_NOT_SENT if resume else State.PENDING)
-                # Complete healthy inventory may resume the same operation.
-                next(row for row in transport.subscriptions if row["subscription_id"] == 9999)["state"] = 3
-                result = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
-                assert result.state == Intent.LINKED
-            else:
-                assert result.state == Intent.MANUAL_REVIEW and operation.state == State.MANUAL_REVIEW
-                # A later clean inventory cannot silently clear a known conflict.
-                next(row for row in transport.subscriptions if row["subscription_id"] == 9999)["state"] = 3
-                result = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
-                assert result.state == Intent.MANUAL_REVIEW
+            assert result.state != Intent.MANUAL_REVIEW and operation.bound_id is None
+            assert operation.state == (State.PROVEN_NOT_SENT if resume else State.PENDING)
+            # No subscription command was sent. Complete healthy admission can
+            # continue that same operation after the competitor becomes terminal.
+            next(row for row in transport.subscriptions if row["subscription_id"] == 9999)["state"] = 3
+            result = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+            assert result.state == Intent.LINKED
         assert result.held and result.accepted == purchase.accepted
         assert [op.id for op in result.operations] == [op.id for op in purchase.operations]
         assert transport.creates("/users") == transport.creates("/agreements") == 1
-        assert transport.creates("/subscriptions") == (0 if external_state == -2 else 1)
+        assert transport.creates("/subscriptions") == 1
 
 
 @pytest.mark.parametrize("entrypoint", ["advance", "recovery"])

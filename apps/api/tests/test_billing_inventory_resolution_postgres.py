@@ -54,8 +54,14 @@ async def inventory_review(
             await reconcile_purchase(
                 sources, step1_settings(), factory=factory, user_id=purchase.user_id, purchase_id=purchase.id
             )
-    if not unknown:
-        transport.subscriptions.append({**deepcopy(transport.subscriptions[0]), "subscription_id": 999})
+    # A unique original UNKNOWN is recoverable, not an inventory conflict.
+    # Exercise resolution with a genuine unowned competitor, then remove it.
+    transport.agreements.append(
+        {**transport.agreements[0], "agreement_id": 9000, "agreement_number": "unowned-agreement"}
+    )
+    transport.subscriptions.insert(
+        0, {**deepcopy(transport.subscriptions[0]), "subscription_id": 999, "agreement_id": 9000}
+    )
     recovery.repair_batch(factory, step1_settings())
     worker = BillingWorker(step1_settings(), factory, sources.require_lbx())
     try:
@@ -72,8 +78,8 @@ async def inventory_review(
             assert await worker.tick(WorkLane.URGENT)
     finally:
         await worker.aclose()
-    if not unknown:
-        transport.subscriptions.pop()
+    transport.subscriptions.pop(0)
+    transport.agreements.pop()
     assert all(service.read_purchase(factory, p.user_id, p.id).state == "manual_review" for p in purchases)
     return purchases
 

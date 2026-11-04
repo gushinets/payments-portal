@@ -282,10 +282,11 @@ async def test_same_tariff_products_use_product_scope_and_point_proven_history(
             transport.agreements[0]["organization_id"] = 999
         elif inventory == "changed_terms":
             transport.subscriptions[0]["period_length"] = 99
+        before = service.read_purchase(factory, second.user_id, second.id)
         try:
             result = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=second.id)
         except PurchaseRefused as error:
-            assert inventory == "unknown" and error.code == "purchase_existing_subscription_review"
+            assert inventory != "proven" and error.code == "purchase_existing_subscription_review"
             result = service.read_purchase(factory, second.user_id, second.id)
         assert result.accepted == second.accepted
         assert [op.id for op in result.operations] == [op.id for op in second.operations]
@@ -296,6 +297,18 @@ async def test_same_tariff_products_use_product_scope_and_point_proven_history(
             assert {row["period_id"] for row in transport.subscriptions} == {901, 9902}
             assert len({row["agreement_id"] for row in transport.subscriptions}) == 2
         else:
-            assert result.state == IntentState.MANUAL_REVIEW and result.held
+            assert result == before and result.held
             assert transport.creates("/agreements") == (2 if resume_subscription else 1)
             assert transport.creates("/subscriptions") == 1
+            # Fixing another purchase's source facts must allow this original
+            # no-send purchase to continue, without changing its consent/IDs.
+            if inventory == "unknown":
+                transport.subscriptions.pop()
+            elif inventory == "wrong_seller":
+                transport.agreements[0]["organization_id"] = 21
+            else:
+                transport.subscriptions[0]["period_length"] = 1
+            continued = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=second.id)
+            assert continued.state == IntentState.LINKED and continued.held and continued.accepted == second.accepted
+            assert [op.id for op in continued.operations] == [op.id for op in second.operations]
+            assert transport.creates("/agreements") == transport.creates("/subscriptions") == 2

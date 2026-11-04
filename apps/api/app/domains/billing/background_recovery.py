@@ -1,7 +1,7 @@
 """Shared local recovery scheduling, deadlines and scoped inventory evidence."""
 
 from datetime import timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
@@ -320,10 +320,24 @@ def apply_inventory(
                 raise BillingRefused("billing_work_stale", 409)
             service._verify_original_consent(db, row, current.accepted)
             target = next(op for op in operations if op.operation_kind == Kind.SUBSCRIPTION)
-            locked.append((purchase, row, target, scope, subscription))
+            locked.append((purchase, row, operations, target, scope, subscription))
         queue = work.verify_claim(db, claim)
-        for purchase, row, target, scope, subscription in locked:
-            financial._review(db, row, target, "customer_inventory_conflict")
+        for purchase, row, operations, target, scope, subscription in locked:
+            admission_only = (
+                target.operation_state in {State.PENDING, State.PROVEN_NOT_SENT}
+                and target.bound_external_object_id is None
+            )
+            if admission_only:
+                # Invalidate any pre-claim admission, including agreement sends.
+                # Preserve no-send evidence so a fresh explicit attempt can resume.
+                for operation in operations:
+                    if (
+                        operation.operation_state in {State.PENDING, State.PROVEN_NOT_SENT}
+                        and operation.bound_external_object_id is None
+                    ):
+                        operation.send_fence = uuid4()
+            else:
+                financial._review(db, row, target, "customer_inventory_conflict")
             from app.models import (
                 BillingStateObservation,
                 BillingStateObservationKind,
@@ -344,7 +358,7 @@ def apply_inventory(
                     evidence_schema_version="customer-inventory:v1",
                     evidence_document={"purchase_intent_id": str(purchase.id), "reason": "competing_inventory"},
                     completeness_classification="conflict",
-                    result_classification="review_required",
+                    result_classification="admission_blocked" if admission_only else "review_required",
                     resulting_access_revision=None,
                 )
             )

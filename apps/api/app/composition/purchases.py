@@ -31,7 +31,7 @@ from app.domains.purchases.contracts import (
     PurchaseInventoryIncomplete,
 )
 from app.domains.purchases import financial, service
-from app.domains.purchases.inventory import other_inventory_purchase
+from app.domains.purchases.inventory import deadline_only_inventory_recovery, other_inventory_purchase
 from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from app.integrations.lbx._transport import customer_diagnostics
 from app.integrations.lbx.client import LbxServerClient
@@ -120,7 +120,9 @@ async def _inventory(
     relevant = [row for row in rows if row.tariff_id == purchase.accepted.selection.tariff_id]
     if len(relevant) > MAX_RELEVANT_SUBSCRIPTIONS:
         raise PurchaseInventoryIncomplete()
-    own = _operation(purchase, Kind.SUBSCRIPTION).bound_id
+    subscription = _operation(purchase, Kind.SUBSCRIPTION)
+    own = subscription.bound_id
+    pending_binding = False
     for candidate in relevant:
         budget.check()
         point = subscription_points.get(candidate.subscription_id)
@@ -144,8 +146,24 @@ async def _inventory(
         except LbxResponseInvalid:
             raise PurchaseInventoryIncomplete() from None
         if not terminal and str(point.subscription_id) != own:
-            other = await delegate(
-                other_inventory_purchase, factory, purchase, point.subscription_id, point.agreement_id
+            agreement_op = _operation(purchase, Kind.AGREEMENT)
+            original_candidate = (
+                own is None
+                and subscription.candidate_id in {None, str(point.subscription_id)}
+                and agreement_op.state == State.BOUND
+                and agreement_op.bound_id == str(point.agreement_id)
+                and sum(row.agreement_id == point.agreement_id for row in rows) == 1
+                and (
+                    subscription.state in {State.POSSIBLE_SEND, State.UNKNOWN}
+                    or await delegate(deadline_only_inventory_recovery, factory, purchase)
+                )
+            )
+            other = (
+                purchase
+                if original_candidate
+                else await delegate(
+                    other_inventory_purchase, factory, purchase, point.subscription_id, point.agreement_id
+                )
             )
             if other is not None:
                 prove_agreement(
@@ -160,10 +178,17 @@ async def _inventory(
                     selection=other.accepted.selection,
                     offer=other.accepted.offer,
                 )
-                if other.state != PurchaseIntentState.LINKED:
-                    raise PurchaseInventoryIncomplete()
+                if original_candidate or other.state != PurchaseIntentState.LINKED:
+                    if sum(row.agreement_id == point.agreement_id for row in rows) != 1:
+                        raise PurchaseRefused("purchase_existing_subscription_review", 409)
+                    # Recovery alone can bind an original uncertain command.
+                    # Check the remaining candidates before deferring so real
+                    # competition is not hidden by that pending binding.
+                    pending_binding = True
                 continue
             raise PurchaseRefused("purchase_existing_subscription_review", 409)
+    if pending_binding:
+        raise PurchaseInventoryIncomplete()
     if inventory is not None:
         return
     again = await client.discover_subscriptions(user_id=int(customer.provider_id), budget=budget)
@@ -317,10 +342,15 @@ async def _prepare(
                 # A bound agreement does not prove current subscription admission,
                 # including when a proven-not-sent subscription is explicitly resumed.
                 await _inventory(client, purchase, customer, factory, budget=budget)
-                found = await _find_financial(client, purchase, operation, customer, budget=budget)
             except PurchaseInventoryIncomplete:
                 await run_in_threadpool(financial.financial_pending, factory, purchase, operation)
                 raise
+            except LbxScopeMismatch:
+                # This command is still unsent. Inventory blocks admission but
+                # must not manufacture an uncertain financial effect/review.
+                raise PurchaseRefused("purchase_existing_subscription_review", 409) from None
+            try:
+                found = await _find_financial(client, purchase, operation, customer, budget=budget)
             except (LbxScopeMismatch, PurchaseRefused) as error:
                 await run_in_threadpool(financial.financial_pending, factory, purchase, operation, conflict=True)
                 if isinstance(error, PurchaseRefused):
