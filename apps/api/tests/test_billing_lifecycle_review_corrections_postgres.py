@@ -1,6 +1,6 @@
 """Review regressions: real PostgreSQL and synthetic LBX, no live mutation."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from dataclasses import replace
 
 import pytest
@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.composition.billing_operator import resolve_review
+from app.composition.billing import bootstrap_account
 from app.composition.purchases import advance_purchase, recover_financial
 from app.core.errors import AppError
 from app.domains.billing import background_recovery as recovery
@@ -39,6 +40,118 @@ from apps.api.tests.test_billing_subscription_reconciliation_postgres import sna
 from apps.api.tests.test_billing_worker_postgres import historical_link
 
 pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
+
+
+@pytest.mark.parametrize("entrypoint", ["advance", "widget"])
+@pytest.mark.parametrize("conflict", ["agreement", "subscription"])
+async def test_financial_point_conflict_immediately_withdraws_trusted_subscription(
+    background_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    entrypoint: str,
+    conflict: str,
+) -> None:
+    transport, sources, purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    purchase = synthetic_prepare(factory, transport, purchase, uncertain=False)
+    await run(sources, factory)
+    before = snapshot(factory)
+    assert before[2:4] == ("allowed", "eligible")
+    history = {op.id: original(factory, op.id) for op in purchase.operations}
+    expected = next(op for op in purchase.operations if op.kind == conflict)
+
+    # An unavailable read remains a diagnostic attempt, not a known conflict.
+    financial.financial_pending(
+        factory, purchase, expected, failure_facts={"code": "lbx_unavailable", "reason": "network"}
+    )
+    assert snapshot(factory) == before
+    with factory() as db:
+        queue = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == "subscription_reconciliation"))
+        queue.next_attempt_at = datetime.now(UTC) + timedelta(minutes=15)
+        queue.priority = 0
+        generation = queue.enqueue_generation
+        db.commit()
+    if conflict == "agreement":
+        transport.agreements[0]["organization_id"] = 999
+    else:
+        transport.subscriptions[0]["services"][0]["price"] = 15
+    calls = len(transport.requests)
+    if entrypoint == "widget":
+        with pytest.raises(BillingRefused, match="purchase_not_prepared"):
+            await bootstrap_account(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+    else:
+        await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+
+    denied = snapshot(factory)
+    assert denied[2:4] == ("blocked", "ineligible")
+    assert denied[:2] == before[:2] and denied[4:] == before[4:]
+    saved = service.read_purchase(factory, purchase.user_id, purchase.id)
+    assert saved.state == "manual_review" and saved.held and saved.accepted == purchase.accepted
+    assert [(op.id, op.key, op.bound_id) for op in saved.operations] == [
+        (op.id, op.key, op.bound_id) for op in purchase.operations
+    ]
+    assert {op.id: original(factory, op.id) for op in saved.operations} == history
+    with factory() as db:
+        case = db.scalar(select(ManualReviewCase))
+        assert case.reason_code == "financial_binding_conflict" and case.case_state == "open"
+        queue = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == "subscription_reconciliation"))
+        assert queue.priority == 1 and queue.next_attempt_at <= datetime.now(UTC)
+        assert queue.enqueue_generation == generation + 1
+    assert all(request.method == "GET" for request in transport.requests[calls:])
+
+    # A late callback cannot repeat the conflict transition or enqueue another hint.
+    financial.financial_pending(factory, purchase, expected, conflict=True)
+    with factory() as db:
+        queue = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == "subscription_reconciliation"))
+        assert queue.enqueue_generation == generation + 1
+    assert snapshot(factory) == denied
+    transport.agreements[0]["organization_id"] = 21
+    transport.subscriptions[0]["services"][0]["price"] = 100
+    await run(sources, factory)
+    assert snapshot(factory)[2:6] == denied[2:6]
+    assert service.read_purchase(factory, purchase.user_id, purchase.id).state == "manual_review"
+
+
+@pytest.mark.parametrize("failure", ["enqueue", "commit"])
+async def test_financial_conflict_failure_rolls_back_review_denial_and_hint(
+    background_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    transport, sources, purchase = background_scenario
+    factory = postgres_session_factory
+    purchase = synthetic_prepare(factory, transport, purchase, uncertain=False)
+    await run(sources, factory)
+    before = snapshot(factory)
+    with factory() as db:
+        queue = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == "subscription_reconciliation"))
+        schedule = queue.enqueue_generation, queue.priority, queue.next_attempt_at
+    enqueue = financial.enroll_subscription
+
+    def failed_enqueue(db: Session, subscription: ExternalSubscription, *, hint: bool = False) -> None:
+        enqueue(db, subscription, hint=hint)
+        db.flush()
+        raise RuntimeError("synthetic rollback")
+
+    def failed_commit(db: Session) -> None:
+        db.flush()
+        raise RuntimeError("synthetic rollback")
+
+    with monkeypatch.context() as patch:
+        if failure == "enqueue":
+            patch.setattr(financial, "enroll_subscription", failed_enqueue)
+        else:
+            patch.setattr(Session, "commit", failed_commit)
+        with pytest.raises(RuntimeError, match="synthetic rollback"):
+            financial.financial_pending(
+                factory, purchase, next(op for op in purchase.operations if op.kind == "subscription"), conflict=True
+            )
+    assert snapshot(factory) == before
+    assert service.read_purchase(factory, purchase.user_id, purchase.id) == purchase
+    with factory() as db:
+        assert not list(db.scalars(select(ManualReviewCase)))
+        queue = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == "subscription_reconciliation"))
+        assert (queue.enqueue_generation, queue.priority, queue.next_attempt_at) == schedule
 
 
 @pytest.mark.parametrize("block", [1, 3])

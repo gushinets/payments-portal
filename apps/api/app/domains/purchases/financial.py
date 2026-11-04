@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
 from app.core.time import utc_now
@@ -24,6 +23,7 @@ from app.domains.purchases.contracts import (
     PurchaseRefused,
 )
 from app.domains.purchases.service import _locked, _operation, read_purchase
+from app.domains.purchases.financial_reviews import record_review as _review
 from app.infrastructure.queries import purchases as queries
 from app.infrastructure.queries.billing_customers import (
     customer_operation,
@@ -38,15 +38,12 @@ from app.models import (
     BillingStateObservation,
     BillingStateObservationKind,
     BillingWorkItem,
-    ExternalCreateOperation,
     ExternalCreateOperationKind as Kind,
     ExternalCreateOperationState as State,
     ExternalSubscription,
     ExternalSubscriptionCommercialAccessStatus as Commercial,
     ExternalSubscriptionFinancialAccessStatus as Financial,
     ExternalSubscriptionLifecycleStatus as Lifecycle,
-    ManualReviewCase,
-    PurchaseIntent,
     PurchaseIntentState as IntentState,
 )
 
@@ -196,29 +193,6 @@ def record_receipt(factory: SessionFactory, purchase: Purchase, expected: Financ
         db.commit()
 
 
-def _review(db: Session, row: PurchaseIntent, operation: ExternalCreateOperation, reason: str) -> None:
-    if not any(case.reason_code == reason for case in open_customer_reviews(db, operation.create_operation_id)):
-        db.add(
-            ManualReviewCase(
-                reason_code=reason,
-                scope_kind="create_operation",
-                scope_reference=str(operation.create_operation_id),
-                evidence_schema_version="financial-review:v1",
-                evidence_document={
-                    "purchase_intent_id": str(row.purchase_intent_id),
-                    "create_operation_id": str(operation.create_operation_id),
-                    "operation_state_at_conflict": operation.operation_state.value,
-                    "send_fence_at_conflict": str(operation.send_fence) if operation.send_fence else None,
-                },
-                case_state="open",
-            )
-        )
-    operation.operation_state = State.MANUAL_REVIEW
-    operation.send_fence = uuid4()
-    row.state = IntentState.MANUAL_REVIEW
-    row.state_updated_at = utc_now()
-
-
 def financial_pending(
     factory: SessionFactory,
     purchase: Purchase,
@@ -231,6 +205,8 @@ def financial_pending(
     with factory() as db:
         row = _locked(db, purchase)
         op = next(op for op in queries.operations(db, purchase.id, lock=True) if op.create_operation_id == expected.id)
+        # Acquire the affected business row before an optional work-claim lock.
+        subscription = queries.linked_subscription(db, purchase.id) if conflict else None
         if work_claim is not None:
             from app.domains.billing.work import verify_operation_claim
 
@@ -241,6 +217,12 @@ def financial_pending(
         deadline = queries.financial_recovery_deadline(op, work)
         if conflict:
             _review(db, row, op, "financial_binding_conflict")
+            if subscription is not None:
+                # A known conflict withdraws usability in this transaction;
+                # retain the last source proof, trust timestamps and bindings.
+                subscription.commercial_access_status = Commercial.INELIGIBLE
+                subscription.financial_access_status = Financial.BLOCKED
+                enroll_subscription(db, subscription, hint=True)
         elif op.operation_state == State.PROVEN_NOT_SENT:
             return  # A failed GET cannot erase completed no-send evidence.
         elif op.operation_state != State.BOUND:

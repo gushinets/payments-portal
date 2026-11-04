@@ -32,6 +32,12 @@ Customer inventory applies its collected evidence separately, as described
 below. Polling cannot clear a known financial/subscription conflict merely
 because later terms match.
 
+An original-object conflict found during purchase advance or payment Widget
+proof also withdraws the linked subscription's usability and enqueues urgent
+reconciliation atomically with financial review. It preserves the supporting
+observation, trust timestamps and permanent bindings. A failed or incomplete
+read alone does not trigger that denial.
+
 Provider calendar dates retain their original precision. Missing, sentinel or
 contradictory current-cycle bounds cannot establish positive trust. Date-only
 facts do not imply a timezone, UTC boundary or allowance identity.
