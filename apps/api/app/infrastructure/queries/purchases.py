@@ -28,7 +28,6 @@ def account_purchases(db: Session, user_id: UUID, *, after: UUID | None, limit: 
     query = (
         select(PurchaseIntent)
         .join(
-            BillingStateObservation,
             BillingPurchaseScopeHold,
             BillingPurchaseScopeHold.purchase_intent_id == PurchaseIntent.purchase_intent_id,
         )
