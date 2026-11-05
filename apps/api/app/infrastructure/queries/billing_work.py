@@ -154,7 +154,9 @@ def missing_deadlines(db: Session, account: str, limit: int) -> list[ExternalSub
             )
             .where(
                 ExternalSubscription.external_billing_account_id == account,
-                BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v1",
+                BillingStateObservation.evidence_schema_version.in_(
+                    ("subscription-reconciliation:v1", "bound-source-negative:v1")
+                ),
                 BillingStateObservation.access_scope_id.is_not(None),
                 ExternalSubscription.projection_valid_until > ExternalSubscription.last_authoritative_read_at,
                 ~recorded,

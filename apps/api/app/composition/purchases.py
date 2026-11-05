@@ -322,9 +322,11 @@ async def verify_payment_purchase(
     result = await reconcile_bound_purchase(sources, configuration, factory, purchase, budget)
     proof = result.proof
     if (
-        not proof.complete
-        or proof.identity != IdentityProof.MATCH
+        proof.identity != IdentityProof.MATCH
         or proof.commercial != CommercialProof.MATCH
+        # A retained block can be authoritative despite an unknown agreement
+        # closure; that negative alone cannot prove this agreement payable.
+        or "agreement_calendar_incomplete" in proof.reasons
         or proof.lifecycle not in {Lifecycle.ACTIVE, Lifecycle.INACTIVE}
         or any(op.state != State.BOUND for op in result.subject.purchase.operations)
     ):

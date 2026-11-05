@@ -513,8 +513,11 @@ transitions. Reuse these owners when changing either path:
 - Payment presentation requires a committed complete identity/commercial match,
   supported nonterminal lifecycle and final local session/customer/purchase
   admission after Client readiness. Waiting/unpaid and financially blocked
-  subscriptions can be payable. Incomplete or terminal proof cannot return
-  payment credentials; account-only Widget remains independent. Lease contention
+  subscriptions can be payable. Missing paid-cycle calendar dates do not block
+  payment when identity, material terms and nonterminal lifecycle are proven;
+  they still prevent positive trust renewal. Unknown agreement closure remains
+  non-payable even when its subscription's block is proven. Incomplete identity/commercial or
+  terminal proof cannot return payment credentials; account-only Widget remains independent. Lease contention
   returns retryable `purchase_pending`, without unclaimed source reads.
 - Bound HTTP reconciliation keeps the source budget separate from short DB
   apply, preserving a timely negative when later policy I/O expires. Every

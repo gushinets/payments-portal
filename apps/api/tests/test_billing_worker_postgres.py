@@ -26,6 +26,8 @@ from app.jobs.billing import BillingWorker
 from app.models import (
     BillingWorkItem,
     ExternalSubscription,
+    ExternalSubscriptionLifecycleStatus as Lifecycle,
+    ExternalSubscriptionFinancialAccessStatus as Financial,
     BillingStateObservation,
     BillingStateObservationKind,
     BillingProductAccessScope,
@@ -322,6 +324,76 @@ async def test_billing_worker_expired_live_handler_cannot_apply_or_complete_new_
     )
     assert jobs(factory)[0].next_attempt_at == queue.next_attempt_at
     assert worker_a.admissions[WorkLane.URGENT].active_count == 0
+
+
+async def test_retained_negative_observation_backfills_expiry_and_cannot_revive_terminal(
+    scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    transport, sources, _ = scenario
+    factory = postgres_session_factory
+    activate(transport)
+    worker = BillingWorker(step1_settings(), factory, sources.require_lbx())
+    assert await worker.tick(WorkLane.URGENT)
+    trusted = subs(factory)[0]
+    # SIMULATED later-head persisted shape; no legacy runtime is imported.
+    with factory() as db:
+        sub = db.get(ExternalSubscription, trusted.subscription_id)
+        previous = db.get(BillingStateObservation, sub.latest_observation_id)
+        observation = BillingStateObservation(
+            observation_kind=BillingStateObservationKind.AUTHORITATIVE_SUBSCRIPTION_READ,
+            external_billing_account_id=sub.external_billing_account_id,
+            user_id=sub.user_id,
+            product_id=sub.product_id,
+            access_scope_id=previous.access_scope_id,
+            subscription_id=sub.subscription_id,
+            observed_at=datetime.now(UTC),
+            evidence_schema_version="bound-source-negative:v1",
+            completeness_classification="negative_only",
+            result_classification="source_negative",
+            evidence_document={"lifecycle": "ended", "financial": "blocked"},
+        )
+        db.add(observation)
+        db.flush()
+        sub.latest_observation_id = observation.observation_id
+        sub.lifecycle_status = Lifecycle.ENDED
+        sub.financial_access_status = Financial.BLOCKED
+        sub.projection_valid_until = datetime.now(UTC) - timedelta(seconds=1)
+        sub.last_authoritative_read_at = sub.projection_valid_until - timedelta(hours=6)
+        db.execute(delete(BillingWorkItem).where(BillingWorkItem.work_kind == work.EXPIRY))
+        db.commit()
+    before = subs(factory)[0]
+    requests = len(transport.requests)
+    assert work.enroll_batch(factory, step1_settings()) == 1
+    assert work.enroll_batch(factory, step1_settings()) == 0
+    assert await worker.tick(WorkLane.LOCAL)
+    assert len(transport.requests) == requests
+    assert subs(factory)[0].latest_observation_id == before.latest_observation_id
+    with factory() as db:
+        expiry = db.scalar(
+            select(BillingStateObservation).where(
+                BillingStateObservation.evidence_schema_version == "subscription-trust-expiry:v1"
+            )
+        )
+        assert expiry.basis_observation_id == before.latest_observation_id
+    # Fresh ACTIVE source proof must not erase the retained terminal fact.
+    await reconcile_subscription(
+        sources.require_lbx(),
+        sources.billing,
+        step1_settings(),
+        factory=factory,
+        subscription_id=before.subscription_id,
+    )
+    current = subs(factory)[0]
+    assert (current.lifecycle_status, current.financial_access_status) == ("ended", "blocked")
+    assert current.projection_valid_until == before.projection_valid_until
+    with factory() as db:
+        observation = db.get(BillingStateObservation, before.latest_observation_id)
+        assert observation.evidence_schema_version == "bound-source-negative:v1"
+        assert observation.result_classification == "source_negative"
+        latest = db.get(BillingStateObservation, current.latest_observation_id)
+        assert latest.result_classification == "subscription_terminal_revival_conflict"
+    await worker.aclose()
 
 
 async def test_billing_worker_local_expiry_is_provider_free_idempotent_and_refresh_wins(
@@ -704,14 +776,16 @@ async def test_billing_worker_link_and_sweep_interleave_without_partial_enrollme
     transport, _, purchase = scenario
     factory = postgres_session_factory
     entered, release = Event(), Event()
-    original = financial.enroll_subscription
+    from app.domains.purchases import preparation
+
+    original = preparation.enroll_subscription
 
     def pause(db: Session, subscription: ExternalSubscription) -> None:
         entered.set()
         assert release.wait(5)
         original(db, subscription)
 
-    monkeypatch.setattr(financial, "enroll_subscription", pause)
+    monkeypatch.setattr(preparation, "enroll_subscription", pause)
     task = asyncio.create_task(run_in_threadpool(historical_link, factory, purchase, transport, "brief_decoder", 1))
     try:
         assert await run_in_threadpool(entered.wait, 5)

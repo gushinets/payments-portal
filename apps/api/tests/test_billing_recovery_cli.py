@@ -181,7 +181,7 @@ def test_billing_recovery_cli_runbook_parser_and_settings_contract() -> None:
         "billing-operator-resolution:v1",
         "projection_valid_until",
         "release-terminal",
-        "DISABLED/POLLING-ONLY",
+        "Polling-only operation",
         "queue age",
         "per-process",
         "last_progress_at",
