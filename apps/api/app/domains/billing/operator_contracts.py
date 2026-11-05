@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from app.domains.purchases.inventory_contracts import InventoryResult
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -65,6 +68,7 @@ class ReviewResolution:
     started_at: datetime
     expires_at: datetime
     related_case_digests: tuple[tuple[UUID, str], ...] = ()
+    inventory: InventoryResult | None = None
 
 
 @dataclass(frozen=True)

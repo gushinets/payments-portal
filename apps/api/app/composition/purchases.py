@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from uuid import UUID
-from collections.abc import Awaitable, Callable
-from typing import Any
 
 from starlette.concurrency import run_in_threadpool
 
@@ -39,20 +37,15 @@ from app.domains.purchases.contracts import (
     PurchaseInventoryIncomplete,
 )
 from app.domains.purchases import financial, service
-from app.domains.purchases.inventory import other_inventory_purchase
+from app.domains.purchases.inventory import block_admission
+from app.composition.purchase_inventory import collect_inventory
 from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from app.integrations.lbx._transport import customer_diagnostics
-from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.current_offer import current_billing_date
-from app.integrations.lbx.errors import LbxCreateNotSent, LbxError, LbxScopeMismatch, LbxResponseInvalid
+from app.integrations.lbx.errors import LbxCreateNotSent, LbxError, LbxScopeMismatch
 from app.integrations.lbx.financial import (
-    Agreement,
     NewAgreement,
     NewSubscription,
-    Subscription,
-    prove_agreement,
-    prove_effective_terms,
-    inventory_terminal,
 )
 from app.models import (
     ExternalCreateOperationKind as Kind,
@@ -60,9 +53,6 @@ from app.models import (
     PurchaseIntentState,
     ExternalSubscriptionLifecycleStatus as Lifecycle,
 )
-
-
-MAX_RELEVANT_SUBSCRIPTIONS = 20
 
 
 async def review_purchase(
@@ -112,81 +102,6 @@ def _connection(purchase: Purchase, configuration: Settings) -> None:
         raise PurchaseRefused("billing_connection_conflict", 409)
 
 
-async def _inventory(
-    client: LbxServerClient,
-    purchase: Purchase,
-    customer: CustomerOpen,
-    factory: SessionFactory,
-    *,
-    budget: PreflightBudget,
-    delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
-    inventory: tuple[Subscription, ...] | None = None,
-    subscription_points: dict[int, Subscription] | None = None,
-    agreement_points: dict[int, Agreement] | None = None,
-) -> None:
-    subscription_points = {} if subscription_points is None else subscription_points
-    agreement_points = {} if agreement_points is None else agreement_points
-    rows = inventory
-    if rows is None:
-        rows = await client.discover_subscriptions(user_id=int(customer.provider_id), budget=budget)
-    relevant = [row for row in rows if row.tariff_id == purchase.accepted.selection.tariff_id]
-    if len(relevant) > MAX_RELEVANT_SUBSCRIPTIONS:
-        raise PurchaseInventoryIncomplete()
-    own = _operation(purchase, Kind.SUBSCRIPTION).bound_id
-    for candidate in relevant:
-        budget.check()
-        point = subscription_points.get(candidate.subscription_id)
-        if point is None:
-            point = await client.get_subscription(subscription_id=candidate.subscription_id, budget=budget)
-            subscription_points[candidate.subscription_id] = point
-        if (point.subscription_id, point.agreement_id, point.tariff_id) != (
-            candidate.subscription_id,
-            candidate.agreement_id,
-            candidate.tariff_id,
-        ):
-            raise PurchaseRefused("purchase_inventory_incomplete", 409)
-        agreement = agreement_points.get(point.agreement_id)
-        if agreement is None:
-            agreement = await client.get_agreement(agreement_id=point.agreement_id, budget=budget)
-            agreement_points[point.agreement_id] = agreement
-        if agreement.user_id != int(customer.provider_id):
-            raise LbxScopeMismatch()
-        try:
-            terminal = inventory_terminal(point)
-        except LbxResponseInvalid:
-            raise PurchaseInventoryIncomplete() from None
-        if not terminal and str(point.subscription_id) != own:
-            other = await delegate(
-                other_inventory_purchase, factory, purchase, point.subscription_id, point.agreement_id
-            )
-            if other is not None:
-                prove_agreement(
-                    agreement,
-                    user_id=int(customer.provider_id),
-                    seller_id=other.accepted.seller_id,
-                    number=_operation(other, Kind.AGREEMENT).key,
-                )
-                prove_effective_terms(
-                    point,
-                    agreement_id=point.agreement_id,
-                    selection=other.accepted.selection,
-                    offer=other.accepted.offer,
-                )
-                if other.state != PurchaseIntentState.LINKED:
-                    raise PurchaseInventoryIncomplete()
-                continue
-            raise PurchaseRefused("purchase_existing_subscription_review", 409)
-    if inventory is not None:
-        return
-    again = await client.discover_subscriptions(user_id=int(customer.provider_id), budget=budget)
-
-    def identity(row: Subscription) -> tuple[int, int, int]:
-        return row.subscription_id, row.agreement_id, row.tariff_id
-
-    if sorted(map(identity, rows)) != sorted(map(identity, again)):
-        raise PurchaseRefused("purchase_inventory_incomplete", 409)
-
-
 async def _prepare(
     sources: SourceResources,
     configuration: Settings,
@@ -232,10 +147,24 @@ async def _prepare(
                 break
             if not await live_original(sources, configuration, purchase, factory, budget=budget):
                 break
+            # Check all local/source inventory evidence before entering the
+            # original financial candidate lookup. Failed collection has no
+            # complete result whose admission fences can be invalidated.
+            inventory = await collect_inventory(
+                client,
+                sources.billing,
+                configuration,
+                factory=factory,
+                customer=customer,
+                expected=purchase,
+                budget=budget,
+            )
             try:
-                # A bound agreement does not prove current subscription admission,
-                # including when a proven-not-sent subscription is explicitly resumed.
-                await _inventory(client, purchase, customer, factory, budget=budget)
+                inventory.require_clear(purchase)
+            except PurchaseRefused:
+                await run_in_threadpool(block_admission, factory, inventory, purchase)
+                raise
+            try:
                 found = await _find_financial(client, purchase, operation, customer, budget=budget)
             except PurchaseInventoryIncomplete:
                 await run_in_threadpool(financial.financial_pending, factory, purchase, operation)
@@ -243,13 +172,15 @@ async def _prepare(
             except (LbxScopeMismatch, PurchaseRefused) as error:
                 if isinstance(error, PurchaseRefused) and error.code == "purchase_not_prepared":
                     break  # A recovered closed agreement never authorizes a new subscription.
-                await run_in_threadpool(financial.financial_pending, factory, purchase, operation, conflict=True)
+                if isinstance(error, PurchaseRefused) and error.code == "purchase_existing_subscription_review":
+                    raise
+                await run_in_threadpool(block_admission, factory, inventory, purchase)
                 if isinstance(error, PurchaseRefused):
                     raise
-                break
+                raise PurchaseInventoryIncomplete() from None
             if found is not None:
-                await run_in_threadpool(financial.financial_pending, factory, purchase, operation, conflict=True)
-                break
+                await run_in_threadpool(block_admission, factory, inventory, purchase)
+                raise PurchaseInventoryIncomplete()
             # Authenticate before the permanent possible-send claim; the shared POST
             # transport cannot reauthenticate/retry a financial command.
             await client.prepare_customer_create(budget=budget)
@@ -278,6 +209,7 @@ async def _prepare(
                 command.request_document(),
                 configuration=configuration,
                 token=token,
+                inventory=inventory,
             )
             if not operation.may_send:
                 break

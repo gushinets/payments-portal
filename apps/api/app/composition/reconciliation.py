@@ -39,6 +39,7 @@ async def reconcile_subscription(
     budget: PreflightBudget | None = None,
     delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
     resolution: ReviewResolution | None = None,
+    expected: Purchase | None = None,
 ) -> ReconciliationResult:
     if configuration.lbx_configuration_error is not None:
         raise BillingRefused("billing_not_configured")
@@ -49,12 +50,35 @@ async def reconcile_subscription(
         subscription_id,
         io_timeout_seconds=admission.policy.total_timeout_seconds,
     )
+    if expected is not None:
+        from app.domains.purchases.inventory import same_purchase
+
+        if not same_purchase(subject.purchase, expected):
+            raise PurchaseRefused("purchase_inventory_incomplete", 409)
     # Claim is committed before admission/HTTP; each delegated unit owns its DB.
     # Failure/cancellation leaves a finite lease for safe subsequent reclaim.
     started = utc_now()
     try:
         async with _budget(admission, budget) as active_budget:
             proof = await read_subscription_proof(client, subject, configuration, budget=active_budget)
+            if resolution is not None:
+                from dataclasses import replace
+                from app.composition.purchase_inventory import collect_inventory
+                from app.domains.purchases.inventory_contracts import InventoryCandidateProof
+
+                inventory = await collect_inventory(
+                    client,
+                    admission,
+                    configuration,
+                    factory=factory,
+                    customer=subject.customer,
+                    budget=active_budget,
+                    expected=resolution.purchase,
+                    reuse=InventoryCandidateProof(subject.purchase, subject.provider_subscription_id, proof),
+                    delegate=delegate,
+                )
+                inventory.require_clear(subject.purchase, original=True)
+                resolution = replace(resolution, inventory=inventory)
     except PreflightDeadlineExceeded:
         # Record a failed attempt, never apply facts returned after its budget.
         # Preflight retains any unfinished HTTP/cleanup resource ownership.
@@ -71,10 +95,7 @@ async def reconcile_subscription(
             ("read_budget_exhausted",),
             (),
         )
-    observation_id = await delegate(
-        apply_reconciliation, factory, subject, proof, work_claim=work_claim, resolution=resolution
-    )
-    return ReconciliationResult(observation_id, subject, proof)
+    return await delegate(apply_reconciliation, factory, subject, proof, work_claim=work_claim, resolution=resolution)
 
 
 async def reconcile_bound_purchase(

@@ -299,7 +299,8 @@ async def test_billing_background_recovery_two_products_same_tariff_isolated(
         (datetime.now(UTC) + timedelta(hours=4)) < inventory.next_attempt_at <= (datetime.now(UTC) + timedelta(hours=6))
     )
     assert Counter(request.url.path for request in transport.requests[inventory_start:]) == {
-        "/api/rest/v1/users/345": 1,
+        "/api/rest/v1/users/345": 3,
+        "/api/rest/v1/tariffs/701": 2,
         "/api/rest/v1/subscriptions": 2,
         "/api/rest/v1/subscriptions/567": 1,
         "/api/rest/v1/subscriptions/568": 1,
@@ -315,7 +316,9 @@ async def test_billing_background_recovery_two_products_same_tariff_isolated(
         db.commit()
     next_attempt = len(transport.requests)
     assert await worker.tick(WorkLane.NORMAL)
-    assert job(factory, recovery.INVENTORY, target.customer_id).last_error_classification == "inventory_conflict"
+    assert job(factory, recovery.INVENTORY, target.customer_id).last_error_classification is None
+    assert service.read_purchase(factory, first.user_id, first.id).state == "manual_review"
+    assert service.read_purchase(factory, second.user_id, second.id).state == "linked"
     assert (
         sum(request.url.path == "/api/rest/v1/subscriptions/567" for request in transport.requests[next_attempt:]) == 1
     )

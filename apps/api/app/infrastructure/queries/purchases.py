@@ -16,7 +16,6 @@ from app.models import (
     BillingWorkItem,
     CommercialProductHead,
     ExternalCreateOperation,
-    ExternalCreateOperationKind as Kind,
     ExternalSubscription,
     DocumentVersion,
     DocumentAcceptance,
@@ -95,22 +94,6 @@ def required_documents(
 def linked_subscription(db: Session, purchase_id: UUID) -> ExternalSubscription | None:
     return db.scalar(
         select(ExternalSubscription).where(ExternalSubscription.purchase_intent_id == purchase_id).with_for_update()
-    )
-
-
-def agreement_purchase(
-    db: Session, *, user_id: UUID, customer_id: UUID, account_id: str, agreement_id: str
-) -> PurchaseIntent | None:
-    return db.scalar(
-        select(PurchaseIntent)
-        .join(ExternalCreateOperation, ExternalCreateOperation.purchase_intent_id == PurchaseIntent.purchase_intent_id)
-        .where(
-            PurchaseIntent.user_id == user_id,
-            PurchaseIntent.customer_id == customer_id,
-            PurchaseIntent.external_billing_account_id == account_id,
-            ExternalCreateOperation.operation_kind == Kind.AGREEMENT,
-            ExternalCreateOperation.bound_external_object_id == agreement_id,
-        )
     )
 
 

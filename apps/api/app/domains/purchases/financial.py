@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.domains.purchases.inventory_contracts import InventoryResult
+
 from datetime import timedelta
 from uuid import uuid4
 
@@ -56,11 +61,17 @@ def claim_financial(
     *,
     configuration: Settings,
     token: str,
+    inventory: "InventoryResult | None" = None,
 ) -> FinancialOperation:
     with factory() as db:
         if authenticate(db, configuration, token).id != purchase.user_id:
             raise PurchaseRefused("purchase_not_found", 404)
         row = _locked(db, purchase)
+        if inventory is not None:
+            from app.domains.purchases.inventory import validate_inventory
+
+            inventory.require_clear(purchase)
+            validate_inventory(db, inventory)
         operations = queries.operations(db, row.purchase_intent_id, lock=True)
         operation = next(op for op in operations if op.create_operation_id == expected.id)
         if (

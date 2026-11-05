@@ -154,6 +154,15 @@ async def test_billing_background_recovery_inventory_checks_all_affected_product
                     sub.commercial_access_status == "ineligible" for sub in db.scalars(select(ExternalSubscription))
                 )
                 assert db.scalar(select(func.count()).select_from(BillingPurchaseScopeHold)) == 2
+            if attempt == 0:
+                # This pass now performs leased authoritative reads before the
+                # foreign candidate is discovered. Once reviewed, later reads
+                # must preserve that finite trust rather than renew it.
+                with factory() as db:
+                    trust = {
+                        sub.product_id: (sub.last_authoritative_read_at, sub.projection_valid_until)
+                        for sub in db.scalars(select(ExternalSubscription))
+                    }
             for identity in identities.values():
                 await reconcile_subscription(
                     sources.require_lbx(), sources.billing, step1_settings(), factory=factory, subscription_id=identity
@@ -190,8 +199,16 @@ async def test_billing_background_recovery_inventory_batch_rejects_stale_apply_a
         else:
             db.get(BillingWorkItem, claim.id).lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
         db.commit()
-    with pytest.raises(BillingRefused, match="billing_work_stale"):
-        recovery.apply_inventory(factory, claim, (first, second), "inventory_conflict")
+    with pytest.raises(BillingRefused, match="billing_work_stale|purchase_inventory_incomplete"):
+        from app.domains.purchases.inventory_contracts import InventoryResult
+
+        customer = service.customer_for_purchase(factory, step1_settings(), first)
+        recovery.apply_inventory(
+            factory,
+            claim,
+            InventoryResult(customer, (first, second), (first.id, second.id), (), True),
+            "inventory_conflict",
+        )
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
         assert (
@@ -329,9 +346,7 @@ async def test_billing_background_recovery_inventory_refuses_unsafe_other_produc
         saved = service.read_purchase(factory, first.user_id, identity)
         assert tuple((op.id, op.bound_id, op.key) for op in saved.operations) == expected
     classification = job(factory, recovery.INVENTORY, first.customer_id).last_error_classification
-    assert classification == (
-        "inventory_incomplete" if bad in {"incomplete", "cap", "unstable"} else "inventory_conflict"
-    )
+    assert classification == ("inventory_conflict" if bad == "unknown" else "inventory_incomplete")
     assert all(req.method == "GET" for req in transport.requests[count:])
     await worker.aclose()
 

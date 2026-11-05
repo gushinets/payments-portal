@@ -209,6 +209,23 @@ async def recover_one(
             proof,
             agreement.close_date if agreement_is_closed(agreement) else None,
         )
+        if resolution is not None:
+            from app.composition.purchase_inventory import collect_inventory
+            from app.domains.purchases.inventory_contracts import InventoryCandidateProof
+
+            inventory = await collect_inventory(
+                client,
+                sources.billing,
+                configuration,
+                factory=factory,
+                customer=customer,
+                budget=budget,
+                expected=purchase,
+                reuse=InventoryCandidateProof(purchase, str(provider_id) if proof is not None else None, proof),
+                delegate=delegate,
+            )
+            inventory.require_clear(purchase, original=True)
+            resolution = replace(resolution, inventory=inventory)
         bound = await delegate(
             financial.bind_financial,
             factory,
