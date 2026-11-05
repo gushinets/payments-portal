@@ -1,6 +1,6 @@
 # ANY-715 — Rebuild the MVP implementation from the functional-QA baseline
 
-Status: Stages 0–1 complete; Stages 2–6 pending. Final rebuild QA and acceptance remain pending.
+Status: Stages 0–3 complete; Stages 4–6 pending. Final rebuild QA and acceptance remain pending.
 Prepared: 2026-11-05. Repository: `gushinets/payments-portal`. Reference PR: #154; delivery: a separate Draft PR created in Stage 0.
 
 ## 1. Outcome and execution instructions
@@ -237,7 +237,7 @@ Do not cherry-pick this sequence wholesale. A review thread is not a requirement
 - Push the verified final stage normally to the new branch and update the existing Draft PR with its final scope and fresh evidence. The new PR is the proposed primary implementation; keep it Draft until the owner requests otherwise. PR #154 remains preserved and may be closed as superseded only after the owner's final decision. No rewriting of `ANY-715` or force-push is part of this workflow. Prepare the old-review-to-new-fix/test mapping; reply to or resolve threads only when instructed, without erasing discussions or implying approval.
 - If the proposed reuse demonstrably cannot satisfy a required invariant, record the smallest reproducible counterexample and the exact unmet requirement. Do not silently recreate the rejected subsystem or weaken the invariant. Continue independent bounded work and surface that specific design decision to the owner.
 
-Progress: Stage 0 [x]; Stage 1 [x]; Stage 2 [x]; Stage 3 [ ]; Stage 4 [ ]; Stage 5 [ ]; Stage 6 [ ].
+Progress: Stage 0 [x]; Stage 1 [x]; Stage 2 [x]; Stage 3 [x]; Stage 4 [ ]; Stage 5 [ ]; Stage 6 [ ].
 
 ## Stage 0 evidence — 2026-11-05
 
@@ -373,3 +373,53 @@ Progress: Stage 0 [x]; Stage 1 [x]; Stage 2 [x]; Stage 3 [ ]; Stage 4 [ ]; Stage
   is one normal commit/push to `refactor/any715-mvp` and a progress-body update to
   Draft PR #161; its body records the exact tested/published SHA. PR #154 and
   the original branch remain preserved. Stages 3–6 remain pending.
+
+
+## Stage 3 evidence — 2026-11-05
+
+- Reproduced the lost-reply terminal-original failure: complete original
+  subscription proof still left the operation UNKNOWN. Advance, worker and
+  operator now share one GET-only collector in `composition/purchase_recovery.py`.
+  Saved command/key/date, actual possible-send history, dedicated agreement,
+  candidate discovery, customer ownership and accepted effective terms are
+  checked before first binding. Operator points are read once and normalized
+  once; the same original proof feeds authorization, binding and atomic audit.
+- The existing binder checks original request digest, operation/customer
+  fences, current review, source times and queue ownership. First binding of
+  a proved ended subscription or closed agreement preserves its historical
+  relationship and known negative in that transaction. Supported negatives are
+  BLOCKED; otherwise initial financial status is UNVERIFIED. All new bindings
+  have zero positive trust, and waiting creation needs no invented paid dates.
+- `domains/purchases/preparation.py` replaces the old binder's initial-facts
+  branch inside that same transaction; it cannot update an existing canonical
+  subscription. Prepared evidence includes the redacted original proof. A
+  closed original agreement is retained in product-scoped
+  `prepared-agreement:v1` history; advance and the locked financial claim block
+  a new subscription POST even if a later point read changes that closure.
+- Removed bound-object re-observation/rebinding. A concurrent first binder
+  discards the losing candidate proof and reloads through claimed subscription
+  reconciliation. Recovery of an already bound financial operation, including
+  one placed in review, performs no source reads; leftover jobs finish without
+  reopening uncertain recovery. Customer recovery retains its distinct rules.
+- Preserved GET-only UNKNOWN, typed proven-unsent explicit continuation/C4,
+  immutable accepted/request/deadline history, original holds, deadline-only
+  automatic resolution and audited handling of real conflicts. No arbitrary
+  provider ID adoption, paid grant, schema/HTTP change or generated edit.
+- Production-caller search found no CLI/runtime consumer of the separate
+  `escalate_overdue_financial` scanner or its query. Removed both; tests use the
+  existing durable deadline claim/apply owner. The legacy NULL-active-window
+  migration scenario now verifies enrollment at the retained original deadline.
+- SIMULATED LBX + disposable PostgreSQL: 9 new original-recovery cases and 55
+  selected existing regressions passed (64 unique scenarios across targeted
+  runs). Coverage includes lost/ambiguous replies, delayed discovery, terminal
+  originals/closed agreements, first-bind races/rollback, original-history
+  refusal, operator single-read proof/audit/refusals, deadline-only/C4 recovery,
+  sibling preparation, queue completion and Stage 2 caller regressions.
+  Two affected fast suites passed 107 tests. Final touched-file Ruff
+  lint/format, architecture, docs and diff checks passed.
+- Per owner preference, no full check/DB suite was run. Browser E2E, live LBX,
+  retained later-head data compatibility and final rebuild QA remain unverified.
+  The isolated test server was stopped. One normal commit/push updates
+  `refactor/any715-mvp` and Draft PR #161; the exact tested/published SHA is in
+  that PR body. Original branch/backup/PR #154 remain preserved. Stages 4–6
+  were not executed.

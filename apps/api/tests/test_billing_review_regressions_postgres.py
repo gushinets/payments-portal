@@ -34,6 +34,7 @@ from app.models import (
     ExternalSubscriptionLifecycleStatus as Lifecycle,
     ManualReviewCase,
 )
+from apps.api.tests.factories.original_operation import original_proof
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.test_any709_step3_postgres import TOKEN, accept, setup_purchase
 from apps.api.tests.test_billing_background_recovery_postgres import (
@@ -109,6 +110,7 @@ async def test_deadline_preserves_completion_committed_before_business_locks(
                 purchase,
                 operation,
                 567,
+                proof=original_proof(factory, purchase, operation, transport),
                 observation=prepared_subscription_observation(
                     Subscription.model_validate(transport.subscriptions[0]), purchase
                 ),

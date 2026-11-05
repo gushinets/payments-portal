@@ -15,7 +15,9 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.composition import purchases
-from app.composition.sources import source_resources
+from app.composition.sources import SourceResources, source_resources
+from app.core.settings import Settings
+from app.domains.billing.operator_contracts import OriginalOperationProof, ReviewResolution
 from app.domains.billing.contracts import CustomerOpen
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.catalog.link_publication import publish_product_link
@@ -31,7 +33,6 @@ from app.domains.purchases.contracts import (
 )
 from app.infrastructure.queries import purchases as queries
 from app.infrastructure.preflight import PreflightBudget
-from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.financial import NewSubscription
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State
 from app.models import PurchaseIntent
@@ -117,7 +118,8 @@ async def test_sibling_inventory_waits_for_original_preparation_without_hiding_c
             return provider_id
 
         async def pause_before_binding(
-            client: LbxServerClient,
+            resources: SourceResources,
+            settings: Settings,
             purchase: Purchase,
             operation: FinancialOperation,
             customer: CustomerOpen,
@@ -128,7 +130,7 @@ async def test_sibling_inventory_waits_for_original_preparation_without_hiding_c
             if purchase.id == first.id and operation.kind == Kind.SUBSCRIPTION:
                 entered.set()
                 await release.wait()
-            return await recover_one(client, purchase, operation, customer, factory, budget=budget)
+            return await recover_one(resources, settings, purchase, operation, customer, factory, budget=budget)
 
         if checkpoint == "before_receipt":
             monkeypatch.setattr(client, "create_subscription", pause_before_receipt)
@@ -249,13 +251,24 @@ async def test_sibling_completion_between_inventory_reads_keeps_purchase_retryab
             operation: FinancialOperation,
             provider_id: int,
             *,
+            proof: OriginalOperationProof,
+            resolution: ReviewResolution | None = None,
             observation: PreparedSubscriptionObservation | None = None,
             work_claim: WorkClaim | None = None,
-        ) -> None:
+        ) -> bool:
             if purchase.id == first.id and operation.kind == Kind.SUBSCRIPTION:
                 bind_ready.set()
                 assert allow_bind.wait(10)
-            original_bind(factory, purchase, operation, provider_id, observation=observation, work_claim=work_claim)
+            return original_bind(
+                factory,
+                purchase,
+                operation,
+                provider_id,
+                proof=proof,
+                observation=observation,
+                work_claim=work_claim,
+                resolution=resolution,
+            )
 
         def pause_lookup(
             db: Session, *, user_id: UUID, customer_id: UUID, account_id: str, agreement_id: str

@@ -101,7 +101,7 @@ Start with the smallest document that matches the task.
 - [Security](SECURITY.md)
 - [Quality score](QUALITY_SCORE.md)
 - [Execution plans](exec-plans/README.md)
-- [ANY-715 MVP rebuild plan](exec-plans/active/ANY-715-mvp-rebuild-plan.md) — Stages 0–2: isolated Draft PR, corrected LBX interpretation and shared claimed bound-subscription routing; Stages 3–6 remain pending.
+- [ANY-715 MVP rebuild plan](exec-plans/active/ANY-715-mvp-rebuild-plan.md) — Stages 0–3: isolated Draft PR, corrected LBX interpretation, claimed bound-subscription routing and original-operation recovery; Stages 4–6 remain pending.
 - [Background billing operations](engineering/billing-background-operations.md) — worker settings, scheduling, webhook setup/rollback, operator commands, diagnostics and projection boundaries.
 
 ## Legal

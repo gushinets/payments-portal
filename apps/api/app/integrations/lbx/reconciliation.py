@@ -243,7 +243,7 @@ def normalize_subscription(
     )
 
 
-async def _timely_point[T](read: Callable[[], Awaitable[T]], budget: PreflightBudget) -> T:
+async def timely_point[T](read: Callable[[], Awaitable[T]], budget: PreflightBudget) -> T:
     """Reject both values and scope errors returned after the read deadline."""
     budget.check()
     try:
@@ -269,21 +269,21 @@ async def read_subscription_proof(
     # Read owner and lifecycle before potentially slow policy. Timely negatives
     # survive an unavailable policy, while every late point result is rejected.
     try:
-        user = await _timely_point(
+        user = await timely_point(
             lambda: client.get_user(user_id=int(subject.customer.provider_id), budget=budget), budget
         )
         reads.append("customer")
     except (LbxError, PreflightDeadlineExceeded) as error:
         failures.append("customer:" + error.code)
     try:
-        agreement = await _timely_point(
+        agreement = await timely_point(
             lambda: client.get_agreement(agreement_id=int(subject.agreement_id), budget=budget), budget
         )
         reads.append("agreement")
     except (LbxError, PreflightDeadlineExceeded) as error:
         failures.append("agreement:" + error.code)
     try:
-        subscription = await _timely_point(
+        subscription = await timely_point(
             lambda: client.get_subscription(subscription_id=int(subject.provider_subscription_id), budget=budget),
             budget,
         )
@@ -291,7 +291,7 @@ async def read_subscription_proof(
     except (LbxError, PreflightDeadlineExceeded) as error:
         failures.append("subscription:" + error.code)
     try:
-        tariff = await _timely_point(
+        tariff = await timely_point(
             lambda: client.get_tariff(tariff_id=subject.purchase.accepted.selection.tariff_id, budget=budget), budget
         )
         reads.append("tariff_policy")

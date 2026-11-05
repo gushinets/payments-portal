@@ -350,7 +350,8 @@ tariff/period, fixed-service effective price and quantity/total. Today's catalog
 price, price-row/association IDs and mutable subscription `outer_id` are not
 subscription authority. Waiting NULL/1970/3000 calendar values are not paid dates.
 A nonzero connection charge without explicit effective readback stays pending.
-A linked subscription is prepared, financially `unverified`, with no paid trust,
+A newly linked subscription has zero positive trust: a proved source negative
+is `blocked`, otherwise financial status is `unverified`. Preparation creates no
 access primary, grant, allowance or Kernel call. Paid access remains later work.
 
 ### Recovery and safe continuation
@@ -370,6 +371,21 @@ and coalesced work before financial POST. A timeout, 500/error, malformed succes
 crash, lost commit acknowledgement, empty discovery or expiry never permits
 another financial CREATE. UNKNOWN is GET-only and keeps its hold. Overdue work
 enters review; point proof may resolve deadline escalation, not a known conflict.
+Advance, worker and operator share `composition/purchase_recovery.py`: saved
+original command/key, possible-send history, original dedicated agreement and
+fresh ownership/applicable effective terms must be proved before first binding.
+The operator collects each required point once and reuses the normalized proof
+for the existing authorization/bind/audit transaction.
+
+A proved original ended subscription or closed agreement remains recoverable.
+First binding records the immutable relationship and known negative in the same
+transaction, with no positive trust or payment admission. A closed agreement is
+retained as `prepared-agreement:v1` product-scoped evidence; both advance and the
+financial claim reject a new subscription send for that historical closure.
+A legitimate waiting subscription needs no fictitious paid cycle dates to prove
+its original creation. Already bound financial recovery is a no-op, including
+bound operations placed in review; a concurrent first binder makes the losing
+candidate proof stale and its caller uses claimed subscription reconciliation.
 
 Only completed typed `LbxCreateNotSent` evidence permits a later explicit advance
 of the same operation/request with a fresh fence. Its fixed active +2h deadline
@@ -474,13 +490,16 @@ transitions. Reuse these owners when changing either path:
   admission, all distinct review causes and immutable accepted history together.
 - `app.composition.billing.recover_customer` and
   `app.composition.purchases.recover_financial` perform GET-only recovery;
-  domain `escalate_overdue_customers`/`escalate_overdue_financial` are bounded
-  callable escalation. Financial limit is 1..100 due operations. Reuse coalesced
-  `external_create_recovery` work and active deadlines, retaining source/recovery
-  capacity separation. The embedded GET-only worker has isolated normal/urgent
+  customer escalation retains `escalate_overdue_customers`. Financial escalation
+  uses durable `external_create_deadline` claim/apply through
+  `domains/billing/background_recovery.py`; the unused financial scanner/query
+  are removed. Reuse coalesced `external_create_recovery` work and active
+  deadlines, retaining source/recovery capacity separation. The embedded GET-only worker has isolated normal/urgent
   capacity; see [background operations](billing-background-operations.md).
 - `prepared-subscription:v1` observations are `preparation_only` /
-  `not_paid_verified`, with `paid_verified=false`; no paid trust is extended.
+  `not_paid_verified` or `source_negative`, with `paid_verified=false`; no
+  positive trust is extended. They contain redacted original-proof evidence.
+  First-binding persistence cannot rewrite an existing canonical subscription.
   Shared claimed reconciliation owns ongoing lifecycle and trust. Payment
   Widget, already-bound advance, worker and operator reconciliation acquire the
   subscription lease before point reads and apply through the same fenced

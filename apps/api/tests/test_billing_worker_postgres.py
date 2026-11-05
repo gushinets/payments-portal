@@ -6,7 +6,7 @@ import asyncio
 import copy
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -21,7 +21,7 @@ from app.domains.billing.work_contracts import WorkLane
 from app.domains.catalog.link_publication import publish_product_link
 from app.domains.purchases import financial, service
 from app.domains.purchases.contracts import Purchase
-from app.integrations.lbx.financial import Subscription
+from app.integrations.lbx.financial import NewAgreement, NewSubscription, Subscription
 from app.jobs.billing import BillingWorker
 from app.models import (
     BillingWorkItem,
@@ -36,6 +36,7 @@ from app.models import (
     AccessInvalidationOutbox,
     ExternalCreateOperationKind as Kind,
 )
+from apps.api.tests.factories.original_operation import original_proof
 from apps.api.tests.support.any709_step1 import link_document, link_selection, step1_settings
 from apps.api.tests.test_any709_step3_postgres import TOKEN
 from apps.api.tests.test_billing_subscription_reconciliation_postgres import scenario as scenario, activate
@@ -120,23 +121,43 @@ def historical_link(
     for kind, provider_id in ((Kind.AGREEMENT, agreement_id), (Kind.SUBSCRIPTION, subscription_id)):
         op = next(op for op in purchase.operations if op.kind == kind)
         request = (
-            {"user_id": 345, "agreement_number": op.key, "create_date": "2026-10-28"}
+            NewAgreement(
+                user_id=345, organization_id=21, agreement_number=op.key, create_date=date(2026, 10, 28)
+            ).request_document()
             if kind == Kind.AGREEMENT
-            else {"agreement_id": agreement_id}
+            else NewSubscription(
+                agreement_id=agreement_id,
+                tariff_id=701,
+                period_id=901,
+                tariff_service_id=1001,
+                quantity=1,
+                outer_id=op.key,
+            ).request_document()
         )
         claimed = financial.claim_financial(factory, purchase, op, request, configuration=config, token=TOKEN)
         if kind == Kind.AGREEMENT:
             agreement = copy.deepcopy(transport.agreements[0])
-            agreement.update(agreement_id=agreement_id, agreement_number=op.key)
+            agreement.update(agreement_id=agreement_id, agreement_number=op.key, create_date=request["create_date"])
             transport.agreements.append(agreement)
-            financial.bind_financial(factory, purchase, claimed, provider_id)
+            financial.bind_financial(
+                factory, purchase, claimed, provider_id, proof=original_proof(factory, purchase, claimed, transport)
+            )
         else:
             sub = copy.deepcopy(transport.subscriptions[0])
             sub.update(subscription_id=subscription_id, agreement_id=agreement_id, outer_id=op.key)
             transport.subscriptions.append(sub)
             observation = _observation(Subscription.model_validate(sub), purchase)
             if not uncertain_subscription:
-                financial.bind_financial(factory, purchase, claimed, provider_id, observation=observation)
+                financial.bind_financial(
+                    factory,
+                    purchase,
+                    claimed,
+                    provider_id,
+                    proof=original_proof(
+                        factory, service.read_purchase(factory, purchase.user_id, purchase.id), claimed, transport
+                    ),
+                    observation=observation,
+                )
         purchase = service.read_purchase(factory, purchase.user_id, purchase.id)
     return purchase
 
@@ -396,6 +417,7 @@ async def test_billing_worker_atomic_link_enrollment_and_concurrent_sweeps(
         purchase,
         op,
         567,
+        proof=original_proof(factory, purchase, op, transport),
         observation=_observation(Subscription.model_validate(transport.effective_subscription()), purchase),
     )
     assert jobs(factory)[0].next_attempt_at == future
@@ -404,7 +426,7 @@ async def test_billing_worker_atomic_link_enrollment_and_concurrent_sweeps(
     def fail(*args: object, **kwargs: object) -> None:
         raise RuntimeError("injected enqueue failure")
 
-    monkeypatch.setattr(financial, "enroll_subscription", fail)
+    monkeypatch.setattr("app.domains.purchases.preparation.enroll_subscription", fail)
     with pytest.raises(RuntimeError, match="enqueue failure"):
         historical_link(factory, purchase, transport, "brief_decoder", 1)
     assert len(subs(factory)) == 1 and len(jobs(factory)) == 1

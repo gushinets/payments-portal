@@ -11,8 +11,11 @@ from starlette.concurrency import run_in_threadpool
 from app.composition.billing import ensure_customer
 from app.composition.catalog import catalog_preview
 from app.composition.purchase_offer import live_original, require_configured_seller
-from app.composition.purchase_recovery import recover_financial as recover_financial
-from app.composition.purchase_observation import prepared_subscription_observation
+from app.composition.purchase_recovery import (
+    recover_financial as recover_financial,
+    find_financial as _find_financial,
+    recover_one as _recover_one,
+)
 from app.composition.sources import SourceResources
 from app.composition.reconciliation import reconcile_bound_purchase
 from app.core.errors import AppError
@@ -23,7 +26,6 @@ from app.domains.billing.reconciliation_contracts import (
     IdentityProof,
     ReconciliationResult,
 )
-from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.customers import reserve_customer, recheck_widget_session
 from app.domains.catalog.link_publication import StoredProductLink
 from app.domains.catalog.product_link import CurrentOffer
@@ -49,9 +51,6 @@ from app.integrations.lbx.financial import (
     NewSubscription,
     Subscription,
     prove_agreement,
-    require_preparable_agreement,
-    require_payable_subscription,
-    prove_subscription,
     prove_effective_terms,
     inventory_terminal,
 )
@@ -188,120 +187,6 @@ async def _inventory(
         raise PurchaseRefused("purchase_inventory_incomplete", 409)
 
 
-async def _find_financial(
-    client: LbxServerClient,
-    purchase: Purchase,
-    operation: FinancialOperation,
-    customer: CustomerOpen,
-    *,
-    budget: PreflightBudget,
-    require_discovery: bool = False,
-) -> tuple[int, Subscription | None] | None:
-    user_id = int(customer.provider_id)
-    agreement_op = _operation(purchase, Kind.AGREEMENT)
-    if operation.kind == Kind.AGREEMENT:
-        saved = operation.bound_id or operation.candidate_id
-        ids = (
-            (int(saved),)
-            if saved and not require_discovery
-            else await client.discover_agreements(user_id=user_id, number=operation.key, budget=budget)
-        )
-        if len(ids) > 1:
-            raise LbxScopeMismatch()
-        if not ids:
-            return None
-        if require_discovery and saved and ids != (int(saved),):
-            raise LbxScopeMismatch()
-        point = await client.get_agreement(agreement_id=ids[0], budget=budget)
-        prove_agreement(point, user_id=user_id, seller_id=purchase.accepted.seller_id, number=operation.key)
-        require_preparable_agreement(point)
-        if require_discovery and (
-            operation.agreement_create_date is None or point.create_date != operation.agreement_create_date.isoformat()
-        ):
-            raise LbxResponseInvalid()
-        return point.agreement_id, None
-    if agreement_op.bound_id is None:
-        raise PurchaseRefused("purchase_pending", 409)
-    agreement_id = int(agreement_op.bound_id)
-    agreement = await client.get_agreement(agreement_id=agreement_id, budget=budget)
-    prove_agreement(agreement, user_id=user_id, seller_id=purchase.accepted.seller_id, number=agreement_op.key)
-    require_preparable_agreement(agreement)
-    rows = await client.discover_subscriptions(user_id=user_id, agreement_id=agreement_id, budget=budget)
-    ids = tuple(row.subscription_id for row in rows)
-    saved = operation.bound_id or operation.candidate_id
-    if saved:
-        # A known ID remains authoritative when the non-unique outer hint changes.
-        if any(value != int(saved) for value in ids):
-            raise LbxScopeMismatch()
-        if require_discovery and ids != (int(saved),):
-            raise LbxScopeMismatch()
-        ids = (int(saved),)
-    if len(ids) > 1:
-        raise LbxScopeMismatch()
-    if not ids:
-        return None
-    point = await client.get_subscription(subscription_id=ids[0], budget=budget)
-    prove_subscription(
-        point, agreement_id=agreement_id, selection=purchase.accepted.selection, offer=purchase.accepted.offer
-    )
-    require_payable_subscription(point)
-    return point.subscription_id, point
-
-
-async def _recover_one(
-    client: LbxServerClient,
-    purchase: Purchase,
-    operation: FinancialOperation,
-    customer: CustomerOpen,
-    factory: SessionFactory,
-    *,
-    budget: PreflightBudget,
-    work_claim: WorkClaim | None = None,
-    delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
-) -> bool:
-    try:
-        found = await _find_financial(client, purchase, operation, customer, budget=budget)
-    except LbxScopeMismatch:
-        await delegate(financial.financial_pending, factory, purchase, operation, conflict=True, work_claim=work_claim)
-        return False
-    except LbxError as error:
-        facts = error.response_facts
-        await delegate(
-            financial.financial_pending,
-            factory,
-            purchase,
-            operation,
-            work_claim=work_claim,
-            failure_facts={
-                "code": error.code,
-                "http_status": facts.http_status if facts else None,
-                "lbx_code": facts.lbx_code if facts else None,
-                "reason": facts.reason if facts else "unknown",
-            },
-        )
-        return False
-    if found is None:
-        if operation.state not in {State.PENDING, State.PROVEN_NOT_SENT}:
-            await delegate(financial.financial_pending, factory, purchase, operation, work_claim=work_claim)
-        return False
-    # No absent/unsent financial operation is adopted from a coincidental object.
-    if operation.state in {State.PENDING, State.PROVEN_NOT_SENT}:
-        await delegate(financial.financial_pending, factory, purchase, operation, conflict=True, work_claim=work_claim)
-        return False
-    budget.check()
-    provider_id, point = found
-    await delegate(
-        financial.bind_financial,
-        factory,
-        purchase,
-        operation,
-        provider_id,
-        work_claim=work_claim,
-        observation=prepared_subscription_observation(point, purchase) if point else None,
-    )
-    return True
-
-
 async def _prepare(
     sources: SourceResources,
     configuration: Settings,
@@ -318,14 +203,32 @@ async def _prepare(
         # A concurrent first binder has already completed preparation. Do not
         # replay known-subscription reads through the financial binder.
         if _operation(purchase, Kind.SUBSCRIPTION).bound_id is not None:
-            return purchase
+            await reconcile_bound_purchase(sources, configuration, factory, purchase, budget)
+            return await run_in_threadpool(service.read_purchase, factory, purchase.user_id, purchase.id)
         operation = _operation(purchase, kind)
+        if operation.bound_id is not None:
+            if operation.state != State.BOUND:
+                break
+            continue
+        if operation.state == State.MANUAL_REVIEW and operation.deadline is None:
+            break  # A pre-send review has no original possible-send operation to recover.
         with customer_diagnostics(str(operation.id)):
             if operation.state not in {State.PENDING, State.PROVEN_NOT_SENT}:
-                if not await _recover_one(client, purchase, operation, customer, factory, budget=budget):
+                try:
+                    recovered = await _recover_one(
+                        sources, configuration, purchase, operation, customer, factory, budget=budget
+                    )
+                except PurchaseRefused as error:
+                    if error.code != "purchase_review_required":
+                        raise
+                    break  # Preserve advance's review result; only the operator may resolve it.
+                if not recovered:
                     break
                 continue
-            if purchase.state == PurchaseIntentState.MANUAL_REVIEW:
+            if (
+                purchase.state == PurchaseIntentState.MANUAL_REVIEW
+                or _operation(purchase, Kind.AGREEMENT).agreement_closed
+            ):
                 break
             if not await live_original(sources, configuration, purchase, factory, budget=budget):
                 break
@@ -338,6 +241,8 @@ async def _prepare(
                 await run_in_threadpool(financial.financial_pending, factory, purchase, operation)
                 raise
             except (LbxScopeMismatch, PurchaseRefused) as error:
+                if isinstance(error, PurchaseRefused) and error.code == "purchase_not_prepared":
+                    break  # A recovered closed agreement never authorizes a new subscription.
                 await run_in_threadpool(financial.financial_pending, factory, purchase, operation, conflict=True)
                 if isinstance(error, PurchaseRefused):
                     raise
@@ -402,7 +307,7 @@ async def _prepare(
                 )
             purchase = await run_in_threadpool(service.read_purchase, factory, purchase.user_id, purchase.id)
             operation = _operation(purchase, kind)
-            if not await _recover_one(client, purchase, operation, customer, factory, budget=budget):
+            if not await _recover_one(sources, configuration, purchase, operation, customer, factory, budget=budget):
                 break
     return await run_in_threadpool(service.read_purchase, factory, purchase.user_id, purchase.id)
 
@@ -421,7 +326,9 @@ async def advance_purchase(
     bound = _operation(purchase, Kind.SUBSCRIPTION).bound_id is not None
     customer_ready = False
     try:
-        async with sources.billing.operation(bound_scope=not bound) as budget:
+        # Source calls own the I/O deadline; a short first-bind transaction or
+        # raced known-subscription apply must finish outside that timeout.
+        async with sources.billing.operation(bound_scope=False) as budget:
             current = await run_in_threadpool(reserve_customer, factory, configuration, token)
             if current.customer_id != purchase.customer_id:
                 raise PurchaseRefused("billing_identity_conflict", 409)

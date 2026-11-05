@@ -68,8 +68,11 @@ normalization. Four bounded point reads run outside transactions; short fenced
 claim/apply transactions preserve original purchase/legal provenance. Complete
 matching proof establishes finite source trust; incomplete attempts cannot
 renew it, and owned negative/conflict evidence reduces usability immediately.
-Preparation readback preserves reconciled facts. Scope provenance has no chosen
-primary, and no access revision, allowance or paid grant is produced. Step 2
+Preparation writes initial facts only; bound subscriptions use the claimed
+path. Original-operation recovery is shared by advance, worker and operator,
+including terminal originals, with one transactional binder and no financial
+replay. Initial binding can retain a negative but creates no positive trust.
+Scope provenance has no chosen primary, and no access revision, allowance or paid grant is produced. Step 2
 adds atomic enrollment, bounded embedded execution and provider-free trust-expiry
 evidence. Step 3 dispatches shared GET-only uncertain-create recovery, separate
 fixed two-hour local deadlines and bounded customer inventory. Permanent operation
