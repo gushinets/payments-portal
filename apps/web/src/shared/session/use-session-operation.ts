@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useRef } from "react";
 import { sessionChangedEvent, sessionStorageKey } from "@/shared/api/auth";
 
 // Shared only by login/register attempts in this tab; never restored on failure.
@@ -27,7 +27,8 @@ export function subscribeToSessionChanges(onChange: () => void): () => void {
 /** Local lifetime guards with opt-in, same-tab login/register ownership. */
 export function useSessionOperation() {
   const scope = useRef({ mounted: false, epoch: 0, version: 0, attempt: 0 });
-  useEffect(() => {
+  // Activate the guard during commit, before visible controls can start an operation.
+  useLayoutEffect(() => {
     const current = scope.current;
     current.mounted = true;
     current.epoch += 1;

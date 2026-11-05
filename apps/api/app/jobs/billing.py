@@ -196,6 +196,8 @@ class BillingWorker:
                             )
                             metrics.LAST_PROOF.set(self.last_verified_subscription_at.timestamp())
                 except BillingRefused as error:
+                    if error.code == "billing_work_stale":
+                        raise
                     saved = await self.db(
                         lane,
                         work.retry_work,

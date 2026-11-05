@@ -379,4 +379,5 @@ def apply_inventory(factory: SessionFactory, claim: WorkClaim, result: "Inventor
             ),
             error=reason,
         )
+        queue.priority = int(reason is not None or queue.enqueue_generation != claim.generation)
         db.commit()

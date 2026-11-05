@@ -95,11 +95,10 @@ boundary validation.
    network libraries. Never execute blocking SQLAlchemy, synchronous HTTP
    clients, blocking sleeps, or similar work directly on an event-loop path.
 10. Exact raw request bytes are a Presentation/HTTP concern. Authenticated billing
-    webhooks use `app.http.body.bounded_body()` for bounded ASGI acquisition after
-    credential verification; Integration owns decoding and redaction. Keep body
-    acquisition in that provider-neutral Presentation/HTTP helper rather than
-    duplicating local readers in integration routers. Ordinary JSON APIs continue
-    to use FastAPI/Pydantic request models rather than manual raw-body parsing.
+    integrations that require raw bodies must bound ASGI acquisition after
+    credential verification; Integration owns decoding and redaction. The
+    polling-only MVP has no receiver or raw-body acquisition helper. Ordinary JSON
+    APIs continue to use FastAPI/Pydantic request models rather than manual raw-body parsing.
 11. When an async framework boundary must invoke blocking work, send a complete
     resource-owning synchronous unit through the framework worker mechanism.
     Do not create a request-scoped resource such as a SQLAlchemy `Session` and

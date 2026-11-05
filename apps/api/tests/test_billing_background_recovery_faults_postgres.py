@@ -128,7 +128,12 @@ async def test_billing_background_recovery_inventory_checks_all_affected_product
     try:
         for attempt in range(3):
             due(factory, recovery.INVENTORY, first.customer_id)
-            assert await worker.tick(WorkLane.NORMAL)
+            # Urgent inventory now shares its lane with the two already-due
+            # subscription jobs. Let those independent owned reads finish too.
+            for _ in range(3):
+                assert await worker.tick(WorkLane.NORMAL if attempt == 0 else WorkLane.URGENT)
+                if job(factory, recovery.INVENTORY, first.customer_id).attempt_count == attempt + 1:
+                    break
             inventory_job = job(factory, recovery.INVENTORY, first.customer_id)
             assert inventory_job.attempt_count == attempt + 1
             assert inventory_job.work_state == "pending" and inventory_job.lease_owner is None

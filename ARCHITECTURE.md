@@ -77,11 +77,12 @@ adds atomic enrollment, bounded embedded execution and provider-free trust-expir
 evidence. Step 3 dispatches shared GET-only uncertain-create recovery, separate
 fixed two-hour local deadlines and bounded customer inventory. Permanent operation
 keys, original accepted proof and customer send leases remain authoritative;
-no background CREATE or cross-product adoption is permitted. Step 4 adds the
-default-disabled authenticated `POST /api/billing/lbx/webhook`: bounded input,
-redacted durable inbox and generation-coalesced hints commit before 200; worker
-GET/apply alone updates facts. Real header/delivery compatibility remains a
-separate enablement gate; polling is independent. See [billing operations](docs/engineering/billing-background-operations.md).
+no background CREATE or cross-product adoption is permitted. The ANY-715 MVP
+rebuild is polling-only: `/api/billing/lbx/webhook` has no route or enablement
+configuration. Existing inbox tables/history remain, but this build neither
+receives nor processes receipts. Shared scoped inventory uses permanent
+bindings and claimed reconciliation; operator exits reuse that same inventory.
+See [billing operations](docs/engineering/billing-background-operations.md).
 
 Step 5 extends the existing privileged purchase CLI with local inspection,
 GET-only recovery/reconciliation and two audited resolutions: restore original
@@ -176,8 +177,8 @@ See the [Step 3 runbook](docs/engineering/ANY-709-billing-runbook.md#purchase-ap
 - **Catalog admission and billing persistence** — live source validation,
   direct immutable product links with one current product head and live catalog reads;
   accepted purchase evidence and fenced request-driven preparation/recovery are
-  implemented. ANY-715 adds embedded reconciliation/recovery, durable webhook
-  hints and audited operator resolutions. Paid-access derivation and invalidation
+  implemented. ANY-715 adds embedded polling/reconciliation/recovery and audited operator
+  resolutions. Webhook inbox rows are retained history without a runtime writer. Paid-access derivation and invalidation
   delivery remain later stages.
 - **Presentation** — locale-prefixed product-first home, catalog,
   product detail pages, pricing placeholder, direct account/auth entry,
@@ -489,7 +490,8 @@ commercial behavior:
 - immutable mapping revisions and purchase snapshots preserve accepted
   commercial/legal provenance;
 - external create operations preserve uncertain outcomes for safe recovery;
-- webhook delivery rows preserve bounded/redacted evidence, not authority;
+- webhook delivery rows preserve retained bounded/redacted history, not authority;
+  polling-only runtime neither receives nor processes them;
 - work items are scheduling state, not business truth;
 - subscription and observation rows have ANY-715 reconciliation writers;
   allowance production remains Step 9 work;

@@ -94,13 +94,12 @@ receipt durable. A concrete integration may persist additional payload data only
 under a separately approved integration-specific requirement that defines its
 need, security treatment, and retention.
 
-ANY-715 Step 4 implements `POST /api/billing/lbx/webhook`, disabled by default.
-Exact constant-time credential-header authentication precedes bounded ASGI body
-processing. Deployment resolves account/contour; only proven local bindings route
-hints. Inbox evidence retains event, safe hashes and local work/generation
-correlation, never unrestricted provider fields. Real LBX header/delivery
-compatibility must pass the [operations gate](engineering/billing-background-operations.md#real-enablement-checklist-and-rollback)
-before enablement. Receipt cannot update subscription/access facts.
+The ANY-715 MVP is polling-only. `/api/billing/lbx/webhook` has no handler and
+returns 404, and receiver enablement/authentication settings are removed. The
+retained inbox is historical schema/data without an active receiver or processor.
+See [polling-only operations](engineering/billing-background-operations.md#polling-only-operation).
+Any future receiver must satisfy the authentication/redaction/durability rules
+above under its own integration scope.
 
 ## Trust boundaries
 

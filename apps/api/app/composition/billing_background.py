@@ -9,6 +9,7 @@ from app.composition.purchases import recover_financial
 from app.composition.purchase_inventory import collect_inventory
 from app.composition.sources import SourceResources
 from app.core.errors import AppError
+from app.domains.billing.contracts import BillingRefused
 from app.core.settings import Settings
 from app.domains.billing import background_recovery as recovery, work
 from app.domains.billing.work_contracts import WorkClaim
@@ -53,9 +54,11 @@ async def recover_operation(
     except AppError as error:
         # Local contention is retryable queue work, never a source result or
         # proof of no-send. Shared apply owns any authoritative conflict.
-        await delegate(
+        saved = await delegate(
             work.retry_work, factory, claim, error=error.code if error.code == "billing_busy" else "recovery_incomplete"
         )
+        if not saved:
+            raise BillingRefused("billing_work_stale", 409) from error
         return
     await delegate(recovery.finish_recovery, factory, claim)
 
@@ -75,12 +78,14 @@ async def inventory_customer(
             client, admission, configuration, factory=factory, claim=claim, budget=budget, delegate=delegate
         )
     except AppError as error:
-        await delegate(
+        saved = await delegate(
             work.retry_work,
             factory,
             claim,
             error="billing_busy" if error.code == "billing_busy" else "inventory_incomplete",
         )
+        if not saved:
+            raise BillingRefused("billing_work_stale", 409) from error
 
 
 async def _inventory_customer(
