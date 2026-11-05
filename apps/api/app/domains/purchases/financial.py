@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
 from app.core.time import utc_now
-from app.domains.billing.customer_reviews import customer_admission_reviews
+from app.domains.billing.customer_reviews import customer_admission_reviews, restrict_subscription
 from app.domains.billing.customers import authenticate, lock_customer
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
@@ -215,6 +215,9 @@ def _review(db: Session, row: PurchaseIntent, operation: ExternalCreateOperation
         )
     operation.operation_state = State.MANUAL_REVIEW
     operation.send_fence = uuid4()
+    sub = queries.linked_subscription(db, row.purchase_intent_id)
+    if sub is not None:
+        restrict_subscription(sub)
     row.state = IntentState.MANUAL_REVIEW
     row.state_updated_at = utc_now()
 
@@ -488,11 +491,7 @@ def escalate_overdue_financial(
                         deadline
                         and as_utc(deadline) <= instant
                         and current.send_fence == op.fence
-                        and current.operation_state
-                        in {
-                            State.POSSIBLE_SEND,
-                            State.UNKNOWN,
-                        }
+                        and current.operation_state in {State.POSSIBLE_SEND, State.UNKNOWN}
                     ):
                         _review(db, row, current, "external_create_outcome_unknown:" + current.operation_kind.value)
                         db.commit()

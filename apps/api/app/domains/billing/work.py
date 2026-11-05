@@ -196,6 +196,8 @@ def schedule_reconciliation(
         or as_utc(sub.projection_valid_until) <= now + URGENT_TRUST_WINDOW
     )
     if claim is not None:
+        if claim.kind != RECONCILIATION or claim.reference != str(sub.subscription_id):
+            raise BillingRefused("billing_work_stale", 409)
         row = verify_claim(db, claim)
         interval = URGENT_SECONDS if urgent else NORMAL_SECONDS
         if not complete:

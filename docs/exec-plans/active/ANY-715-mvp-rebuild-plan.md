@@ -237,7 +237,7 @@ Do not cherry-pick this sequence wholesale. A review thread is not a requirement
 - Push the verified final stage normally to the new branch and update the existing Draft PR with its final scope and fresh evidence. The new PR is the proposed primary implementation; keep it Draft until the owner requests otherwise. PR #154 remains preserved and may be closed as superseded only after the owner's final decision. No rewriting of `ANY-715` or force-push is part of this workflow. Prepare the old-review-to-new-fix/test mapping; reply to or resolve threads only when instructed, without erasing discussions or implying approval.
 - If the proposed reuse demonstrably cannot satisfy a required invariant, record the smallest reproducible counterexample and the exact unmet requirement. Do not silently recreate the rejected subsystem or weaken the invariant. Continue independent bounded work and surface that specific design decision to the owner.
 
-Progress: Stage 0 [x]; Stage 1 [x]; Stage 2 [ ]; Stage 3 [ ]; Stage 4 [ ]; Stage 5 [ ]; Stage 6 [ ].
+Progress: Stage 0 [x]; Stage 1 [x]; Stage 2 [x]; Stage 3 [ ]; Stage 4 [ ]; Stage 5 [ ]; Stage 6 [ ].
 
 ## Stage 0 evidence — 2026-11-05
 
@@ -330,3 +330,46 @@ Progress: Stage 0 [x]; Stage 1 [x]; Stage 2 [ ]; Stage 3 [ ]; Stage 4 [ ]; Stage
   backup reference and PR #154 were not changed. This stage is one commit on
   `refactor/any715-mvp`; its published SHA and verification are in Draft PR #161.
   Stages 2–6 remain pending.
+
+
+## Stage 2 evidence — 2026-11-05
+
+- Payment Widget and bound advance now use the existing subscription
+  claim/read/apply orchestration, also used by worker/operator reconciliation.
+  Its small result carries the subject, proof and observation ID only after
+  apply commits. Removed the bound preparation/rebinding route and its obsolete
+  verification flags; first binding and unknown-outcome recovery remain Stage 3.
+- Subscription leases commit before point reads. Apply additionally validates
+  financial-operation states/fences. Busy/stale user attempts return existing
+  retryable `purchase_pending` without unclaimed GETs, duplicate CREATEs or
+  replacement preparation observations. No alternative projection writer,
+  readback protocol, schema or HTTP contract was added.
+- Payment requires committed complete identity/commercial proof, supported
+  nonterminal lifecycle and the combined final admission after Client readiness.
+  Waiting/blocked remains payable; incomplete/ended cannot return credentials.
+  Account-only Widget remains independent. Bound HTTP budgets preserve timely
+  negatives through optional policy expiry; all source calls and final
+  credential admission retain absolute deadline checks.
+- Customer conflicts atomically restrict all linked subscriptions; financial
+  conflicts restrict only their purchase. Both invalidate source leases/fences,
+  preserving historical source timestamps and preventing an earlier ACTIVE
+  proof from regaining validity after customer/operator restoration.
+- Own subscription queue claims alone may finish their work. HTTP/operator
+  applies preserve another owner's lease/hints. Inventory-origin apply validates
+  its current customer claim but leaves that job to its existing inventory owner;
+  inventory routing/classification changes remain Stage 4.
+- SIMULATED LBX verification on the worktree's disposable PostgreSQL: 18 new
+  bound-path cases and 41 selected existing regressions passed (59 total).
+  Covered actual HTTP payment/advance, worker/operator, lease contention and
+  expiry, stale ACTIVE versus later negative/restore, product/customer scope,
+  final admission races, inventory queue ownership/hints, failed commit and
+  cancellation with finite-lease retry. Two affected fast suites passed 107
+  tests. Touched-file Ruff lint/format, architecture and documentation checks,
+  and `git diff --check` passed.
+- Only selected affected tests were run, per owner preference. Full check/DB
+  suite, browser E2E, live LBX and retained later-head data compatibility remain
+  unverified. No generated contract change was needed. Updated the existing
+  runbook/index; stopped only this worktree's isolated test server. Publication
+  is one normal commit/push to `refactor/any715-mvp` and a progress-body update to
+  Draft PR #161; its body records the exact tested/published SHA. PR #154 and
+  the original branch remain preserved. Stages 3–6 remain pending.

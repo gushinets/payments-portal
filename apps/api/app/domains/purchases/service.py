@@ -453,3 +453,12 @@ def _locked(db: Session, purchase: Purchase) -> PurchaseIntent:
     ):
         raise PurchaseRefused("purchase_scope_released", 409)
     return row
+
+
+def linked_subscription_id(factory: SessionFactory, purchase: Purchase) -> UUID:
+    with factory() as db:
+        _locked(db, purchase)
+        sub = queries.linked_subscription(db, purchase.id)
+        if sub is None:
+            raise PurchaseRefused("purchase_history_unproven", 409)
+        return sub.subscription_id

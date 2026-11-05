@@ -66,3 +66,12 @@ class SubscriptionProof:
     reasons: tuple[str, ...]
     # Names of successful point reads, never payloads or credentials.
     reads: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ReconciliationResult:
+    """Returned only after the shared observation/fact transaction commits."""
+
+    observation_id: UUID
+    subject: ReconciliationSubject
+    proof: SubscriptionProof

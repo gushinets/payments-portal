@@ -30,6 +30,7 @@ from app.models import (
     BillingPurchaseScopeHold,
     BillingProductAccessScope,
     BillingWorkItem,
+    BillingStateObservation,
     DocumentAcceptance,
     ExternalBillingCustomer,
     ExternalCreateOperation,
@@ -132,7 +133,9 @@ async def test_any709_step3_complete_preparation_and_historical_manage(
         widget = await bootstrap_account(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
         assert widget.purchase_id == purchase.id and widget.agreement_reference
         assert widget.seller_reference == "21"
-        assert not any("/tariffs" in req.url.path for req in transport.requests[before:])
+        assert {req.url.path for req in transport.requests[before:] if "/tariffs" in req.url.path} == {
+            "/api/rest/v1/tariffs/701"
+        }
         # Account view shares the exact same customer and customer CREATE use case.
         account = await bootstrap_account(sources, config, factory=factory, token=TOKEN)
         assert account.purchase_id is None
@@ -143,9 +146,10 @@ async def test_any709_step3_complete_preparation_and_historical_manage(
         assert same.id == purchase.id and same.accepted == purchase.accepted
     with factory() as db:
         sub = db.scalar(select(ExternalSubscription))
-        assert sub.financial_access_status.value == "unverified"
-        assert sub.projection_valid_until == sub.last_authoritative_read_at
-        for model in (PaidAccessState, PurchasedAllowance, BillingProductAccessScope):
+        assert sub.financial_access_status.value == "blocked"
+        assert sub.projection_valid_until - sub.last_authoritative_read_at == timedelta(hours=6)
+        assert db.scalar(select(BillingProductAccessScope)).primary_subscription_id is None
+        for model in (PaidAccessState, PurchasedAllowance):
             assert db.scalar(select(func.count()).select_from(model)) == 0
         assert db.scalar(select(func.count()).select_from(BillingPurchaseScopeHold)) == 1
         assert db.scalar(select(func.count()).select_from(ExternalBillingCustomer)) == 1
@@ -216,14 +220,17 @@ async def test_any709_step3_linked_widget_retries_after_failed_point_proof(
             assert [(op.id, op.bound_id) for op in retained.operations] == [
                 (op.id, op.bound_id) for op in prepared.operations
             ]
-            operation = next(
-                op
-                for op in retained.operations
-                if op.kind == (Kind.AGREEMENT if path.startswith("/agreements/") else Kind.SUBSCRIPTION)
-            )
             with factory() as db:
-                work = db.scalar(select(BillingWorkItem).where(BillingWorkItem.coalescing_key == str(operation.id)))
-                assert work.work_state == "pending" and work.payload_document["last_failure"]
+                observation = db.scalars(
+                    select(BillingStateObservation)
+                    .where(BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v1")
+                    .order_by(BillingStateObservation.observed_at.desc())
+                ).first()
+                assert observation.completeness_classification == "incomplete"
+                work = db.scalar(
+                    select(BillingWorkItem).where(BillingWorkItem.work_kind == "subscription_reconciliation")
+                )
+                assert work.work_state == "pending"
             failing = False
             retry_start = len(transport.requests)
             retried = await client.post("/api/billing/widget-bootstrap", json=body)
@@ -234,14 +241,17 @@ async def test_any709_step3_linked_widget_retries_after_failed_point_proof(
                 {request.url.path for request in transport.requests[retry_start:]}
             )
         assert all(request.method == "GET" for request in transport.requests[before:])
-        assert not any("/tariffs" in request.url.path for request in transport.requests[before:])
+        assert {request.url.path for request in transport.requests[before:] if "/tariffs" in request.url.path} == {
+            "/api/rest/v1/tariffs/701"
+        }
     assert [transport.creates(path) for path in ("/users", "/agreements", "/subscriptions")] == [1, 1, 1]
     with factory() as db:
-        for model in (PaidAccessState, PurchasedAllowance, BillingProductAccessScope, ManualReviewCase):
+        assert db.scalar(select(BillingProductAccessScope)).primary_subscription_id is None
+        for model in (PaidAccessState, PurchasedAllowance, ManualReviewCase):
             assert db.scalar(select(func.count()).select_from(model)) == 0
         sub = db.scalar(select(ExternalSubscription))
-        assert sub.financial_access_status.value == "unverified"
-        assert sub.projection_valid_until == sub.last_authoritative_read_at
+        assert sub.financial_access_status.value == "blocked"
+        assert sub.projection_valid_until - sub.last_authoritative_read_at == timedelta(hours=6)
 
 
 @pytest.mark.parametrize("lost_agreement_response", [False, True])
@@ -352,7 +362,8 @@ async def test_any709_step3_api_smoke_review_confirm_continue_payment(
             assert status.json()["accepted"] == accepted["accepted"] and status.json()["paid_access_granted"] is False
     assert [transport.creates(path) for path in ("/users", "/agreements", "/subscriptions")] == [1, 1, 1]
     with factory() as db:
-        for model in (PaidAccessState, PurchasedAllowance, BillingProductAccessScope):
+        assert db.scalar(select(BillingProductAccessScope)).primary_subscription_id is None
+        for model in (PaidAccessState, PurchasedAllowance):
             assert db.scalar(select(func.count()).select_from(model)) == 0
         assert db.scalar(select(func.count()).select_from(BillingPurchaseScopeHold)) == 1
 

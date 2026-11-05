@@ -175,7 +175,7 @@ class BillingWorker:
                             delegate=partial(self.db, lane),
                         )
                     else:
-                        observation_id = await reconcile_subscription(
+                        result = await reconcile_subscription(
                             self.client,
                             admission,
                             self.configuration,
@@ -186,7 +186,7 @@ class BillingWorker:
                             delegate=partial(self.db, lane),
                         )
                         outcome, observed_at = await self.db(
-                            lane, work.reconciliation_outcome, self.factory, observation_id
+                            lane, work.reconciliation_outcome, self.factory, result.observation_id
                         )
                         metrics.PROOFS.labels(outcome=outcome).inc()
                         if outcome == "verified":

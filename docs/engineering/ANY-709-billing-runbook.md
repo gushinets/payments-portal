@@ -481,9 +481,27 @@ transitions. Reuse these owners when changing either path:
   capacity; see [background operations](billing-background-operations.md).
 - `prepared-subscription:v1` observations are `preparation_only` /
   `not_paid_verified`, with `paid_verified=false`; no paid trust is extended.
-  Background reconciliation owns ongoing lifecycle and trust. Paid
-  AccessSnapshot, AccessInvalidation and Kernel delivery/usage remain later
-  work. Preparation grants no paid access.
+  Shared claimed reconciliation owns ongoing lifecycle and trust. Payment
+  Widget, already-bound advance, worker and operator reconciliation acquire the
+  subscription lease before point reads and apply through the same fenced
+  transaction. Repeated opens do not rebind financial operations or append
+  preparation observations. Paid AccessSnapshot, AccessInvalidation and Kernel
+  delivery/usage remain later work. Preparation grants no paid access.
+- Payment presentation requires a committed complete identity/commercial match,
+  supported nonterminal lifecycle and final local session/customer/purchase
+  admission after Client readiness. Waiting/unpaid and financially blocked
+  subscriptions can be payable. Incomplete or terminal proof cannot return
+  payment credentials; account-only Widget remains independent. Lease contention
+  returns retryable `purchase_pending`, without unclaimed source reads.
+- Bound HTTP reconciliation keeps the source budget separate from short DB
+  apply, preserving a timely negative when later policy I/O expires. Every
+  source call and final credential admission still check the absolute deadline.
+  HTTP/operator reads coalesce follow-up work without finishing another queue
+  owner's claim; inventory-origin observations cannot finish a customer job.
+- Customer identity conflicts atomically restrict all linked subscriptions;
+  financial-operation conflicts restrict only their purchase. Both invalidate
+  in-flight reconciliation leases without rewriting source timestamps/history,
+  so restoration cannot make an earlier ACTIVE proof valid again.
 
 ## Verification commands
 
