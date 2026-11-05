@@ -20,12 +20,10 @@ from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
 from app.infrastructure.queries import billing_reconciliation as queries, purchases
-from app.infrastructure.persistence.billing_webhooks import mark_processed
 from app.infrastructure.queries.billing_customers import customer_operation, open_customer_reviews
 from app.domains.billing.work import RECONCILIATION, schedule_reconciliation, verify_claim
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.operator_contracts import ReviewResolution
-from app.domains.billing.webhook_contracts import CORRELATION_SCHEMA
 from app.models import (
     BillingProductAccessScope,
     BillingStateObservation,
@@ -360,15 +358,6 @@ def apply_reconciliation(
             complete=proof.complete and not conflict and not known_review and not customer_conflict,
             attempt_started_at=proof.read_started_at,
         )
-        if subscription_claim is not None and proof.complete:
-            mark_processed(
-                db,
-                correlation_schema=CORRELATION_SCHEMA,
-                work_id=work_claim.id,
-                generation=work_claim.generation,
-                started_at=work_claim.started_at,
-                now=now,
-            )
         if resolved_case is not None:
             from app.domains.billing.operator_review import audit_resolution
 

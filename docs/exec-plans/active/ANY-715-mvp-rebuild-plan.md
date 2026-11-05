@@ -1,6 +1,6 @@
 # ANY-715 — Rebuild the MVP implementation from the functional-QA baseline
 
-Status: Stages 0–4 complete; Stages 5–6 pending. Final rebuild QA and acceptance remain pending.
+Status: Stages 0–5 complete; Stage 6 pending. Final rebuild QA and acceptance remain pending.
 Prepared: 2026-11-05. Repository: `gushinets/payments-portal`. Reference PR: #154; delivery: a separate Draft PR created in Stage 0.
 
 ## 1. Outcome and execution instructions
@@ -237,7 +237,7 @@ Do not cherry-pick this sequence wholesale. A review thread is not a requirement
 - Push the verified final stage normally to the new branch and update the existing Draft PR with its final scope and fresh evidence. The new PR is the proposed primary implementation; keep it Draft until the owner requests otherwise. PR #154 remains preserved and may be closed as superseded only after the owner's final decision. No rewriting of `ANY-715` or force-push is part of this workflow. Prepare the old-review-to-new-fix/test mapping; reply to or resolve threads only when instructed, without erasing discussions or implying approval.
 - If the proposed reuse demonstrably cannot satisfy a required invariant, record the smallest reproducible counterexample and the exact unmet requirement. Do not silently recreate the rejected subsystem or weaken the invariant. Continue independent bounded work and surface that specific design decision to the owner.
 
-Progress: Stage 0 [x]; Stage 1 [x]; Stage 2 [x]; Stage 3 [x]; Stage 4 [x]; Stage 5 [ ]; Stage 6 [ ].
+Progress: Stage 0 [x]; Stage 1 [x]; Stage 2 [x]; Stage 3 [x]; Stage 4 [x]; Stage 5 [x]; Stage 6 [ ].
 
 ## Stage 0 evidence — 2026-11-05
 
@@ -476,3 +476,59 @@ Progress: Stage 0 [x]; Stage 1 [x]; Stage 2 [x]; Stage 3 [x]; Stage 4 [x]; Stage
 - Only Stage 4 is delivered. Worker retry acknowledgement/priority/timeout,
   optional receiver removal and final rebuild QA remain Stages 5–6. No migration,
   HTTP/generated contract, paid grant, legal/specification or Kernel change.
+
+
+## Stage 5 evidence — 2026-11-05
+
+- Checked all production `retry_work` callers. Recovery and inventory now inspect
+  its existing committed-acknowledgement boolean; false ownership raises stale
+  failure instead of reporting progress. The runner does not retry that stale
+  acknowledgement again. Committed retries retain the existing contract; DB
+  errors/uncertain commits still propagate without success telemetry.
+- Incomplete/conflicting inventory now has both urgent priority and an urgent
+  due time, including the owned retry path. A clean completed inventory demotes
+  only when no newer enqueue generation is pending. Updated the existing
+  multi-product regression to allow independently due subscriptions to share
+  the urgent lane; no scheduling queue or retry abstraction was introduced.
+- Ported the bounded timeout behavior/regression from `1e0e931`: default 60s,
+  maximum 240s, existing 30s lease/apply margin and <=5m refusal retry cadence.
+  Reserved provider-free local execution, HTTP cleanup/cancellation ownership,
+  restart/enrollment and queue-generation behavior remain covered.
+- Ported only the early-click session guard and its component regression from
+  `3c69c8d`. The existing client hook initializes its guard during layout commit;
+  the deterministic early-click/unresolved-purchases test passes. No UI redesign,
+  product copy, styling, route or locale behavior changed.
+- Removed receiver registration and the receiver-only HTTP/body helper,
+  Integration decoder/authentication, Domain hint contract/handler, inbox
+  query/persistence and reconciliation processing hook. Removed receiver
+  enablement/auth fields and propagation from Settings, env examples, all
+  Compose variants, private harness forwarding and test settings. Ran
+  `npm run generate`; OpenAPI/TypeScript no longer expose the endpoint/response.
+- Kept all pre-existing ORM/history tables and migrations unchanged, including
+  the Step 8 worker revision. A simulated ordinary purchase plus worker scenario
+  proves callback absence and HTTP 404 cannot mutate billing facts/queue/history.
+  An older pending receipt remains unchanged after successful polling. This
+  build neither receives nor processes retained inbox rows.
+- Replaced receiver-only tests/fixture with polling-only acceptance and preserved
+  reusable duplicate-work, generation, isolation, atomic rollback, owner/reclaim
+  and restart scenarios through remaining enqueue/observation paths. Existing
+  proven account-alias tests use polling instead of a removed callback. This is
+  not a retained later-head database compatibility PASS.
+- Verification: 39 focused fast backend tests; 246 component tests across eight
+  affected session/billing consumers; 15 new/affected PostgreSQL scheduling,
+  polling and refusal cases plus 25 selected existing regressions (40 unique
+  PostgreSQL scenarios) passed. PostgreSQL coverage includes urgent cadence,
+  busy/refused ownership, generations, duplicates, rollback, two products,
+  reserved/local work, cancellation/restart, account aliases and cabinet listing.
+  Collection of all 2354 backend tests succeeded without executing the full set.
+- Final touched API Ruff lint/format, harness lint/syntax, targeted web ESLint,
+  web typecheck, generation freshness, architecture, docs and diff checks passed.
+  Whole-file harness formatting also reports pre-existing differences on the
+  unchanged `37c0627` version of `scripts/repo.py`; its one-line forwarding
+  deletion preserves that existing style. Canonical API formatting passes;
+  unrelated harness reformatting was not included.
+- Per owner preference, no full DB/check suite, build/browser E2E, live LBX or
+  final rebuild QA was run. The isolated test server was stopped. One normal
+  commit/push updates `refactor/any715-mvp` and the same Draft PR #161; its body
+  records the exact tested/published SHA. Original checkout/branch/backup and
+  PR #154 remain preserved. Stage 6 was not started.

@@ -306,17 +306,14 @@ baseline.
 
 ## Durable operational tables
 
-`external_billing_webhook_deliveries` stores bounded, redacted correlation and
-evidence documents, receipt/processing timestamps, and safe classifications.
-It never stores authorization material, card/payment fields, or a raw provider
-payload, and receipt alone never grants access. ANY-715 Step 4 uses existing
-JSON storage without a schema migration: `billing-webhook-receipt:v1` retains
-only the allowlisted event; `billing-webhook-work:v1` retains a subject hash and,
-for queued receipts, local subscription/work IDs and `enqueue_generation`.
-The payload hash is diagnostic, never permanent deduplication. Processing states
-are canonical text-backed `WebhookDeliveryState` values: `pending`, `processed`,
-`ignored`. Complete fenced apply updates covered pending receipts atomically;
-later generations and incomplete/crashed attempts stay pending.
+`external_billing_webhook_deliveries` retains bounded, redacted correlation and
+evidence documents, receipt/processing timestamps and safe classifications from
+older builds. The polling-only ANY-715 MVP retains this table/schema and all
+history but has no receiver or inbox-processing writer. Historical JSON schemas
+`billing-webhook-receipt:v1` / `billing-webhook-work:v1` and canonical text-backed
+`WebhookDeliveryState` values (`pending`, `processed`, `ignored`) remain readable;
+polling does not change those rows. No raw provider payload or authorization/card
+material belongs here, and receipt state never grants access.
 
 `billing_work_items` stores open work/scope/state vocabularies, bounded typed
 payloads, priority, due time, attempt count, paired lease owner/expiry and nullable

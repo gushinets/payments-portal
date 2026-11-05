@@ -1,6 +1,6 @@
 # Background billing operations
 
-Configuration, scheduling, webhook setup and operator controls for the embedded
+Configuration, scheduling, polling-only operation and operator controls for the embedded
 billing worker. For connection setup, purchases and Widget operation, use the
 [billing runbook](ANY-709-billing-runbook.md). Architectural authority is
 [ADR 0005](../architecture/decisions/0005-external-billing-boundary.md) and its
@@ -67,7 +67,8 @@ There is no separate process to launch or standalone worker command/container.
 - `BILLING_WORKER_URGENT_CONCURRENCY=2`: urgent source slots, range 1–16.
 - `BILLING_WORKER_NORMAL_CONCURRENCY=1`: normal source slots, range 1–16.
 - `BILLING_WORKER_IO_TIMEOUT_SECONDS=60`: total source/cleanup budget; greater
-  than the cleanup reserve and at most 600 seconds.
+  than the cleanup reserve and at most 240 seconds. This leaves the 30-second
+  claim/apply margin and refusal retry within the five-minute urgent cadence.
 - `BILLING_WORKER_SCAN_BATCH_SIZE=100`: local enrollment/repair batch, range 1–100.
 
 `PREFLIGHT_CLEANUP_TIMEOUT_SECONDS` reserves cleanup within the total I/O budget.
@@ -172,108 +173,31 @@ Incomplete passes never clear reviews. Local binding/operation versions are
 rechecked at commit, using versions returned by this attempt's own claimed applies;
 concurrent changes require a fresh attempt.
 
-## Optional webhook receiver and manual deployment
+## Polling-only operation
 
-`POST /api/billing/lbx/webhook` is disabled by default:
+This MVP build has no webhook receiver. `POST /api/billing/lbx/webhook` is
+unavailable/404, has no handler, and cannot enqueue work or mutate billing facts.
+There is no receiver enablement or authentication configuration in Settings,
+env examples, Compose or harness propagation. An old deployment variable cannot
+activate an endpoint in this build. Do not configure an LBX delivery URL for it.
 
-- `LBX_WEBHOOK_ENABLED=false`: returns 404 before body processing or DB use.
-- `LBX_WEBHOOK_AUTH_HEADER=`: verified credential header name when enabled.
-- `LBX_WEBHOOK_AUTH_VALUE=`: entire exact shared-secret header value when enabled.
+Keep `BILLING_WORKER_ENABLED=true` with the configured contour-local LBX
+connection. Durable enrollment/repair, source reads, uncertain-create recovery,
+customer inventory and provider-free deadlines provide correctness without a
+callback or browser session. Existing purchases and permanent bindings survive
+worker restart. Later observation hints still coalesce through the same queue;
+a stale owner or unacknowledged retry is failure, not committed progress.
+Incomplete/conflicting customer inventory has urgent priority and a due time
+within five minutes. A clean pass returns to normal priority/six-hour inventory
+only when no newer generation is pending.
 
-Keep the webhook secret in the protected API environment/secret manager,
-separate from Server API credentials and the Widget signing secret. All Compose
-API environments forward these settings. For worktree `repo:up`, root `.env` or
-exported values populate private `.harness/runtime.env`; exported values take
-precedence. The secret is excluded from public runtime metadata and web settings.
-
-Enabling requires a valid LBX connection and credential configuration. The
-receiver accepts exactly one matching credential header, compared in constant
-time before body processing. Missing/duplicate/wrong credentials return 401.
-Transport/correlation headers such as X-Request-ID and tracing headers cannot
-carry the credential. No query-token, anonymous or guessed-signature fallback
-exists.
-
-The JSON limit is 65536 bytes for declared and streamed bodies (413).
-Unsupported media type returns 415; malformed JSON, unsupported event or invalid
-correlation returns 422. Rejections never echo payloads or headers.
-Supported events are:
-
-- `create_subscription`
-- `change_subscription`
-- `block_subscription`
-- `new_charge_period`
-- `close_subscription`
-- `delete_subscription`
-
-Only `event`, positive integer `parameters.subscription_id` and
-`parameters.agreement_id`, and optional `parameters.user_id` are used.
-Deployment determines account/contour;
-proven local bindings determine user/product. Unknown, foreign or conflicting
-correlation is acknowledged as ignored and creates no binding.
-
-Known hints commit a redacted receipt and coalesced work before returning 200
-with local `delivery_id` and `queued`/`ignored` outcome. The request performs no LBX
-REST call and cannot change subscription/access facts. No raw body, credential,
-contact or payment field is persisted. Identical payload hashes do not suppress
-future events.
-
-Receipts are `pending` until complete authoritative processing marks the covered
-`enqueue_generation` values `processed`; later hints remain due. Incomplete reads
-and crashes leave pending work retryable. `processed` means a complete reread was
-applied, not proof of event-version visibility, payment or access. Polling remains
-the correctness path; HTTP 500 is not assumed to cause provider redelivery.
-
-### Test and production setup
-
-The [official setup guide](https://docs.lbxbilling.ru/api/webhooks/set_webhooks/)
-and [event examples](https://docs.lbxbilling.ru/api/webhooks/list_webhooks/)
-document manual URL/token/event configuration. They do not establish this
-account's actual authentication header/value format. No configuration API is
-assumed.
-
-1. Keep the receiver disabled while configuring the target LBX connection and
-   secret. Use separate test/production secrets. Apply migrations and confirm
-   healthy independent polling.
-2. Test URL: authorized publicly reachable HTTPS test Portal origin plus
-   /api/billing/lbx/webhook. Production URL: approved APP_PUBLIC_BASE_URL origin
-   plus that path, through the contour-local Caddy /api/* proxy. Use neither
-   Kernel/Resolver/Widget origins nor another contour.
-3. In the correct LBX account, open Settings → Parameters → Webhooks → Add.
-   Enter the URL, token from the secret manager and a nonsecret description.
-   Select the six listed events. Repeat request may be enabled; correctness
-   does not depend on redelivery. Save as part of the authorized integration check.
-4. Verify actual credential transport through a privacy-controlled test delivery.
-   Set LBX_WEBHOOK_AUTH_HEADER and LBX_WEBHOOK_AUTH_VALUE to the verified header
-   and entire exact value, including any prefix. Avoid body/header logging at
-   capture boundaries. If secure compatible delivery cannot be established,
-   leave the receiver disabled.
-5. After transport verification, enable the test API through its normal restart
-   procedure and complete the checklist below. A synthetic POST proves only
-   Portal handling. Production needs its own account/origin/secret verification
-   before enablement. Keep one API replica and independent polling.
-
-### Real enablement checklist and rollback
-
-Keep DISABLED/POLLING-ONLY until the deployment owner verifies actual provider
-authentication, correlation and delivery for that environment:
-
-- Correct credentials are accepted; missing/wrong credentials are rejected
-  before body processing without leaking credentials or payloads.
-- All selected events correlate only to the proven local scope; unknown or
-  conflicting correlation stays ignored.
-- Receipt/work are durable before acknowledgement; subsequent worker GETs
-  process hints safely across duplicate/reordered events and restart.
-- Early/incomplete REST visibility converges through later reads, without an
-  assumed provider delivery or visibility deadline.
-- Lost/disabled delivery still converges through polling.
-
-Rollback: set LBX_WEBHOOK_ENABLED=false, restart the API and confirm route 404.
-Disable/delete the provider webhook when authorized. Keep BILLING_WORKER_ENABLED
-true and confirm queue progress. Committed work survives disablement/restart;
-never delete receipts/jobs or release holds as rollback. Rotate secrets through
-the same verified procedure. For pending receipts, inspect their work ID,
-generation, due time, lease and last_error_classification. There is no inbox-delete,
-manual-replay or provider-configuration CLI.
+The `external_billing_webhook_deliveries` table and its existing schema are
+retained as history. This build neither receives new rows nor processes or
+marks retained inbox rows. Historical pending/processed/ignored values remain
+unchanged by polling. Do not drop/truncate history or manually clear it as a
+worker recovery action. Source reconciliation and paid-access authority remain
+independent of receipt state. Any future receiver requires a separate scoped
+implementation and real provider authentication/delivery evidence.
 
 ## Startup, inspection and shutdown
 

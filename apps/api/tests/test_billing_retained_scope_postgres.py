@@ -20,7 +20,6 @@ from app.domains.billing.operator_diagnostics import inspect_evidence
 from app.domains.billing.work_contracts import WorkLane
 from app.domains.purchases import financial, service
 from app.domains.purchases.contracts import Purchase
-from app.http import billing_webhook as entrypoint
 from app.http.dependencies import get_session_factory
 from app.jobs.billing import BillingWorker
 from app.main import create_app
@@ -38,7 +37,6 @@ from app.models import (
     ExternalCreateOperationState as State,
 )
 from apps.api.tests.factories.billing_operator import resolution_request
-from apps.api.tests.factories.billing_webhook import AUTH_HEADER, AUTH_VALUE, PATH, hint_payload, webhook_settings
 from apps.api.tests.factories.billing_worker import work_factory
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.support.any709_step3 import PurchaseTransport
@@ -124,7 +122,7 @@ async def test_billing_retained_scope_worker_cli_and_audited_restore(
     await worker.aclose()
 
 
-async def test_billing_retained_scope_sweep_inventory_webhook_and_local_expiry(
+async def test_billing_retained_scope_sweep_inventory_polling_and_local_expiry(
     retained_scenario: Scenario, postgres_session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     config, transport, sources, purchase = retained_scenario
@@ -145,18 +143,21 @@ async def test_billing_retained_scope_sweep_inventory_webhook_and_local_expiry(
         inventory = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == recovery.INVENTORY))
         assert inventory.last_error_classification is None and inventory.attempt_count == 1
         assert inventory.coalescing_key.startswith(purchase.account_id + ":")
-    monkeypatch.setattr(entrypoint, "settings", webhook_settings(lbx_server_username="rotated-synthetic-username"))
     app = create_app()
     app.dependency_overrides[get_session_factory] = lambda: factory
     requests = len(transport.requests)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://portal.test") as client:
-        response = await client.post(PATH, json=hint_payload(), headers={AUTH_HEADER: AUTH_VALUE})
-    assert response.status_code == 200 and response.json()["outcome"] == "queued"
+        response = await client.post("/api/billing/lbx/webhook", json={"event": "change_subscription"})
+    assert response.status_code == 404
     assert len(transport.requests) == requests
+    with factory() as db:
+        assert db.scalar(select(ExternalBillingWebhookDelivery)) is None
+        # The normal existing polling job remains sufficient without a callback.
+        job = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == work.RECONCILIATION))
+        job.next_attempt_at = datetime.now(UTC) - timedelta(seconds=1)
+        db.commit()
     assert await worker.tick(WorkLane.URGENT)
     with factory() as db:
-        receipt = db.scalar(select(ExternalBillingWebhookDelivery))
-        assert receipt.external_billing_account_id == purchase.account_id and receipt.processing_state == "processed"
         sub = db.scalar(select(ExternalSubscription))
         deadline = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == work.EXPIRY))
         sub.projection_valid_until = deadline.next_attempt_at = datetime.now(UTC) - timedelta(seconds=1)

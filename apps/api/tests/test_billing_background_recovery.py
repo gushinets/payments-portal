@@ -62,6 +62,6 @@ def test_billing_background_recovery_documented_contract() -> None:
         "customer_inventory_conflict",
         "proposal_ai",
         "brief_decoder",
-        "DISABLED/POLLING-ONLY",
+        "Polling-only operation",
     ):
         assert policy in runbook

@@ -23,8 +23,8 @@ ANY-709 adds source-backed current offers, direct product links, explicit
 verified-email account Widget, immutable purchase consent and request-driven
 financial preparation/recovery. Localized Buy/Continue/Manage uses one shared
 cabinet Widget after fresh ownership/effective-term verification. ANY-715 adds
-durable embedded polling, GET-only recovery/inventory, default-disabled webhook
-hints and audited operator commands. Confirmed paid access and actual usage/quota
+durable embedded polling, GET-only recovery, shared scoped inventory and
+audited operator commands. Confirmed paid access and actual usage/quota
 remain later program work.
 Delivery and acceptance evidence are in
 [ANY-709](https://linear.app/paveldik/issue/ANY-709); commands, migration transitions
@@ -173,8 +173,8 @@ do not use `alembic stamp`, downgrade, or an upgrade bridge.
   screens, pricing placeholder, direct account/auth entry, product-centric
   cabinet, recovery, verification, and canonical RU legal pages.
 - `apps/api` — FastAPI identity, password-reset, legal, health, metrics and billing
-  API; accepted-purchase preparation, embedded reconciliation/recovery,
-  optional webhook hints and privileged operator commands. Paid-access
+  API; accepted-purchase preparation, polling-only reconciliation/recovery,
+  scoped inventory and privileged operator commands. Paid-access
   derivation and Kernel delivery remain future work.
 - `apps/api/alembic` — PostgreSQL schema and first-install legal seed.
 - `docs` — authoritative product, architecture, design, reliability, security,

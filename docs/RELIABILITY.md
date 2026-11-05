@@ -58,13 +58,12 @@ projection tables remain inert. Dated delivery evidence belongs to
 - Webhook receipt, Widget callback, outbound command success, payment state, or
   manual operator input alone never grants paid access.
 
-These are cross-cutting constraints. Purchase preparation and embedded
-reconciliation/recovery and default-disabled durable webhook hints are implemented;
-paid-access derivation and invalidation delivery remain later work. Webhook receipt
-and coalesced work commit before 200. Complete fenced rereads process only covered
-receipt generations; incomplete reads/crashes retry, and later hints remain due.
-Polling converges independently of delivery, ordering or provider retries. See the
-[real enablement gate and rollback](engineering/billing-background-operations.md#real-enablement-checklist-and-rollback).
+These are cross-cutting constraints. Purchase preparation, embedded polling,
+GET-only recovery and audited operations are implemented; paid-access derivation
+and invalidation delivery remain later work. The MVP has no webhook receiver or
+receipt processor. Retained inbox rows remain history. Durable queue generations,
+claims and bounded retries preserve polling progress independently of callbacks.
+See [polling-only operation](engineering/billing-background-operations.md#polling-only-operation).
 
 ## Transaction, idempotency, and retry contract
 
@@ -78,8 +77,8 @@ transaction.
 Current transaction boundaries are documented in
 [ARCHITECTURE.md](../ARCHITECTURE.md#current-transaction-map): identity/legal,
 product-link publication, accepted purchases, fenced financial preparation,
-worker reconciliation, webhook receipt and audited operator resolution have
-current writers. Paid-access derivation and invalidation delivery remain later
+worker reconciliation and audited operator resolution have current writers;
+webhook inbox rows are retained history. Paid-access derivation and invalidation delivery remain later
 work.
 
 Future database retry decisions use these semantics:

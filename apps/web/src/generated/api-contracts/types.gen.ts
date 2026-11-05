@@ -132,20 +132,6 @@ export type BillingHealthResponse = {
 };
 
 /**
- * BillingWebhookResponse
- */
-export type BillingWebhookResponse = {
-    /**
-     * Delivery Id
-     */
-    delivery_id: string;
-    /**
-     * Outcome
-     */
-    outcome: 'queued' | 'ignored';
-};
-
-/**
  * CatalogMoney
  */
 export type CatalogMoney = {
@@ -1131,22 +1117,6 @@ export type GetSessionApiAuthSessionGetResponses = {
 };
 
 export type GetSessionApiAuthSessionGetResponse = GetSessionApiAuthSessionGetResponses[keyof GetSessionApiAuthSessionGetResponses];
-
-export type BillingWebhookApiBillingLbxWebhookPostData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/billing/lbx/webhook';
-};
-
-export type BillingWebhookApiBillingLbxWebhookPostResponses = {
-    /**
-     * Successful Response
-     */
-    200: BillingWebhookResponse;
-};
-
-export type BillingWebhookApiBillingLbxWebhookPostResponse = BillingWebhookApiBillingLbxWebhookPostResponses[keyof BillingWebhookApiBillingLbxWebhookPostResponses];
 
 export type WidgetBootstrapApiBillingWidgetBootstrapPostData = {
     body: WidgetBootstrapRequest;
