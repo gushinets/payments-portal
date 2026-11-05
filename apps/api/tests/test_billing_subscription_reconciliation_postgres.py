@@ -13,15 +13,15 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 
-from app.composition.purchases import advance_purchase
+from app.composition.purchases import advance_purchase, verify_payment_purchase
 from app.composition.purchase_observation import prepared_subscription_observation as _observation
 from app.composition.reconciliation import reconcile_subscription
 from app.composition.sources import SourceResources, source_resources
 from app.domains.billing.contracts import BillingRefused
-from app.domains.billing.customers import apply_customer_read
+from app.domains.billing.customers import apply_customer_read, reserve_customer
 from app.domains.billing.reconciliation import claim_reconciliation, apply_reconciliation
 from app.domains.purchases import financial, service
-from app.domains.purchases.contracts import Purchase
+from app.domains.purchases.contracts import Purchase, PurchaseRefused
 from app.infrastructure.preflight import PreflightAdmission, PreflightPolicy
 from app.integrations.lbx.financial import Subscription
 from app.integrations.lbx.reconciliation import read_subscription_proof
@@ -112,8 +112,8 @@ async def test_billing_subscription_reconciliation_lifecycle_history_and_minimum
     assert [(request.method, request.url.path.rsplit("/", 2)[-2:]) for request in requests] == [
         ("GET", ["users", "345"]),
         ("GET", ["agreements", "456"]),
-        ("GET", ["tariffs", "701"]),
         ("GET", ["subscriptions", "567"]),
+        ("GET", ["tariffs", "701"]),
     ]
     with factory() as db:
         scope = db.scalar(select(BillingProductAccessScope))
@@ -226,6 +226,14 @@ async def test_billing_subscription_reconciliation_known_review_and_effective_mi
     original = transport.subscriptions[0].get(missing) if missing else None
     if missing:
         transport.subscriptions[0][missing] = None
+    if missing:
+        incomplete = await run(sources, factory)
+        assert incomplete.result_classification == "INCOMPLETE"
+        assert snapshot(factory) == trusted
+        with factory() as db:
+            assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
+            assert db.get(PurchaseIntent, purchase.id).state == PurchaseIntentState.LINKED
+        transport.subscriptions[0][missing] = original
     mismatch = await run(sources, factory)
     assert mismatch.result_classification == "subscription_commercial_mismatch"
     assert snapshot(factory)[2:4] == ("blocked", "ineligible")
@@ -406,3 +414,77 @@ async def test_billing_subscription_reconciliation_contradictory_times_preserve_
     assert observation.completeness_classification == "incomplete"
     assert observation.evidence_document["calendar_complete"] is False
     assert snapshot(factory) == before
+
+
+@pytest.mark.parametrize("change", ["closed_agreement", "terminal_0", "terminal_1", "terminal_3"])
+async def test_billing_subscription_reconciliation_normal_termination_is_not_financial_binding_conflict(
+    scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    change: str,
+) -> None:
+    transport, sources, purchase = scenario
+    factory = postgres_session_factory
+    before = sum(request.method == "POST" for request in transport.requests)
+    if change == "closed_agreement":
+        transport.agreements[0]["close_date"] = "2026-11-05"
+    else:
+        transport.subscriptions[0].update(state=3, current_blocking=int(change[-1]))
+    current = await advance_purchase(
+        sources,
+        step1_settings(),
+        factory=factory,
+        token=TOKEN,
+        purchase_id=purchase.id,
+    )
+    customer = reserve_customer(factory, step1_settings(), TOKEN)
+    async with sources.billing.operation() as budget:
+        with pytest.raises(PurchaseRefused, match="purchase_not_prepared"):
+            await verify_payment_purchase(
+                sources,
+                step1_settings(),
+                factory=factory,
+                token=TOKEN,
+                purchase_id=purchase.id,
+                customer=customer,
+                budget=budget,
+            )
+    assert current.state == PurchaseIntentState.LINKED
+    assert [(op.id, op.key, op.bound_id) for op in current.operations] == [
+        (op.id, op.key, op.bound_id) for op in purchase.operations
+    ]
+    assert sum(request.method == "POST" for request in transport.requests) == before
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
+
+
+async def test_billing_subscription_reconciliation_bound_closure_survives_unavailable_subscription(
+    scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.integrations.lbx.errors import LbxUnavailable
+
+    transport, sources, purchase = scenario
+    factory = postgres_session_factory
+    activate(transport)
+    await run(sources, factory)
+    trusted = snapshot(factory)
+    transport.agreements[0]["close_date"] = "2026-11-05"
+
+    async def unavailable(**kwargs: object) -> None:
+        raise LbxUnavailable()
+
+    monkeypatch.setattr(sources.require_lbx(), "get_subscription", unavailable)
+    monkeypatch.setattr(sources.require_lbx(), "get_tariff", unavailable)
+    evidence = await run(sources, factory)
+    assert evidence.completeness_classification == "incomplete"
+    assert evidence.evidence_document["identity"] == "match"
+    assert evidence.evidence_document["calendar"]["agreement_close_date"] == "2026-11-05"
+    assert snapshot(factory)[1:3] == ("ended", "blocked")
+    assert snapshot(factory)[4:6] == trusted[4:6]
+    current = service.read_purchase(factory, purchase.user_id, purchase.id)
+    assert [(op.id, op.key, op.bound_id) for op in current.operations] == [
+        (op.id, op.key, op.bound_id) for op in purchase.operations
+    ]
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0

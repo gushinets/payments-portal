@@ -2,7 +2,7 @@
 
 from dataclasses import replace
 from datetime import date, datetime
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 
 from app.core.settings import Settings
 from app.core.time import utc_now
@@ -18,7 +18,14 @@ from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.customer import LbxUser
 from app.integrations.lbx.dto import LbxRead, LbxTariff
 from app.integrations.lbx.errors import LbxError, LbxResponseInvalid, LbxScopeMismatch
-from app.integrations.lbx.financial import Agreement, Subscription, prove_effective_terms
+from app.integrations.lbx.financial import (
+    EMPTY_CALENDAR,
+    Agreement,
+    Subscription,
+    agreement_is_closed,
+    prove_effective_terms,
+    subscription_lifecycle,
+)
 from app.integrations.lbx.selected_offer import PERIOD_ANCHORS
 from app.models import (
     ExternalSubscriptionFinancialAccessStatus as Financial,
@@ -33,7 +40,6 @@ CALENDAR_FIELDS = (
     "last_tariffication_period_start",
     "last_tariffication_period_end",
 )
-EMPTY_CALENDAR = {None, "", "0000-00-00", "0000-00-00 00:00:00", "1970-01-01", "1970-01-01 00:00:00"}
 
 
 def _calendar_ordered(left: date | datetime, right: date | datetime, *, strict: bool = False) -> bool:
@@ -85,46 +91,48 @@ def normalize_subscription(
     now = utc_now()
     reasons: list[str] = []
     identity = IdentityProof.INCOMPLETE
-    pairs: list[tuple[object, object]] = []
-    if user is not None:
-        pairs.extend(((user.user_id, int(subject.customer.provider_id)), (user.outer_id, subject.customer.outer_key)))
+    closed = False
+    agreement_calendar_complete = True
     if agreement is not None:
-        pairs.extend(
+        try:
+            closed = agreement_is_closed(agreement)
+        except LbxResponseInvalid:
+            agreement_calendar_complete = False
+            reasons.append("agreement_calendar_incomplete")
+    # Authenticated point URLs select canonical resources. Retain original-key,
+    # owner, seller and relationship proof; do not compare returned self-IDs.
+    customer_pairs = [(user.outer_id, subject.customer.outer_key)] if user is not None else []
+    relationship_pairs: list[tuple[object, object]] = []
+    if agreement is not None:
+        relationship_pairs.extend(
             (
-                (agreement.agreement_id, int(subject.agreement_id)),
                 (agreement.user_id, int(subject.customer.provider_id)),
                 (agreement.agreement_number, subject.agreement_key),
                 (agreement.organization_id, subject.purchase.accepted.seller_id),
             )
         )
     if subscription is not None:
-        pairs.extend(
-            (
-                (subscription.subscription_id, int(subject.provider_subscription_id)),
-                (subscription.agreement_id, int(subject.agreement_id)),
-            )
-        )
-    if pairs:
-        # A known contradiction remains decisive even if a different field is absent.
-        if any(value is not None and value != wanted for value, wanted in pairs):
-            identity = IdentityProof.CONFLICT
-            customer_conflict = user is not None and (
-                user.user_id != int(subject.customer.provider_id)
-                or (user.outer_id is not None and user.outer_id != subject.customer.outer_key)
-            )
-            reasons.append("customer_identity_conflict" if customer_conflict else "subscription_identity_conflict")
-            if customer_conflict and user.user_id == int(subject.customer.provider_id):
-                reasons.append("customer_original_key_mismatch")
-            if any(value is not None and value != wanted for value, wanted in pairs[2 if user else 0 :]):
-                reasons.append("subscription_identity_conflict")
-        elif len(pairs) == 8 and all(value is not None for value, _ in pairs):
-            identity = IdentityProof.MATCH
+        relationship_pairs.append((subscription.agreement_id, int(subject.agreement_id)))
+    pairs = customer_pairs + relationship_pairs
+    if any(value is not None and value != wanted for value, wanted in pairs):
+        identity = IdentityProof.CONFLICT
+        if any(value is not None and value != wanted for value, wanted in customer_pairs):
+            reasons.extend(("customer_identity_conflict", "customer_original_key_mismatch"))
+        if any(value is not None and value != wanted for value, wanted in relationship_pairs):
+            reasons.append("subscription_identity_conflict")
+    elif all(value is not None for value, _ in pairs) and (
+        len(pairs) == 5
+        or (len(pairs) == 4 and subscription is None and isinstance(subject, ReconciliationSubject) and closed)
+    ):
+        # A retained canonical binding plus complete customer/agreement owner
+        # proof suffices only for an agreement-based negative, never first bind.
+        identity = IdentityProof.MATCH
     if identity == IdentityProof.INCOMPLETE:
         reasons.append("ownership_incomplete")
 
     commercial = CommercialProof.INCOMPLETE
     accepted = subject.purchase.accepted
-    if subscription is not None:
+    if subscription is not None and identity != IdentityProof.CONFLICT:
         try:
             prove_effective_terms(
                 subscription, agreement_id=int(subject.agreement_id), selection=accepted.selection, offer=accepted.offer
@@ -136,6 +144,7 @@ def normalize_subscription(
             reasons.append("effective_terms_mismatch")
         else:
             commercial = CommercialProof.MATCH
+    terms_incomplete = commercial == CommercialProof.INCOMPLETE
     # Applicable policy, not current sale visibility, catalog prices or membership.
     policy_incomplete = False
     if tariff is None:
@@ -147,14 +156,14 @@ def normalize_subscription(
         tariff.external_billing_account_id != configuration.lbx_external_billing_account_id
         or accepted.provider_origin != configuration.lbx_provider_origin
         or tariff.tariff_id != accepted.selection.tariff_id
-        or tariff.value.tariff_id != accepted.selection.tariff_id
         or tariff.observed_at.utcoffset() is None
     ):
         policy_incomplete = True
         # Contradictory source scope cannot establish this canonical subject,
         # including for a negative conclusion. An unavailable policy read is
         # different: the other owned point reads can still prove a block/end.
-        identity = IdentityProof.INCOMPLETE
+        if identity != IdentityProof.CONFLICT:
+            identity = IdentityProof.INCOMPLETE
         reasons.append("tariff_provenance_conflict")
     else:
         policy = tariff.value
@@ -178,9 +187,11 @@ def normalize_subscription(
         ):
             policy_incomplete = True
             reasons.append("tariff_policy_incomplete")
+        elif mapping is None:
+            policy_incomplete = True
+            reasons.append("currency_interpretation_incomplete")
         elif (
             any(getattr(policy, field) != value for field, value in flags.items())
-            or mapping is None
             or policy.currency_id != mapping.provider_currency_id
             or mapping.iso_currency != accepted.offer.money.currency
             or mapping.scale != accepted.offer.money.decimal_places
@@ -188,51 +199,32 @@ def normalize_subscription(
         ):
             commercial = CommercialProof.MISMATCH
             reasons.append("unsupported_prepaid_policy")
-    if policy_incomplete and commercial != CommercialProof.MISMATCH:
+    if agreement is None or agreement.is_offer is None:
+        policy_incomplete = True
+        reasons.append("agreement_policy_incomplete")
+    elif agreement.is_offer:
+        commercial = CommercialProof.MISMATCH
+        reasons.append("agreement_policy_mismatch")
+    if policy_incomplete or terms_incomplete:
         commercial = CommercialProof.INCOMPLETE
 
     lifecycle, financial = None, None
     calendar = {field: getattr(subscription, field) for field in CALENDAR_FIELDS} if subscription else {}
     calendar_complete = bool(calendar) and _calendar_complete(calendar)
-    agreement_calendar_complete = True
     if identity == IdentityProof.MATCH:
-        pair = (subscription.state, subscription.current_blocking)
-        states = {
-            (-2, 0): (Lifecycle.INACTIVE, Financial.BLOCKED, "waiting"),
-            (-1, 0): (Lifecycle.INACTIVE, Financial.BLOCKED, "inactive"),
-            (0, 0): (Lifecycle.INACTIVE, Financial.BLOCKED, "inactive"),
-            (2, 0): (Lifecycle.ACTIVE, Financial.ALLOWED, "active"),
-            (2, 1): (Lifecycle.ACTIVE, Financial.BLOCKED, "financial_block"),
-            (2, 3): (Lifecycle.ACTIVE, Financial.BLOCKED, "administrative_block"),
-            (3, 0): (Lifecycle.ENDED, Financial.BLOCKED, "ended"),
-        }
-        if pair in states:
-            lifecycle, financial, reason = states[pair]
-            reasons.append(reason)
-        else:
-            reasons.append("lifecycle_unknown")
-        if agreement.close_date not in EMPTY_CALENDAR:
-            # Closed agreements are ordinary negative evidence, unlike preparation.
+        if subscription is not None:
             try:
-                if len(agreement.close_date) not in {10, 19}:
-                    raise ValueError("invalid calendar shape")
-                datetime.fromisoformat(agreement.close_date)
-            except ValueError:
-                reasons.append("agreement_calendar_incomplete")
-                agreement_calendar_complete = False
-                if financial != Financial.BLOCKED:
-                    lifecycle, financial = None, None
+                lifecycle, financial, reason = subscription_lifecycle(subscription)
+            except LbxResponseInvalid:
+                reasons.append("lifecycle_unknown")
             else:
-                lifecycle, financial = Lifecycle.ENDED, Financial.BLOCKED
-                calendar["agreement_close_date"] = agreement.close_date
-                reasons.append("agreement_closed")
-        if agreement.is_offer is None:
-            if commercial != CommercialProof.MISMATCH:
-                commercial = CommercialProof.INCOMPLETE
-            reasons.append("agreement_policy_incomplete")
-        elif agreement.is_offer:
-            commercial = CommercialProof.MISMATCH
-            reasons.append("agreement_policy_mismatch")
+                reasons.append(reason)
+        if closed:
+            lifecycle, financial = Lifecycle.ENDED, Financial.BLOCKED
+            calendar["agreement_close_date"] = agreement.close_date
+            reasons.append("agreement_closed")
+        elif not agreement_calendar_complete and financial != Financial.BLOCKED:
+            lifecycle, financial = None, None
     positive = financial == Financial.ALLOWED
     if positive and not calendar_complete:
         financial = None
@@ -251,10 +243,11 @@ def normalize_subscription(
     )
 
 
-async def _timely_point[T](read: Awaitable[T], budget: PreflightBudget) -> T:
+async def _timely_point[T](read: Callable[[], Awaitable[T]], budget: PreflightBudget) -> T:
     """Reject both values and scope errors returned after the read deadline."""
+    budget.check()
     try:
-        value = await read
+        value = await read()
     except LbxError:
         budget.check()
         raise
@@ -273,34 +266,37 @@ async def read_subscription_proof(
     user, agreement, tariff, subscription = None, None, None, None
     reads: list[str] = []
     failures: list[str] = []
-    # Customer pair; canonical agreement/seller/correlation; prepaid policy;
-    # effective terms and latest lifecycle. No discovery/current-offer round.
+    # Read owner and lifecycle before potentially slow policy. Timely negatives
+    # survive an unavailable policy, while every late point result is rejected.
     try:
-        user = await _timely_point(client.get_user(user_id=int(subject.customer.provider_id), budget=budget), budget)
+        user = await _timely_point(
+            lambda: client.get_user(user_id=int(subject.customer.provider_id), budget=budget), budget
+        )
         reads.append("customer")
     except (LbxError, PreflightDeadlineExceeded) as error:
         failures.append("customer:" + error.code)
     try:
         agreement = await _timely_point(
-            client.get_agreement(agreement_id=int(subject.agreement_id), budget=budget), budget
+            lambda: client.get_agreement(agreement_id=int(subject.agreement_id), budget=budget), budget
         )
         reads.append("agreement")
     except (LbxError, PreflightDeadlineExceeded) as error:
         failures.append("agreement:" + error.code)
     try:
-        tariff = await _timely_point(
-            client.get_tariff(tariff_id=subject.purchase.accepted.selection.tariff_id, budget=budget), budget
-        )
-        reads.append("tariff_policy")
-    except (LbxError, PreflightDeadlineExceeded) as error:
-        failures.append("tariff:" + error.code)
-    try:
         subscription = await _timely_point(
-            client.get_subscription(subscription_id=int(subject.provider_subscription_id), budget=budget), budget
+            lambda: client.get_subscription(subscription_id=int(subject.provider_subscription_id), budget=budget),
+            budget,
         )
         reads.append("subscription")
     except (LbxError, PreflightDeadlineExceeded) as error:
         failures.append("subscription:" + error.code)
+    try:
+        tariff = await _timely_point(
+            lambda: client.get_tariff(tariff_id=subject.purchase.accepted.selection.tariff_id, budget=budget), budget
+        )
+        reads.append("tariff_policy")
+    except (LbxError, PreflightDeadlineExceeded) as error:
+        failures.append("tariff:" + error.code)
     proof = normalize_subscription(
         subject, configuration, user=user, agreement=agreement, tariff=tariff, subscription=subscription
     )

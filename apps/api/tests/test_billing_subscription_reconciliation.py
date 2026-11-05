@@ -2,14 +2,27 @@
 
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
 
-from app.domains.billing.reconciliation_contracts import CommercialProof, IdentityProof, RECONCILIATION_SCHEMA
-from app.integrations.lbx.financial import Subscription, prove_subscription
-from app.integrations.lbx.errors import LbxScopeMismatch
-from app.integrations.lbx.reconciliation import normalize_subscription
+from app.domains.billing.reconciliation_contracts import (
+    CommercialProof,
+    IdentityProof,
+    RECONCILIATION_SCHEMA,
+    SubscriptionCandidateSubject,
+)
+from app.integrations.lbx.financial import (
+    Subscription,
+    prove_agreement,
+    prove_subscription,
+    require_preparable_agreement,
+    require_payable_subscription,
+)
+from app.integrations.lbx.errors import LbxScopeMismatch, LbxResponseInvalid
+from app.infrastructure.preflight import PreflightAdmission, PreflightPolicy
+from app.integrations.lbx.reconciliation import normalize_subscription, read_subscription_proof
 from apps.api.tests.factories.reconciliation import (
     subject_factory,
     user_factory,
@@ -30,6 +43,8 @@ from apps.api.tests.support.any709_step1 import step1_settings
         (2, 1, "active", "blocked", "financial_block"),
         (2, 3, "active", "blocked", "administrative_block"),
         (3, 0, "ended", "blocked", "ended"),
+        (3, 1, "ended", "blocked", "ended"),
+        (3, 3, "ended", "blocked", "ended"),
     ],
 )
 def test_billing_subscription_reconciliation_lifecycle(
@@ -124,13 +139,13 @@ def test_billing_subscription_reconciliation_effective_drift(field: str, value: 
         tariff=tariff_factory(subject),
         subscription=point,
     )
-    assert proof.commercial == CommercialProof.MISMATCH
+    assert proof.commercial == (CommercialProof.MISMATCH if missing is None else CommercialProof.INCOMPLETE)
 
 
 @pytest.mark.parametrize(
     "change", [{"currency_symbol": "USD"}, {"period_length": 2}, {"is_demo": True}, {"services": []}]
 )
-def test_billing_subscription_reconciliation_known_terms_conflict_survives_missing_total(change: dict) -> None:
+def test_billing_subscription_reconciliation_known_difference_without_total_is_incomplete(change: dict) -> None:
     subject = subject_factory()
     point = subscription_factory().model_copy(update={"total_price": None, **change})
     proof = normalize_subscription(
@@ -141,7 +156,7 @@ def test_billing_subscription_reconciliation_known_terms_conflict_survives_missi
         tariff=tariff_factory(subject),
         subscription=point,
     )
-    assert proof.identity == IdentityProof.MATCH and proof.commercial == CommercialProof.MISMATCH
+    assert proof.identity == IdentityProof.MATCH and proof.commercial == CommercialProof.INCOMPLETE
 
 
 @pytest.mark.parametrize(
@@ -169,14 +184,12 @@ def test_billing_subscription_reconciliation_unknown_or_incomplete(change: dict)
     assert not proof.complete and proof.financial is None
 
 
-@pytest.mark.parametrize("kind", ["customer", "customer_id", "agreement", "seller", "subscription"])
+@pytest.mark.parametrize("kind", ["customer", "agreement", "seller", "subscription"])
 def test_billing_subscription_reconciliation_ownership_conflicts(kind: str) -> None:
     subject = subject_factory()
     user, agreement, point = user_factory(), agreement_factory(), subscription_factory()
     if kind == "customer":
         user = user.model_copy(update={"outer_id": "foreign"})
-    elif kind == "customer_id":
-        user = user.model_copy(update={"user_id": 999, "outer_id": "foreign"})
     elif kind == "agreement":
         agreement = agreement.model_copy(update={"user_id": 999})
     elif kind == "seller":
@@ -192,6 +205,7 @@ def test_billing_subscription_reconciliation_ownership_conflicts(kind: str) -> N
         subscription=point.model_copy(update={"total_price": None}),
     )
     assert proof.identity == IdentityProof.CONFLICT and proof.financial is None
+    assert proof.commercial == CommercialProof.INCOMPLETE
     assert ("customer_original_key_mismatch" in proof.reasons) == (kind == "customer")
 
 
@@ -231,13 +245,18 @@ def test_billing_subscription_reconciliation_negative_independent_of_terms_and_s
         subscription=ended,
     )
     assert proof.lifecycle == "ended" and proof.complete
-    with pytest.raises(LbxScopeMismatch):
-        prove_subscription(
-            ended,
-            agreement_id=456,
-            selection=subject.purchase.accepted.selection,
-            offer=subject.purchase.accepted.offer,
-        )
+    prove_subscription(
+        ended,
+        agreement_id=456,
+        selection=subject.purchase.accepted.selection,
+        offer=subject.purchase.accepted.offer,
+    )
+    prove_agreement(
+        agreement_factory().model_copy(update={"close_date": "2026-10-20"}),
+        user_id=345,
+        seller_id=21,
+        number="portal-agreement",
+    )
 
 
 @pytest.mark.parametrize("field", ["currency_id", "balance_blocks", "payment_type", "float_period"])
@@ -380,3 +399,218 @@ def test_billing_subscription_reconciliation_preserves_calendar_precision(
     assert (proof.financial == "allowed") is complete
     assert proof.calendar["subscription_instance_start_date"] == start
     assert proof.calendar["last_tariffication_period_end"] == cycle_end
+
+
+@pytest.mark.parametrize("missing", ["total", "policy", "currency", "agreement_policy"])
+def test_billing_subscription_reconciliation_partial_policy_never_makes_commercial_conflict(missing: str) -> None:
+    subject = subject_factory()
+    configuration = step1_settings()
+    point = subscription_factory().model_copy(update={"period_length": 2})
+    tariff = tariff_factory(subject)
+    agreement = agreement_factory()
+    if missing == "total":
+        point = point.model_copy(update={"total_price": None})
+    elif missing == "policy":
+        tariff = replace(tariff, value=tariff.value.model_copy(update={"payment_type": None}))
+    elif missing == "currency":
+        configuration = configuration.model_copy(update={"lbx_currency_id": ""})
+    else:
+        agreement = agreement.model_copy(update={"is_offer": None})
+    proof = normalize_subscription(
+        subject,
+        configuration,
+        user=user_factory(),
+        agreement=agreement,
+        tariff=tariff,
+        subscription=point,
+    )
+    assert proof.commercial == CommercialProof.INCOMPLETE
+    assert not proof.complete and proof.financial is None
+
+
+@pytest.mark.parametrize("bound", [True, False])
+@pytest.mark.parametrize("owner", ["match", "missing", "conflict"])
+def test_billing_subscription_reconciliation_closed_agreement_without_subscription(bound: bool, owner: str) -> None:
+    original = subject_factory()
+    subject = (
+        original
+        if bound
+        else SubscriptionCandidateSubject(
+            original.purchase,
+            original.customer,
+            original.agreement_id,
+            original.agreement_key,
+            original.provider_subscription_id,
+        )
+    )
+    agreement = agreement_factory().model_copy(update={"close_date": "2026-10-20"})
+    if owner == "missing":
+        agreement = agreement.model_copy(update={"organization_id": None})
+    elif owner == "conflict":
+        agreement = agreement.model_copy(update={"user_id": 999})
+    proof = normalize_subscription(
+        subject,
+        step1_settings(),
+        user=user_factory(),
+        agreement=agreement,
+        tariff=None,
+        subscription=None,
+    )
+    assert not proof.complete and proof.commercial == CommercialProof.INCOMPLETE
+    if owner == "conflict":
+        assert proof.identity == IdentityProof.CONFLICT
+    if bound and owner == "match":
+        assert proof.identity == IdentityProof.MATCH
+        assert (proof.lifecycle, proof.financial) == ("ended", "blocked")
+        assert proof.calendar["agreement_close_date"] == "2026-10-20"
+    else:
+        assert proof.lifecycle is None and proof.financial is None
+
+
+@pytest.mark.parametrize("change", [{"state": 3, "current_blocking": 99}, {"state": None}, {"current_blocking": None}])
+def test_billing_subscription_reconciliation_unrecognized_lifecycle_is_incomplete(change: dict) -> None:
+    subject = subject_factory()
+    proof = normalize_subscription(
+        subject,
+        step1_settings(),
+        user=user_factory(),
+        agreement=agreement_factory(),
+        tariff=tariff_factory(subject),
+        subscription=subscription_factory().model_copy(update=change),
+    )
+    assert not proof.complete and proof.lifecycle is None and proof.financial is None
+
+
+@pytest.mark.parametrize("late", ["subscription", "tariff"])
+@pytest.mark.parametrize("scope_error", [False, True])
+@pytest.mark.anyio
+async def test_billing_subscription_reconciliation_timely_negative_precedes_policy(
+    late: str,
+    scope_error: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    subject = subject_factory()
+    clock = [100.0]
+    monkeypatch.setattr("app.infrastructure.preflight.time.monotonic", lambda: clock[0])
+    reads: list[str] = []
+
+    async def point(name: str, value: object, **kwargs: object) -> object:
+        reads.append(name)
+        if name == late:
+            clock[0] += 2
+            if scope_error:
+                raise LbxScopeMismatch()
+        return value
+
+    client = SimpleNamespace(
+        get_user=lambda **kwargs: point("customer", user_factory(), **kwargs),
+        get_agreement=lambda **kwargs: point("agreement", agreement_factory(), **kwargs),
+        get_subscription=lambda **kwargs: point(
+            "subscription",
+            subscription_factory().model_copy(update={"current_blocking": 1}),
+            **kwargs,
+        ),
+        get_tariff=lambda **kwargs: point("tariff", tariff_factory(subject), **kwargs),
+    )
+    admission = PreflightAdmission(PreflightPolicy(1, 0.1, 1, 0))
+    try:
+        async with admission.operation(bound_scope=False) as budget:
+            proof = await read_subscription_proof(client, subject, step1_settings(), budget=budget)
+    finally:
+        await admission.aclose()
+    assert reads == ["customer", "agreement", "subscription"] + (["tariff"] if late == "tariff" else [])
+    assert not proof.complete and proof.identity != IdentityProof.CONFLICT
+    assert proof.financial == ("blocked" if late == "tariff" else None)
+    assert "read_budget_exhausted" in proof.reasons
+
+
+@pytest.mark.parametrize("policy", ["tariff", "agreement"])
+def test_billing_subscription_reconciliation_missing_terms_with_changed_policy_remains_incomplete(policy: str) -> None:
+    subject = subject_factory()
+    tariff, agreement = tariff_factory(subject), agreement_factory()
+    if policy == "tariff":
+        tariff = replace(tariff, value=tariff.value.model_copy(update={"payment_type": 1}))
+    else:
+        agreement = agreement.model_copy(update={"is_offer": True})
+    proof = normalize_subscription(
+        subject,
+        step1_settings(),
+        user=user_factory(),
+        agreement=agreement,
+        tariff=tariff,
+        subscription=subscription_factory().model_copy(update={"total_price": None}),
+    )
+    assert proof.commercial == CommercialProof.INCOMPLETE and not proof.complete
+
+
+@pytest.mark.parametrize("connection", [0, 10])
+def test_billing_subscription_reconciliation_connection_evidence_only_when_applicable(connection: int) -> None:
+    from decimal import Decimal
+
+    subject = subject_factory()
+    accepted = subject.purchase.accepted
+    offer = replace(
+        accepted.offer,
+        money=replace(
+            accepted.offer.money,
+            connection_unit_amount=Decimal(connection),
+            connection_amount=Decimal(connection),
+        ),
+    )
+    subject = replace(
+        subject, purchase=replace(subject.purchase, accepted=accepted.model_copy(update={"offer": offer}))
+    )
+    proof = normalize_subscription(
+        subject,
+        step1_settings(),
+        user=user_factory(),
+        agreement=agreement_factory(),
+        tariff=tariff_factory(subject),
+        subscription=subscription_factory(),
+    )
+    assert proof.commercial == (CommercialProof.MATCH if connection == 0 else CommercialProof.INCOMPLETE)
+    assert proof.complete is (connection == 0)
+
+
+@pytest.mark.parametrize("block", [0, 1, 3])
+def test_billing_subscription_reconciliation_terminal_proof_does_not_authorize_payment(block: int) -> None:
+    subject = subject_factory()
+    point = subscription_factory().model_copy(update={"state": 3, "current_blocking": block})
+    prove_subscription(
+        point, agreement_id=456, selection=subject.purchase.accepted.selection, offer=subject.purchase.accepted.offer
+    )
+    with pytest.raises(LbxResponseInvalid):
+        require_payable_subscription(point)
+    agreement = agreement_factory().model_copy(update={"close_date": "2026-11-05"})
+    prove_agreement(agreement, user_id=345, seller_id=21, number="portal-agreement")
+    with pytest.raises(LbxResponseInvalid):
+        require_preparable_agreement(agreement)
+
+
+@pytest.mark.parametrize("close_date", ["2026-02-30", "2026-11-05T12:00:00Z", "unknown"])
+def test_billing_subscription_reconciliation_invalid_agreement_calendar_never_invents_terminal(close_date: str) -> None:
+    subject = subject_factory()
+    proof = normalize_subscription(
+        subject,
+        step1_settings(),
+        user=user_factory(),
+        agreement=agreement_factory().model_copy(update={"close_date": close_date}),
+        tariff=tariff_factory(subject),
+        subscription=subscription_factory(),
+    )
+    assert not proof.complete and proof.financial is None and proof.lifecycle is None
+    assert "agreement_calendar_incomplete" in proof.reasons
+
+
+def test_billing_subscription_reconciliation_identity_conflict_survives_unrelated_provenance_failure() -> None:
+    subject = subject_factory()
+    proof = normalize_subscription(
+        subject,
+        step1_settings(),
+        user=user_factory().model_copy(update={"outer_id": "foreign"}),
+        agreement=agreement_factory(),
+        tariff=replace(tariff_factory(subject), external_billing_account_id="foreign"),
+        subscription=subscription_factory().model_copy(update={"total_price": None}),
+    )
+    assert proof.identity == IdentityProof.CONFLICT and proof.commercial == CommercialProof.INCOMPLETE
+    assert proof.financial is None
