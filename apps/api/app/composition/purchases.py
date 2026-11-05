@@ -43,6 +43,8 @@ from app.integrations.lbx.financial import (
     NewSubscription,
     Subscription,
     prove_agreement,
+    require_preparable_agreement,
+    require_payable_subscription,
     prove_subscription,
     prove_effective_terms,
     inventory_terminal,
@@ -201,6 +203,7 @@ async def _find_financial(
             raise LbxScopeMismatch()
         point = await client.get_agreement(agreement_id=ids[0], budget=budget)
         prove_agreement(point, user_id=user_id, seller_id=purchase.accepted.seller_id, number=operation.key)
+        require_preparable_agreement(point)
         if require_discovery and (
             operation.agreement_create_date is None or point.create_date != operation.agreement_create_date.isoformat()
         ):
@@ -211,6 +214,7 @@ async def _find_financial(
     agreement_id = int(agreement_op.bound_id)
     agreement = await client.get_agreement(agreement_id=agreement_id, budget=budget)
     prove_agreement(agreement, user_id=user_id, seller_id=purchase.accepted.seller_id, number=agreement_op.key)
+    require_preparable_agreement(agreement)
     rows = await client.discover_subscriptions(user_id=user_id, agreement_id=agreement_id, budget=budget)
     ids = tuple(row.subscription_id for row in rows)
     saved = operation.bound_id or operation.candidate_id
@@ -229,6 +233,7 @@ async def _find_financial(
     prove_subscription(
         point, agreement_id=agreement_id, selection=purchase.accepted.selection, offer=purchase.accepted.offer
     )
+    require_payable_subscription(point)
     return point.subscription_id, point
 
 

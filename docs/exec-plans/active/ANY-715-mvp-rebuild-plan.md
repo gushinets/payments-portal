@@ -1,6 +1,6 @@
 # ANY-715 — Rebuild the MVP implementation from the functional-QA baseline
 
-Status: Stage 0 preparation complete; Stages 1–6 pending. Application rebuild not implemented or newly QA-approved.
+Status: Stages 0–1 complete; Stages 2–6 pending. Final rebuild QA and acceptance remain pending.
 Prepared: 2026-11-05. Repository: `gushinets/payments-portal`. Reference PR: #154; delivery: a separate Draft PR created in Stage 0.
 
 ## 1. Outcome and execution instructions
@@ -237,7 +237,7 @@ Do not cherry-pick this sequence wholesale. A review thread is not a requirement
 - Push the verified final stage normally to the new branch and update the existing Draft PR with its final scope and fresh evidence. The new PR is the proposed primary implementation; keep it Draft until the owner requests otherwise. PR #154 remains preserved and may be closed as superseded only after the owner's final decision. No rewriting of `ANY-715` or force-push is part of this workflow. Prepare the old-review-to-new-fix/test mapping; reply to or resolve threads only when instructed, without erasing discussions or implying approval.
 - If the proposed reuse demonstrably cannot satisfy a required invariant, record the smallest reproducible counterexample and the exact unmet requirement. Do not silently recreate the rejected subsystem or weaken the invariant. Continue independent bounded work and surface that specific design decision to the owner.
 
-Progress: Stage 0 [x]; Stage 1 [ ]; Stage 2 [ ]; Stage 3 [ ]; Stage 4 [ ]; Stage 5 [ ]; Stage 6 [ ].
+Progress: Stage 0 [x]; Stage 1 [x]; Stage 2 [ ]; Stage 3 [ ]; Stage 4 [ ]; Stage 5 [ ]; Stage 6 [ ].
 
 ## Stage 0 evidence — 2026-11-05
 
@@ -283,3 +283,50 @@ Progress: Stage 0 [x]; Stage 1 [ ]; Stage 2 [ ]; Stage 3 [ ]; Stage 4 [ ]; Stage
   `refactor/any715-mvp`, with a Draft PR into `main`; the exact published SHA,
   PR URL and remote/Draft verification are recorded in its body and the owner
   report. PR #154 remains the original reference. Stages 1–6 are pending.
+
+## Stage 1 evidence — 2026-11-05
+
+- Corrected the shared LBX normalizer: missing material effective terms,
+  applicable policy or configured currency interpretation is `INCOMPLETE`, even
+  alongside a known difference. Only complete reconstruction can produce a
+  commercial mismatch. Original-key/owner/relationship conflicts remain
+  decisive independently of commercial completeness; point URL selection
+  follows ADR 0005 without returned-self-ID comparisons.
+- Centralized supported lifecycle codes in a small Integration helper. State 3
+  with blocking 0/1/3 and valid agreement closure are ordinary terminal
+  negatives. Unknown/missing codes remain incomplete. Complete retained
+  customer/agreement ownership can prove a closed-agreement negative for an
+  already bound subject when its subscription read is unavailable; a candidate
+  cannot use that minimum proof for first binding.
+- Separated original agreement/effective-term proof from preparation/payment
+  readiness. Existing callers retain explicit readiness checks, so termination
+  refuses payment without creating a financial-binding conflict. Shared
+  claimed routing and original terminal binding remain Stages 2–3 work.
+- Customer/agreement/subscription reads now precede tariff policy. Every call
+  is checked before dispatch and after either a value or a scope error against
+  the same absolute budget. Timely negatives survive an unavailable late policy;
+  late subscription values/errors cannot become facts or identity conflicts.
+- Preserved accepted historical prices, zero-connection-price applicability,
+  calendar precision and existing finite trust. No new projection writer,
+  proof protocol, HTTP contract, ORM/model or migration changes were introduced.
+- Focused verification: 107 pure/read-budget/purchase tests passed in
+  `test_billing_subscription_reconciliation.py` and
+  `test_any709_step3_purchase.py`; 15 tests passed in
+  `test_billing_subscription_reconciliation_postgres.py`, using only the
+  worktree's disposable database and the repository's test-environment helper.
+- An initial broad `npm run check` passed docs/generation, architecture, API/web
+  lint, 38 web boundary tests, 395 component tests, 1,718 fast API tests and
+  production build. Its PostgreSQL partition exposed four obsolete healthy
+  fixtures without `current_blocking`; the run was interrupted after 112 other
+  passes. Added the recognized blocking value to that fixture, preserving all
+  no-duplicate-CREATE/recovery assertions; all four affected cases then passed.
+- Owner execution preference: run only necessary affected checks at intermediate
+  stages; do not run every database test after every stage. The repeated full
+  check was stopped at the owner's request before its PostgreSQL partition.
+  Full `npm run check` is NOT reported as PASS. Browser E2E, real LBX QA and
+  retained later-head database compatibility were not verified in this stage.
+- Final documentation and touched-file lint/format/diff checks passed. The
+  isolated PostgreSQL server was stopped; retained databases, original branch,
+  backup reference and PR #154 were not changed. This stage is one commit on
+  `refactor/any715-mvp`; its published SHA and verification are in Draft PR #161.
+  Stages 2–6 remain pending.

@@ -133,7 +133,7 @@ async def test_incomplete_inventory_recovers_same_unsent_purchase_after_healthy_
     config = step1_settings()
     healthy = previous_no_send
     send_attempts = 0
-    ended = {"subscription_id": 888, "agreement_id": 999, "tariff_id": 701, "state": 3}
+    ended = {"subscription_id": 888, "agreement_id": 999, "tariff_id": 701, "state": 3, "current_blocking": 0}
 
     def respond(request: httpx.Request) -> httpx.Response:
         nonlocal send_attempts

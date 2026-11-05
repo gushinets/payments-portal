@@ -12,15 +12,27 @@ LBX owns subscription activation and financial/administrative blocking. Portal
 verifies the original customer, agreement/seller, accepted effective terms and
 supported prepaid policy. Reconciliation uses authenticated point reads of
 `/users/{id}`, `/agreements/{id}`, `/tariffs/{id}` and `/subscriptions/{id}`;
-the read window is not an atomic provider snapshot. Current catalog prices,
+the read window is not an atomic provider snapshot. Owner/agreement/subscription
+reads precede tariff policy so an unavailable slow policy cannot erase an
+already timely negative. Every point result and scope error is checked against
+the same absolute budget; late responses are discarded. Current catalog prices,
 sale visibility and Kernel publication do not reprice accepted history. Balances,
 payments and charges are not a separate Portal settlement authority.
 
-Commercial proof is `COMPLETE_MATCH`, `COMPLETE_MISMATCH` or `INCOMPLETE`. Waiting/unpaid
-is inactive/blocked and may have null cycle dates. Complete owned ACTIVE/unblocked
+Commercial proof is `COMPLETE_MATCH`, `COMPLETE_MISMATCH` or `INCOMPLETE`.
+Missing material effective terms, applicable policy or currency interpretation
+remain `INCOMPLETE` even alongside a known difference. Only full material
+reconstruction can establish `COMPLETE_MISMATCH`; original-key/owner/relationship
+contradictions remain decisive independently of commercial completeness.
+Waiting/unpaid is inactive/blocked and may have null cycle dates. Complete owned ACTIVE/unblocked
 proof with matching terms and coherent cycle evidence records operational
 active/allowed facts. Financial and administrative blocks are distinct negative
-facts. Ended is terminal; a later nonterminal state for the same canonical ID
+facts. State 3 with recognized blocking values 0, 1 or 3 is ended. A valid
+agreement closure also proves ended for the owned subscription. For an already
+bound subscription, complete customer/agreement ownership plus the retained
+canonical binding can prove that negative even if the subscription read is
+unavailable; it cannot establish a first binding from an unknown candidate.
+Ended is terminal; a later nonterminal state for the same canonical ID
 opens subscription_terminal_revival_conflict.
 
 Only complete matching proof without a known review refreshes source trust.
