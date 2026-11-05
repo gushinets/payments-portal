@@ -1,6 +1,6 @@
 # ANY-715 — Rebuild the MVP implementation from the functional-QA baseline
 
-Status: Stages 0–5 complete; Stage 6 pending. Final rebuild QA and acceptance remain pending.
+Status: Stages 0–5 complete; Stage 6 verification performed, acceptance blocked by real Widget readiness.
 Prepared: 2026-11-05. Repository: `gushinets/payments-portal`. Reference PR: #154; delivery: a separate Draft PR created in Stage 0.
 
 ## 1. Outcome and execution instructions
@@ -532,3 +532,110 @@ Progress: Stage 0 [x]; Stage 1 [x]; Stage 2 [x]; Stage 3 [x]; Stage 4 [x]; Stage
   commit/push updates `refactor/any715-mvp` and the same Draft PR #161; its body
   records the exact tested/published SHA. Original checkout/branch/backup and
   PR #154 remain preserved. Stage 6 was not started.
+
+## Stage 6 verification and handoff — 2026-11-06
+
+- Stages 0–5 remain complete. Stage 6 verification/publication is performed;
+  **acceptance remains BLOCKED by real Widget readiness**, not marked PASS.
+  No later program step, paid-access implementation or production enablement.
+- Verification started at `cfe0855a98229f9d3d3e5957d8c555fc65fa3504`.
+  Exact verified Git content SHAs: API/tests tree
+  `57e11eae522ff9ea2a5658750d0e0c1dc7c2781a`; web/tests tree
+  `377848079e00cad5658fa83f94cd0fd5b696cac9`. The final commit SHA is recorded
+  in Draft PR #161; its code trees must match these verified identities.
+- Fixed two verification findings: payment admission now requires fresh committed
+  owner/material-commercial/nonterminal proof without demanding paid-cycle dates;
+  missing dates still cannot establish/extend positive trust. Unknown agreement
+  closure still refuses payment while preserving its proven subscription block.
+  Deadline backfill
+  also recognizes retained `bound-source-negative:v1` observations. New PostgreSQL
+  cases cover initially unverified/already trusted payment and retained terminal
+  negatives, expiry enrollment and refusal of ACTIVE revival.
+- Updated old regression expectations to the Stage 4 inventory contract, kept
+  financial POST/history/hold/isolation assertions, aligned simulated clocks and
+  budgeted I/O, and moved the enrollment pause to its actual preparation owner.
+  Immutable observation guards and persisted enum types remain enforced.
+- `repo:doctor`, generation/freshness, architecture, Ruff lint/format, web lint,
+  production build, 38 web boundary tests, 396 component tests and 68 desktop/
+  mobile purchase/session browser cases passed. All 1688 fast API cases passed
+  across the initial run and the 21-case CLI rerun. Browser/source substitutions
+  and all transition/concurrency integration fixtures are **SIMULATED**.
+- All 670 current PostgreSQL cases were exercised across the initial partition,
+  its unexecuted remainder and focused corrections. Preserve the raw outcomes:
+  `npm run check` stopped at the stale CLI literal (1687 PASS/1 FAIL); the initial
+  PostgreSQL run had 281 PASS/15 FAIL and was interrupted at an unbudgeted test
+  stub; the remaining 370 cases reached 100% with two subsequently corrected
+  worker-fixture failures, but the wrapper exited 143 during failure reporting.
+  A clean monolithic canonical/DB PASS is **not claimed**. Corrected review,
+  terminal inventory, deadline, payment and worker cases passed targeted reruns;
+  whole DB suites were not repeated after each correction.
+- Fresh real LBX 043 checks used safe copies of the preserved stand: owned lists,
+  account bootstrap and corrected payment bootstrap returned 200; after browser
+  closure URGENT/NORMAL/LOCAL worker ticks progressed using provider GETs only.
+  Accepted purchases, consent, original create operations, reviews, retained inbox
+  and access/grant/outbox tables stayed unchanged. Incomplete provider calendars
+  did not renew finite source facts. Operator inspect still exposes the work.
+- Live blocker: automated Chromium and the in-app browser cannot obtain the
+  vendor Widget READY signal; LBX SDK reports that its iframe failed to load or
+  send READY. An earlier opening also exhausted the provider budget. Both account
+  and payment visual opening/repeated refresh remain unaccepted. Preserve this
+  fresh failure separately from historical human PASS; no charge, credit, new
+  financial CREATE, security bypass or invented provider date was attempted.
+  Natural renewal, 2/6-hour wall-clock waits and Kernel quota enforcement are not
+  claimed. The next acceptance action is to diagnose real iframe/READY delivery
+  on the approved stand and repeat opening/refresh without changing this scope.
+- Retained-data evidence: the preserved checkout's actual harness API points at
+  `payments_cf94dbf9`, revision `20261028_0005` (2 purchases, 2 subscriptions,
+  118 observations, 3 reviews, 17 work rows). Current readers/inspect succeeded;
+  every table hash stayed unchanged during read-only compatibility inspection.
+  This snapshot has no negative-only rows; their compatibility is SIMULATED by
+  the new PostgreSQL regression. Historical ANY-765 QA copies at `20261031_0006`
+  contain accepted-purchase v2 technical terms and are refused by this v1 rebuild;
+  they were not downgraded or rewritten and are not a compatibility PASS.
+- Net non-generated line changes against `9e0cf6e`: runtime +385,
+  tests +1361, docs +652; against preserved `591ee6c`: runtime
+  -2051, tests -2719, docs -2939. Counts cover tracked API/web source,
+  API/web/E2E/script tests and documentation; generated contracts are separate
+  (-74 lines). Runtime reduction does not depend on deleting acceptance coverage.
+- Removed the later readback/capture/recheck/binding family, bound financial
+  re-observation fallback, separate operator inventory and receiver-only HTTP,
+  Integration, Domain and inbox query/persistence paths. No schema/history drop.
+  The four new runtime modules replace concrete duplication: shared
+  `purchase_inventory.py` replaces admission/worker/operator classifiers;
+  `inventory_contracts.py` carries their one-attempt proof/local versions;
+  `preparation.py` isolates the existing binder's first-facts branch;
+  `operator_cases.py` checks exact related cases for the existing atomic actions.
+  `ReconciliationResult` carries the committed proof instead of a second read.
+- Old-review disposition (prepared only; no replies/resolutions or approval):
+  [retry acknowledgement](https://github.com/gushinets/payments-portal/pull/154#discussion_r4407861676)
+  and [all callers](https://github.com/gushinets/payments-portal/pull/154#discussion_r4452326839)
+  -> shared retry boolean; `test_billing_worker_retry` / worker-refusal PostgreSQL.
+  [Urgency](https://github.com/gushinets/payments-portal/pull/154#discussion_r4452392697)
+  -> inventory scheduling/generation PostgreSQL; timeout/early-click commits
+  `1e0e931` / `3c69c8d` -> worker settings, component and browser regressions.
+- [Inventory exit](https://github.com/gushinets/payments-portal/pull/154#discussion_r4452321855)
+  -> scoped inventory exact audited exit/stale/related-case PostgreSQL;
+  [customer restriction](https://github.com/gushinets/payments-portal/pull/154#discussion_r4464773479)
+  -> atomic two-product restriction and stale ACTIVE/operator-restore regressions.
+- [Terminal codes](https://github.com/gushinets/payments-portal/pull/154#discussion_r4464785312),
+  [original recovery](https://github.com/gushinets/payments-portal/pull/154#discussion_r4464799231)
+  and [terminal Widget race](https://github.com/gushinets/payments-portal/pull/154#discussion_r4468274121)
+  -> one normalizer/shared apply, original-recovery and bound HTTP PostgreSQL;
+  [closed competitor](https://github.com/gushinets/payments-portal/pull/154#discussion_r4464833990)
+  -> shared scoped-inventory closed-agreement regression.
+- [Currency interpretation](https://github.com/gushinets/payments-portal/pull/154#discussion_r4468212607)
+  -> incomplete classifier/apply regressions. The older
+  [difference-before-completeness request](https://github.com/gushinets/payments-portal/pull/154#discussion_r4464923811)
+  is superseded by this plan's normative completeness table; no false permanent
+  review for a missing material fact. The
+  [self-ID guard](https://github.com/gushinets/payments-portal/pull/154#discussion_r4464920270)
+  stays retracted under ADR 0005; the
+  [mixed-contour defense](https://github.com/gushinets/payments-portal/pull/154#discussion_r4451727478)
+  is excluded by the supported single-contour database contract.
+- [Windows receiver assertion](https://github.com/gushinets/payments-portal/pull/154#discussion_r4464935291)
+  disappears with the receiver-only test; existing harness ACL behavior remains.
+  Native Windows was not run. The original checkout, branch, backup, PR #154,
+  source databases and dependent branches remain preserved. The test DB and
+  temporary QA processes were stopped; copied containers/volumes were removed.
+  One normal Stage 6 commit/push updates the same Draft PR #161, with the live
+  acceptance blocker and raw check limitations left explicit.

@@ -143,7 +143,9 @@ async def test_bound_callers_commit_one_claimed_negative_without_rebinding(
         assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
 
 
-@pytest.mark.parametrize("negative", ["ended", "incomplete", "slow_policy", "closed_without_subscription"])
+@pytest.mark.parametrize(
+    "negative", ["ended", "incomplete", "slow_policy", "closed_without_subscription", "invalid_agreement_blocked"]
+)
 async def test_payment_refuses_unproven_or_terminal_but_keeps_committed_negative(
     scenario: tuple,
     portal: httpx.AsyncClient,
@@ -162,6 +164,9 @@ async def test_payment_refuses_unproven_or_terminal_but_keeps_committed_negative
         transport.subscriptions[0].update(state=3, current_blocking=3)
     elif negative == "incomplete":
         transport.subscriptions[0]["total_price"] = None
+    elif negative == "invalid_agreement_blocked":
+        transport.agreements[0]["close_date"] = "unknown"
+        transport.subscriptions[0]["current_blocking"] = 1
     elif negative == "closed_without_subscription":
         transport.agreements[0]["close_date"] = "2026-11-05"
 
@@ -190,6 +195,35 @@ async def test_payment_refuses_unproven_or_terminal_but_keeps_committed_negative
         if negative != "ended":
             assert current[4:6] == trusted[4:6]
     with factory() as db:
+        assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
+
+
+@pytest.mark.parametrize("established_trust", [False, True])
+async def test_payment_with_incomplete_paid_calendar_does_not_require_or_extend_paid_trust(
+    scenario: tuple,
+    portal: httpx.AsyncClient,
+    postgres_session_factory: sessionmaker[Session],
+    established_trust: bool,
+) -> None:
+    transport, sources, purchase = scenario
+    factory = postgres_session_factory
+    activate(transport)
+    if established_trust:
+        await run(sources, factory)
+    trusted = snapshot(factory)
+    transport.subscriptions[0]["last_tariffication_period_start"] = None
+    transport.subscriptions[0]["last_tariffication_period_end"] = None
+    response = await payment(portal, purchase.id)
+    assert response.status_code == 200 and response.json()["presentation"] == "payment"
+    assert snapshot(factory) == trusted
+    with factory() as db:
+        attempt = db.scalar(
+            select(BillingStateObservation)
+            .where(BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v1")
+            .order_by(BillingStateObservation.observed_at.desc())
+        )
+        assert attempt.completeness_classification == "incomplete"
+        assert "current_calendar_incomplete" in attempt.evidence_document["reasons"]
         assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
 
 

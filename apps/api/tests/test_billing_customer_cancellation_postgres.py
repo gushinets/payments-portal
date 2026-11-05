@@ -16,7 +16,7 @@ from app.composition.billing import bootstrap_account
 from app.composition.purchases import advance_purchase
 from app.composition.sources import source_resources
 from app.domains.billing.contracts import BillingAccountFailure
-from app.infrastructure.preflight import PreflightDeadlineExceeded
+from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from app.models import BillingWorkItem, ExternalCreateOperation
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State, PurchaseIntentState
 from apps.api.tests.support.any709_step1 import step1_settings
@@ -153,8 +153,10 @@ def test_deadline_after_customer_proof_keeps_its_original_classification(
     transport = setup_purchase(factory)
     short = step1_settings(preflight_total_timeout_seconds=2, preflight_cleanup_timeout_seconds=0.1)
 
-    async def wait_after_customer(*args: object, **kwargs: object) -> None:
-        await asyncio.Event().wait()
+    async def wait_after_customer(*args: object, budget: PreflightBudget, **kwargs: object) -> None:
+        # Match source I/O ownership: apply transactions intentionally finish
+        # outside the outer timeout, while each source operation is budgeted.
+        await budget.run(asyncio.Event().wait)
 
     async def scenario() -> None:
         normal = step1_settings()

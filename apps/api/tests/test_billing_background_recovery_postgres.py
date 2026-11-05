@@ -444,7 +444,17 @@ async def test_billing_background_recovery_bound_terminal_uses_lifecycle_not_pre
     assert await worker.tick(WorkLane.NORMAL)
     with factory() as db:
         ended = db.get(ExternalSubscription, sub.subscription_id)
-        assert (ended.latest_observation_id, ended.projection_valid_until) == before
+        # Customer inventory now uses the shared claimed writer for known
+        # terminal bindings too; a fresh negative observation is legitimate.
+        assert ended.latest_observation_id != before[0]
+        assert (
+            ended.last_authoritative_read_at
+            <= ended.projection_valid_until
+            <= ended.last_authoritative_read_at + timedelta(hours=6)
+        )
+        assert ended.lifecycle_status == Lifecycle.ENDED and ended.financial_access_status == "blocked"
+        observation = db.get(BillingStateObservation, ended.latest_observation_id)
+        assert observation.evidence_schema_version == "subscription-reconciliation:v1"
         assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
     await worker.aclose()
 

@@ -56,6 +56,9 @@ async def test_proven_not_sent_resumes_original_operation_only_on_explicit_advan
     factory = postgres_session_factory
     transport = setup_purchase(factory)
     config = step1_settings()
+    # Start the original send in the past; recovery proof and database time
+    # remain on the same real clock when continuing after its first deadline.
+    monkeypatch.setattr(financial, "utc_now", lambda: datetime.now(UTC) - timedelta(days=1))
     failures: list[httpx.Request] = []
 
     def respond(request: httpx.Request) -> httpx.Response:
@@ -87,7 +90,7 @@ async def test_proven_not_sent_resumes_original_operation_only_on_explicit_advan
         assert transport.creates(path) == 0
         # A GET failure or the original deadline cannot erase positive no-send evidence.
         financial.financial_pending(factory, first, original)
-        monkeypatch.setattr(financial, "utc_now", lambda: datetime.now(UTC) + timedelta(days=1))
+        monkeypatch.setattr(financial, "utc_now", lambda: datetime.now(UTC))
         monkeypatch.setattr(purchase_composition, "current_billing_date", lambda: datetime(2026, 10, 28).date())
         # The next request must preserve the original immutable request across midnight.
         second = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
@@ -157,7 +160,10 @@ async def test_concurrent_resume_claims_one_post_and_preserves_database_guards(
         )
         for result in results:
             if isinstance(result, Exception):
-                assert isinstance(result, PurchaseRefused) and result.code == "purchase_pending"
+                assert isinstance(result, PurchaseRefused) and result.code in {
+                    "purchase_pending",
+                    "purchase_inventory_incomplete",
+                }
         result = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
         assert result.state == IntentState.LINKED
         assert transport.creates("/agreements") == transport.creates("/subscriptions") == 1
@@ -285,17 +291,29 @@ async def test_same_tariff_products_use_product_scope_and_point_proven_history(
         try:
             result = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=second.id)
         except PurchaseRefused as error:
-            assert inventory == "unknown" and error.code == "purchase_existing_subscription_review"
+            assert (inventory, error.code) in {
+                ("unknown", "purchase_existing_subscription_review"),
+                ("wrong_seller", "purchase_inventory_incomplete"),
+            }
             result = service.read_purchase(factory, second.user_id, second.id)
         assert result.accepted == second.accepted
         assert [op.id for op in result.operations] == [op.id for op in second.operations]
-        if inventory == "proven":
+        if inventory in {"proven", "changed_terms"}:
+            # A known sibling's commercial mismatch is its own review, not a
+            # foreign candidate or a reason to block this product's preparation.
             assert result.state == IntentState.LINKED and result.held
             assert transport.creates("/users") == 1
             assert transport.creates("/agreements") == transport.creates("/subscriptions") == 2
             assert {row["period_id"] for row in transport.subscriptions} == {901, 9902}
             assert len({row["agreement_id"] for row in transport.subscriptions}) == 2
         else:
-            assert result.state == IntentState.MANUAL_REVIEW and result.held
+            # Unsent admission remains retryable. Incomplete ownership and a
+            # true competitor must not create a permanent review on product B.
+            assert result.state == IntentState.AWAITING_EXTERNAL_RESULT and result.held
             assert transport.creates("/agreements") == (2 if resume_subscription else 1)
             assert transport.creates("/subscriptions") == 1
+            assert all(op.state in {State.PENDING, State.PROVEN_NOT_SENT, State.BOUND} for op in result.operations)
+        first = service.read_purchase(factory, first.user_id, first.id)
+        assert first.state == (
+            IntentState.MANUAL_REVIEW if inventory in {"changed_terms", "wrong_seller"} else IntentState.LINKED
+        )
