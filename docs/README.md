@@ -1,7 +1,7 @@
 # Documentation Index
 
 Status: authoritative index
-Last updated: 2026-11-02
+Last updated: 2026-11-05
 
 Start with the smallest document that matches the task.
 
@@ -101,6 +101,7 @@ Start with the smallest document that matches the task.
 - [Security](SECURITY.md)
 - [Quality score](QUALITY_SCORE.md)
 - [Execution plans](exec-plans/README.md)
+- [ANY-715 MVP rebuild plan](exec-plans/active/ANY-715-mvp-rebuild-plan.md) — Stage 0 branch/environment preparation and Draft PR publication; application remains at the QA baseline, with Stages 1–6 pending.
 - [Background billing operations](engineering/billing-background-operations.md) — worker settings, scheduling, webhook setup/rollback, operator commands, diagnostics and projection boundaries.
 
 ## Legal
