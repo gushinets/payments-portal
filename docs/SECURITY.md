@@ -201,13 +201,48 @@ paths or package PURLs. Use a package PURL for an OS-package image finding
 without `PkgPath`; adding a source path to Trivy's `paths` filter would prevent
 that exception from matching the image finding.
 
-The root npm overrides for vulnerable nanoid 3.x and `brace-expansion` 1.x
-releases are temporary security constraints. Remove the nanoid override once
-every parent that requires the 3.x line resolves `3.3.18` or newer without it.
-Remove the `brace-expansion` override once every parent that requires the 1.x
-line resolves `1.1.18` or newer without it. In both cases, regenerate the
-lockfile and confirm that npm audit and the Trivy filesystem scan remain free of
-Critical and fixable High findings before removing the override.
+### Temporary npm dependency constraints
+
+Root npm overrides are temporary security constraints:
+
+- `nanoid@<3.3.18` stays on `3.3.18`. Remove this override once every parent
+  that requires the 3.x line resolves `3.3.18` or newer without it.
+- `brace-expansion@>=1.0.0 <1.1.21` stays on `1.1.21`, covering
+  CVE-2026-102276, CVE-2026-102278 and the Medium CVE-2026-102277. Remove this
+  override once every parent that requires the 1.x line resolves `1.1.21` or
+  newer without it. Other installed release lines retain their own compatible
+  patched versions; do not force them onto 1.x.
+- `js-yaml@>=4.0.0 <4.3.2` stays on `4.3.2`. This same-major constraint covers
+  both existing affected consumers, including
+  `@hey-api/json-schema-ref-parser@1.4.4`, which pins vulnerable `4.2.0` exactly.
+  The parser is the current stable release inspected for ANY-672. Remove this
+  override once every parent that requires the 4.x line resolves `4.3.2` or
+  newer without it, including an adopted parser release with a patched
+  dependency. Preserve generated contract semantics rather than forcing a
+  transitive major upgrade.
+
+Before removing any override, regenerate the lockfile and confirm that npm
+audit and the Trivy filesystem scan remain free of Critical and fixable High
+findings, including the relevant targeted Medium findings. Verify every nested
+copy and run the affected compatibility checks.
+
+### ANY-672 withdrawn braces advisory
+
+[GHSA-vfj7-8cjw-p6xm / CVE-2026-93687](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)
+was withdrawn on 2026-10-23 because GitHub concluded it was not practically
+exploitable. The inspected npm release remains `braces 3.0.3`; no patched
+release is claimed. The current dependency path is lint tooling:
+`eslint-config-next -> @next/eslint-plugin-next -> fast-glob -> micromatch -> braces`.
+The Next.js plugin takes its glob input from ESLint configuration, not Portal
+HTTP input.
+
+On 2026-11-05 the user approved retaining this package and recording the
+withdrawal and current path instead of removing the dependency or treating the
+withdrawn advisory as an accepted active vulnerability. This decision is
+specific to this advisory. No Trivy ignore entry, severity downgrade or
+enforcement change is introduced. If a fresh Trivy database still reports this
+CVE, preserve the finding in the redacted evidence and explain the discrepancy;
+do not describe the package as patched or hide the scanner result.
 
 ## ANY-709 analyzer adjudication, PR 150
 
