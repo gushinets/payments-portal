@@ -16,6 +16,8 @@ RECONCILIATION_SCHEMA = "subscription-reconciliation:v1"
 
 
 class CommercialProof(StrEnum):
+    """A difference is classifiable only after full material reconstruction."""
+
     MATCH = "COMPLETE_MATCH"
     MISMATCH = "COMPLETE_MISMATCH"
     INCOMPLETE = "INCOMPLETE"
@@ -63,6 +65,7 @@ class SubscriptionProof:
     calendar: dict[str, str | None]
     calendar_complete: bool
     complete: bool
+    # Missing/unknown material and known differences may both be present.
     reasons: tuple[str, ...]
     # Names of successful point reads, never payloads or credentials.
     reads: tuple[str, ...]

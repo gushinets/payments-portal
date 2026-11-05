@@ -11,6 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domains.purchases.contracts import FinancialRequestDocument, Purchase
 from app.domains.billing.reconciliation_contracts import SubscriptionProof
+from app.domains.billing.readback_contracts import ScopedReadbackFinding
+from app.core.settings import Settings
 
 RESOLUTION_SCHEMA = "billing-operator-resolution:v1"
 
@@ -67,6 +69,7 @@ class ReviewInventoryProof:
     purchases: tuple[InventoryPurchase, ...]
     membership_digest: str
     candidate_count: int
+    findings: tuple[ScopedReadbackFinding, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -81,6 +84,7 @@ class ReviewResolution:
     started_at: datetime
     expires_at: datetime
     requires_inventory: bool
+    configuration: Settings
     related_case_digests: tuple[tuple[UUID, str], ...] = ()
     inventory: ReviewInventoryProof | None = None
 

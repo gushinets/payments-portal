@@ -6,12 +6,27 @@ from datetime import timedelta
 from sqlalchemy.orm import Session
 
 from app.domains.billing.operator_contracts import InventoryPurchase, ReviewResolution
+from app.domains.billing.inventory_readback import apply_findings
 from app.domains.billing.operator_case_groups import INVENTORY_CONFLICT, inventory_group, original_possible_send
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
 from app.domains.purchases.contracts import PurchaseRefused
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State
 from app.infrastructure.queries import billing_background, billing_operator, billing_reconciliation, purchases
+
+
+def lock_inventory(db: Session, resolution: ReviewResolution) -> None:
+    if resolution.inventory is None:
+        return
+    for item in sorted(
+        resolution.inventory.purchases,
+        key=lambda item: (item.purchase.accepted.selection.product_id, str(item.purchase.id)),
+    ):
+        purchase = item.purchase
+        service._locked(db, purchase)
+        purchases.operations(db, purchase.id, lock=True)
+        billing_reconciliation.scope(db, purchase.user_id, purchase.accepted.selection.product_id)
+        purchases.linked_subscription(db, purchase.id)
 
 
 def snapshot(db: Session, customer_id: UUID) -> tuple[InventoryPurchase, ...]:
@@ -83,7 +98,16 @@ def verify(db: Session, resolution: ReviewResolution) -> None:
         raise PurchaseRefused("billing_review_stale", 409)
 
 
-def audit(resolution: ReviewResolution) -> dict:
+def apply(db: Session, resolution: ReviewResolution) -> list[dict[str, str]]:
+    proof = resolution.inventory
+    if proof is None:
+        return []
+    if any(item.subject.purchase.id == resolution.purchase.id for item in proof.findings):
+        raise PurchaseRefused("billing_review_stale", 409)
+    return apply_findings(db, resolution.configuration, proof.findings)
+
+
+def audit(resolution: ReviewResolution, outcomes: list[dict[str, str]]) -> dict:
     proof = resolution.inventory
     if proof is None:
         return {}
@@ -94,6 +118,7 @@ def audit(resolution: ReviewResolution) -> dict:
             "read_finished_at": proof.read_finished_at.isoformat(),
             "membership_digest": proof.membership_digest,
             "candidate_count": proof.candidate_count,
+            "scoped_outcomes": outcomes,
             "purchases": [
                 {"purchase_intent_id": str(item.purchase.id), "review_digests": [d for _, _, d in item.reviews]}
                 for item in proof.purchases

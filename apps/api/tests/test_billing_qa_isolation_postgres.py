@@ -98,6 +98,30 @@ def product_snapshot(factory: sessionmaker[Session], product: str) -> dict[str, 
         }
 
 
+def assert_scoped_inventory_hint(before: dict, after: dict) -> None:
+    """Inventory may hint its proven neighbor, never change facts or queue ownership."""
+    for field in ("subscription", "observations", "scope"):
+        assert after[field] == before[field]
+    old_jobs = {row["work_item_id"]: row for row in before["queue"]}
+    new_jobs = {row["work_item_id"]: row for row in after["queue"]}
+    assert new_jobs.keys() == old_jobs.keys()
+    hints = 0
+    for identity, previous in old_jobs.items():
+        current = new_jobs[identity]
+        if previous["work_kind"] != work.RECONCILIATION:
+            assert current == previous
+            continue
+        hints += 1
+        assert current["enqueue_generation"] == previous["enqueue_generation"] + 1
+        assert current["priority"] == 1
+        assert current["next_attempt_at"] <= min(previous["next_attempt_at"], datetime.now(UTC))
+        changed = {"enqueue_generation", "priority", "next_attempt_at", "updated_at"}
+        assert {key: value for key, value in current.items() if key not in changed} == {
+            key: value for key, value in previous.items() if key not in changed
+        }
+    assert hints == 1
+
+
 def subscription_for(factory: sessionmaker[Session], product: str) -> ExternalSubscription:
     with factory() as db:
         return db.scalars(select(ExternalSubscription).where(ExternalSubscription.product_id == product)).one()
@@ -184,8 +208,10 @@ async def test_clean_inventory_preserves_other_product_and_payment_while_review_
     request_start = len(transport.requests)
     background_recovery.repair_batch(factory, step1_settings())
     assert await worker.tick(WorkLane.NORMAL)
-    assert product_snapshot(factory, other.accepted.selection.product_id) == untouched
-    assert product_snapshot(factory, product) == reviewed_facts
+    assert_scoped_inventory_hint(untouched, product_snapshot(factory, other.accepted.selection.product_id))
+    after_inventory = product_snapshot(factory, product)
+    assert_scoped_inventory_hint(reviewed_facts, after_inventory)
+    reviewed_facts = after_inventory
     assert service.read_purchase(factory, reviewed.user_id, reviewed.id) == before
     widget = await bootstrap_account(sources, step1_settings(), factory=factory, token=TOKEN, purchase_id=other.id)
     assert widget.purchase_id == other.id and widget.credential
@@ -240,7 +266,7 @@ async def test_reviewed_other_product_still_requires_fresh_owned_effective_term_
         assert inventory.priority == 1
         assert all(case.case_state == "open" for case in db.scalars(select(ManualReviewCase)))
     if failure == "incomplete":
-        assert product_snapshot(factory, other.accepted.selection.product_id) == untouched
+        assert_scoped_inventory_hint(untouched, product_snapshot(factory, other.accepted.selection.product_id))
     else:
         assert service.read_purchase(factory, other.user_id, other.id).state == "manual_review"
     assert service.read_purchase(factory, reviewed.user_id, reviewed.id).state == "manual_review"

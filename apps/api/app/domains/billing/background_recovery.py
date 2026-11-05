@@ -11,6 +11,8 @@ from app.domains.billing.contracts import BillingRefused, CustomerOpen
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.customer_reviews import record_customer_review
 from app.domains.billing.work_contracts import WorkClaim
+from app.domains.billing.readback_contracts import ScopedReadbackFinding
+from app.domains.billing.inventory_readback import apply_findings
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import financial, service
@@ -162,6 +164,13 @@ def subject(
         if found is None:
             raise BillingRefused("billing_recovery_unproven", 409)
         op, customer = found
+        customers.lock_user(db, customer.user_id)
+        customers.lock_customer(db, customer.customer_id)
+        if op.purchase_intent_id is not None:
+            row = purchases.owned(db, customer.user_id, op.purchase_intent_id, lock=True)
+            service._locked(db, service._snapshot(db, row))
+            purchases.operations(db, op.purchase_intent_id, lock=True)
+        db.refresh(op)
         user = db.get(User, customer.user_id)
         if (
             customer.external_billing_account_id != connection_account(db, configuration)
@@ -224,14 +233,20 @@ def finish_recovery(factory: SessionFactory, claim: WorkClaim) -> None:
             raise BillingRefused("billing_recovery_unproven", 409)
         op, customer = found
         customers.lock_user(db, customer.user_id)
+        customers.lock_customer(db, customer.customer_id)
+        billing_customers.customer_operation(db, customer.customer_id)
         if op.purchase_intent_id is not None:
             purchase = service._snapshot(db, purchases.owned(db, customer.user_id, op.purchase_intent_id))
             service._locked(db, purchase)
             purchases.operations(db, purchase.id, lock=True)
-        else:
-            customers.lock_customer(db, customer.customer_id)
-            billing_customers.customer_operation(db, customer.customer_id)
         db.refresh(op)
+        if op.operation_state == State.BOUND and op.purchase_intent_id is not None:
+            billing_reconciliation.scope(db, purchase.user_id, purchase.accepted.selection.product_id)
+            sub = purchases.linked_subscription(db, op.purchase_intent_id)
+            if sub is not None:
+                work.enroll_subscription(db, sub)
+            elif op.operation_kind == Kind.SUBSCRIPTION:
+                raise BillingRefused("billing_recovery_unproven", 409)
         queue = billing_customers.recovery_work(db, op.create_operation_id)
         if queue is not None and queue.lease_owner != claim.owner:
             return  # Shared bind already finalized, or a newer owner/hint won.
@@ -297,14 +312,22 @@ def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> None:
 
 
 def apply_inventory(
-    factory: SessionFactory, claim: WorkClaim, conflicts: tuple[Purchase, ...], reason: str | None
+    factory: SessionFactory,
+    claim: WorkClaim,
+    conflicts: tuple[Purchase, ...],
+    reason: str | None,
+    *,
+    configuration: Settings | None = None,
+    findings: tuple[ScopedReadbackFinding, ...] = (),
 ) -> None:
     """Fence all scoped conflicts and finish their shared customer job once."""
     with factory() as db:
         customer = queries.customer(db, UUID(claim.reference))
         customers.lock_user(db, customer.user_id)
+        customers.lock_customer(db, customer.customer_id)
+        billing_customers.customer_operation(db, customer.customer_id)
         locked = []
-        for purchase in conflicts:
+        for purchase in sorted(conflicts, key=lambda item: (item.accepted.selection.product_id, str(item.id))):
             row = service._locked(db, purchase)
             operations = purchases.operations(db, row.purchase_intent_id, lock=True)
             scope = billing_reconciliation.scope(db, purchase.user_id, row.product_id)
@@ -321,6 +344,10 @@ def apply_inventory(
             service._verify_original_consent(db, row, current.accepted)
             target = next(op for op in operations if op.operation_kind == Kind.SUBSCRIPTION)
             locked.append((purchase, row, operations, target, scope, subscription))
+        if findings:
+            if configuration is None:
+                raise ValueError("inventory configuration required")
+            apply_findings(db, configuration, findings)
         queue = work.verify_claim(db, claim)
         for purchase, row, operations, target, scope, subscription in locked:
             admission_only = (

@@ -15,14 +15,27 @@ from app.core.time import utc_now
 from app.domains.billing.operator_contracts import OriginalOperationProof, ResolutionRequest
 from app.domains.billing.operator_diagnostics import purchase_subscription
 from app.domains.billing.operator_review import digest, prepare_resolution
-from app.domains.billing.reconciliation_contracts import SubscriptionCandidateSubject
+from app.domains.billing.reconciliation_contracts import SubscriptionCandidateSubject, CommercialProof
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases import financial, service
+from app.domains.purchases.financial_readback import bind_original_readback
+from app.domains.billing.readback import capture_readback
+from app.domains.billing.readback_contracts import (
+    OriginalCreateReadbackSubject,
+    BoundSourceNegative,
+    NegativeBasis,
+    ReadbackRecheck,
+)
 from app.domains.purchases.contracts import PurchaseRefused
 from app.integrations.lbx.errors import LbxScopeMismatch
 from app.integrations.lbx.financial import NewAgreement, NewSubscription
-from app.integrations.lbx.reconciliation import read_subscription_proof
-from app.models import ExternalCreateOperationKind as Kind
+from app.integrations.lbx.reconciliation import read_subscription_details
+from app.models import (
+    ExternalCreateOperationKind as Kind,
+    ExternalSubscriptionFinancialAccessStatus as Financial,
+    ExternalSubscriptionLifecycleStatus as Lifecycle,
+)
+from datetime import timedelta
 
 
 async def reconcile_purchase(
@@ -81,6 +94,17 @@ async def resolve_review(
         return {"review_case_id": str(request.case_id), "outcome": "resolved", "observation_id": str(observation_id)}
     operation = next(op for op in purchase.operations if op.id == request.operation_id)
     async with sources.billing.operation() as budget:
+        readback_subject = None
+        if operation.kind == Kind.SUBSCRIPTION:
+            readback_subject = await run_in_threadpool(
+                capture_readback,
+                factory,
+                configuration,
+                purchase,
+                deadline=resolution.expires_at - timedelta(seconds=30),
+            )
+            if not isinstance(readback_subject, OriginalCreateReadbackSubject):
+                raise PurchaseRefused("billing_review_stale", 409)
         started = utc_now()
         customer = await run_in_threadpool(service.customer_for_purchase, factory, configuration, purchase)
         point = await sources.require_lbx().get_user(user_id=int(customer.provider_id), budget=budget)
@@ -114,21 +138,13 @@ async def resolve_review(
             customer,
             budget=budget,
             require_discovery=True,
-            allow_terminal=True,
+            subject=readback_subject,
         )
         if found is None:
             raise PurchaseRefused("billing_review_proof_incomplete", 409)
         provider_id, subscription = found.provider_id, found.subscription
+        found.require_original_terms(purchase, operation, customer)
         proof = None
-        if subscription is not None:
-            subject = SubscriptionCandidateSubject(
-                purchase,
-                customer,
-                str(subscription.agreement_id),
-                _operation(purchase, Kind.AGREEMENT).key,
-                str(provider_id),
-            )
-            proof = await read_subscription_proof(sources.require_lbx(), subject, configuration, budget=budget)
         if resolution.requires_inventory:
             if subscription is None:
                 raise PurchaseRefused("billing_review_proof_incomplete", 409)
@@ -136,8 +152,55 @@ async def resolve_review(
                 sources.require_lbx(), factory, resolution, customer, str(provider_id), budget=budget
             )
             resolution = replace(resolution, inventory=inventory)
+        original_proof = None
+        terminal = found.terminal
+        if subscription is not None:
+            subject = SubscriptionCandidateSubject(
+                purchase, customer, readback_subject.agreement_id, readback_subject.agreement_key, str(provider_id)
+            )
+            # The final full read set owns the target effect; inventory cannot
+            # override it with an earlier terminal point.
+            proof, subscription = await read_subscription_details(
+                sources.require_lbx(), subject, configuration, budget=budget
+            )
+            if subscription is None or not proof.complete:
+                raise PurchaseRefused("billing_review_proof_incomplete", 409)
+            original_proof = found.original_proof(readback_subject)
+            negative = None
+            if proof.financial == Financial.BLOCKED and proof.lifecycle is not None:
+                negative = BoundSourceNegative(
+                    subject.agreement_id,
+                    str(provider_id),
+                    NegativeBasis.AGREEMENT if "agreement_closed" in proof.reasons else NegativeBasis.SUBSCRIPTION,
+                    proof.lifecycle,
+                    original_proof.read_started_at,
+                    proof.read_finished_at,
+                    proof.reads,
+                    proof.reasons,
+                    CommercialProof.INCOMPLETE,
+                )
+            original_proof = replace(original_proof, read_finished_at=proof.read_finished_at, negative=negative)
+            terminal = proof.lifecycle == Lifecycle.ENDED
         budget.check()
         binding_proof = OriginalOperationProof(started, utc_now(), digest(expected), proof)
+    if original_proof is not None:
+        observation = prepared_subscription_observation(subscription, purchase, terminal=terminal)
+        try:
+            await run_in_threadpool(
+                bind_original_readback,
+                factory,
+                configuration,
+                readback_subject,
+                original_proof,
+                observation,
+                resolution=resolution,
+                resolution_proof=binding_proof,
+            )
+        except ReadbackRecheck:
+            # This command authorized an unbound operation. A foreign binding
+            # invalidates that case's absence witness, never its own output.
+            raise PurchaseRefused("billing_review_stale", 409) from None
+        return {"review_case_id": str(request.case_id), "outcome": "resolved"}
     await run_in_threadpool(
         financial.bind_financial,
         factory,

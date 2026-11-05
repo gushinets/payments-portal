@@ -413,7 +413,9 @@ async def test_billing_worker_atomic_link_enrollment_and_concurrent_sweeps(
     def fail(*args: object, **kwargs: object) -> None:
         raise RuntimeError("injected enqueue failure")
 
-    monkeypatch.setattr(financial, "enroll_subscription", fail)
+    from app.domains.purchases import financial_binding
+
+    monkeypatch.setattr(financial_binding, "enroll_subscription", fail)
     with pytest.raises(RuntimeError, match="enqueue failure"):
         historical_link(factory, purchase, transport, "brief_decoder", 1)
     assert len(subs(factory)) == 1 and len(jobs(factory)) == 1
@@ -462,6 +464,7 @@ async def test_billing_worker_embedded_lifespan_smoke_and_reserved_local_progres
     from contextlib import asynccontextmanager
     from collections.abc import AsyncIterator
     from app.core.settings import Settings
+    from app.core import database
     import httpx
     from app import main
     from app.composition.billing_worker import billing_worker_resources
@@ -480,6 +483,7 @@ async def test_billing_worker_embedded_lifespan_smoke_and_reserved_local_progres
 
     monkeypatch.setattr(main, "billing_worker_resources", resources)
     monkeypatch.setattr(main, "settings", config)
+    monkeypatch.setattr(database, "SessionLocal", factory)
     app = main.create_app()
     before = len(transport.requests)
     async with main.lifespan(app):
@@ -691,14 +695,16 @@ async def test_billing_worker_link_and_sweep_interleave_without_partial_enrollme
     transport, _, purchase = scenario
     factory = postgres_session_factory
     entered, release = Event(), Event()
-    original = financial.enroll_subscription
+    from app.domains.purchases import financial_binding
+
+    original = financial_binding.enroll_subscription
 
     def pause(db: Session, subscription: ExternalSubscription, *, hint: bool = False) -> None:
         entered.set()
         assert release.wait(5)
         original(db, subscription, hint=hint)
 
-    monkeypatch.setattr(financial, "enroll_subscription", pause)
+    monkeypatch.setattr(financial_binding, "enroll_subscription", pause)
     task = asyncio.create_task(run_in_threadpool(historical_link, factory, purchase, transport, "brief_decoder", 1))
     try:
         assert await run_in_threadpool(entered.wait, 5)
@@ -816,7 +822,7 @@ async def test_billing_worker_current_subscription_fence_still_requires_queue_ow
     assert jobs(factory)[0].lease_owner == successor.owner
 
 
-async def test_billing_worker_incomplete_first_read_cannot_expire_preparation_evidence(
+async def test_billing_worker_incomplete_first_read_cannot_expire_never_positive_evidence(
     scenario: tuple,
     postgres_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
@@ -842,7 +848,8 @@ async def test_billing_worker_incomplete_first_read_cannot_expire_preparation_ev
     assert current.projection_valid_until == original.projection_valid_until
     with factory() as db:
         evidence = db.get(BillingStateObservation, current.latest_observation_id)
-        assert evidence.access_scope_id is None and evidence.evidence_schema_version == "prepared-subscription:v1"
+        assert evidence.access_scope_id is not None and evidence.evidence_schema_version == "bound-source-negative:v1"
+        assert evidence.completeness_classification == "negative_only"
         work.enroll_subscription(db, db.get(ExternalSubscription, current.subscription_id), hint=True)
         db.commit()
     monkeypatch.setattr(sources.require_lbx(), "get_user", original_get)

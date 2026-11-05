@@ -143,10 +143,12 @@ async def test_any709_step3_complete_preparation_and_historical_manage(
         assert same.id == purchase.id and same.accepted == purchase.accepted
     with factory() as db:
         sub = db.scalar(select(ExternalSubscription))
-        assert sub.financial_access_status.value == "unverified"
+        assert sub.financial_access_status.value == "blocked"
         assert sub.projection_valid_until == sub.last_authoritative_read_at
-        for model in (PaidAccessState, PurchasedAllowance, BillingProductAccessScope):
+        for model in (PaidAccessState, PurchasedAllowance):
             assert db.scalar(select(func.count()).select_from(model)) == 0
+        scope = db.scalar(select(BillingProductAccessScope))
+        assert scope is not None and scope.primary_subscription_id is None
         assert db.scalar(select(func.count()).select_from(BillingPurchaseScopeHold)) == 1
         assert db.scalar(select(func.count()).select_from(ExternalBillingCustomer)) == 1
 
@@ -216,14 +218,14 @@ async def test_any709_step3_linked_widget_retries_after_failed_point_proof(
             assert [(op.id, op.bound_id) for op in retained.operations] == [
                 (op.id, op.bound_id) for op in prepared.operations
             ]
-            operation = next(
-                op
-                for op in retained.operations
-                if op.kind == (Kind.AGREEMENT if path.startswith("/agreements/") else Kind.SUBSCRIPTION)
-            )
+            # Canonical subscription readback owns both its agreement and child
+            # diagnostics; neither completed CREATE is reopened.
+            operation = next(op for op in retained.operations if op.kind == Kind.SUBSCRIPTION)
             with factory() as db:
                 work = db.scalar(select(BillingWorkItem).where(BillingWorkItem.coalescing_key == str(operation.id)))
-                assert work.work_state == "pending" and work.payload_document["last_failure"]
+                # A BOUND read failure schedules reconciliation; completed
+                # original CREATE recovery stays completed.
+                assert work.work_state in {"done", "completed"} and work.payload_document["last_failure"]
             failing = False
             retry_start = len(transport.requests)
             retried = await client.post("/api/billing/widget-bootstrap", json=body)
@@ -237,10 +239,11 @@ async def test_any709_step3_linked_widget_retries_after_failed_point_proof(
         assert not any("/tariffs" in request.url.path for request in transport.requests[before:])
     assert [transport.creates(path) for path in ("/users", "/agreements", "/subscriptions")] == [1, 1, 1]
     with factory() as db:
-        for model in (PaidAccessState, PurchasedAllowance, BillingProductAccessScope, ManualReviewCase):
+        for model in (PaidAccessState, PurchasedAllowance, ManualReviewCase):
             assert db.scalar(select(func.count()).select_from(model)) == 0
+        assert all(scope.primary_subscription_id is None for scope in db.scalars(select(BillingProductAccessScope)))
         sub = db.scalar(select(ExternalSubscription))
-        assert sub.financial_access_status.value == "unverified"
+        assert sub.financial_access_status.value == "blocked"
         assert sub.projection_valid_until == sub.last_authoritative_read_at
 
 
@@ -352,8 +355,9 @@ async def test_any709_step3_api_smoke_review_confirm_continue_payment(
             assert status.json()["accepted"] == accepted["accepted"] and status.json()["paid_access_granted"] is False
     assert [transport.creates(path) for path in ("/users", "/agreements", "/subscriptions")] == [1, 1, 1]
     with factory() as db:
-        for model in (PaidAccessState, PurchasedAllowance, BillingProductAccessScope):
+        for model in (PaidAccessState, PurchasedAllowance):
             assert db.scalar(select(func.count()).select_from(model)) == 0
+        assert all(scope.primary_subscription_id is None for scope in db.scalars(select(BillingProductAccessScope)))
         assert db.scalar(select(func.count()).select_from(BillingPurchaseScopeHold)) == 1
 
 

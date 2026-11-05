@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -13,13 +13,14 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.composition.billing_operator import reconcile_purchase, resolve_review
 from app.composition.purchases import recover_financial
 from app.core.errors import AppError
-from app.domains.billing import operator_review
+from app.domains.billing import operator_review, readback
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.operator_diagnostics import inspect_evidence
 from app.domains.billing.operator_review import prepare_resolution
 from app.domains.purchases import financial, service
 from app.domains.purchases.contracts import Purchase
 from app.integrations.lbx.financial import NewAgreement
+from app.integrations.lbx.readback import read_bound_finding
 from app.models import (
     AccessInvalidationOutbox,
     BillingProductAccessScope,
@@ -112,6 +113,55 @@ async def test_billing_recovery_cli_restore_original_audit_and_replay(
             request=request.model_copy(update={"reason": "Different request"}),
             principal=PRINCIPAL,
         )
+    unchanged_authority(factory, purchase)
+
+
+async def test_review_with_negative_support_requires_fresh_full_audited_restoration(
+    background_scenario: tuple, postgres_session_factory: sessionmaker[Session]
+) -> None:
+    transport, sources, _ = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    purchase, _ = await conflict(background_scenario, factory)
+    before = evidence(factory, purchase)
+    case_id = before["reviews"][0]["review_case_id"]
+    subject = readback.capture_readback(factory, config, purchase, deadline=datetime.now(UTC) + timedelta(minutes=2))
+    transport.subscriptions[0].update(current_blocking=1, total_price=None)
+    async with sources.billing.operation() as budget:
+        finding = await read_bound_finding(sources.require_lbx(), subject, budget=budget)
+    assert readback.apply_readback(factory, config, finding) == "APPLIED_NEGATIVE"
+    current = evidence(factory, purchase)
+    assert current["reviews"][0]["review_case_id"] == case_id
+    assert current["reviews"][0]["state"] == "open"
+    assert current["subscription"]["commercial"] == "ineligible"
+    assert current["observations"][0]["schema"] == "bound-source-negative:v1"
+    assert current["observations"][0]["completeness"] == "negative_only"
+    request = resolution_request(purchase, current)
+    with pytest.raises(AppError, match="billing_review_proof_incomplete"):
+        await resolve_review(sources, config, factory=factory, request=request, principal=PRINCIPAL)
+    assert evidence(factory, purchase)["reviews"][0]["state"] == "open"
+    transport.subscriptions[0]["total_price"] = 100
+    with pytest.raises(AppError, match="billing_review_stale"):
+        await resolve_review(sources, config, factory=factory, request=request, principal=PRINCIPAL)
+    # Another current negative fences the failed read's retained finite lease.
+    negative_support = request.expected_observation_id
+    subject = readback.capture_readback(factory, config, purchase, deadline=datetime.now(UTC) + timedelta(minutes=2))
+    async with sources.billing.operation() as budget:
+        finding = await read_bound_finding(sources.require_lbx(), subject, budget=budget)
+    assert readback.apply_readback(factory, config, finding) == "APPLIED_NEGATIVE"
+    request = resolution_request(purchase, evidence(factory, purchase))
+    result = await resolve_review(sources, config, factory=factory, request=request, principal=PRINCIPAL)
+    assert result["outcome"] == "resolved"
+    with factory() as db:
+        sub = db.scalar(select(ExternalSubscription))
+        assert sub.financial_access_status == "blocked"
+        support = db.get(BillingStateObservation, sub.latest_observation_id)
+        assert support.evidence_schema_version == "subscription-reconciliation:v1"
+        assert support.completeness_classification == "complete"
+        case = db.scalar(select(ManualReviewCase))
+        assert case.case_state == "resolved"
+        assert case.resolution_schema_version == "billing-operator-resolution:v1"
+        assert case.resolved_by_principal == PRINCIPAL
+        assert db.get(BillingStateObservation, negative_support).completeness_classification == "negative_only"
     unchanged_authority(factory, purchase)
 
 

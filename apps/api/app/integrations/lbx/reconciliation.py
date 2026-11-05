@@ -13,12 +13,20 @@ from app.domains.billing.reconciliation_contracts import (
     SubscriptionCandidateSubject,
     SubscriptionProof,
 )
+from app.domains.catalog.product_link import CurrentOffer
 from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.customer import LbxUser
 from app.integrations.lbx.dto import LbxRead, LbxTariff
 from app.integrations.lbx.errors import LbxError, LbxResponseInvalid, LbxScopeMismatch
-from app.integrations.lbx.financial import Agreement, Subscription, agreement_closed, prove_effective_terms
+from app.integrations.lbx.financial import (
+    Agreement,
+    MaterialInspection,
+    Subscription,
+    agreement_closed,
+    classify_lifecycle,
+    inspect_effective_terms,
+)
 from app.integrations.lbx.selected_offer import PERIOD_ANCHORS
 from app.models import (
     ExternalSubscriptionFinancialAccessStatus as Financial,
@@ -72,6 +80,38 @@ def _calendar_complete(calendar: dict[str, str | None]) -> bool:
     return True
 
 
+def _inspect_policy(policy: LbxTariff, configuration: Settings, offer: CurrentOffer) -> MaterialInspection:
+    incomplete: list[str] = []
+    differences: list[str] = []
+    for field, expected, recognized in (
+        ("payment_type", 0, {0, 1}),
+        ("balance_blocks", 1, {0, 1}),
+        ("dynamic_rent", 0, {0, 1, 2}),
+        ("dynamic_rent_unblock_type", 0, {0, 1}),
+        ("demo_period_length", 0, None),
+        ("proportional_rent", 0, {0, 1}),
+    ):
+        value = getattr(policy, field)
+        if value is None or (recognized is not None and value not in recognized):
+            incomplete.append(field)
+        elif value != expected:
+            differences.append(field)
+    if policy.float_period not in PERIOD_ANCHORS:
+        incomplete.append("float_period")
+    elif PERIOD_ANCHORS[policy.float_period] != offer.period.anchor:
+        differences.append("float_period")
+    mapping = configuration.lbx_currency_mapping
+    if mapping is None or policy.currency_id != mapping.provider_currency_id:
+        # A changed numeric ID has no ISO meaning without a matching mapping.
+        incomplete.append("currency_mapping")
+    else:
+        if mapping.iso_currency != offer.money.currency:
+            differences.append("currency")
+        if mapping.scale != offer.money.decimal_places:
+            differences.append("decimal_places")
+    return MaterialInspection(tuple(incomplete), tuple(differences))
+
+
 def normalize_subscription(
     subject: ReconciliationSubject | SubscriptionCandidateSubject,
     configuration: Settings,
@@ -122,25 +162,15 @@ def normalize_subscription(
     if identity == IdentityProof.INCOMPLETE:
         reasons.append("ownership_incomplete")
 
-    commercial = CommercialProof.INCOMPLETE
     accepted = subject.purchase.accepted
-    if subscription is not None:
-        try:
-            prove_effective_terms(
-                subscription, agreement_id=int(subject.agreement_id), selection=accepted.selection, offer=accepted.offer
-            )
-        except LbxResponseInvalid:
-            reasons.append("effective_terms_incomplete")
-        except LbxScopeMismatch:
-            commercial = CommercialProof.MISMATCH
-            reasons.append("effective_terms_mismatch")
-        else:
-            commercial = CommercialProof.MATCH
+    terms = (
+        inspect_effective_terms(subscription, selection=accepted.selection, offer=accepted.offer)
+        if subscription is not None
+        else MaterialInspection(("subscription",), ())
+    )
     # Applicable policy, not current sale visibility, catalog prices or membership.
-    policy_incomplete = False
     if tariff is None:
-        policy_incomplete = True
-        reasons.append("tariff_policy_incomplete")
+        policy = MaterialInspection(("tariff",), ())
     elif (
         # LbxRead carries the configured HTTP origin identity, whereas the
         # purchase may retain a separately proven historical storage scope.
@@ -150,88 +180,47 @@ def normalize_subscription(
         or tariff.value.tariff_id != accepted.selection.tariff_id
         or tariff.observed_at.utcoffset() is None
     ):
-        policy_incomplete = True
+        policy = MaterialInspection(("provenance",), ())
         # Contradictory source scope cannot establish this canonical subject,
         # including for a negative conclusion. An unavailable policy read is
         # different: the other owned point reads can still prove a block/end.
-        identity = IdentityProof.INCOMPLETE
+        if identity != IdentityProof.CONFLICT:
+            identity = IdentityProof.INCOMPLETE
         reasons.append("tariff_provenance_conflict")
     else:
-        policy = tariff.value
-        flags = {
-            "payment_type": 0,
-            "balance_blocks": 1,
-            "dynamic_rent": 0,
-            "dynamic_rent_unblock_type": 0,
-            "demo_period_length": 0,
-            "proportional_rent": 0,
-        }
-        mapping = configuration.lbx_currency_mapping
-        recognized = {
-            "payment_type": {0, 1},
-            "balance_blocks": {0, 1},
-            "dynamic_rent": {0, 1, 2},
-            "dynamic_rent_unblock_type": {0, 1},
-            "proportional_rent": {0, 1},
-        }
-        contradiction = (
-            any(
-                getattr(policy, field) is not None
-                and getattr(policy, field) != expected
-                and (field not in recognized or getattr(policy, field) in recognized[field])
-                for field, expected in flags.items()
-            )
-            or (
-                mapping is not None
-                and (
-                    (policy.currency_id is not None and policy.currency_id != mapping.provider_currency_id)
-                    or mapping.iso_currency != accepted.offer.money.currency
-                    or mapping.scale != accepted.offer.money.decimal_places
-                )
-            )
-            or (
-                policy.float_period in PERIOD_ANCHORS
-                and PERIOD_ANCHORS[policy.float_period] != accepted.offer.period.anchor
-            )
-        )
-        if contradiction:
-            commercial = CommercialProof.MISMATCH
-            reasons.append("unsupported_prepaid_policy")
-        elif (
-            any(getattr(policy, field) is None for field in (*flags, "currency_id", "float_period"))
-            or any(getattr(policy, field) not in values for field, values in recognized.items())
-            or policy.float_period not in PERIOD_ANCHORS
-        ):
-            policy_incomplete = True
-            reasons.append("tariff_policy_incomplete")
-        elif mapping is None:
-            commercial = CommercialProof.MISMATCH
-            reasons.append("unsupported_prepaid_policy")
-    if policy_incomplete and commercial != CommercialProof.MISMATCH:
-        commercial = CommercialProof.INCOMPLETE
+        policy = _inspect_policy(tariff.value, configuration, accepted.offer)
+    agreement_policy = MaterialInspection(
+        ("is_offer",) if agreement is None or agreement.is_offer is None else (),
+        ("is_offer",) if agreement is not None and agreement.is_offer else (),
+    )
+    inspections = (
+        (terms, "effective_terms_incomplete", "effective_terms_mismatch"),
+        (policy, "tariff_policy_incomplete", "unsupported_prepaid_policy"),
+        (agreement_policy, "agreement_policy_incomplete", "agreement_policy_mismatch"),
+    )
+    for inspection, incomplete_reason, difference_reason in inspections:
+        if inspection.incomplete_fields:
+            reasons.append(incomplete_reason)
+        if inspection.differing_fields:
+            reasons.append(difference_reason)
+    commercial = (
+        CommercialProof.INCOMPLETE
+        if any(inspection.incomplete_fields for inspection, _, _ in inspections)
+        else CommercialProof.MISMATCH
+        if any(inspection.differing_fields for inspection, _, _ in inspections)
+        else CommercialProof.MATCH
+    )
 
     lifecycle, financial = None, None
     calendar = {field: getattr(subscription, field) for field in CALENDAR_FIELDS} if subscription else {}
     calendar_complete = bool(calendar) and _calendar_complete(calendar)
     agreement_calendar_complete = True
+    lifecycle_complete = False
     if identity == IdentityProof.MATCH:
-        pair = (subscription.state, subscription.current_blocking)
-        states = {
-            (-2, 0): (Lifecycle.INACTIVE, Financial.BLOCKED, "waiting"),
-            (-1, 0): (Lifecycle.INACTIVE, Financial.BLOCKED, "inactive"),
-            (0, 0): (Lifecycle.INACTIVE, Financial.BLOCKED, "inactive"),
-            (2, 0): (Lifecycle.ACTIVE, Financial.ALLOWED, "active"),
-            (2, 1): (Lifecycle.ACTIVE, Financial.BLOCKED, "financial_block"),
-            (2, 3): (Lifecycle.ACTIVE, Financial.BLOCKED, "administrative_block"),
-            (3, 0): (Lifecycle.ENDED, Financial.BLOCKED, "ended"),
-            (3, 1): (Lifecycle.ENDED, Financial.BLOCKED, "ended"),
-            (3, 3): (Lifecycle.ENDED, Financial.BLOCKED, "ended"),
-        }
-        if pair in states:
-            lifecycle, financial, reason = states[pair]
-            reasons.append(reason)
-        else:
-            reasons.append("lifecycle_unknown")
+        state = classify_lifecycle(subscription)
+        lifecycle_complete = state.lifecycle is not None
+        lifecycle, financial = state.lifecycle, state.financial
+        reasons.append(state.reason)
         try:
             closed = agreement_closed(agreement)
         except LbxResponseInvalid:
@@ -244,13 +233,6 @@ def normalize_subscription(
                 lifecycle, financial = Lifecycle.ENDED, Financial.BLOCKED
                 calendar["agreement_close_date"] = agreement.close_date
                 reasons.append("agreement_closed")
-        if agreement.is_offer is None:
-            if commercial != CommercialProof.MISMATCH:
-                commercial = CommercialProof.INCOMPLETE
-            reasons.append("agreement_policy_incomplete")
-        elif agreement.is_offer:
-            commercial = CommercialProof.MISMATCH
-            reasons.append("agreement_policy_mismatch")
     positive = financial == Financial.ALLOWED
     if positive and not calendar_complete:
         financial = None
@@ -260,6 +242,7 @@ def normalize_subscription(
     complete = (
         identity == IdentityProof.MATCH
         and commercial != CommercialProof.INCOMPLETE
+        and lifecycle_complete
         and lifecycle is not None
         and financial is not None
         and agreement_calendar_complete
@@ -280,13 +263,13 @@ async def _timely_point[T](read: Awaitable[T], budget: PreflightBudget) -> T:
     return value
 
 
-async def read_subscription_proof(
+async def read_subscription_details(
     client: LbxServerClient,
     subject: ReconciliationSubject | SubscriptionCandidateSubject,
     configuration: Settings,
     *,
     budget: PreflightBudget,
-) -> SubscriptionProof:
+) -> tuple[SubscriptionProof, Subscription | None]:
     started = utc_now()
     user, agreement, tariff, subscription = None, None, None, None
     reads: list[str] = []
@@ -339,7 +322,7 @@ async def read_subscription_proof(
         budget.check()
     except PreflightDeadlineExceeded:
         failures.append("read_budget_exhausted")
-    return replace(
+    result = replace(
         proof,
         read_started_at=started,
         read_finished_at=utc_now(),
@@ -347,3 +330,15 @@ async def read_subscription_proof(
         complete=proof.complete and not failures,
         reasons=proof.reasons + tuple(failures),
     )
+    return result, subscription
+
+
+async def read_subscription_proof(
+    client: LbxServerClient,
+    subject: ReconciliationSubject | SubscriptionCandidateSubject,
+    configuration: Settings,
+    *,
+    budget: PreflightBudget,
+) -> SubscriptionProof:
+    proof, _ = await read_subscription_details(client, subject, configuration, budget=budget)
+    return proof

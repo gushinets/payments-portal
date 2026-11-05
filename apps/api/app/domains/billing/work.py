@@ -37,7 +37,9 @@ def reconciliation_outcome(factory: SessionFactory, observation_id: UUID) -> tup
     with factory() as db:
         observation = queries.observation(db, observation_id)
         outcome = (
-            "verified"
+            "negative"
+            if observation.completeness_classification == "negative_only"
+            else "verified"
             if observation.completeness_classification == "complete"
             and observation.result_classification == "COMPLETE_MATCH"
             else "incomplete"
@@ -222,6 +224,11 @@ def schedule_reconciliation(
             payload={},
             hint=urgent,
         )
+    preserve_trust_deadline(db, sub)
+
+
+def preserve_trust_deadline(db: Session, sub: ExternalSubscription) -> None:
+    """Repair support without extending the existing positive deadline."""
     # Renewed trust and its deterministic deadline are committed together.
     if (
         sub.latest_observation_id is not None

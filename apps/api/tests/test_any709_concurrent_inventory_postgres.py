@@ -15,12 +15,21 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.composition import purchases
+from app.composition.purchase_recovery import FinancialRecoveryResult
+from app.core.settings import Settings
+from app.domains.billing import readback
+from app.domains.billing.readback_contracts import (
+    OriginalCreateReadbackSubject,
+    OriginalCreateProof,
+    ReadbackApplyResult,
+)
+from app.domains.purchases import financial_readback
 from app.composition.sources import source_resources
 from app.domains.billing.contracts import CustomerOpen
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.catalog.link_publication import publish_product_link
 from app.domains.catalog.publication import SessionFactory
-from app.domains.purchases import financial, service
+from app.domains.purchases import service
 from app.domains.purchases.contracts import (
     FinancialOperation,
     LegalSelection,
@@ -34,7 +43,7 @@ from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.financial import NewSubscription
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State
-from app.models import PurchaseIntent
+from app.models import PurchaseIntent, ExternalCreateOperation
 from apps.api.tests.support.any709_step1 import link_document, link_selection, step1_settings
 from apps.api.tests.test_any709_review_fixes_postgres import add_second_period
 from apps.api.tests.test_any709_step3_postgres import TOKEN, accept, setup_purchase
@@ -124,8 +133,8 @@ async def test_sibling_inventory_waits_for_original_preparation_without_hiding_c
             factory: SessionFactory,
             *,
             budget: PreflightBudget,
-            payment_presentation: bool = False,
-        ) -> bool:
+            configuration: Settings,
+        ) -> FinancialRecoveryResult:
             if purchase.id == first.id and operation.kind == Kind.SUBSCRIPTION:
                 entered.set()
                 await release.wait()
@@ -136,7 +145,7 @@ async def test_sibling_inventory_waits_for_original_preparation_without_hiding_c
                 customer,
                 factory,
                 budget=budget,
-                payment_presentation=payment_presentation,
+                configuration=configuration,
             )
 
         if checkpoint == "before_receipt":
@@ -243,24 +252,24 @@ async def test_sibling_completion_between_inventory_reads_keeps_purchase_retryab
         writer_ready = threading.Event()
         writer_pid: list[int] = []
         original_bind, original_lookup, original_locked = (
-            financial.bind_financial,
+            financial_readback.bind_original_readback,
             queries.agreement_purchase,
-            financial._locked,
+            readback._lock_purchase,
         )
 
         def pause_bind(
             factory: SessionFactory,
-            purchase: Purchase,
-            operation: FinancialOperation,
-            provider_id: int,
+            configuration: Settings,
+            subject: OriginalCreateReadbackSubject,
+            proof: OriginalCreateProof,
+            observation: PreparedSubscriptionObservation,
             *,
-            observation: PreparedSubscriptionObservation | None = None,
             work_claim: WorkClaim | None = None,
-        ) -> None:
-            if purchase.id == first.id and operation.kind == Kind.SUBSCRIPTION:
+        ) -> ReadbackApplyResult:
+            if subject.purchase.id == first.id:
                 bind_ready.set()
                 assert allow_bind.wait(10)
-            original_bind(factory, purchase, operation, provider_id, observation=observation, work_claim=work_claim)
+            return original_bind(factory, configuration, subject, proof, observation, work_claim=work_claim)
 
         def pause_lookup(
             db: Session, *, user_id: UUID, customer_id: UUID, account_id: str, agreement_id: str
@@ -273,19 +282,24 @@ async def test_sibling_completion_between_inventory_reads_keeps_purchase_retryab
                 assert allow_snapshot.wait(10)
             return row
 
-        def observe_writer(db: Session, purchase: Purchase) -> PurchaseIntent:
+        def observe_writer(
+            db: Session,
+            configuration: Settings,
+            purchase: Purchase,
+            expected_customer: CustomerOpen | None = None,
+        ) -> tuple[PurchaseIntent, CustomerOpen, list[ExternalCreateOperation]]:
             if purchase.id == first.id and lookup_ready.is_set():
                 writer_pid.append(db.execute(text("SELECT pg_backend_pid()")).scalar_one())
                 writer_ready.set()
-            return original_locked(db, purchase)
+            return original_locked(db, configuration, purchase, expected_customer)
 
         def writer_waiting() -> bool:
             with migrated_database.connect() as db:
                 return bool(db.scalar(text("SELECT cardinality(pg_blocking_pids(:pid)) > 0"), {"pid": writer_pid[0]}))
 
-        monkeypatch.setattr(financial, "bind_financial", pause_bind)
+        monkeypatch.setattr(financial_readback, "bind_original_readback", pause_bind)
         monkeypatch.setattr(queries, "agreement_purchase", pause_lookup)
-        monkeypatch.setattr(financial, "_locked", observe_writer)
+        monkeypatch.setattr(readback, "_lock_purchase", observe_writer)
         task_a = asyncio.create_task(
             purchases.advance_purchase(sources, configuration, factory=factory, token=TOKEN, purchase_id=first.id)
         )

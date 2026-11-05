@@ -290,6 +290,7 @@ def prepare_resolution(
             now,
             now + timedelta(seconds=io_timeout_seconds + 30),
             requires_inventory=any(item.reason_code == INVENTORY_CONFLICT for item in (case, *related)),
+            configuration=configuration,
             related_case_digests=tuple((item.review_case_id, case_digest(item)) for item in related),
         )
 
@@ -360,6 +361,7 @@ def authorize_resolution(
             or subscription.reconciliation_fencing_token != request.expected_reconciliation_fence + 1
         ):
             raise PurchaseRefused("billing_review_stale", 409)
+    scoped_outcomes = operator_inventory.apply(db, resolution)
     for op in operations:
         if restoring or op.create_operation_id != request.operation_id:
             # Reject financial callbacks/inventory begun before this audited
@@ -374,7 +376,7 @@ def authorize_resolution(
         row.state_updated_at = now
     # The case and resulting facts commit together. Failure anywhere rolls both back.
     document = {
-        **operator_inventory.audit(resolution),
+        **operator_inventory.audit(resolution, scoped_outcomes),
         "command_digest": command_digest(request, resolution.principal),
         "resolution": request.resolution,
         "reason": request.reason,

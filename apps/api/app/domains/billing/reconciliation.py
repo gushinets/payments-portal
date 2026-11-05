@@ -15,6 +15,7 @@ from app.domains.billing.reconciliation_contracts import (
     ReconciliationSubject,
     SubscriptionProof,
 )
+from app.domains.billing.reconciliation_facts import apply_source_facts
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
@@ -32,14 +33,11 @@ from app.models import (
     ExternalBillingCustomerBindingState as Binding,
     ExternalCreateOperationKind as Kind,
     ExternalCreateOperationState as State,
-    ExternalSubscriptionCommercialAccessStatus as Commercial,
-    ExternalSubscriptionFinancialAccessStatus as Financial,
     ExternalSubscriptionLifecycleStatus as Lifecycle,
     ManualReviewCase,
     PurchaseIntentState,
 )
 
-SOURCE_TRUST = timedelta(hours=6)
 APPLY_SAFETY_SECONDS = 30
 
 
@@ -169,6 +167,10 @@ def apply_reconciliation(
         lock_user(db, purchase.user_id)
         customer = lock_customer(db, purchase.customer_id)
         customer_op = customer_operation(db, customer.customer_id)
+        if resolution is not None:
+            from app.domains.billing.operator_inventory import lock_inventory
+
+            lock_inventory(db, resolution)
         row = service._locked(db, purchase)
         operations = purchases.operations(db, purchase.id, lock=True)
         scope = queries.scope(db, purchase.user_id, purchase.accepted.selection.product_id)
@@ -219,6 +221,11 @@ def apply_reconciliation(
                 raise BillingRefused("billing_work_stale", 409)
             verify_claim(db, work_claim)
         service._verify_original_consent(db, row, purchase.accepted)
+        latest = (
+            db.get(BillingStateObservation, current.latest_observation_id) if current.latest_observation_id else None
+        )
+        if latest is not None and as_utc(latest.observed_at) > proof.read_started_at:
+            raise BillingRefused("subscription_reconciliation_stale", 409)
         resolved_case = None
         if resolution is not None:
             from app.domains.billing.operator_review import authorize_resolution
@@ -310,28 +317,14 @@ def apply_reconciliation(
                         case_state="open",
                     )
                 )
-        if (
-            proof.identity == IdentityProof.MATCH
-            and proof.financial == Financial.BLOCKED
-            and current.lifecycle_status != Lifecycle.ENDED
-        ):
-            current.lifecycle_status = proof.lifecycle
-        if conflict or known_review or customer_conflict:
-            current.commercial_access_status = Commercial.INELIGIBLE
-            current.financial_access_status = Financial.BLOCKED
-            if conflict or customer_conflict or proof.complete:
-                current.latest_observation_id = observation.observation_id
-        elif proof.financial == Financial.BLOCKED:
-            current.lifecycle_status = proof.lifecycle
-            current.financial_access_status = Financial.BLOCKED
-            current.latest_observation_id = observation.observation_id
-        if proof.complete and not conflict and not known_review:
-            current.lifecycle_status = proof.lifecycle
-            current.financial_access_status = proof.financial
-            current.commercial_access_status = Commercial.ELIGIBLE
-            current.last_authoritative_read_at = proof.read_started_at
-            current.projection_valid_until = proof.read_started_at + SOURCE_TRUST
-            current.latest_observation_id = observation.observation_id
+        apply_source_facts(
+            current,
+            proof,
+            observation.observation_id,
+            conflict=bool(conflict),
+            known_review=known_review,
+            customer_conflict=customer_conflict,
+        )
         # Incomplete attempts append evidence, preserving finite LKG support.
         # A negative with incomplete commercial proof reduces usability above,
         # but never renews trust. No paid-access writer runs in this step.

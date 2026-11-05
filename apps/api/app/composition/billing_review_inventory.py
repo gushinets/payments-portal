@@ -1,6 +1,9 @@
 """Bounded GET-only competition proof for an explicit original-purchase resolution."""
 
 from app.core.time import utc_now
+from datetime import timedelta
+from app.domains.billing.inventory_readback import capture_inventory_in_transaction
+from app.domains.billing.readback_contracts import BoundReadbackSubject
 from app.domains.billing import operator_inventory
 from app.domains.billing.contracts import CustomerOpen
 from app.domains.billing.operator_contracts import InventoryPurchase, ReviewInventoryProof, ReviewResolution
@@ -10,6 +13,7 @@ from app.domains.purchases.contracts import PurchaseRefused
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.financial import NewSubscription, inventory_terminal, prove_agreement, prove_effective_terms
+from app.integrations.lbx.readback import inspect_readback
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State, PurchaseIntentState
 from starlette.concurrency import run_in_threadpool
 
@@ -57,13 +61,22 @@ async def read_review_inventory(
     *,
     budget: PreflightBudget,
 ) -> ReviewInventoryProof:
-    started = utc_now()
-
-    def load() -> tuple[InventoryPurchase, ...]:
+    def load() -> tuple[tuple[InventoryPurchase, ...], tuple[BoundReadbackSubject, ...]]:
         with factory() as db:
-            return operator_inventory.snapshot(db, current.customer_id)
+            readbacks = capture_inventory_in_transaction(
+                db,
+                resolution.configuration,
+                current.customer_id,
+                deadline=resolution.expires_at - timedelta(seconds=30),
+            )
+            subjects = operator_inventory.snapshot(db, current.customer_id)
+            db.commit()
+            return subjects, readbacks
 
-    subjects = await run_in_threadpool(load)
+    subjects, readbacks = await run_in_threadpool(load)
+    started = utc_now()
+    user = await client.get_user(user_id=int(current.provider_id), budget=budget)
+    findings = []
     if not any(item.purchase == resolution.purchase for item in subjects):
         raise PurchaseRefused("billing_review_stale", 409)
     rows = await client.discover_subscriptions(user_id=int(current.provider_id), budget=budget)
@@ -84,6 +97,27 @@ async def read_review_inventory(
         agreement = await client.get_agreement(agreement_id=point.agreement_id, budget=budget)
         if agreement.user_id != int(current.provider_id):
             raise PurchaseRefused("purchase_existing_subscription_review", 409)
+        bound = next(
+            (
+                item
+                for item in readbacks
+                if item.purchase.id != resolution.purchase.id
+                and (item.provider_subscription_id, item.agreement_id)
+                == (str(candidate.subscription_id), str(candidate.agreement_id))
+            ),
+            None,
+        )
+        if bound is not None:
+            findings.append(
+                inspect_readback(
+                    bound,
+                    user=user,
+                    agreement=agreement,
+                    subscription=point,
+                    window=(started, utc_now()),
+                    reads=("customer", "agreement", "subscription"),
+                )
+            )
         if inventory_terminal(point, agreement):
             continue
         subject = _owner(subjects, resolution, str(candidate.subscription_id), str(point.agreement_id), original_id)
@@ -124,4 +158,4 @@ async def read_review_inventory(
     if membership != sorted((row.subscription_id, row.agreement_id, row.tariff_id) for row in again):
         raise PurchaseRefused("purchase_inventory_incomplete", 409)
     budget.check()
-    return ReviewInventoryProof(started, utc_now(), subjects, digest(membership), len(relevant))
+    return ReviewInventoryProof(started, utc_now(), subjects, digest(membership), len(relevant), tuple(findings))

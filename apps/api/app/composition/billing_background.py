@@ -3,6 +3,9 @@
 from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import UUID
+from datetime import timedelta
+from app.core.time import utc_now
+from app.domains.billing.inventory_readback import capture_inventory
 
 from app.composition.billing import recover_customer
 from app.composition.purchases import MAX_RELEVANT_SUBSCRIPTIONS, _inventory, recover_financial
@@ -100,6 +103,14 @@ async def _inventory_customer(
     delegate: Callable[..., Awaitable[Any]],
 ) -> None:
     current, purchases = await delegate(recovery.customer_snapshot, factory, configuration, UUID(claim.reference))
+    subjects = await delegate(
+        capture_inventory,
+        factory,
+        configuration,
+        current.customer_id,
+        deadline=utc_now() + timedelta(seconds=budget.remaining_seconds()),
+    )
+    started = utc_now()
     point = await client.get_user(user_id=int(current.provider_id), budget=budget)
     if point.outer_id is None:
         raise LbxResponseInvalid()
@@ -112,6 +123,7 @@ async def _inventory_customer(
         await delegate(recovery.apply_inventory, factory, claim, (), "inventory_incomplete")
         return
     conflicts = []
+    findings = {}
     incomplete = False
     # Share successful reads only within this attempt; each purchase still
     # requires its own original ownership and accepted-term proof.
@@ -120,7 +132,7 @@ async def _inventory_customer(
     try:
         for purchase in purchases:
             try:
-                await _inventory(
+                result = await _inventory(
                     client,
                     purchase,
                     current,
@@ -130,7 +142,12 @@ async def _inventory_customer(
                     inventory=rows,
                     subscription_points=subscription_points,
                     agreement_points=agreement_points,
+                    subjects=subjects,
+                    user=point,
+                    read_started_at=started,
                 )
+                findings.update((item.subject.purchase.id, item) for item in result.findings)
+                result.require_complete()
             except (LbxError, PurchaseRefused) as error:
                 budget.check()
                 conflict = isinstance(error, LbxScopeMismatch) or (
@@ -153,13 +170,44 @@ async def _inventory_customer(
             claim,
             tuple(conflicts),
             "inventory_conflict" if conflicts else "inventory_incomplete",
+            configuration=configuration,
+            findings=tuple(findings.values()),
         )
         return
-    again = await client.discover_subscriptions(user_id=int(current.provider_id), budget=budget)
+    try:
+        again = await client.discover_subscriptions(user_id=int(current.provider_id), budget=budget)
+        budget.check()
+    except AppError:
+        await delegate(
+            recovery.apply_inventory,
+            factory,
+            claim,
+            (),
+            "inventory_incomplete",
+            configuration=configuration,
+            findings=tuple(findings.values()),
+        )
+        return
     if {(row.subscription_id, row.agreement_id, row.tariff_id) for row in rows} != {
         (row.subscription_id, row.agreement_id, row.tariff_id) for row in again
     }:
-        await delegate(recovery.apply_inventory, factory, claim, (), "inventory_incomplete")
+        await delegate(
+            recovery.apply_inventory,
+            factory,
+            claim,
+            (),
+            "inventory_incomplete",
+            configuration=configuration,
+            findings=tuple(findings.values()),
+        )
         return
     budget.check()
-    await delegate(recovery.apply_inventory, factory, claim, (), None)
+    await delegate(
+        recovery.apply_inventory,
+        factory,
+        claim,
+        (),
+        None,
+        configuration=configuration,
+        findings=tuple(findings.values()),
+    )

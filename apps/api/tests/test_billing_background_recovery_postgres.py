@@ -430,13 +430,14 @@ async def test_billing_background_recovery_bound_terminal_uses_lifecycle_not_pre
         sources, step1_settings(), factory=factory, user_id=purchase.user_id, purchase_id=purchase.id
     )
     assert result == purchase and result.held
-    assert not any("/subscriptions" in request.url.path for request in transport.requests[count:])
+    assert any("/subscriptions/567" in request.url.path for request in transport.requests[count:])
     recovery.repair_batch(factory, step1_settings())
     worker = BillingWorker(step1_settings(), factory, sources.require_lbx())
     assert await worker.tick(WorkLane.NORMAL)
     with factory() as db:
         ended = db.get(ExternalSubscription, sub.subscription_id)
-        assert (ended.latest_observation_id, ended.projection_valid_until) == before
+        assert ended.latest_observation_id != before[0] and ended.projection_valid_until == before[1]
+        assert ended.lifecycle_status == Lifecycle.ENDED and ended.financial_access_status == "blocked"
         assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
     await worker.aclose()
 

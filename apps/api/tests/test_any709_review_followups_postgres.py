@@ -22,7 +22,11 @@ from app.domains.catalog.commercial_offer import SelectedOfferRefused
 from app.domains.purchases import service
 from app.domains.purchases.contracts import Purchase, PurchaseRefused
 from app.integrations.lbx.errors import LbxCreateNotSent
-from app.models import ExternalBillingCustomer, ExternalCreateOperationState as State
+from app.models import (
+    ExternalBillingCustomer,
+    ExternalCreateOperationKind as Kind,
+    ExternalCreateOperationState as State,
+)
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.support.kernel import manifest_fixture, resign
 from apps.api.tests.test_any709_step3_postgres import TOKEN, accept, setup_purchase
@@ -197,7 +201,10 @@ async def test_concurrent_widget_opens_ignore_diagnostics_but_reject_real_confli
                     with pytest.raises(AppError, match="purchase_not_prepared"):
                         await bootstrap_account(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
                     failed = service.read_purchase(factory, purchase.user_id, purchase.id)
-                    assert failed.operations[0].last_failure_code is not None
+                    assert (
+                        next(op for op in failed.operations if op.kind == Kind.SUBSCRIPTION).last_failure_code
+                        is not None
+                    )
                     assert [(op.state, op.bound_id, op.fence) for op in failed.operations] == [
                         (op.state, op.bound_id, op.fence) for op in prepared.operations
                     ]

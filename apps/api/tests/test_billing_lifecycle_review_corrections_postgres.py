@@ -74,6 +74,7 @@ async def test_financial_point_conflict_immediately_withdraws_trusted_subscripti
         transport.agreements[0]["organization_id"] = 999
     else:
         transport.subscriptions[0]["services"][0]["price"] = 15
+        transport.subscriptions[0]["total_price"] = 15
     calls = len(transport.requests)
     if entrypoint == "widget":
         with pytest.raises(BillingRefused, match="purchase_not_prepared"):
@@ -170,15 +171,15 @@ async def test_terminal_block_immediately_supersedes_allowed(
 
 
 @pytest.mark.parametrize(
-    "change,conflict",
+    "change,known_difference",
     [({"balance_blocks": 0}, True), ({"payment_type": 1}, True), ({"balance_blocks": 99}, False), ({}, False)],
 )
-async def test_partial_policy_preserves_contradiction_but_not_unknown_values(
+async def test_partial_policy_preserves_difference_without_classifying_mismatch(
     background_scenario: tuple,
     postgres_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
     change: dict[str, int],
-    conflict: bool,
+    known_difference: bool,
 ) -> None:
     transport, sources, purchase = background_scenario
     factory = postgres_session_factory
@@ -193,11 +194,10 @@ async def test_partial_policy_preserves_contradiction_but_not_unknown_values(
 
     monkeypatch.setattr(sources.require_lbx(), "get_tariff", changed)
     observation = await run(sources, factory)
-    assert observation.evidence_document["commercial"] == ("COMPLETE_MISMATCH" if conflict else "INCOMPLETE")
-    if conflict:
-        assert snapshot(factory)[2:4] == ("blocked", "ineligible")
-    else:
-        assert snapshot(factory) == before
+    assert observation.evidence_document["commercial"] == "INCOMPLETE"
+    assert ("unsupported_prepaid_policy" in observation.evidence_document["reasons"]) is known_difference
+    assert "tariff_policy_incomplete" in observation.evidence_document["reasons"]
+    assert snapshot(factory) == before
     assert snapshot(factory)[4:6] == before[4:6]
 
 
@@ -392,7 +392,7 @@ async def test_closed_original_agreement_does_not_authorize_next_create(
 
 
 @pytest.mark.parametrize("case", ["ended", "closed"])
-async def test_terminal_advance_hints_reconciliation_without_replacing_authority_or_reviving_trust(
+async def test_terminal_advance_restricts_before_return_without_reviving_trust(
     background_scenario: tuple, postgres_session_factory: sessionmaker[Session], case: str
 ) -> None:
     transport, sources, purchase = background_scenario
@@ -405,7 +405,9 @@ async def test_terminal_advance_hints_reconciliation_without_replacing_authority
     else:
         transport.agreements[0]["close_date"] = "2026-11-03"
     await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
-    assert snapshot(factory) == before
+    after = snapshot(factory)
+    assert after[1:3] == ("ended", "blocked")
+    assert after[0] == before[0] and after[3:6] == before[3:6] and after[6] != before[6]
     with factory() as db:
         queue = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == "subscription_reconciliation"))
         assert queue.priority == 1 and queue.next_attempt_at <= datetime.now(UTC)
@@ -431,7 +433,8 @@ async def test_terminal_recovery_hint_survives_an_earlier_reconciliation_without
         old_proof = await read_subscription_proof(sources.require_lbx(), subject, config, budget=budget)
     transport.subscriptions[0]["state"] = 3
     await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
-    apply_reconciliation(factory, subject, old_proof)
+    with pytest.raises(BillingRefused, match="subscription_reconciliation_stale"):
+        apply_reconciliation(factory, subject, old_proof)
     with factory() as db:
         assert not list(db.scalars(select(ManualReviewCase)))
         queue = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == "subscription_reconciliation"))
@@ -477,3 +480,50 @@ async def test_operator_resolution_accepts_closed_sibling_without_resolving_it(
     assert result["outcome"] == "resolved"
     assert service.read_purchase(factory, first.user_id, first.id).state == "linked"
     assert service.read_purchase(factory, second.user_id, second.id).state == "manual_review"
+
+
+@pytest.mark.parametrize("entrypoint", ["advance", "widget"])
+@pytest.mark.parametrize(
+    "case",
+    ["unknown_state", "unknown_block", "partial_price", "partial_period", "partial_composition", "unknown_currency"],
+)
+async def test_incomplete_financial_read_does_not_create_permanent_review(
+    background_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    entrypoint: str,
+    case: str,
+) -> None:
+    transport, sources, purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    purchase = synthetic_prepare(factory, transport, purchase, uncertain=False)
+    await run(sources, factory)
+    before = snapshot(factory)
+    history = {op.id: original(factory, op.id) for op in purchase.operations}
+    point = transport.subscriptions[0]
+    if case == "unknown_state":
+        point["state"] = 99
+    elif case == "unknown_block":
+        point["current_blocking"] = 99
+    elif case == "unknown_currency":
+        point["currency_symbol"] = "USD"
+    else:
+        point["total_price"] = None
+        if case == "partial_price":
+            point["services"][0]["price"] = 150
+        elif case == "partial_period":
+            point["period_length"] = 2
+        else:
+            point["services"] = []
+    creates = [transport.creates(path) for path in ("/users", "/agreements", "/subscriptions")]
+    if entrypoint == "widget":
+        with pytest.raises(BillingRefused, match="purchase_not_prepared"):
+            await bootstrap_account(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+    else:
+        await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+    assert snapshot(factory) == before
+    saved = service.read_purchase(factory, purchase.user_id, purchase.id)
+    assert saved.state != "manual_review" and saved.held and saved.accepted == purchase.accepted
+    assert {op.id: original(factory, op.id) for op in saved.operations} == history
+    assert [transport.creates(path) for path in ("/users", "/agreements", "/subscriptions")] == creates
+    with factory() as db:
+        assert not list(db.scalars(select(ManualReviewCase)))

@@ -7,6 +7,7 @@ are incomplete proof; mutable outer_id and catalog tariff_price are not identity
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Any, Literal
@@ -17,12 +18,12 @@ from app.domains.catalog.product_link import CurrentOffer, ProductLinkRequest
 from app.integrations.lbx.customer import PrivateDto
 from app.integrations.lbx.dto import ExactNumber
 from app.integrations.lbx.errors import LbxResponseInvalid, LbxScopeMismatch
+from app.models import (
+    ExternalSubscriptionFinancialAccessStatus as Financial,
+    ExternalSubscriptionLifecycleStatus as Lifecycle,
+)
 
 Id = Annotated[int, Field(strict=True, gt=0)]
-
-
-class LbxFinancialEnded(LbxScopeMismatch):
-    """Matching terminal objects fail preparation but are ordinary payment refusal."""
 
 
 class Agreement(PrivateDto):
@@ -145,9 +146,7 @@ def agreement_closed(point: Agreement) -> bool:
     return True
 
 
-def prove_agreement(
-    point: Agreement, *, user_id: int, seller_id: int, number: str, allow_terminal: bool = False
-) -> None:
+def prove_agreement(point: Agreement, *, user_id: int, seller_id: int, number: str) -> None:
     if point.organization_id is None or point.agreement_number is None or point.is_offer is None:
         raise LbxResponseInvalid()
     if (point.user_id, point.organization_id, point.agreement_number, point.is_offer) != (
@@ -157,8 +156,7 @@ def prove_agreement(
         False,
     ):
         raise LbxScopeMismatch()
-    if agreement_closed(point) and not allow_terminal:
-        raise LbxFinancialEnded()
+    agreement_closed(point)  # Calendar validity; terminal state is an admission decision.
 
 
 def prove_subscription(
@@ -167,82 +165,128 @@ def prove_subscription(
     agreement_id: int,
     selection: ProductLinkRequest,
     offer: CurrentOffer,
-    allow_terminal: bool = False,
 ) -> None:
-    # Preparation deliberately excludes terminal subscriptions. Lifecycle reads
-    # share the effective-term proof below without inheriting this restriction.
-    if point.state is None or point.current_blocking is None:
-        raise LbxResponseInvalid()
-    if point.state == 3 and point.current_blocking in {0, 1, 3}:
-        prove_effective_terms(point, agreement_id=agreement_id, selection=selection, offer=offer)
-        if not allow_terminal:
-            raise LbxFinancialEnded()
-        return
-    if point.state not in {-2, -1, 0, 2} or point.current_blocking not in {0, 1, 3}:
+    if point.agreement_id != agreement_id:
         raise LbxScopeMismatch()
+    lifecycle = classify_lifecycle(point)
+    if lifecycle.lifecycle is None:
+        raise LbxResponseInvalid()
     prove_effective_terms(point, agreement_id=agreement_id, selection=selection, offer=offer)
+
+
+@dataclass(frozen=True)
+class MaterialInspection:
+    """Incomplete interpretation and known differences are independent facts."""
+
+    incomplete_fields: tuple[str, ...]
+    differing_fields: tuple[str, ...]
+
+
+def inspect_effective_terms(
+    point: Subscription, *, selection: ProductLinkRequest, offer: CurrentOffer
+) -> MaterialInspection:
+    """Inspect every applicable material field without granting admission."""
+    incomplete: list[str] = []
+    differences: list[str] = []
+
+    def compare(field: str, value: object, wanted: object) -> None:
+        if value is None:
+            incomplete.append(field)
+        elif value != wanted:
+            differences.append(field)
+
+    for field, wanted in (
+        ("tariff_id", selection.tariff_id),
+        ("period_id", selection.period_id),
+        ("period_length", offer.period.length),
+        ("is_demo", False),
+        ("is_offer_agrm", False),
+        ("total_price", offer.money.recurring_amount),
+    ):
+        compare(field, getattr(point, field), wanted)
+    if point.period_type not in {1, 2, 3, 4}:
+        incomplete.append("period_type")
+    else:
+        compare("period_type", point.period_type, {"day": 1, "week": 2, "month": 3, "year": 4}[offer.period.unit])
+    # Only the supported ruble aliases have established money meaning here.
+    # An arbitrary symbol cannot prove another ISO currency.
+    if point.currency_symbol is None or point.currency_symbol.casefold() not in {"rub", "руб", "₽"}:
+        incomplete.append("currency_symbol")
+    else:
+        compare("currency", "RUB", offer.money.currency)
+        compare("decimal_places", 2, offer.money.decimal_places)
+    if point.services is None:
+        incomplete.append("services")
+    else:
+        if len(point.services) != 1:
+            differences.append("services")
+        for index, service in enumerate(point.services):
+            prefix = f"services[{index}]."
+            for field, wanted in (
+                ("tariff_service_id", selection.tariff_service_id),
+                ("multiplicator", Decimal(selection.quantity)),
+                ("price", offer.money.recurring_unit_amount),
+                ("bulk_service", False),
+            ):
+                compare(prefix + field, getattr(service, field), wanted)
+            if service.periodic_service not in {0, 1}:
+                incomplete.append(prefix + "periodic_service")
+            else:
+                compare(prefix + "periodic_service", service.periodic_service, 1)
+            # Swagger does not promise these fields for the supported zero
+            # charges. A nonzero accepted connection charge needs explicit proof.
+            if service.connection_price is not None or offer.money.connection_amount != 0:
+                compare(prefix + "connection_price", service.connection_price, offer.money.connection_unit_amount)
+            for field in ("bulk_price", "bulk_include_amount"):
+                if getattr(service, field) not in {None, Decimal(0)}:
+                    differences.append(prefix + field)
+    return MaterialInspection(tuple(incomplete), tuple(differences))
 
 
 def prove_effective_terms(
     point: Subscription, *, agreement_id: int, selection: ProductLinkRequest, offer: CurrentOffer
 ) -> None:
-    """Compare accepted effective terms, independently of lifecycle/calendar."""
-    # Known contradictions are decisive even when another required field is
-    # missing. Only a positive match requires every effective term below.
-    expected = (
-        (point.agreement_id, agreement_id),
-        (point.tariff_id, selection.tariff_id),
-        (point.period_id, selection.period_id),
-        (point.period_type, {"day": 1, "week": 2, "month": 3, "year": 4}[offer.period.unit]),
-        (point.period_length, offer.period.length),
-        (point.is_demo, False),
-        (point.is_offer_agrm, False),
-        (point.total_price, offer.money.recurring_amount),
-    )
-    if any(value is not None and value != wanted for value, wanted in expected):
+    """Strict purpose-specific admission; lifecycle/calendar are independent."""
+    if point.agreement_id != agreement_id:
         raise LbxScopeMismatch()
-    if offer.money.currency != "RUB" or (
-        point.currency_symbol is not None and point.currency_symbol.casefold() not in {"rub", "руб", "₽"}
-    ):
-        raise LbxScopeMismatch()
-    required = (
-        point.period_id,
-        point.period_type,
-        point.period_length,
-        point.is_demo,
-        point.is_offer_agrm,
-        point.currency_symbol,
-        point.total_price,
-        point.services,
-    )
-    if point.services is not None:
-        if len(point.services) != 1:
-            raise LbxScopeMismatch()
-        service = point.services[0]
-        expected_service = (
-            (service.tariff_service_id, selection.tariff_service_id),
-            (service.multiplicator, Decimal(selection.quantity)),
-            (service.price, offer.money.recurring_unit_amount),
-            (service.periodic_service, 1),
-            (service.bulk_service, False),
-            (service.connection_price, offer.money.connection_unit_amount),
-        )
-        if (
-            any(value is not None and value != wanted for value, wanted in expected_service)
-            or service.bulk_price not in {None, Decimal(0)}
-            or service.bulk_include_amount not in {None, Decimal(0)}
-        ):
-            raise LbxScopeMismatch()
-        required += (service.multiplicator, service.price, service.periodic_service, service.bulk_service)
-        # Swagger does not promise connection_price. A nonzero accepted charge
-        # still needs explicit effective evidence before a positive match.
-        if offer.money.connection_amount != 0:
-            required += (service.connection_price,)
-    if any(value is None for value in required):
+    inspection = inspect_effective_terms(point, selection=selection, offer=offer)
+    if inspection.incomplete_fields:
         raise LbxResponseInvalid()
+    if inspection.differing_fields:
+        raise LbxScopeMismatch()
+
+
+@dataclass(frozen=True)
+class LifecycleInspection:
+    lifecycle: Lifecycle | None
+    financial: Financial | None
+    reason: str
+
+
+def classify_lifecycle(point: Subscription) -> LifecycleInspection:
+    """One interpretation for reconciliation, preparation and inventory."""
+    states = {
+        -2: (Lifecycle.INACTIVE, "waiting"),
+        -1: (Lifecycle.INACTIVE, "inactive"),
+        0: (Lifecycle.INACTIVE, "inactive"),
+        2: (Lifecycle.ACTIVE, "active"),
+        3: (Lifecycle.ENDED, "ended"),
+    }
+    blocks = {0: "active", 1: "financial_block", 3: "administrative_block"}
+    if point.state not in states or point.current_blocking not in blocks:
+        return LifecycleInspection(None, None, "lifecycle_unknown")
+    lifecycle, reason = states[point.state]
+    if lifecycle == Lifecycle.ACTIVE:
+        return LifecycleInspection(
+            lifecycle,
+            Financial.ALLOWED if point.current_blocking == 0 else Financial.BLOCKED,
+            blocks[point.current_blocking],
+        )
+    return LifecycleInspection(lifecycle, Financial.BLOCKED, reason)
 
 
 def inventory_terminal(point: Subscription, agreement: Agreement) -> bool:
-    if point.state not in {-2, -1, 0, 2, 3}:
+    lifecycle = classify_lifecycle(point)
+    if lifecycle.lifecycle is None:
         raise LbxResponseInvalid()
-    return point.state == 3 or agreement_closed(agreement)
+    return lifecycle.lifecycle == Lifecycle.ENDED or agreement_closed(agreement)

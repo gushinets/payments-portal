@@ -211,11 +211,9 @@ async def test_billing_subscription_reconciliation_incomplete_outage_and_negativ
     assert snapshot(factory)[2] == "allowed"
 
 
-@pytest.mark.parametrize("missing", [None, "total_price", "period_length"])
 async def test_billing_subscription_reconciliation_known_review_and_effective_mismatch(
     scenario: tuple,
     postgres_session_factory: sessionmaker[Session],
-    missing: str | None,
 ) -> None:
     transport, sources, purchase = scenario
     factory = postgres_session_factory
@@ -223,20 +221,17 @@ async def test_billing_subscription_reconciliation_known_review_and_effective_mi
     await run(sources, factory)
     trusted = snapshot(factory)
     transport.subscriptions[0]["services"][0]["price"] = 15
-    original = transport.subscriptions[0].get(missing) if missing else None
-    if missing:
-        transport.subscriptions[0][missing] = None
+    transport.subscriptions[0]["total_price"] = 15
     mismatch = await run(sources, factory)
     assert mismatch.result_classification == "subscription_commercial_mismatch"
     assert snapshot(factory)[2:4] == ("blocked", "ineligible")
     assert snapshot(factory)[4:6] == trusted[4:6]
     transport.subscriptions[0]["services"][0]["price"] = 100
-    if missing:
-        transport.subscriptions[0][missing] = original
+    transport.subscriptions[0]["total_price"] = 100
     matched = await run(sources, factory)
     assert matched.result_classification == "review_required" and snapshot(factory)[2] == "blocked"
-    with pytest.raises(BillingRefused, match="purchase_review_required"):
-        await advance_purchase(sources, step1_settings(), factory=factory, token=TOKEN, purchase_id=purchase.id)
+    reviewed = await advance_purchase(sources, step1_settings(), factory=factory, token=TOKEN, purchase_id=purchase.id)
+    assert reviewed.state == PurchaseIntentState.MANUAL_REVIEW
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 1
         assert db.get(PurchaseIntent, purchase.id).state == PurchaseIntentState.MANUAL_REVIEW
@@ -259,7 +254,11 @@ async def test_billing_subscription_reconciliation_preserves_preparation_with_co
     good = snapshot(factory)
     transport.subscriptions[0]["state"] = -2
     await advance_purchase(sources, step1_settings(), factory=factory, token=TOKEN, purchase_id=purchase.id)
-    assert snapshot(factory) == good
+    denied = snapshot(factory)
+    assert denied[1:3] == ("inactive", "blocked")
+    assert denied[4:6] == good[4:6] and denied[-1] != good[-1]
+    with factory() as db:
+        assert db.get(BillingStateObservation, denied[-1]).evidence_schema_version == "bound-source-negative:v1"
     latest = service.read_purchase(factory, purchase.user_id, purchase.id)
     op = next(op for op in latest.operations if op.kind == Kind.SUBSCRIPTION)
     subject = claim_reconciliation(factory, step1_settings(), good[0], io_timeout_seconds=60)
@@ -406,3 +405,149 @@ async def test_billing_subscription_reconciliation_contradictory_times_preserve_
     assert observation.completeness_classification == "incomplete"
     assert observation.evidence_document["calendar_complete"] is False
     assert snapshot(factory) == before
+
+
+@pytest.mark.parametrize("prior", ["unverified", "allowed", "blocked", "expired", "review"])
+@pytest.mark.parametrize(
+    "case,commercial,restriction,difference_reason",
+    [
+        ("missing_total", "INCOMPLETE", None, None),
+        ("price_partial", "INCOMPLETE", None, "effective_terms_mismatch"),
+        ("period_partial", "INCOMPLETE", None, "effective_terms_mismatch"),
+        ("composition_partial", "INCOMPLETE", None, "effective_terms_mismatch"),
+        ("policy_partial", "INCOMPLETE", None, "unsupported_prepaid_policy"),
+        ("policy_unknown_difference", "INCOMPLETE", None, "unsupported_prepaid_policy"),
+        ("agreement_policy_partial", "INCOMPLETE", None, "agreement_policy_mismatch"),
+        ("missing_mapping", "INCOMPLETE", None, None),
+        ("invalid_mapping", "INCOMPLETE", None, None),
+        ("remapping", "INCOMPLETE", None, None),
+        ("source_currency_id", "INCOMPLETE", None, None),
+        ("currency_symbol", "INCOMPLETE", None, None),
+        ("state_unknown", "COMPLETE_MATCH", None, None),
+        ("block_unknown", "COMPLETE_MATCH", None, None),
+        ("waiting_partial", "INCOMPLETE", "inactive", "effective_terms_mismatch"),
+        ("block_partial", "INCOMPLETE", "active", "effective_terms_mismatch"),
+        ("admin_block_partial", "INCOMPLETE", "active", "effective_terms_mismatch"),
+        ("ended_partial", "INCOMPLETE", "ended", "effective_terms_mismatch"),
+        ("closed_partial", "INCOMPLETE", "ended", "effective_terms_mismatch"),
+        ("price_complete", "COMPLETE_MISMATCH", None, "effective_terms_mismatch"),
+        ("period_complete", "COMPLETE_MISMATCH", None, "effective_terms_mismatch"),
+        ("composition_complete", "COMPLETE_MISMATCH", None, "effective_terms_mismatch"),
+        ("policy_complete", "COMPLETE_MISMATCH", None, "unsupported_prepaid_policy"),
+        ("agreement_policy_complete", "COMPLETE_MISMATCH", None, "agreement_policy_mismatch"),
+    ],
+)
+async def test_material_interpretation_persisted_matrix(
+    scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    prior: str,
+    case: str,
+    commercial: str,
+    restriction: str | None,
+    difference_reason: str | None,
+) -> None:
+    from app.domains.billing.reconciliation_contracts import RECONCILIATION_SCHEMA
+    from app.integrations.lbx.dto import LbxRead, LbxTariff
+    from dataclasses import replace
+
+    transport, sources, purchase = scenario
+    factory = postgres_session_factory
+    point = transport.subscriptions[0]
+    activate(transport)
+    if prior == "blocked":
+        point["current_blocking"] = 1
+    elif prior == "review":
+        point["services"][0]["price"] = point["total_price"] = 150
+    if prior != "unverified":
+        await run(sources, factory)
+    point["current_blocking"] = 0
+    point["services"][0]["price"] = point["total_price"] = 100
+    if prior == "expired":
+        with factory() as db:
+            sub = db.scalar(select(ExternalSubscription))
+            sub.last_authoritative_read_at = datetime.now(UTC) - timedelta(hours=7)
+            sub.projection_valid_until = sub.last_authoritative_read_at + timedelta(hours=6)
+            db.commit()
+    before = snapshot(factory)
+    original_purchase = service.read_purchase(factory, purchase.user_id, purchase.id)
+    config = step1_settings()
+    policy_changes: dict[str, int | None] = {}
+    if case.startswith("price_"):
+        point["services"][0]["price"] = point["total_price"] = 150
+    elif case.startswith("period_"):
+        point["period_length"] = 2
+    elif case.startswith("composition_"):
+        point["services"] = []
+        point["total_price"] = 0
+    elif case.startswith("policy_"):
+        policy_changes["payment_type"] = 1
+        if case == "policy_partial":
+            policy_changes["dynamic_rent"] = None
+        elif case == "policy_unknown_difference":
+            policy_changes["balance_blocks"] = 99
+    elif case.startswith("agreement_policy_"):
+        transport.agreements[0]["is_offer"] = True
+    elif case in {"missing_mapping", "invalid_mapping", "remapping"}:
+        config = config.model_copy(
+            update={"lbx_currency_id": {"missing_mapping": "", "invalid_mapping": "invalid", "remapping": "2"}[case]}
+        )
+    elif case == "source_currency_id":
+        policy_changes["currency_id"] = 2
+    elif case == "currency_symbol":
+        point["currency_symbol"] = "USD"
+    elif case == "state_unknown":
+        point["state"] = 99
+    elif case == "block_unknown":
+        point["current_blocking"] = 99
+    elif restriction:
+        point["period_length"] = 2
+        if case == "waiting_partial":
+            point["state"] = -2
+        elif case == "ended_partial":
+            point["state"] = 3
+        elif case == "closed_partial":
+            transport.agreements[0]["close_date"] = "2026-11-05"
+        else:
+            point["current_blocking"] = 1 if case == "block_partial" else 3
+    if case == "missing_total" or (case.endswith("_partial") and case != "policy_partial"):
+        point["total_price"] = None
+    get_tariff = sources.require_lbx().get_tariff
+
+    async def changed_policy(**kwargs: object) -> LbxRead[LbxTariff]:
+        tariff = await get_tariff(**kwargs)
+        return replace(tariff, value=tariff.value.model_copy(update=policy_changes))
+
+    monkeypatch.setattr(sources.require_lbx(), "get_tariff", changed_policy)
+    observation_id = await reconcile_subscription(
+        sources.require_lbx(), sources.billing, config, factory=factory, subscription_id=before[0]
+    )
+    after = snapshot(factory)
+    assert after[4:6] == before[4:6]  # No mismatch/partial read extends finite trust.
+    if restriction:
+        assert after[1:3] == (restriction, "blocked")
+    elif commercial != "COMPLETE_MISMATCH":
+        assert after == before
+    if commercial == "COMPLETE_MISMATCH" or prior == "review":
+        assert after[2:4] == ("blocked", "ineligible")
+    else:
+        assert after[3] == before[3]
+    saved = service.read_purchase(factory, purchase.user_id, purchase.id)
+    assert saved.accepted == original_purchase.accepted and saved.held
+    assert saved.operations == original_purchase.operations
+    with factory() as db:
+        observation = db.get(BillingStateObservation, observation_id)
+        assert observation.evidence_schema_version == RECONCILIATION_SCHEMA
+        assert observation.evidence_document["commercial"] == commercial
+        assert observation.completeness_classification == (
+            "complete" if commercial == "COMPLETE_MISMATCH" else "incomplete"
+        )
+        if difference_reason:
+            assert difference_reason in observation.evidence_document["reasons"]
+        reviews = list(db.scalars(select(ManualReviewCase)))
+        assert len(reviews) == int(prior == "review" or commercial == "COMPLETE_MISMATCH")
+        assert all(
+            case.case_state == "open" and case.reason_code == "subscription_commercial_mismatch" for case in reviews
+        )
+        for model in (PaidAccessState, PurchasedAllowance):
+            assert db.scalar(select(func.count()).select_from(model)) == 0

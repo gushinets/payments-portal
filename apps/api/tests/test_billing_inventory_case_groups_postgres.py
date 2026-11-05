@@ -37,9 +37,16 @@ async def combined_reviews(
             {**deepcopy(row), "subscription_id": 999 + index} for index, row in enumerate(original_rows)
         )
         for purchase in purchases:
-            await recover_financial(
-                sources, step1_settings(), factory=factory, user_id=purchase.user_id, purchase_id=purchase.id
-            )
+            with pytest.raises(AppError, match="purchase_review_required"):
+                await recover_financial(
+                    sources, step1_settings(), factory=factory, user_id=purchase.user_id, purchase_id=purchase.id
+                )
+            # Retained combined-case history still needs audited resolution.
+            # Current GET routing cannot reopen genuine inventory review; build
+            # the additional historical restriction through its owning writer.
+            current = service.read_purchase(factory, purchase.user_id, purchase.id)
+            operation = next(op for op in current.operations if op.kind == Kind.SUBSCRIPTION)
+            financial.financial_pending(factory, current, operation, conflict=True)
         transport.subscriptions = original_rows
     else:
         for row in transport.subscriptions:

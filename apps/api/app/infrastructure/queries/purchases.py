@@ -91,10 +91,9 @@ def required_documents(
     )
 
 
-def linked_subscription(db: Session, purchase_id: UUID) -> ExternalSubscription | None:
-    return db.scalar(
-        select(ExternalSubscription).where(ExternalSubscription.purchase_intent_id == purchase_id).with_for_update()
-    )
+def linked_subscription(db: Session, purchase_id: UUID, *, lock: bool = True) -> ExternalSubscription | None:
+    statement = select(ExternalSubscription).where(ExternalSubscription.purchase_intent_id == purchase_id)
+    return db.scalar(statement.with_for_update() if lock else statement)
 
 
 def agreement_purchase(

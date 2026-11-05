@@ -23,6 +23,13 @@ active/allowed facts. Financial and administrative blocks are distinct negative
 facts. Ended is terminal; a later nonterminal state for the same canonical ID
 opens subscription_terminal_revival_conflict.
 
+Material inspection retains missing/unknown fields separately from known
+differences. Missing required evidence takes precedence: a partial price,
+period, composition or policy difference remains `INCOMPLETE`, without creating
+commercial-mismatch review. Only completely reconstructed differing terms prove
+`COMPLETE_MISMATCH`. Unknown lifecycle/block codes likewise require more proof;
+they are not binding conflicts.
+
 Only complete matching proof without a known review refreshes source trust.
 Trust begins at `read_started_at` and lasts at most six hours, with no outage
 grace. Incomplete reads preserve the existing finite support without extending
@@ -31,6 +38,23 @@ negative/conflicting facts even if unrelated commercial fields are missing.
 Customer inventory applies its collected evidence separately, as described
 below. Polling cannot clear a known financial/subscription conflict merely
 because later terms match.
+
+Advance, purchase Widget, GET recovery and inventory also collect independently
+owned waiting/block/end evidence before strict commercial admission can refuse.
+The common readback transition records `bound-source-negative:v1` with
+`negative_only`, its original local provenance, source-read window and prior
+support/fences. It restricts financial facts, preserves terminal state and genuine
+review, fences stale subscription applies and coalesces urgent reconciliation in
+one commit. It cannot renew trust, restore eligibility, resolve review, release
+holds or choose a primary. A Widget refusal follows the required committed
+effect; scoped hint-only outcomes remain retryable rather than claiming denial.
+
+Read windows order competing observations. A demonstrably newer authority
+supersedes an older negative; overlapping windows or changed fences permit one
+bounded capture/reread outside SQL transactions, then only a scoped urgent hint.
+Legacy preparation/terminal observations retain their timestamp as a conservative
+ordering bound. Malformed new windows cannot establish currentness. Existing
+history is read in place, without conversion or rewriting.
 
 An original-object conflict found during purchase advance or payment Widget
 proof also withdraws the linked subscription's usability and enqueues urgent
@@ -102,6 +126,11 @@ state and local contention remain retryable. Enrollment needs no provider HTTP.
   provider HTTP, independently of source execution capacity.
 
 Local source-trust expiry does not invent a provider block or renew trust.
+If the latest supporting observation is negative-only, local repair still
+recreates the original finite positive-trust deadline with that support's
+provenance. Expiry records a local boundary based on the current support; neither
+repair nor expiry extends the interval. A first negative after preparation or
+first binding has no positive interval and creates no trust-expiry deadline.
 Recurring schedules use earlier-only jitter. Incomplete source reads use bounded
 backoff up to five minutes. Process pauses/backlog can cause observable cadence
 lag; they never extend trust. Claims/fences prevent competing or stale consumers
@@ -112,6 +141,16 @@ one original point-proven candidate may bind; ambiguous/foreign/already-bound
 candidates require review or more proof. Recovery preserves the original
 operation, request/key/date, accepted history and hold. Known financial conflicts
 need audited resolution; a deadline-only escalation can recover normally.
+
+An already-bound read never repeats binding or preparation history and cannot
+reopen completed CREATE recovery. Retained bound recovery jobs drain locally,
+without HTTP, and ensure canonical reconciliation enrollment. An absent required
+canonical subscription fails provenance checks rather than being synthesized.
+First binding requires the original possible-send command and full original
+ownership/effective-term proof. It commits binding/history and any sufficient
+negative together, initially with zero positive trust. A receipt or negative alone
+cannot prove that CREATE. A closed agreement forbids a new child CREATE but
+allows GET recovery of a child already possibly sent.
 
 `external_create_deadline` uses the current fixed active financial recovery
 window. Legacy rows without an active deadline use original unknown_since + 2h.
@@ -363,6 +402,20 @@ The shared writer rechecks all local witnesses under the user lock and records
 `review-inventory:v1` proof in the atomic operator audit. A clean background
 inventory still does not close a known review automatically.
 
+For a canonical neighbor, operator inventory carries a scoped negative or hint
+captured before HTTP. Authorized target resolution, neighbor effects and their
+audit commit together. Neighbor reviews remain open; terminal candidates without
+proven local ownership are excluded without adoption or invented jobs. The
+target uses its final full proof, not an earlier inventory observation.
+
+Historical `subscription_commercial_mismatch` and `financial_binding_conflict`
+cases are not bulk-closed: false and genuine historical cases can share these
+codes. Inspect the original evidence, then use the existing fresh complete-proof
+audited resolution. Negative-only support can be the expected current
+observation, but cannot replace the full restorative or original-binding proof.
+Existing case grouping, expected observation/fence checks and audit schemas
+retain their authority.
+
 Refusals include stale evidence, incomplete/capped/ambiguous discovery, foreign
 or already-bound objects, unsupported policy, customer identity conflict,
 unrelated open cases, terminal revival and changed accepted requests. Diagnose
@@ -384,8 +437,9 @@ last_verified_subscription_at and
 payment_portal_billing_worker_last_verified_subscription_timestamp_seconds track
 complete matching proof in this process, not freshness of every subscription.
 payment_portal_billing_worker_subscription_proofs_total distinguishes verified,
-incomplete and conflict. Process metrics reset on restart; persisted per-scope
-evidence remains authoritative.
+incomplete, conflict and negative-only (`negative`) outcomes. Negative-only
+evidence never updates the last verified proof timestamp. Process metrics reset
+on restart; persisted per-scope evidence remains authoritative.
 
 Alert on growing queue age/cadence lag, stale local scans (120 seconds), invalid
 records, persistent cleanup, repeated authentication denial and incomplete proof

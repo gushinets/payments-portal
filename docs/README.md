@@ -102,6 +102,7 @@ Start with the smallest document that matches the task.
 - [Quality score](QUALITY_SCORE.md)
 - [Execution plans](exec-plans/README.md)
 - [Background billing operations](engineering/billing-background-operations.md) — worker settings, scheduling, webhook setup/rollback, operator commands, diagnostics and projection boundaries.
+- [ANY-715 readback research](engineering/ANY-715-root-cause-research-2026-11-05.md) — historical baseline and evidence for the approved interpretation/readback refactor; execution results live in the [active plan](exec-plans/active/ANY-715-refactoring-plan.md).
 
 ## Legal
 
