@@ -1,4 +1,4 @@
-"""Reusable outer I/O seam for future HTTP, worker and operator entrypoints."""
+"""Shared claimed read/apply orchestration for HTTP, worker and operator."""
 
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -7,12 +7,20 @@ from uuid import UUID
 
 from starlette.concurrency import run_in_threadpool
 
+from app.composition.sources import SourceResources
 from app.core.settings import Settings
 from app.core.time import utc_now
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.reconciliation import apply_reconciliation, claim_reconciliation
-from app.domains.billing.reconciliation_contracts import CommercialProof, IdentityProof, SubscriptionProof
+from app.domains.billing.reconciliation_contracts import (
+    CommercialProof,
+    IdentityProof,
+    SubscriptionProof,
+    ReconciliationResult,
+)
 from app.domains.catalog.publication import SessionFactory
+from app.domains.purchases import service
+from app.domains.purchases.contracts import Purchase, PurchaseRefused
 from app.infrastructure.preflight import PreflightAdmission, PreflightBudget, PreflightDeadlineExceeded
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.operator_contracts import ReviewResolution
@@ -31,7 +39,7 @@ async def reconcile_subscription(
     budget: PreflightBudget | None = None,
     delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
     resolution: ReviewResolution | None = None,
-) -> UUID:
+) -> ReconciliationResult:
     if configuration.lbx_configuration_error is not None:
         raise BillingRefused("billing_not_configured")
     subject = await delegate(
@@ -63,7 +71,38 @@ async def reconcile_subscription(
             ("read_budget_exhausted",),
             (),
         )
-    return await delegate(apply_reconciliation, factory, subject, proof, work_claim=work_claim, resolution=resolution)
+    observation_id = await delegate(
+        apply_reconciliation, factory, subject, proof, work_claim=work_claim, resolution=resolution
+    )
+    return ReconciliationResult(observation_id, subject, proof)
+
+
+async def reconcile_bound_purchase(
+    sources: SourceResources,
+    configuration: Settings,
+    factory: SessionFactory,
+    purchase: Purchase,
+    budget: PreflightBudget,
+) -> ReconciliationResult:
+    try:
+        subscription_id = await run_in_threadpool(service.linked_subscription_id, factory, purchase)
+        return await reconcile_subscription(
+            sources.require_lbx(),
+            sources.billing,
+            configuration,
+            factory=factory,
+            subscription_id=subscription_id,
+            budget=budget,
+        )
+    except BillingRefused as error:
+        if error.code in {
+            "subscription_reconciliation_busy",
+            "subscription_reconciliation_stale",
+            "subscription_provenance_changed",
+            "billing_busy",
+        }:
+            raise PurchaseRefused("purchase_pending", 409) from None
+        raise
 
 
 @asynccontextmanager

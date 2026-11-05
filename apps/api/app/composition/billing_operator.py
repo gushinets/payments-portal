@@ -27,9 +27,10 @@ async def reconcile_purchase(
     sources: SourceResources, configuration: Settings, *, factory: SessionFactory, user_id: UUID, purchase_id: UUID
 ) -> UUID:
     subscription_id = await run_in_threadpool(purchase_subscription, factory, configuration, user_id, purchase_id)
-    return await reconcile_subscription(
+    result = await reconcile_subscription(
         sources.require_lbx(), sources.billing, configuration, factory=factory, subscription_id=subscription_id
     )
+    return result.observation_id
 
 
 async def resolve_review(
@@ -55,7 +56,7 @@ async def resolve_review(
     purchase = resolution.purchase
     _connection(purchase, configuration)
     if request.resolution == "restore-original":
-        observation_id = await reconcile_subscription(
+        result = await reconcile_subscription(
             sources.require_lbx(),
             sources.billing,
             configuration,
@@ -63,7 +64,11 @@ async def resolve_review(
             subscription_id=UUID(resolution.before["subscription_id"]),
             resolution=resolution,
         )
-        return {"review_case_id": str(request.case_id), "outcome": "resolved", "observation_id": str(observation_id)}
+        return {
+            "review_case_id": str(request.case_id),
+            "outcome": "resolved",
+            "observation_id": str(result.observation_id),
+        }
     operation = next(op for op in purchase.operations if op.id == request.operation_id)
     async with sources.billing.operation() as budget:
         started = utc_now()

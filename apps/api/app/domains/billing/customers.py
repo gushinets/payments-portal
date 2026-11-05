@@ -351,10 +351,9 @@ def apply_customer_read(
 ) -> CustomerOpen:
     """Apply point proof only against its current fence; lists alone never bind."""
     with factory() as db:
-        if work_claim is not None:
-            from app.infrastructure.queries.billing_background import customer as read_customer
+        from app.infrastructure.queries.billing_background import customer as read_customer
 
-            lock_user(db, read_customer(db, expected.customer_id).user_id)
+        lock_user(db, read_customer(db, expected.customer_id).user_id)
         customer = lock_customer(db, expected.customer_id)
         operation = customer_operation(db, customer.customer_id)
         if work_claim is not None:

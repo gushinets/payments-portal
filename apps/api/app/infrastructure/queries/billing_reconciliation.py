@@ -39,3 +39,15 @@ def open_reviews(db: Session, subscription_id: UUID) -> list[ManualReviewCase]:
             )
         )
     )
+
+
+def customer_subscriptions(db: Session, customer_id: UUID) -> list[ExternalSubscription]:
+    return list(
+        db.scalars(
+            select(ExternalSubscription)
+            .where(ExternalSubscription.customer_id == customer_id)
+            .order_by(ExternalSubscription.subscription_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    )

@@ -14,9 +14,15 @@ from app.composition.purchase_offer import live_original, require_configured_sel
 from app.composition.purchase_recovery import recover_financial as recover_financial
 from app.composition.purchase_observation import prepared_subscription_observation
 from app.composition.sources import SourceResources
+from app.composition.reconciliation import reconcile_bound_purchase
 from app.core.errors import AppError
 from app.core.settings import Settings
-from app.domains.billing.contracts import BillingAccountFailure, CustomerOpen
+from app.domains.billing.contracts import BillingAccountFailure, BillingRefused, CustomerOpen
+from app.domains.billing.reconciliation_contracts import (
+    CommercialProof,
+    IdentityProof,
+    ReconciliationResult,
+)
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.customers import reserve_customer, recheck_widget_session
 from app.domains.catalog.link_publication import StoredProductLink
@@ -49,7 +55,12 @@ from app.integrations.lbx.financial import (
     prove_effective_terms,
     inventory_terminal,
 )
-from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State, PurchaseIntentState
+from app.models import (
+    ExternalCreateOperationKind as Kind,
+    ExternalCreateOperationState as State,
+    PurchaseIntentState,
+    ExternalSubscriptionLifecycleStatus as Lifecycle,
+)
 
 
 MAX_RELEVANT_SUBSCRIPTIONS = 20
@@ -299,22 +310,22 @@ async def _prepare(
     purchase: Purchase,
     customer: CustomerOpen,
     budget: PreflightBudget,
-    token: str | None,
-    recover_only: bool,
-    require_payment_proof: bool = False,
+    token: str,
 ) -> Purchase:
     client = sources.require_lbx()
-    verified: set[Kind] = set()
     for kind in (Kind.AGREEMENT, Kind.SUBSCRIPTION):
         purchase = await run_in_threadpool(service.read_purchase, factory, purchase.user_id, purchase.id)
+        # A concurrent first binder has already completed preparation. Do not
+        # replay known-subscription reads through the financial binder.
+        if _operation(purchase, Kind.SUBSCRIPTION).bound_id is not None:
+            return purchase
         operation = _operation(purchase, kind)
         with customer_diagnostics(str(operation.id)):
             if operation.state not in {State.PENDING, State.PROVEN_NOT_SENT}:
                 if not await _recover_one(client, purchase, operation, customer, factory, budget=budget):
                     break
-                verified.add(kind)
                 continue
-            if recover_only or purchase.state == PurchaseIntentState.MANUAL_REVIEW:
+            if purchase.state == PurchaseIntentState.MANUAL_REVIEW:
                 break
             if not await live_original(sources, configuration, purchase, factory, budget=budget):
                 break
@@ -393,8 +404,6 @@ async def _prepare(
             operation = _operation(purchase, kind)
             if not await _recover_one(client, purchase, operation, customer, factory, budget=budget):
                 break
-    if require_payment_proof and verified != {Kind.AGREEMENT, Kind.SUBSCRIPTION}:
-        raise PurchaseRefused("purchase_not_prepared", 409)
     return await run_in_threadpool(service.read_purchase, factory, purchase.user_id, purchase.id)
 
 
@@ -409,28 +418,41 @@ async def advance_purchase(
     await run_in_threadpool(service.verify_original_consent, factory, purchase)
     if sources.billing is None:
         raise PurchaseRefused("purchase_billing_not_configured", 503)
+    bound = _operation(purchase, Kind.SUBSCRIPTION).bound_id is not None
     customer_ready = False
     try:
-        async with sources.billing.operation() as budget:
+        async with sources.billing.operation(bound_scope=not bound) as budget:
             current = await run_in_threadpool(reserve_customer, factory, configuration, token)
             if current.customer_id != purchase.customer_id:
                 raise PurchaseRefused("billing_identity_conflict", 409)
-            current = await ensure_customer(
-                sources.require_lbx(), configuration, factory=factory, token=token, current=current, budget=budget
-            )
-            customer_ready = True
-            result = await _prepare(
-                sources,
-                configuration,
-                factory=factory,
-                purchase=purchase,
-                customer=current,
-                budget=budget,
-                token=token,
-                recover_only=False,
-            )
+            if bound:
+                customer_ready = True
+                verification = await reconcile_bound_purchase(sources, configuration, factory, purchase, budget)
+                current = verification.subject.customer
+                result = await run_in_threadpool(service.read_purchase, factory, user_id, purchase.id)
+                if result.state == PurchaseIntentState.MANUAL_REVIEW:
+                    raise PurchaseRefused("purchase_review_required", 409)
+            else:
+                current = await ensure_customer(
+                    sources.require_lbx(), configuration, factory=factory, token=token, current=current, budget=budget
+                )
+                customer_ready = True
+                result = await _prepare(
+                    sources,
+                    configuration,
+                    factory=factory,
+                    purchase=purchase,
+                    customer=current,
+                    budget=budget,
+                    token=token,
+                )
+            budget.check()
             await run_in_threadpool(recheck_widget_session, factory, configuration, token, current)
             return result
+    except BillingRefused as error:
+        if bound and error.code == "billing_busy":
+            raise PurchaseRefused("purchase_pending", 409) from None
+        raise
     except PreflightDeadlineExceeded:
         # The admission context distinguishes its own expiry from caller cancellation.
         # Preserve the phase-specific errors after customer proof completes.
@@ -448,7 +470,7 @@ async def verify_payment_purchase(
     purchase_id: UUID,
     customer: CustomerOpen,
     budget: PreflightBudget,
-) -> Purchase:
+) -> ReconciliationResult:
     user_id = await run_in_threadpool(service.authenticate_user, factory, configuration, token)
     purchase = await run_in_threadpool(service.read_purchase, factory, user_id, purchase_id)
     _connection(purchase, configuration)
@@ -458,18 +480,14 @@ async def verify_payment_purchase(
         or purchase.state != PurchaseIntentState.LINKED
     ):
         raise PurchaseRefused("purchase_not_prepared", 409)
-    await run_in_threadpool(service.verify_original_consent, factory, purchase)
-    result = await _prepare(
-        sources,
-        configuration,
-        factory=factory,
-        purchase=purchase,
-        customer=customer,
-        budget=budget,
-        token=token,
-        recover_only=True,
-        require_payment_proof=True,
-    )
-    if result.state != PurchaseIntentState.LINKED or any(op.state != State.BOUND for op in result.operations):
+    result = await reconcile_bound_purchase(sources, configuration, factory, purchase, budget)
+    proof = result.proof
+    if (
+        not proof.complete
+        or proof.identity != IdentityProof.MATCH
+        or proof.commercial != CommercialProof.MATCH
+        or proof.lifecycle not in {Lifecycle.ACTIVE, Lifecycle.INACTIVE}
+        or any(op.state != State.BOUND for op in result.subject.purchase.operations)
+    ):
         raise PurchaseRefused("purchase_not_prepared", 409)
     return result

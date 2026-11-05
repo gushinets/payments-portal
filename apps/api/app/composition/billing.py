@@ -274,10 +274,12 @@ async def bootstrap_account(
         raise BillingAccountFailure("billing_not_configured")
     customer_ready = False
     try:
-        async with sources.billing.operation() as budget:
+        async with sources.billing.operation(bound_scope=purchase_id is None) as budget:
             try:
                 current = await run_in_threadpool(reserve_customer, factory, configuration, token)
             except BillingRefused as error:
+                if purchase_id is not None and error.code == "billing_busy":
+                    raise BillingRefused("purchase_pending", 409) from None
                 if error.status in {401, 403} or error.code == "billing_busy":
                     raise
                 raise BillingAccountFailure(error.code, error.status) from None
@@ -287,15 +289,13 @@ async def bootstrap_account(
             )
             with customer_diagnostics(str(current.operation_id)):
                 try:
-                    current = await ensure_customer(
-                        client, configuration, factory=factory, token=token, current=current, budget=budget
-                    )
-                    customer_ready = True
                     payment_purchase = None
+                    verification = None
                     if purchase_id is not None:
+                        customer_ready = True
                         from app.composition.purchases import verify_payment_purchase
 
-                        payment_purchase = await verify_payment_purchase(
+                        verification = await verify_payment_purchase(
                             sources,
                             configuration,
                             factory=factory,
@@ -304,6 +304,14 @@ async def bootstrap_account(
                             customer=current,
                             budget=budget,
                         )
+                        payment_purchase = verification.subject.purchase
+                        current = verification.subject.customer
+                    else:
+                        current = await ensure_customer(
+                            client, configuration, factory=factory, token=token, current=current, budget=budget
+                        )
+                        customer_ready = True
+                    budget.check()
                     credential = sign_widget_jwt(
                         customer_id=current.provider_id, secret=configuration.lbx_widget_signing_secret
                     )
@@ -319,7 +327,7 @@ async def bootstrap_account(
                         from app.domains.purchases.widget_admission import recheck_payment_purchase
 
                         await run_in_threadpool(
-                            recheck_payment_purchase, factory, configuration, token, payment_purchase, current
+                            recheck_payment_purchase, factory, configuration, token, verification, current
                         )
                     else:
                         await run_in_threadpool(recheck_widget_session, factory, configuration, token, current)

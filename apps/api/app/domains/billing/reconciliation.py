@@ -21,7 +21,7 @@ from app.domains.purchases import service
 from app.infrastructure.queries import billing_reconciliation as queries, purchases
 from app.infrastructure.persistence.billing_webhooks import mark_processed
 from app.infrastructure.queries.billing_customers import customer_operation, open_customer_reviews
-from app.domains.billing.work import schedule_reconciliation, verify_claim
+from app.domains.billing.work import RECONCILIATION, schedule_reconciliation, verify_claim
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.operator_contracts import ReviewResolution
 from app.domains.billing.webhook_contracts import CORRELATION_SCHEMA
@@ -208,16 +208,31 @@ def apply_reconciliation(
             or customer_op.operation_state != State.BOUND
             or customer_op.bound_external_object_id != subject.customer.provider_id
             or {
-                (op.create_operation_id, op.operation_kind, op.request_correlation_key, op.bound_external_object_id)
+                (
+                    op.create_operation_id,
+                    op.operation_kind,
+                    op.request_correlation_key,
+                    op.bound_external_object_id,
+                    op.send_fence,
+                    op.operation_state,
+                )
                 for op in operations
             }
-            != {(op.id, op.kind, op.key, op.bound_id) for op in purchase.operations}
+            != {(op.id, op.kind, op.key, op.bound_id, op.fence, op.state) for op in purchase.operations}
         ):
             raise BillingRefused("subscription_provenance_changed", 409)
+        subscription_claim = None
         if work_claim is not None:
-            if work_claim.kind != "subscription_reconciliation" or work_claim.reference != str(current.subscription_id):
+            if work_claim.kind == RECONCILIATION and work_claim.reference == str(current.subscription_id):
+                subscription_claim = work_claim
+            elif work_claim.kind != "customer_inventory" or work_claim.reference != str(purchase.customer_id):
                 raise BillingRefused("billing_work_stale", 409)
-            verify_claim(db, work_claim)
+            queue_row = verify_claim(db, work_claim)
+            if (
+                subscription_claim is None
+                and queue_row.coalescing_key != f"{purchase.account_id}:{purchase.customer_id}"
+            ):
+                raise BillingRefused("billing_work_stale", 409)
         service._verify_original_consent(db, row, purchase.accepted)
         resolved_case = None
         if resolution is not None:
@@ -340,11 +355,11 @@ def apply_reconciliation(
         schedule_reconciliation(
             db,
             current,
-            work_claim,
-            complete=proof.complete and not conflict and not known_review,
+            subscription_claim,
+            complete=proof.complete and not conflict and not known_review and not customer_conflict,
             attempt_started_at=proof.read_started_at,
         )
-        if work_claim is not None and proof.complete:
+        if subscription_claim is not None and proof.complete:
             mark_processed(
                 db,
                 correlation_schema=CORRELATION_SCHEMA,

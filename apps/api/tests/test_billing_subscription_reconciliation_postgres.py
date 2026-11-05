@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+
 from datetime import UTC, datetime, timedelta
 from collections.abc import AsyncIterator
 
@@ -11,19 +12,16 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
-from starlette.concurrency import run_in_threadpool
 
 from app.composition.purchases import advance_purchase, verify_payment_purchase
-from app.composition.purchase_observation import prepared_subscription_observation as _observation
 from app.composition.reconciliation import reconcile_subscription
 from app.composition.sources import SourceResources, source_resources
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.customers import apply_customer_read, reserve_customer
 from app.domains.billing.reconciliation import claim_reconciliation, apply_reconciliation
-from app.domains.purchases import financial, service
+from app.domains.purchases import service
 from app.domains.purchases.contracts import Purchase, PurchaseRefused
 from app.infrastructure.preflight import PreflightAdmission, PreflightPolicy
-from app.integrations.lbx.financial import Subscription
 from app.integrations.lbx.reconciliation import read_subscription_proof
 from app.models import (
     BillingProductAccessScope,
@@ -91,11 +89,11 @@ def activate(transport: PurchaseTransport) -> None:
 
 
 async def run(sources: SourceResources, factory: sessionmaker[Session]) -> BillingStateObservation:
-    observation_id = await reconcile_subscription(
+    result = await reconcile_subscription(
         sources.require_lbx(), sources.billing, step1_settings(), factory=factory, subscription_id=snapshot(factory)[0]
     )
     with factory() as db:
-        return db.get(BillingStateObservation, observation_id)
+        return db.get(BillingStateObservation, result.observation_id)
 
 
 async def test_billing_subscription_reconciliation_lifecycle_history_and_minimum_reads(
@@ -250,7 +248,7 @@ async def test_billing_subscription_reconciliation_known_review_and_effective_mi
         assert db.get(PurchaseIntent, purchase.id).state == PurchaseIntentState.MANUAL_REVIEW
 
 
-async def test_billing_subscription_reconciliation_preserves_preparation_with_competing_writers(
+async def test_linked_advance_uses_claimed_reconciliation_without_preparation_rebind(
     scenario: tuple,
     postgres_session_factory: sessionmaker[Session],
 ) -> None:
@@ -260,28 +258,22 @@ async def test_billing_subscription_reconciliation_preserves_preparation_with_co
     subject = claim_reconciliation(factory, step1_settings(), snapshot(factory)[0], io_timeout_seconds=60)
     async with sources.billing.operation() as budget:
         proof = await read_subscription_proof(sources.require_lbx(), subject, step1_settings(), budget=budget)
-    # Preparation can rotate its send fences during the read without changing
-    # permanent identity. Either writer order must preserve authoritative facts.
-    await advance_purchase(sources, step1_settings(), factory=factory, token=TOKEN, purchase_id=purchase.id)
+    with pytest.raises(BillingRefused, match="purchase_pending"):
+        await advance_purchase(sources, step1_settings(), factory=factory, token=TOKEN, purchase_id=purchase.id)
     apply_reconciliation(factory, subject, proof)
-    good = snapshot(factory)
-    transport.subscriptions[0]["state"] = -2
-    await advance_purchase(sources, step1_settings(), factory=factory, token=TOKEN, purchase_id=purchase.id)
-    assert snapshot(factory) == good
-    latest = service.read_purchase(factory, purchase.user_id, purchase.id)
-    op = next(op for op in latest.operations if op.kind == Kind.SUBSCRIPTION)
-    subject = claim_reconciliation(factory, step1_settings(), good[0], io_timeout_seconds=60)
-    async with sources.billing.operation() as budget:
-        proof = await read_subscription_proof(sources.require_lbx(), subject, step1_settings(), budget=budget)
-    prepared = _observation(Subscription.model_validate(transport.effective_subscription()), latest)
-    await asyncio.gather(
-        run_in_threadpool(apply_reconciliation, factory, subject, proof),
-        run_in_threadpool(financial.bind_financial, factory, latest, op, 567, observation=prepared),
-    )
-    result = snapshot(factory)
-    assert result[1:3] == ("inactive", "blocked")
+    transport.subscriptions[0]["current_blocking"] = 1
+    current = await advance_purchase(sources, step1_settings(), factory=factory, token=TOKEN, purchase_id=purchase.id)
+    assert current.state == PurchaseIntentState.LINKED
+    assert snapshot(factory)[1:3] == ("active", "blocked")
     with factory() as db:
-        assert db.get(BillingStateObservation, result[-1]).evidence_schema_version == "subscription-reconciliation:v1"
+        assert (
+            db.scalar(
+                select(func.count())
+                .select_from(BillingStateObservation)
+                .where(BillingStateObservation.evidence_schema_version == "prepared-subscription:v1")
+            )
+            == 1
+        )
 
 
 async def test_billing_subscription_reconciliation_fences_and_original_customer_restoration(
@@ -371,14 +363,14 @@ async def test_billing_subscription_reconciliation_total_budget_and_404(
     monkeypatch.setattr(sources.require_lbx(), "get_user", slow)
     admission = PreflightAdmission(PreflightPolicy(0.06, 0.01, 1, 0))
     try:
-        observation_id = await reconcile_subscription(
+        result = await reconcile_subscription(
             sources.require_lbx(), admission, step1_settings(), factory=factory, subscription_id=good[0]
         )
     finally:
         await admission.aclose()
     assert snapshot(factory) == good
     with factory() as db:
-        evidence = db.get(BillingStateObservation, observation_id)
+        evidence = db.get(BillingStateObservation, result.observation_id)
         assert "read_budget_exhausted" in evidence.evidence_document["reasons"]
         assert evidence.evidence_document["reads"] == []
     monkeypatch.setattr(sources.require_lbx(), "get_user", original_get)
