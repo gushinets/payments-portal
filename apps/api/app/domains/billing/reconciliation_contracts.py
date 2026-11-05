@@ -75,3 +75,4 @@ class ReconciliationResult:
     observation_id: UUID
     subject: ReconciliationSubject
     proof: SubscriptionProof
+    purchase: Purchase

@@ -320,12 +320,16 @@ For API inspection use the authenticated verified owner's session:
    manual/demo activation and subscription start dates. Original accepted terms
    and customer-wide same-tariff inventory are checked before **each** new
    financial send, including subscription continuation after proven no-send.
-   Incomplete inventory stays pending; an unproven competitor requires review.
-   Another point-proven original Portal purchase may remain admissible.
+   Incomplete inventory stays pending. A competitor blocks unsent admission while
+   preserving PENDING/PROVEN_NOT_SENT evidence and explicit continuation after
+   correction; it never manufactures a permanent financial review before send.
+   Another permanently bound Portal purchase remains its own product even during
+   review; its leased reconciliation handles its own commercial conflict.
    If its subscription send is still unresolved, the new purchase waits with its
    existing hold and no financial send. Resume it after the original purchase
-   completes; a saved receipt mismatch or failed owner/seller/terms proof still
-   requires review.
+   completes. An ambiguous candidate or failed owner/seller/terms proof cannot
+   authorize a send. Possible-send and canonical inventory conflicts require the
+   audited original operator path after correction.
    Its local snapshot uses the existing bounded user-row lock shared by purchase
    transitions; provider HTTP runs after that transaction closes.
    The number of other held Portal purchases is not a separate admission quota.

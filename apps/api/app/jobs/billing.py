@@ -168,6 +168,7 @@ class BillingWorker:
                     elif claim.kind == background_recovery.INVENTORY:
                         await inventory_customer(
                             self.client,
+                            admission,
                             self.configuration,
                             factory=self.factory,
                             claim=claim,

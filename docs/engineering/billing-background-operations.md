@@ -149,19 +149,28 @@ A `billing_busy` / PostgreSQL `55P03` refusal is local contention: retry the sam
 work without changing send authority, deadlines or holds. Use
 `last_error_classification` to distinguish local contention from source errors.
 
-`customer_inventory` uses fewer than 100 discovery rows and at most 20 relevant
-candidates under one read budget. Capped, duplicate, unstable or partial results
-are incomplete, never evidence of absence. A tariff is not product identity:
-proposal_ai and brief_decoder can share one tariff only with separately proven
-purchases, dedicated agreements and subscriptions. Other-product exclusion needs
-original owner/legal/effective-term proof. Proven competition records scoped
-customer-inventory:v1 evidence and customer_inventory_conflict review without
-rebinding or renewing trust. Collected conflicts are applied together after
-the product reads finish or exhaust their shared budget. A later timeout
-preserves earlier timely conflict proof; unfinished scopes remain incomplete.
-Fenced apply still rejects stale ownership or work. An incomplete inventory
-retry is not evidence that inventory is conflict-free. Inventory success cannot
-close known review.
+`customer_inventory`, pre-send admission and operator recovery share one bounded
+inventory implementation: fewer than 100 discovery rows, at most 20 relevant
+candidates and a stable complete re-list under one read budget. Capped, duplicate,
+unstable or partial discovery never proves absence. Permanent original bindings
+identify known subscriptions, including another product already in review;
+proposal_ai and brief_decoder may share a tariff without sharing product identity.
+Each known subscription uses its existing lease and shared reconciliation writer.
+Its commercial conflict stays scoped to that subscription. Timely canonical
+negatives commit independently even if later discovery fails. Inventory-origin
+observations validate the customer work owner without finishing the customer job.
+
+A proved original possible-send/UNKNOWN candidate (including evidenced
+deadline-only review) waits for original-operation recovery, not another POST.
+The scan still checks later candidates. A closed agreement or terminal subscription
+is not a live competitor. Proven competition records scoped customer-inventory:v1
+evidence. For a PENDING/PROVEN_NOT_SENT purchase without a canonical subscription,
+it rotates unsent admission fences while preserving no-send evidence and the hold;
+correction permits another explicit advance of the same operation. For an active
+binding or possible-send operation it creates customer_inventory_conflict review.
+Incomplete passes never clear reviews. Local binding/operation versions are
+rechecked at commit, using versions returned by this attempt's own claimed applies;
+concurrent changes require a fresh attempt.
 
 ## Optional webhook receiver and manual deployment
 
@@ -329,15 +338,15 @@ Examples; replace placeholders with local IDs and current expectations:
 `--expected-reconciliation-fence`, with no operation override. Supported cases are
 subscription_identity_conflict, subscription_commercial_mismatch, or an original
 already-bound operation's financial_binding_conflict /
-accepted_terms_changed_after_preparation. All original bindings and fresh complete
-owned original-term/prepaid proof must hold. It restores facts and linked state
+accepted_terms_changed_after_preparation, or customer_inventory_conflict. All
+original bindings and fresh complete owned original-term/prepaid proof must hold. It restores facts and linked state
 without rebinding. Blocked/ended facts remain blocked/ended and held; terminal
 revival has no override.
 
 `bind-original` also requires `--operation-id` and `--expected-operation-fence`, with
 no reconciliation expectations. Supported cases are financial_binding_conflict /
-accepted_terms_changed_after_preparation on an unbound possible-send financial
-operation. Complete bounded discovery must prove exactly one original candidate,
+accepted_terms_changed_after_preparation / customer_inventory_conflict on an
+unbound possible-send financial operation. Complete bounded discovery must prove exactly one original candidate,
 even with a saved receipt. Saved request/correlation/accepted terms, original
 agreement date and supported subscription lifecycle/policy must match. Binding
 enrolls reconciliation without itself renewing trust. This includes a proved
@@ -348,6 +357,13 @@ audit. Complete original creation is separate from a complete paid-cycle proof.
 The conflict evidence must retain original POSSIBLE_SEND/UNKNOWN state and send
 fence; the same operation's deadline-review evidence may supply it. Missing
 history or PENDING/PROVEN_NOT_SENT cannot be turned into send proof. Both commands
+use the same fresh inventory check. Restore claims the target once,
+keeps that lease through proof/inventory, then commits target facts, exact case
+resolution and audit together. Inventory reuses those target reads; independently
+claimed sibling negatives may commit without resolving the target. Bind may accept
+its own pending candidate only together with the complete saved-original proof.
+Only evidence-linked inventory, canonical and same-operation deadline cases may
+resolve together; unrelated cases still refuse. Both commands
 recheck current ownership, consent, case digest and expected fences. The audit
 billing-operator-resolution:v1 records principal, reason/reference and proof
 atomically with facts/binding, related-case resolution and scheduling. An identical
@@ -360,8 +376,8 @@ unrelated open cases, terminal revival and changed accepted requests. Diagnose
 billing_review_stale, billing_review_unrelated_cases, billing_review_proof_incomplete,
 billing_review_terminal, purchase_history_unproven and ordinary source/busy errors;
 do not bypass them. There is no release-terminal, force-release, arbitrary rebind,
-commercial reacceptance, manual paid or quota command. Terminal and inventory
-conflict overrides remain deferred. Existing Step 7 proven-unsent automatic
+commercial reacceptance, manual paid or quota command. Terminal revival has no
+override; an inventory review requires fresh proof that competition was corrected. Existing Step 7 proven-unsent automatic
 release keeps its separate rule.
 
 ## Alerts and outage diagnosis

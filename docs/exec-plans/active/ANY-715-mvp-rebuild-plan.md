@@ -1,6 +1,6 @@
 # ANY-715 — Rebuild the MVP implementation from the functional-QA baseline
 
-Status: Stages 0–3 complete; Stages 4–6 pending. Final rebuild QA and acceptance remain pending.
+Status: Stages 0–4 complete; Stages 5–6 pending. Final rebuild QA and acceptance remain pending.
 Prepared: 2026-11-05. Repository: `gushinets/payments-portal`. Reference PR: #154; delivery: a separate Draft PR created in Stage 0.
 
 ## 1. Outcome and execution instructions
@@ -237,7 +237,7 @@ Do not cherry-pick this sequence wholesale. A review thread is not a requirement
 - Push the verified final stage normally to the new branch and update the existing Draft PR with its final scope and fresh evidence. The new PR is the proposed primary implementation; keep it Draft until the owner requests otherwise. PR #154 remains preserved and may be closed as superseded only after the owner's final decision. No rewriting of `ANY-715` or force-push is part of this workflow. Prepare the old-review-to-new-fix/test mapping; reply to or resolve threads only when instructed, without erasing discussions or implying approval.
 - If the proposed reuse demonstrably cannot satisfy a required invariant, record the smallest reproducible counterexample and the exact unmet requirement. Do not silently recreate the rejected subsystem or weaken the invariant. Continue independent bounded work and surface that specific design decision to the owner.
 
-Progress: Stage 0 [x]; Stage 1 [x]; Stage 2 [x]; Stage 3 [x]; Stage 4 [ ]; Stage 5 [ ]; Stage 6 [ ].
+Progress: Stage 0 [x]; Stage 1 [x]; Stage 2 [x]; Stage 3 [x]; Stage 4 [x]; Stage 5 [ ]; Stage 6 [ ].
 
 ## Stage 0 evidence — 2026-11-05
 
@@ -423,3 +423,56 @@ Progress: Stage 0 [x]; Stage 1 [x]; Stage 2 [x]; Stage 3 [x]; Stage 4 [ ]; Stage
   `refactor/any715-mvp` and Draft PR #161; the exact tested/published SHA is in
   that PR body. Original branch/backup/PR #154 remain preserved. Stages 4–6
   were not executed.
+
+
+## Stage 4 evidence — 2026-11-05
+
+- Replaced the separate pre-send/background inventory loops and sibling lookup
+  with `composition/purchase_inventory.py`; removed the unused agreement-purchase
+  query after checking all callers. Admission, worker and both existing
+  operator actions use the same bounded discovery, stable re-list and scoped
+  candidate classification. Permanent original bindings identify known products
+  even during review; a sibling's term conflict remains its own reconciliation
+  case, including when a paid-cycle calendar is incomplete.
+- Known subscriptions claim their existing lease before point reads and use the
+  shared Stage 2 normalizer/apply. Each observation commits independently and
+  returns its own committed purchase version. Busy leases make inventory
+  incomplete; timely blocks/ends survive later incomplete discovery. An
+  inventory-origin apply validates its customer claim without finishing it;
+  only the customer inventory apply finishes that job.
+- A proved original UNKNOWN/possible-send or deadline-only candidate waits for
+  Stage 3 recovery. Later competitors are still checked. Closed agreements and
+  terminal subscriptions are not live competitors. No inventory path binds a
+  candidate, releases an uncertain hold or schedules a financial POST.
+- Competitors before send rotate unsent admission fences under the existing user
+  lock without replacing PENDING/PROVEN_NOT_SENT or original request/deadline
+  history with permanent review. An explicit advance after correction resumes
+  the same purchase/operations. Locked send/apply/resolve transactions recheck
+  every local purchase/operation version used by inventory; newly added holds
+  or unexpected concurrent changes require a fresh attempt. Customer identity
+  conflicts retain the existing customer-wide refusal and send restriction.
+- Extended restore-original/bind-original for the exact evidenced inventory
+  cases created by this implementation. Restore claims the target once, reuses
+  its reads through the inventory scan and commits facts/case/audit together.
+  Bind accepts its own pending candidate only with the saved-original proof.
+  Evidence-linked related inventory/canonical/deadline cases resolve atomically;
+  unrelated reviews remain open/refused. The audit records inventory scope,
+  pending originals, principal, expected versions and normalized original proof.
+  Sibling negatives can commit without resolving the target or sibling review.
+- Added 15 SIMULATED-LBX/disposable-PostgreSQL scenarios for these boundaries.
+  Updated existing tests to assert retryable unsent admission, permanent binding
+  isolation, leased read sets, independently committed negatives and stale
+  refusal rather than the removed caches/permanent unsent review. Existing
+  command/history/hold/financial-POST assertions remain; unsent continuation now
+  explicitly checks immutable history and changed admission fences.
+- SIMULATED LBX + isolated PostgreSQL: 115 selected scenarios passed; the
+  post-edit focused rerun passed 30 scenarios, including two additional cases
+  (117 unique selected PostgreSQL scenarios across targeted runs). Cabinet
+  listing/pagination/user-isolation regressions are included. Four focused fast
+  suites passed 121 tests. Touched-file Ruff lint/format, architecture, docs and
+  diff checks passed. Exact tested/published SHA is recorded in Draft PR #161.
+  No full DB suite/check, live LBX, browser E2E or retained-data compatibility
+  validation is claimed. The isolated test server was stopped before handoff.
+- Only Stage 4 is delivered. Worker retry acknowledgement/priority/timeout,
+  optional receiver removal and final rebuild QA remain Stages 5–6. No migration,
+  HTTP/generated contract, paid grant, legal/specification or Kernel change.

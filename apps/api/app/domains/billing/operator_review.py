@@ -16,7 +16,7 @@ from app.domains.billing.operator_contracts import (
     ReviewResolution,
 )
 from app.domains.billing.reconciliation_contracts import CommercialProof, IdentityProof
-from app.domains.catalog.commercial_offer import canonical_document, commercial_digest
+from app.domains.billing.operator_cases import validate_case, original_possible_send, digest, case_digest
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
@@ -34,67 +34,9 @@ from app.models import (
     PurchaseIntentState,
 )
 
-RESTORABLE = {
-    "subscription_identity_conflict",
-    "subscription_commercial_mismatch",
-    "financial_binding_conflict",
-    "accepted_terms_changed_after_preparation",
-}
-BINDABLE = {"financial_binding_conflict", "accepted_terms_changed_after_preparation"}
-
-
-def digest(value: object) -> str:
-    return commercial_digest(canonical_document(value))
-
-
-def case_digest(case: ManualReviewCase) -> str:
-    return digest(
-        {
-            "id": str(case.review_case_id),
-            "reason": case.reason_code,
-            "scope": [case.scope_kind, case.scope_reference],
-            "schema": case.evidence_schema_version,
-            "evidence": case.evidence_document,
-        }
-    )
-
 
 def command_digest(request: ResolutionRequest, principal: str) -> str:
     return digest({"request": request.model_dump(mode="json"), "principal": principal})
-
-
-def possible_send_case(case: ManualReviewCase) -> bool:
-    evidence = case.evidence_document
-    if not isinstance(evidence, dict) or evidence.get("operation_state_at_conflict") not in {
-        State.POSSIBLE_SEND.value,
-        State.UNKNOWN.value,
-    }:
-        return False
-    try:
-        return str(UUID(evidence["send_fence_at_conflict"])) == evidence["send_fence_at_conflict"]
-    except (KeyError, TypeError, ValueError, AttributeError):
-        return False
-
-
-def original_possible_send(case: ManualReviewCase, related: list[ManualReviewCase], purchase: Purchase) -> bool:
-    evidence = case.evidence_document
-    if (
-        case.evidence_schema_version != "financial-review:v1"
-        or not isinstance(evidence, dict)
-        or evidence.get("purchase_intent_id") != str(purchase.id)
-        or evidence.get("create_operation_id") != case.scope_reference
-    ):
-        return False
-    if possible_send_case(case):
-        return True
-    # Deadline escalation rotates the send fence and moves the operation to
-    # MANUAL_REVIEW. Its preserved earlier evidence still proves possible-send;
-    # no new send can be authorized while this review is open. Database-created
-    # timestamps reflect transaction starts, not the causal order of these
-    # locked transitions; the saved prior states establish that order.
-    return evidence.get("operation_state_at_conflict") == State.MANUAL_REVIEW.value and any(
-        possible_send_case(previous) for previous in related
-    )
 
 
 def customer_digest(db: Session, purchase: Purchase) -> str:
@@ -165,52 +107,6 @@ def identities(operations: list[ExternalCreateOperation], subscription: External
     }
 
 
-def _validate_case(
-    db: Session,
-    request: ResolutionRequest,
-    purchase: Purchase,
-    subscription: ExternalSubscription | None,
-    operations: list[ExternalCreateOperation],
-) -> tuple[ManualReviewCase, list[ManualReviewCase]]:
-    case = queries.review(db, request.case_id, lock=True)
-    cases = queries.reviews(
-        db,
-        purchase.id,
-        purchase.customer_id,
-        subscription.subscription_id if subscription else None,
-        open_only=True,
-        lock=True,
-    )
-    if case is None or len(cases) > 100 or not any(item.review_case_id == request.case_id for item in cases):
-        raise PurchaseRefused("billing_review_unrelated_cases", 409)
-    if case.case_state != "open" or case_digest(case) != request.expected_case_digest:
-        raise PurchaseRefused("billing_review_stale", 409)
-    if case.reason_code not in (RESTORABLE if request.resolution == "restore-original" else BINDABLE):
-        raise PurchaseRefused("billing_review_resolution_unsupported", 409)
-    if request.resolution == "bind-original" and (case.scope_kind, case.scope_reference) != (
-        "create_operation",
-        str(request.operation_id),
-    ):
-        raise PurchaseRefused("billing_review_stale", 409)
-    related = [item for item in cases if item.review_case_id != case.review_case_id]
-    target = next((op for op in operations if op.create_operation_id == request.operation_id), None)
-    for previous in related:
-        evidence = previous.evidence_document
-        if (
-            request.resolution != "bind-original"
-            or target is None
-            or (previous.scope_kind, previous.scope_reference) != (case.scope_kind, case.scope_reference)
-            or previous.reason_code != "external_create_outcome_unknown:" + target.operation_kind.value
-            or previous.evidence_schema_version != "financial-review:v1"
-            or not isinstance(evidence, dict)
-            or evidence.get("purchase_intent_id") != str(purchase.id)
-            or evidence.get("create_operation_id") != str(target.create_operation_id)
-            or not possible_send_case(previous)
-        ):
-            raise PurchaseRefused("billing_review_unrelated_cases", 409)
-    return case, related
-
-
 def prepare_resolution(
     factory: SessionFactory,
     configuration: Settings,
@@ -242,7 +138,7 @@ def prepare_resolution(
                     "observation_id": case.resolution_document.get("observation_id"),
                 }
             raise PurchaseRefused("billing_review_stale", 409)
-        case, related = _validate_case(db, request, purchase, subscription, operations)
+        case, related = validate_case(db, request, purchase, subscription, operations)
         if (
             customer.binding_state != Binding.BOUND
             or customer_op is None
@@ -361,6 +257,12 @@ def authorize_resolution(
     restoring: bool,
 ) -> ManualReviewCase:
     """Called only inside the shared writer, after its normal provenance locks."""
+    from app.domains.purchases.inventory import validate_inventory
+
+    if resolution.inventory is None:
+        raise PurchaseRefused("billing_review_proof_incomplete", 409)
+    resolution.inventory.require_clear(resolution.purchase, original=True)
+    validate_inventory(db, resolution.inventory)
     request = resolution.request
     now = as_utc(billing_reconciliation.database_now(db))
     if (
@@ -373,7 +275,7 @@ def authorize_resolution(
         or restoring != (request.resolution == "restore-original")
     ):
         raise PurchaseRefused("billing_review_stale", 409)
-    case, related = _validate_case(db, request, resolution.purchase, subscription, operations)
+    case, related = validate_case(db, request, resolution.purchase, subscription, operations)
     if tuple((item.review_case_id, case_digest(item)) for item in related) != resolution.related_case_digests:
         raise PurchaseRefused("billing_review_stale", 409)
     service._verify_original_consent(db, row, resolution.purchase.accepted)
@@ -402,6 +304,13 @@ def authorize_resolution(
         "reason": request.reason,
         "reference": request.reference,
         "before": resolution.before,
+        "inventory": {
+            "complete": resolution.inventory.complete,
+            "customer_id": str(resolution.inventory.customer.customer_id),
+            "purchase_ids": [str(item.id) for item in resolution.inventory.purchases],
+            "pending_original_ids": [str(identity) for identity in resolution.inventory.pending],
+            "conflicts": [str(identity) for identity in resolution.inventory.conflicts],
+        },
         "related_deadline_cases": [{"id": str(item.review_case_id), "digest": case_digest(item)} for item in related],
     }
     for item in (case, *related):

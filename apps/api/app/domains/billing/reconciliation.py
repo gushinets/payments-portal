@@ -13,6 +13,7 @@ from app.domains.billing.reconciliation_contracts import (
     CommercialProof,
     IdentityProof,
     ReconciliationSubject,
+    ReconciliationResult,
     SubscriptionProof,
 )
 from app.domains.catalog.publication import SessionFactory
@@ -162,7 +163,7 @@ def apply_reconciliation(
     *,
     work_claim: WorkClaim | None = None,
     resolution: ReviewResolution | None = None,
-) -> UUID:
+) -> ReconciliationResult:
     """Recheck permanent provenance and current fences before any fact changes."""
     with factory() as db:
         purchase = subject.purchase
@@ -386,5 +387,7 @@ def apply_reconciliation(
                     "read_finished_at": proof.read_finished_at.isoformat(),
                 },
             )
+        db.flush()
+        committed = service._snapshot(db, row)
         db.commit()
-        return observation.observation_id
+        return ReconciliationResult(observation.observation_id, subject, proof, committed)

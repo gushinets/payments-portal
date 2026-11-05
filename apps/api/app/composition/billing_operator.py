@@ -15,6 +15,7 @@ from app.domains.billing.operator_review import prepare_resolution
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases import service
 from app.domains.purchases.contracts import PurchaseRefused
+from app.domains.purchases.inventory_contracts import InventoryStale
 
 
 async def reconcile_purchase(
@@ -49,24 +50,27 @@ async def resolve_review(
         return resolution
     purchase = resolution.purchase
     _connection(purchase, configuration)
-    if request.resolution == "restore-original":
-        result = await reconcile_subscription(
-            sources.require_lbx(),
-            sources.billing,
-            configuration,
-            factory=factory,
-            subscription_id=UUID(resolution.before["subscription_id"]),
-            resolution=resolution,
-        )
-        return {
-            "review_case_id": str(request.case_id),
-            "outcome": "resolved",
-            "observation_id": str(result.observation_id),
-        }
-    operation = next(op for op in purchase.operations if op.id == request.operation_id)
-    async with sources.billing.operation(bound_scope=False) as budget:
-        customer = await run_in_threadpool(service.customer_for_purchase, factory, configuration, purchase)
-        await recover_one(
-            sources, configuration, purchase, operation, customer, factory, budget=budget, resolution=resolution
-        )
-    return {"review_case_id": str(request.case_id), "outcome": "resolved"}
+    try:
+        if request.resolution == "restore-original":
+            result = await reconcile_subscription(
+                sources.require_lbx(),
+                sources.billing,
+                configuration,
+                factory=factory,
+                subscription_id=UUID(resolution.before["subscription_id"]),
+                resolution=resolution,
+            )
+            return {
+                "review_case_id": str(request.case_id),
+                "outcome": "resolved",
+                "observation_id": str(result.observation_id),
+            }
+        operation = next(op for op in purchase.operations if op.id == request.operation_id)
+        async with sources.billing.operation(bound_scope=False) as budget:
+            customer = await run_in_threadpool(service.customer_for_purchase, factory, configuration, purchase)
+            await recover_one(
+                sources, configuration, purchase, operation, customer, factory, budget=budget, resolution=resolution
+            )
+        return {"review_case_id": str(request.case_id), "outcome": "resolved"}
+    except InventoryStale:
+        raise PurchaseRefused("billing_review_stale", 409) from None

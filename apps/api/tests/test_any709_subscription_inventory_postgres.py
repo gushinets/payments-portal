@@ -19,6 +19,7 @@ from app.models import PurchaseIntentState as Intent
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.support.any709_step3 import PurchaseTransport
 from apps.api.tests.test_any709_step3_postgres import TOKEN, accept, setup_purchase
+from apps.api.tests.test_billing_background_recovery_postgres import original
 
 pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
 
@@ -101,6 +102,8 @@ async def test_subscription_send_rechecks_inventory_after_agreement_preparation(
             assert transport.creates("/subscriptions") == 0
             reject_subscription = False
             add_external_subscription(transport, external_state)
+            unsent = next(op for op in paused.operations if op.kind == Kind.SUBSCRIPTION)
+            immutable = original(factory, unsent.id)
         if external_state == 3:
             result = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
             assert result.state == Intent.LINKED
@@ -113,23 +116,22 @@ async def test_subscription_send_rechecks_inventory_after_agreement_preparation(
             result = service.read_purchase(factory, purchase.user_id, purchase.id)
             operation = next(op for op in result.operations if op.kind == Kind.SUBSCRIPTION)
             assert transport.creates("/subscriptions") == 0
-            if external_state is None:
-                assert result.state != Intent.MANUAL_REVIEW
-                assert operation.state == (State.PROVEN_NOT_SENT if resume else State.PENDING)
-                # Complete healthy inventory may resume the same operation.
-                next(row for row in transport.subscriptions if row["subscription_id"] == 9999)["state"] = 3
-                result = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
-                assert result.state == Intent.LINKED
-            else:
-                assert result.state == Intent.MANUAL_REVIEW and operation.state == State.MANUAL_REVIEW
-                # A later clean inventory cannot silently clear a known conflict.
-                next(row for row in transport.subscriptions if row["subscription_id"] == 9999)["state"] = 3
-                result = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
-                assert result.state == Intent.MANUAL_REVIEW
+            assert result.state != Intent.MANUAL_REVIEW
+            assert operation.state == (State.PROVEN_NOT_SENT if resume else State.PENDING)
+            if resume:
+                assert original(factory, operation.id) == immutable
+                assert operation.fence != unsent.fence
+            # A corrected inventory resumes this same operation after either
+            # incomplete proof or a proved competitor before any possible send.
+            next(row for row in transport.subscriptions if row["subscription_id"] == 9999)["state"] = 3
+            result = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+            assert result.state == Intent.LINKED
+        if resume:
+            assert original(factory, unsent.id) == immutable
         assert result.held and result.accepted == purchase.accepted
         assert [op.id for op in result.operations] == [op.id for op in purchase.operations]
         assert transport.creates("/users") == transport.creates("/agreements") == 1
-        assert transport.creates("/subscriptions") == (0 if external_state == -2 else 1)
+        assert transport.creates("/subscriptions") == 1
 
 
 @pytest.mark.parametrize("entrypoint", ["advance", "recovery"])

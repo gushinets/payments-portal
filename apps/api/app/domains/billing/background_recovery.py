@@ -1,5 +1,12 @@
 """Shared local recovery scheduling, deadlines and scoped inventory evidence."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.domains.purchases.inventory_contracts import InventoryResult
+
 from datetime import timedelta
 from uuid import UUID
 
@@ -200,6 +207,7 @@ def customer_snapshot(
             configuration.instance_region,
         ):
             raise BillingRefused("billing_identity_unproven", 409)
+        customers.lock_user(db, customer.user_id)
         rows = queries.customer_purchases(db, identity)
         if len(rows) >= 100:
             raise BillingRefused("purchase_inventory_incomplete", 409)
@@ -300,15 +308,20 @@ def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> None:
         db.commit()
 
 
-def apply_inventory(
-    factory: SessionFactory, claim: WorkClaim, conflicts: tuple[Purchase, ...], reason: str | None
-) -> None:
-    """Fence all scoped conflicts and finish their shared customer job once."""
+def apply_inventory(factory: SessionFactory, claim: WorkClaim, result: "InventoryResult", reason: str | None) -> None:
+    """Validate all original versions, then finish the customer job once."""
+    from app.domains.purchases.inventory import invalidate_unsent, validate_inventory
+
     with factory() as db:
         customer = queries.customer(db, UUID(claim.reference))
+        if claim.kind != INVENTORY or customer is None or customer.customer_id != result.customer.customer_id:
+            raise BillingRefused("billing_work_stale", 409)
         customers.lock_user(db, customer.user_id)
+        validate_inventory(db, result)
         locked = []
-        for purchase in conflicts:
+        for purchase in result.purchases:
+            if purchase.id not in result.conflicts:
+                continue
             row = service._locked(db, purchase)
             operations = purchases.operations(db, row.purchase_intent_id, lock=True)
             scope = billing_reconciliation.scope(db, purchase.user_id, row.product_id)
@@ -319,15 +332,17 @@ def apply_inventory(
                 db.add(scope)
                 db.flush()
             subscription = purchases.linked_subscription(db, purchase.id)
-            current = service._snapshot(db, row)
-            if current.accepted != purchase.accepted or current.operations != purchase.operations:
-                raise BillingRefused("billing_work_stale", 409)
-            service._verify_original_consent(db, row, current.accepted)
             target = next(op for op in operations if op.operation_kind == Kind.SUBSCRIPTION)
             locked.append((purchase, row, target, scope, subscription))
         queue = work.verify_claim(db, claim)
+        if queue.coalescing_key != f"{customer.external_billing_account_id}:{customer.customer_id}":
+            raise BillingRefused("billing_work_stale", 409)
         for purchase, row, target, scope, subscription in locked:
-            financial._review(db, row, target, "customer_inventory_conflict")
+            unsent = subscription is None and target.operation_state in {State.PENDING, State.PROVEN_NOT_SENT}
+            if unsent:
+                invalidate_unsent(db, purchase)
+            else:
+                financial._review(db, row, target, "customer_inventory_conflict")
             from app.models import (
                 BillingStateObservation,
                 BillingStateObservationKind,
@@ -348,7 +363,7 @@ def apply_inventory(
                     evidence_schema_version="customer-inventory:v1",
                     evidence_document={"purchase_intent_id": str(purchase.id), "reason": "competing_inventory"},
                     completeness_classification="conflict",
-                    result_classification="review_required",
+                    result_classification="admission_blocked" if unsent else "review_required",
                     resulting_access_revision=None,
                 )
             )

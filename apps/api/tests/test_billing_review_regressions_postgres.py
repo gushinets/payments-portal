@@ -177,7 +177,7 @@ async def test_inventory_preserves_proven_conflict_when_next_product_is_incomple
     assert job(factory, recovery.INVENTORY, first.customer_id).last_error_classification == "inventory_conflict"
     for index, purchase in enumerate(purchases):
         current = service.read_purchase(factory, purchase.user_id, purchase.id)
-        assert current.state == ("linked" if incomplete and index == 1 else "manual_review")
+        assert current.state == "manual_review"
         assert current.held
         assert tuple((op.id, op.key, op.bound_id) for op in current.operations) == tuple(
             (op.id, op.key, op.bound_id) for op in purchase.operations
@@ -304,17 +304,19 @@ async def test_inventory_keeps_timely_conflict_when_next_product_exhausts_read_b
     finally:
         await worker.aclose()
     assert entered.is_set() is expire
-    assert job(factory, recovery.INVENTORY, first.customer_id).last_error_classification == "inventory_conflict"
+    assert job(factory, recovery.INVENTORY, first.customer_id).last_error_classification == (
+        "inventory_incomplete" if expire else "inventory_conflict"
+    )
     for index, purchase in enumerate(purchases):
         saved = service.read_purchase(factory, purchase.user_id, purchase.id)
-        assert saved.state == ("linked" if expire and index == 1 else "manual_review")
+        assert saved.state == ("linked" if expire and index == 0 else "manual_review")
         assert saved.held
         assert tuple((op.id, op.key, op.bound_id) for op in saved.operations) == tuple(
             (op.id, op.key, op.bound_id) for op in purchase.operations
         )
         with factory() as db:
             sub = db.scalar(select(ExternalSubscription).where(ExternalSubscription.purchase_intent_id == purchase.id))
-            assert sub.commercial_access_status == ("eligible" if expire and index == 1 else "ineligible")
+            assert sub.commercial_access_status == ("eligible" if expire and index == 0 else "ineligible")
     assert all(request.method == "GET" for request in transport.requests[before:])
 
 
