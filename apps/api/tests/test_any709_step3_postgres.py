@@ -44,6 +44,7 @@ from app.models import (
     PurchaseIntentState as IntentState,
     PurchasedAllowance,
 )
+from apps.api.tests.factories.original_operation import advance_deadlines, original_proof
 from apps.api.tests.support.any709_step1 import link_document, link_selection, step1_settings
 from apps.api.tests.support.any709_step3 import PurchaseTransport
 from apps.api.tests.support.postgres import alembic_test_config, reset_public_schema
@@ -497,8 +498,8 @@ async def test_any709_step3_restart_zero_discovery_deadline_and_get_only_operato
         first = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
         op = next(item for item in first.operations if item.kind == Kind.AGREEMENT)
         assert op.state == State.UNKNOWN and op.deadline is not None
-    assert financial.escalate_overdue_financial(factory, now=op.deadline + timedelta(seconds=1)) == 1
-    assert financial.escalate_overdue_financial(factory, now=op.deadline + timedelta(hours=1)) == 0
+    assert advance_deadlines(factory, now=op.deadline + timedelta(seconds=1)) == 1
+    assert advance_deadlines(factory, now=op.deadline + timedelta(hours=1)) == 0
     async with source_resources(
         config,
         kernel_transport=httpx.MockTransport(transport.kernel),
@@ -816,7 +817,9 @@ async def test_any709_step3_lost_claim_ack_and_late_apply_keep_original_fence_an
         assert recovered.held and transport.creates("/agreements") == 0
         financial.financial_pending(factory, recovered, op, conflict=True)
         with pytest.raises(PurchaseRefused, match="purchase_pending"):
-            financial.bind_financial(factory, recovered, op, 999)
+            financial.bind_financial(
+                factory, recovered, op, 999, proof=original_proof(factory, recovered, op, transport)
+            )
         with factory() as db:
             saved = db.get(ExternalCreateOperation, op.id)
             assert saved.unknown_recovery_deadline_at == op.deadline

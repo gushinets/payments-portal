@@ -207,6 +207,9 @@ def _operation(db: Session, operation: ExternalCreateOperation, *, may_send: boo
         safe_failure,
         failure_code,
         agreement_date,
+        operation.operation_kind == Kind.AGREEMENT
+        and operation.bound_external_object_id is not None
+        and queries.closed_original_agreement(db, operation.purchase_intent_id, operation.bound_external_object_id),
     )
 
 

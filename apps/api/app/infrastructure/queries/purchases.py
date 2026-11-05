@@ -5,18 +5,18 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Text, and_, cast, func, select, text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.core.time import utc_now
 from app.infrastructure.queries.legal import list_active_required_documents
 from app.models import (
+    BillingStateObservation,
     BillingPurchaseScopeHold,
     BillingWorkItem,
     CommercialProductHead,
     ExternalCreateOperation,
     ExternalCreateOperationKind as Kind,
-    ExternalCreateOperationState as State,
     ExternalSubscription,
     DocumentVersion,
     DocumentAcceptance,
@@ -28,7 +28,9 @@ def account_purchases(db: Session, user_id: UUID, *, after: UUID | None, limit: 
     query = (
         select(PurchaseIntent)
         .join(
-            BillingPurchaseScopeHold, BillingPurchaseScopeHold.purchase_intent_id == PurchaseIntent.purchase_intent_id
+            BillingStateObservation,
+            BillingPurchaseScopeHold,
+            BillingPurchaseScopeHold.purchase_intent_id == PurchaseIntent.purchase_intent_id,
         )
         .where(PurchaseIntent.user_id == user_id)
         .order_by(PurchaseIntent.purchase_intent_id)
@@ -136,29 +138,17 @@ def financial_recovery_deadline(operation: ExternalCreateOperation, work: Billin
     return operation.unknown_recovery_deadline_at
 
 
-def overdue_financial(db: Session, now: datetime, limit: int) -> tuple[tuple[UUID, UUID], ...]:
-    deadline = func.coalesce(
-        BillingWorkItem.active_recovery_deadline_at, ExternalCreateOperation.unknown_recovery_deadline_at
-    )
-    return tuple(
-        db.execute(
-            select(PurchaseIntent.user_id, PurchaseIntent.purchase_intent_id)
-            .join(
-                ExternalCreateOperation, ExternalCreateOperation.purchase_intent_id == PurchaseIntent.purchase_intent_id
-            )
-            .outerjoin(
-                BillingWorkItem,
-                and_(
-                    BillingWorkItem.work_kind == "external_create_recovery",
-                    BillingWorkItem.coalescing_key == cast(ExternalCreateOperation.create_operation_id, Text),
-                ),
-            )
+def closed_original_agreement(db: Session, purchase_id: UUID, agreement_id: str) -> bool:
+    return (
+        db.scalar(
+            select(BillingStateObservation.observation_id)
             .where(
-                ExternalCreateOperation.operation_kind.in_([Kind.AGREEMENT, Kind.SUBSCRIPTION]),
-                ExternalCreateOperation.operation_state.in_([State.UNKNOWN, State.POSSIBLE_SEND]),
-                deadline <= now,
+                BillingStateObservation.purchase_intent_id == purchase_id,
+                BillingStateObservation.evidence_schema_version == "prepared-agreement:v1",
+                BillingStateObservation.result_classification == "source_negative",
+                BillingStateObservation.evidence_document["agreement_id"].as_string() == agreement_id,
             )
-            .order_by(deadline)
-            .limit(limit)
-        ).tuples()
+            .limit(1)
+        )
+        is not None
     )

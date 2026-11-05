@@ -34,6 +34,7 @@ from app.models import (
     PurchasedAllowance,
     AccessInvalidationOutbox,
 )
+from apps.api.tests.factories.original_operation import original_proof
 from apps.api.tests.factories.reconciliation import agreement_factory, subscription_factory
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.support.any709_step3 import PurchaseTransport
@@ -87,6 +88,7 @@ def synthetic_prepare(
             )
             point = agreement_factory().model_dump()
             point["agreement_number"] = op.key
+            point["create_date"] = command.create_date.isoformat()
             transport.agreements.append(point)
             provider_id = 456
         else:
@@ -109,6 +111,9 @@ def synthetic_prepare(
                 purchase,
                 claimed,
                 provider_id,
+                proof=original_proof(
+                    factory, service.read_purchase(factory, purchase.user_id, purchase.id), claimed, transport
+                ),
                 observation=_observation(Subscription.model_validate(point), purchase)
                 if kind == Kind.SUBSCRIPTION
                 else None,

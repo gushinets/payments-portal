@@ -5,7 +5,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 from app.domains.billing.contracts import CustomerOpen
-from app.domains.billing.reconciliation_contracts import ReconciliationSubject
+from app.domains.billing.reconciliation_contracts import ReconciliationSubject, SubscriptionCandidateSubject
 from app.domains.catalog.commercial_offer import (
     CommercialEvidenceMode,
     CommercialMoney,
@@ -88,7 +88,7 @@ def agreement_factory() -> Agreement:
     )
 
 
-def tariff_factory(subject: ReconciliationSubject) -> LbxRead[LbxTariff]:
+def tariff_factory(subject: ReconciliationSubject | SubscriptionCandidateSubject) -> LbxRead[LbxTariff]:
     return LbxRead(
         subject.purchase.account_id,
         701,

@@ -22,6 +22,7 @@ from app.domains.purchases.contracts import PurchaseRefused
 from app.domains.purchases.router import present_review
 from app.models import BillingWorkItem, ExternalCreateOperation, ExternalCreateOperationKind as Kind
 from app.models import ExternalCreateOperationState as State, PurchaseIntentState as IntentState
+from apps.api.tests.factories.original_operation import advance_deadlines
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.test_any709_step3_postgres import setup_purchase, accept, TOKEN
 
@@ -91,7 +92,7 @@ async def test_late_proven_unsent_resume_has_one_new_bounded_recovery_window(
         assert json.loads(attempts[0].content) == json.loads(attempts[1].content)
         assert current.state == State.UNKNOWN and resumed.state == IntentState.AWAITING_EXTERNAL_RESULT and resumed.held
         assert current.deadline == resumed_at + timedelta(hours=2)
-        assert financial.escalate_overdue_financial(factory, now=instant) == 0
+        assert advance_deadlines(factory, now=instant) == 0
         with factory() as db:
             op = db.get(ExternalCreateOperation, original.id)
             assert (op.unknown_since, op.unknown_recovery_deadline_at, op.recovery_hint_document) == history
@@ -110,15 +111,15 @@ async def test_late_proven_unsent_resume_has_one_new_bounded_recovery_window(
                 sources, config, factory=factory, user_id=purchase.user_id, purchase_id=purchase.id
             )
             assert next(op for op in recovered.operations if op.kind == kind).state == State.BOUND
-            assert financial.escalate_overdue_financial(factory, now=current.deadline + timedelta(seconds=1)) == 0
+            assert advance_deadlines(factory, now=current.deadline + timedelta(seconds=1)) == 0
         else:
             # The scanner rechecks the active attempt, including after scheduling changes.
             with factory() as db:
                 work = db.get(BillingWorkItem, work_id)
                 work.next_attempt_at = instant
                 db.commit()
-            assert financial.escalate_overdue_financial(factory, now=current.deadline - timedelta(microseconds=1)) == 0
-            assert financial.escalate_overdue_financial(factory, now=current.deadline) == 1
+            assert advance_deadlines(factory, now=current.deadline - timedelta(microseconds=1)) == 0
+            assert advance_deadlines(factory, now=current.deadline) == 1
             assert service.read_purchase(factory, purchase.user_id, purchase.id).state == IntentState.MANUAL_REVIEW
         assert len(attempts) == 2
 

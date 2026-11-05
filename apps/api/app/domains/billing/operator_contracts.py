@@ -1,4 +1,4 @@
-"""Explicit expectations for the two privileged, proof-based review resolutions."""
+"""Original-operation proof and explicit privileged review expectations."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.domains.billing.contracts import CustomerOpen
 from app.domains.purchases.contracts import Purchase
 from app.domains.billing.reconciliation_contracts import SubscriptionProof
 
@@ -71,4 +72,6 @@ class OriginalOperationProof:
     read_started_at: datetime
     read_finished_at: datetime
     request_digest: str
+    customer: CustomerOpen
     subscription: SubscriptionProof | None = None
+    agreement_close_date: str | None = None

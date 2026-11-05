@@ -111,10 +111,23 @@ lag; they never extend trust. Claims/fences prevent competing or stale consumers
 from overwriting newer facts, and hints arriving during work remain due.
 
 `external_create_recovery` is GET-only. Zero candidates remain uncertain; exactly
-one original point-proven candidate may bind; ambiguous/foreign/already-bound
-candidates require review or more proof. Recovery preserves the original
+one original point-proven candidate may bind; ambiguous/foreign candidates or
+an identity bound to another purchase require review or more proof. Recovery preserves the original
 operation, request/key/date, accepted history and hold. Known financial conflicts
 need audited resolution; a deadline-only escalation can recover normally.
+Advance, worker and operator use the same GET-only original-operation collector
+and transactional binder. The original saved command, actual possible-send
+history and fresh ownership/effective terms are required. A known binding never
+re-enters preparation: completed recovery is a no-op, while lifecycle updates
+require the existing subscription lease. A concurrent first binder discards the
+losing candidate proof and forces fresh claimed reconciliation.
+
+Original termination is recoverable history, including a closed agreement.
+First binding atomically retains the binding and normalized negative, with zero
+positive trust. A retained closed agreement blocks a new subscription POST.
+Waiting subscriptions need no invented cycle dates to prove their creation;
+ended objects cannot open payment presentation. No background financial replay
+or uncertain-hold release is introduced.
 
 `external_create_deadline` uses the current fixed active financial recovery
 window. Legacy rows without an active deadline use original unknown_since + 2h.
@@ -327,7 +340,10 @@ accepted_terms_changed_after_preparation on an unbound possible-send financial
 operation. Complete bounded discovery must prove exactly one original candidate,
 even with a saved receipt. Saved request/correlation/accepted terms, original
 agreement date and supported subscription lifecycle/policy must match. Binding
-enrolls reconciliation without itself renewing trust.
+enrolls reconciliation without itself renewing trust. This includes a proved
+original terminal subscription or closed agreement. Each required point is read
+once; the same normalized original proof authorizes binding and its atomic
+audit. Complete original creation is separate from a complete paid-cycle proof.
 
 The conflict evidence must retain original POSSIBLE_SEND/UNKNOWN state and send
 fence; the same operation's deadline-review evidence may supply it. Missing

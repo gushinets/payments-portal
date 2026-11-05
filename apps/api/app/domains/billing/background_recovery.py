@@ -112,7 +112,9 @@ def _repair_operation(factory: SessionFactory, configuration: Settings, identity
             operations = purchases.operations(db, row.purchase_intent_id, lock=True)
             op = next(item for item in operations if item.create_operation_id == identity)
         db.refresh(op)
-        if op.operation_state not in {State.POSSIBLE_SEND, State.UNKNOWN, State.MANUAL_REVIEW}:
+        if op.operation_state not in {State.POSSIBLE_SEND, State.UNKNOWN, State.MANUAL_REVIEW} or (
+            op.operation_kind != Kind.CUSTOMER and op.bound_external_object_id is not None
+        ):
             return False
         valid = (
             customer.provider_origin == configuration.lbx_provider_origin
@@ -236,7 +238,9 @@ def finish_recovery(factory: SessionFactory, claim: WorkClaim) -> None:
         if queue is not None and queue.lease_owner != claim.owner:
             return  # Shared bind already finalized, or a newer owner/hint won.
         row = work.verify_claim(db, claim)
-        done = op.operation_state in {State.PENDING, State.PROVEN_NOT_SENT, State.BOUND}
+        done = op.operation_state in {State.PENDING, State.PROVEN_NOT_SENT, State.BOUND} or (
+            op.operation_kind != Kind.CUSTOMER and op.bound_external_object_id is not None
+        )
         now = as_utc(billing_reconciliation.database_now(db))
         interval = min(work.URGENT_SECONDS, 30 * 2 ** min(max(row.attempt_count - 1, 0), 4))
         work.finish(
