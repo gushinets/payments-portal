@@ -481,7 +481,7 @@ def test_api_project_preserves_python_and_direct_dependency_versions() -> None:
         "pydantic-settings==2.15.0",
     }
     assert set(pyproject["dependency-groups"]["dev"]) == {
-        "httpx2==2.10.0",
+        "httpx2==2.12.0",
         "pytest==9.1.1",
         "ruff==0.15.22",
         "polyfactory==3.3.0",
