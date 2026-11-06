@@ -1,14 +1,14 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-10-29 (consolidated ANY-709 billing and ANY-715 worker generations)
+Last updated: 2026-11-06 (ANY-765 accepted terms and paid-access schema)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 (head)
+20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
@@ -36,6 +36,11 @@ persistence meaning; `docs/generated/db-schema.md` owns column-level output.
 timestamps and recurring-job uniqueness after consolidated revision
 `20261029_0003`, preserving active deadlines and existing send leases. The chain
 has one current head.
+
+`20261031_0006_paid_access` adds lossless allowance cycles, nullable paid-projection
+fields and monotonic storage guards. Its preflight refuses incompatible legacy
+history without repair; legacy UTC values are preserved exactly. Downgrade
+refuses to discard committed calendar, paid-state or primary-retirement meaning.
 
 Target commercial ownership and runtime behavior follow, in precedence order:
 
@@ -208,7 +213,11 @@ fingerprint, immutable accepted snapshot, and client idempotency key. Its
 closed states are `created`, `preparing`, `awaiting_external_result`, `linked`,
 `resolved_no_external_effect`, `failed_before_external_effect`, and
 `manual_review`. PostgreSQL triggers keep the accepted evidence/provenance
-fields immutable.
+fields immutable. ANY-765 writes `accepted-purchase:v2`, including the optional
+SIMULATED technical terms and confirmation digest. Historical v1 stays readable
+without invented limits; exact replay uses saved evidence rather than current
+source configuration. The development fixture is disabled by default and
+rejected in production.
 
 `external_create_operations` records customer, agreement, or subscription
 create work. Customer creation has no purchase intent; agreement and
@@ -253,7 +262,10 @@ operator force-release command exists.
 ## Reconciliation and access tables
 
 `billing_product_access_scopes` is unique by `(user_id, product_id)` and may
-select one same-user/same-product primary subscription. The baseline creates
+select one same-user/same-product primary subscription. Migration `20261031_0006`
+adds nullable effective document/deadline, basis-observation reference and
+primary-retirement fields. Paid derivation is not yet connected to source apply.
+The baseline creates
 the scope/subscription/observation foreign-key cycle after all three tables
 exist.
 
@@ -290,23 +302,30 @@ Its closed kinds are
 enforce each kind's minimum provenance shape. DELETE is forbidden, and all
 fields except `resulting_access_revision` are immutable. That field may be
 assigned exactly once from `NULL` to a non-null value; once assigned, it cannot
-be cleared or replaced. Positivity and semantic/causal validation of that
-revision belong to ANY-504 Step 9 and are not current storage guarantees.
+be cleared or replaced. Migration `20261031_0006` requires an assigned revision
+to be positive. Semantic/causal validation belongs to the later paid writer.
+Versioned `target-product-discovery:v2` and `paid-access-cause:v1` evidence may
+retain purchase provenance without an access scope.
 
 `purchased_allowances` links a source component and product/metric quantity to
-an external subscription. Quantity is non-negative, provider-cycle bounds are
-paired, and `period_start < period_end`. PostgreSQL triggers prevent
-updates/deletes.
+an external subscription. Quantity is non-negative. Migration `20261031_0006`
+preserves existing UTC rows as `legacy-utc:v1` without inferring dates. New
+`calendar:v1` rows retain inclusive dates and lossless calendar/accepted-terms
+documents without UTC bounds; `timestamp:v1` rows retain explicitly zoned source
+and frozen UTC bounds. Technical unit and terms are required for both new
+shapes. Logical subscription/component/metric/cycle identity is unique.
+PostgreSQL triggers prevent updates/deletes, including all new fields.
 
 `paid_access_states` has at most one row per `(tenant_id, region, user_id)` and
 stores a complete effective-state document with a non-null `access_revision`
-slot. The current database does not enforce that slot as positive or enforce
-monotonic state transitions; those runtime semantics belong to ANY-504 Step 9.
+slot. Migration `20261031_0006` enforces positive revisions, unchanged meaning
+within a revision, increments of exactly one and no identity changes or deletes.
 `access_invalidation_outbox` has the same unique scope. Its physical checks
 require a positive pending revision and forbid `delivered_revision` from
-exceeding it, but do not implement coalescing or delivery. Runtime derivation,
-revision transitions, coalescing, and delivery are not implemented by this
-baseline.
+exceeding it. Migration `20261031_0006` also requires nonnegative delivered
+revisions and rejects identity changes, revision regression and deletion;
+these guards do not implement coalescing or delivery. Runtime derivation,
+coalescing and delivery remain later work.
 
 ## Durable operational tables
 
