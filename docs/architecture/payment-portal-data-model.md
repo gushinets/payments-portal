@@ -55,9 +55,10 @@ change. Subscription trust, reconciliation and AccessSnapshot are unchanged.
 The schema is a provider-independent storage baseline. Its presence does not
 itself establish runtime acceptance. ANY-709 implements purchase preparation
 and request-driven recovery. ANY-715 adds shared reconciliation, embedded durable
-polling and audited operations. ANY-765 connects paid derivation for an already
-selected primary to shared reconciliation; primary selection, deadline execution
-and Kernel invalidation delivery remain later work in the refactor transfer.
+polling and audited operations. ANY-765 connects paid derivation to shared
+reconciliation and first-primary selection to complete shared inventory.
+Deadline execution and Kernel invalidation delivery remain later work in the
+refactor transfer.
 
 ## Physical baseline
 
@@ -267,6 +268,11 @@ select one same-user/same-product primary subscription. Migration `20261031_0006
 adds nullable effective document/deadline, basis-observation reference and
 primary-retirement fields. Shared source apply updates the effective projection
 of an existing primary in its own transaction; it does not select a first primary.
+The customer inventory job selects a first primary only after persisting bounded
+product discovery and rechecking committed source observations, fences, purchase
+versions and the current scope under the user lock. Hidden local nonterminal
+sources remain relevant. Newcomers cannot replace an existing primary, and
+retirement never promotes an older candidate automatically.
 The baseline creates
 the scope/subscription/observation foreign-key cycle after all three tables
 exist.
@@ -310,6 +316,12 @@ to be positive. The shared paid writer assigns the causal revision only when the
 whole-user effective state changes; a semantic no-op retains the revision.
 Versioned `target-product-discovery:v2` and `paid-access-cause:v1` evidence may
 retain purchase provenance without an access scope.
+`target-product-discovery:v3` stores scoped candidate conclusions and references
+to the observations already committed by leased reconciliation. Inventory does
+not apply those source facts again. A `primary-selection:v1` observation links
+the chosen source to its discovery; selection, paid state, causal revision and
+outbox share the final inventory transaction. Later inventory failures cannot
+roll back earlier authoritative source/paid transactions.
 
 `purchased_allowances` links a source component and product/metric quantity to
 an external subscription. Quantity is non-negative. Migration `20261031_0006`

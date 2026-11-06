@@ -97,7 +97,15 @@ async def reconcile_subscription(
                     # Keep canonical owner/fence/time checks before any negative write.
                     # A timely customer negative survives later I/O budget exhaustion,
                     # but cannot authorize or audit a successful operator resolution.
-                    await delegate(apply_reconciliation, factory, subject, proof, work_claim=work_claim)
+                    await delegate(
+                        apply_reconciliation,
+                        factory,
+                        subject,
+                        proof,
+                        work_claim=work_claim,
+                        clock_skew_seconds=configuration.paid_access_clock_skew_seconds,
+                        allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
+                    )
                     raise InventoryStale()
                 from app.composition.purchase_inventory import collect_inventory
                 from app.domains.purchases.inventory_contracts import InventoryCandidateProof

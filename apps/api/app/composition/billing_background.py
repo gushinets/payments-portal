@@ -10,7 +10,8 @@ from app.composition.purchase_inventory import collect_inventory
 from app.composition.sources import SourceResources
 from app.core.errors import AppError
 from app.domains.billing.contracts import BillingRefused
-from app.core.settings import Settings
+from app.core.settings import AppEnv, Settings
+from app.domains.billing.discovery import persist_discoveries
 from app.domains.billing import background_recovery as recovery, work
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.catalog.publication import SessionFactory
@@ -132,4 +133,13 @@ async def _inventory_customer(
         if result.conflicts
         else ("inventory_incomplete" if not result.complete or result.pending else None)
     )
-    await delegate(recovery.apply_inventory, factory, claim, result, reason)
+    result = await delegate(persist_discoveries, factory, claim, result)
+    await delegate(
+        recovery.apply_inventory,
+        factory,
+        claim,
+        result,
+        reason,
+        clock_skew_seconds=configuration.paid_access_clock_skew_seconds,
+        allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
+    )

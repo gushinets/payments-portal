@@ -36,6 +36,7 @@ from app.models import (
     ExternalCreateOperationState as State,
     User,
     ExternalBillingCustomerBindingState as Binding,
+    ExternalBillingCustomer,
     BillingProductAccessScope,
 )
 
@@ -82,6 +83,20 @@ def pause_expired_recovery(db: Session, op: ExternalCreateOperation, account: st
         _pause_recovery(db, op, account)
         return True
     return False
+
+
+def hint_inventory(db: Session, customer: ExternalBillingCustomer) -> None:
+    coalesce(
+        db,
+        kind=INVENTORY,
+        key=f"{customer.external_billing_account_id}:{customer.customer_id}",
+        scope_kind="customer",
+        reference=str(customer.customer_id),
+        due=as_utc(billing_reconciliation.database_now(db)),
+        priority=1,
+        payload={},
+        hint=True,
+    )
 
 
 def enroll_operation(db: Session, operation: ExternalCreateOperation, account: str, *, sent: bool = False) -> None:
@@ -408,18 +423,27 @@ def finish_deadline_notification(factory: SessionFactory, claim: WorkClaim, *, n
         db.commit()
 
 
-def apply_inventory(factory: SessionFactory, claim: WorkClaim, result: "InventoryResult", reason: str | None) -> None:
+def apply_inventory(
+    factory: SessionFactory,
+    claim: WorkClaim,
+    result: "InventoryResult",
+    reason: str | None,
+    *,
+    clock_skew_seconds: int | None = None,
+    allow_simulated_metering: bool = True,
+) -> None:
     """Validate all original versions, then finish the customer job once."""
     from app.domains.purchases.inventory import invalidate_unsent, validate_inventory
+    from app.domains.purchases.inventory_contracts import InventoryStale
 
     with factory() as db:
         customer = queries.customer(db, UUID(claim.reference))
         if claim.kind != INVENTORY or customer is None or customer.customer_id != result.customer.customer_id:
             raise BillingRefused("billing_work_stale", 409)
-        customers.lock_user(db, customer.user_id)
+        user = customers.lock_user(db, customer.user_id)
         validate_inventory(db, result)
         locked = []
-        for purchase in result.purchases:
+        for purchase in sorted(result.purchases, key=lambda item: (item.accepted.selection.product_id, str(item.id))):
             if purchase.id not in result.conflicts:
                 continue
             row = service._locked(db, purchase)
@@ -434,13 +458,45 @@ def apply_inventory(factory: SessionFactory, claim: WorkClaim, result: "Inventor
             subscription = purchases.linked_subscription(db, purchase.id)
             target = next(op for op in operations if op.operation_kind == Kind.SUBSCRIPTION)
             locked.append((purchase, row, target, scope, subscription))
-        queue = work.verify_claim(db, claim)
-        if queue.coalescing_key != f"{customer.external_billing_account_id}:{customer.customer_id}":
-            raise BillingRefused("billing_work_stale", 409)
+        now = as_utc(billing_reconciliation.database_now(db))
+        from app.domains.billing.discovery import select_primaries
+
+        causes = (
+            list(
+                select_primaries(
+                    db,
+                    result,
+                    claim,
+                    now,
+                    clock_skew_seconds=clock_skew_seconds,
+                    allow_simulated_metering=allow_simulated_metering,
+                )
+            )
+            if result.discovery_ids
+            else []
+        )
         for purchase, row, target, scope, subscription in locked:
             unsent = subscription is None and target.operation_state in {State.PENDING, State.PROVEN_NOT_SENT}
+            selected_primary = (
+                subscription is not None and scope.primary_subscription_id == subscription.subscription_id
+            )
             if unsent:
                 invalidate_unsent(db, purchase)
+            elif selected_primary:
+                from app.infrastructure.queries.paid_access import metric_review
+                from app.models import ManualReviewCase
+
+                if metric_review(db, str(scope.access_scope_id), "product_competitor") is None:
+                    db.add(
+                        ManualReviewCase(
+                            reason_code="customer_inventory_competitor",
+                            scope_kind="product_competitor",
+                            scope_reference=str(scope.access_scope_id),
+                            evidence_schema_version="customer-inventory:v2",
+                            evidence_document={},
+                            case_state="open",
+                        )
+                    )
             else:
                 financial._review(db, row, target, "customer_inventory_conflict")
             from app.models import (
@@ -449,25 +505,41 @@ def apply_inventory(factory: SessionFactory, claim: WorkClaim, result: "Inventor
                 ExternalSubscriptionCommercialAccessStatus as Commercial,
             )
 
-            if subscription is not None:
+            if subscription is not None and not selected_primary:
                 subscription.commercial_access_status = Commercial.INELIGIBLE
-            db.add(
-                BillingStateObservation(
-                    observation_kind=BillingStateObservationKind.TARGET_PRODUCT_DISCOVERY,
-                    external_billing_account_id=customer.external_billing_account_id,
-                    user_id=purchase.user_id,
-                    product_id=purchase.accepted.selection.product_id,
-                    access_scope_id=scope.access_scope_id,
-                    subscription_id=subscription.subscription_id if subscription else None,
-                    observed_at=as_utc(billing_reconciliation.database_now(db)),
-                    evidence_schema_version="customer-inventory:v1",
-                    evidence_document={"purchase_intent_id": str(purchase.id), "reason": "competing_inventory"},
-                    completeness_classification="conflict",
-                    result_classification="admission_blocked" if unsent else "review_required",
-                    resulting_access_revision=None,
-                )
+            cause = BillingStateObservation(
+                observation_kind=BillingStateObservationKind.TARGET_PRODUCT_DISCOVERY,
+                external_billing_account_id=customer.external_billing_account_id,
+                user_id=purchase.user_id,
+                product_id=purchase.accepted.selection.product_id,
+                access_scope_id=scope.access_scope_id,
+                subscription_id=subscription.subscription_id if subscription else None,
+                observed_at=as_utc(billing_reconciliation.database_now(db)),
+                evidence_schema_version="customer-inventory:v1",
+                evidence_document={"purchase_intent_id": str(purchase.id), "reason": "competing_inventory"},
+                completeness_classification="conflict",
+                result_classification="admission_blocked" if unsent else "review_required",
+                resulting_access_revision=None,
             )
-        now = as_utc(billing_reconciliation.database_now(db))
+            db.add(cause)
+            db.flush()
+            causes.append(cause)
+        if causes:
+            from app.domains.billing.paid_access import commit_paid_state
+
+            commit_paid_state(
+                db,
+                user,
+                causes[-1],
+                now,
+                related_causes=tuple(causes[:-1]),
+                allow_simulated_metering=allow_simulated_metering,
+            )
+        queue = work.verify_claim(db, claim)  # Queue ownership last; stale completion rolls back every decision.
+        if queue.coalescing_key != f"{customer.external_billing_account_id}:{customer.customer_id}":
+            raise BillingRefused("billing_work_stale", 409)
+        if result.discovery_ids and queue.enqueue_generation != claim.generation:
+            raise InventoryStale()
         interval = work.URGENT_SECONDS if reason else INVENTORY_SECONDS
         work.finish(
             db,
