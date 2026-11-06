@@ -576,15 +576,15 @@ Progress: Stage 0 [x]; Stage 1 [x]; Stage 2 [x]; Stage 3 [x]; Stage 4 [x]; Stage
   Accepted purchases, consent, original create operations, reviews, retained inbox
   and access/grant/outbox tables stayed unchanged. Incomplete provider calendars
   did not renew finite source facts. Operator inspect still exposes the work.
-- Live blocker: automated Chromium and the in-app browser cannot obtain the
-  vendor Widget READY signal; LBX SDK reports that its iframe failed to load or
-  send READY. An earlier opening also exhausted the provider budget. Both account
-  and payment visual opening/repeated refresh remain unaccepted. Preserve this
-  fresh failure separately from historical human PASS; no charge, credit, new
-  financial CREATE, security bypass or invented provider date was attempted.
+- Initial automated Widget result: Chromium and the in-app browser did not
+  obtain the vendor READY signal; the SDK reported an iframe load/READY failure.
+  An earlier opening also exhausted the provider budget. The initial handoff
+  therefore left visual opening/refresh unaccepted. Preserve that measured
+  result separately from the later owner-confirmed manual PASS on the preserved
+  stand and the owner completion decision below. No charge, credit, new financial
+  CREATE, security bypass or invented provider date was attempted in this run.
   Natural renewal, 2/6-hour wall-clock waits and Kernel quota enforcement are not
-  claimed. The next acceptance action is to diagnose real iframe/READY delivery
-  on the approved stand and repeat opening/refresh without changing this scope.
+  claimed.
 - Retained-data evidence: the preserved checkout's actual harness API points at
   `payments_cf94dbf9`, revision `20261028_0005` (2 purchases, 2 subscriptions,
   118 observations, 3 reviews, 17 work rows). Current readers/inspect succeeded;
@@ -638,8 +638,8 @@ Progress: Stage 0 [x]; Stage 1 [x]; Stage 2 [x]; Stage 3 [x]; Stage 4 [x]; Stage
   Native Windows was not run. The original checkout, branch, backup, PR #154,
   source databases and dependent branches remain preserved. The test DB and
   temporary QA processes were stopped; copied containers/volumes were removed.
-  One normal Stage 6 commit/push updates the same Draft PR #161, with the live
-  acceptance blocker and raw check limitations left explicit.
+  The Stage 6 commit/push updated the same then-Draft PR #161, retaining the
+  initial Widget failure and raw check limitations as historical evidence.
 
 ## Owner-confirmed manual QA on the preserved stand — 2026-11-06
 
@@ -691,5 +691,9 @@ were not rerun by the agent after that confirmation.
 - Final publication checks: 81 focused harness-dotenv/preflight tests, Ruff
   lint, documentation checks, Compose timeout forwarding and diff checks passed.
   No full database or browser suites were rerun for this configuration/docs change.
-- Keep PR #161 Draft, preserve PR #154 and its branch, and make no merge or
-  production-enablement claim.
+- The owner subsequently requested PR-readiness cleanup. Current product and
+  operational documentation describe polling-only behavior; the PR summary
+  identifies the worker migration and links this record for detailed evidence.
+  Prepare PR #161 for review under that request; required CI and human merge
+  approval retain their normal gates. Preserve PR #154 and its branch; no merge
+  or production enablement is performed by this documentation cleanup.
