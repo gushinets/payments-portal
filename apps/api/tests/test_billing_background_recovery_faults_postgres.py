@@ -351,7 +351,10 @@ async def test_billing_background_recovery_inventory_refuses_unsafe_other_produc
         saved = service.read_purchase(factory, first.user_id, identity)
         assert tuple((op.id, op.bound_id, op.key) for op in saved.operations) == expected
     classification = job(factory, recovery.INVENTORY, first.customer_id).last_error_classification
-    assert classification == ("inventory_conflict" if bad == "unknown" else "inventory_incomplete")
+    assert classification == ("inventory_conflict" if bad in {"unknown", "swapped"} else "inventory_incomplete")
+    if bad == "swapped":
+        with factory() as db:
+            assert all(sub.commercial_access_status == "ineligible" for sub in db.scalars(select(ExternalSubscription)))
     assert all(req.method == "GET" for req in transport.requests[count:])
     await worker.aclose()
 
