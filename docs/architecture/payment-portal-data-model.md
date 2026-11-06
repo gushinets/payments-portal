@@ -55,8 +55,9 @@ change. Subscription trust, reconciliation and AccessSnapshot are unchanged.
 The schema is a provider-independent storage baseline. Its presence does not
 itself establish runtime acceptance. ANY-709 implements purchase preparation
 and request-driven recovery. ANY-715 adds shared reconciliation, embedded durable
-polling and audited operations; paid-access derivation and Kernel invalidation
-delivery remain future work.
+polling and audited operations. ANY-765 connects paid derivation for an already
+selected primary to shared reconciliation; primary selection, deadline execution
+and Kernel invalidation delivery remain later work in the refactor transfer.
 
 ## Physical baseline
 
@@ -99,7 +100,7 @@ to a Portal-managed routing catalog.
 | `external_billing_webhook_deliveries` | Operations | Redacted webhook receipt/correlation evidence; never raw payload or access authority. |
 | `billing_work_items` | Operations | Shared durable scheduling/lease substrate; not business authority. |
 | `manual_review_cases` | Operations | Durable conflict/uncertainty evidence and audited resolution slots. |
-| `paid_access_states` | Access | Provider-neutral paid-access document storage with a required revision slot per user scope; runtime transition semantics are deferred. |
+| `paid_access_states` | Access | Provider-neutral whole-user paid-access document and semantic revision, written atomically with supporting source facts. |
 | `access_invalidation_outbox` | Access | Durable pending/delivered revision slots for later paid-access invalidation delivery. |
 
 The documentation checker requires every implemented SQLAlchemy metadata table
@@ -264,7 +265,8 @@ operator force-release command exists.
 `billing_product_access_scopes` is unique by `(user_id, product_id)` and may
 select one same-user/same-product primary subscription. Migration `20261031_0006`
 adds nullable effective document/deadline, basis-observation reference and
-primary-retirement fields. Paid derivation is not yet connected to source apply.
+primary-retirement fields. Shared source apply updates the effective projection
+of an existing primary in its own transaction; it does not select a first primary.
 The baseline creates
 the scope/subscription/observation foreign-key cycle after all three tables
 exist.
@@ -287,10 +289,11 @@ paid state, grant or allowance, and never extends paid trust on Manage.
 ANY-715 Step 1 uses the existing reconciliation lease/fence columns and appends
 `subscription-reconciliation:v1` evidence through shared claim/read/apply logic.
 It creates/reuses a product scope without selecting a primary. Complete matching
-proof anchors at most six hours of source trust to read-set start; incomplete
+positive proof anchors at most six hours of source trust to read-set start; incomplete
 attempts preserve the existing deadline and complete support, while decisive
 owned negative/conflict evidence reduces usability. Subsequent preparation
-cannot overwrite monitored facts. All resulting access revisions remain null.
+cannot overwrite monitored facts. ANY-765 assigns a resulting access revision
+when the supporting observation causes a material paid-state change.
 Step 1 alone added no DDL or worker; Steps 2–5 supply the running worker and
 operations described below. See the
 [operations runbook](../engineering/billing-background-operations.md).
@@ -303,7 +306,8 @@ enforce each kind's minimum provenance shape. DELETE is forbidden, and all
 fields except `resulting_access_revision` are immutable. That field may be
 assigned exactly once from `NULL` to a non-null value; once assigned, it cannot
 be cleared or replaced. Migration `20261031_0006` requires an assigned revision
-to be positive. Semantic/causal validation belongs to the later paid writer.
+to be positive. The shared paid writer assigns the causal revision only when the
+whole-user effective state changes; a semantic no-op retains the revision.
 Versioned `target-product-discovery:v2` and `paid-access-cause:v1` evidence may
 retain purchase provenance without an access scope.
 
@@ -324,8 +328,9 @@ within a revision, increments of exactly one and no identity changes or deletes.
 require a positive pending revision and forbid `delivered_revision` from
 exceeding it. Migration `20261031_0006` also requires nonnegative delivered
 revisions and rejects identity changes, revision regression and deletion;
-these guards do not implement coalescing or delivery. Runtime derivation,
-coalescing and delivery remain later work.
+these guards do not implement delivery. The caller-transaction paid writer
+canonicalizes the whole-user state, increments its revision and coalesces the
+pending outbox revision atomically with source facts. Delivery remains later work.
 
 ## Durable operational tables
 
@@ -359,8 +364,9 @@ Step 2 worker migration `20261028_0005`. Inventory observations use
 The pre-existing create-recovery index and customer-send lease identity remain
 unchanged. Claims use paired finite ownership; completion preserves newer enqueue
 generations. Binding atomically enrolls new canonical subscriptions. Source apply
-atomically reschedules monitoring and the local trust deadline, with no paid-state
-or access-revision writes. Migration `20261028_0005` follows consolidated billing revision
+atomically reschedules monitoring and the earliest supported trust/access deadline,
+alongside paid state, causal revision and outbox writes for an existing primary.
+Migration `20261028_0005` follows consolidated billing revision
 `20261029_0003` and preserves its active deadline and existing rows.
 
 `manual_review_cases` stores bounded evidence and optional resolution proof.

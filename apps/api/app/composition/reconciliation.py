@@ -9,7 +9,7 @@ from uuid import UUID
 from starlette.concurrency import run_in_threadpool
 
 from app.composition.sources import SourceResources
-from app.core.settings import Settings
+from app.core.settings import AppEnv, Settings
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.reconciliation import apply_reconciliation, claim_reconciliation, read_source_time
 from app.domains.billing.reconciliation_contracts import (
@@ -131,7 +131,16 @@ async def reconcile_subscription(
             ("read_budget_exhausted",),
             (),
         )
-    return await delegate(apply_reconciliation, factory, subject, proof, work_claim=work_claim, resolution=resolution)
+    return await delegate(
+        apply_reconciliation,
+        factory,
+        subject,
+        proof,
+        work_claim=work_claim,
+        resolution=resolution,
+        clock_skew_seconds=configuration.paid_access_clock_skew_seconds,
+        allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
+    )
 
 
 async def reconcile_bound_purchase(
