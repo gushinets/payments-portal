@@ -19,6 +19,12 @@ before frontend work.
   introduce another runtime schema authority.
 - Import backend wire DTOs from generated contracts; keep form/UI/view models
   local and do not copy response fields in components.
+- Local finite UI states/outcomes/kinds use one symbolic vocabulary and
+  exhaustive handling. Preserve concrete consumed nested types and
+  omitted/null behavior. Backend wire enums retain their generated authority;
+  existing type-only generation is explicit debt. Apply the
+  [internal-contract rules](../../docs/engineering/CODING_CONVENTIONS.md#internal-contracts)
+  proportionately to changed contracts and affected consumers.
 - Inspect errors with `ApiError.status` and `detail.code`, never
   `message.includes(...)`.
 

@@ -57,48 +57,30 @@ LEGAL_DOCS_ROOT = ROOT / "docs" / "legal" / "ru"
 LOCAL_INSTANCE_TENANT_ID = "anytoolai"
 LOCAL_INSTANCE_REGION = "ru"
 
-CANONICAL_PERSISTED_ENUM_NAMES = frozenset(
+REMOVED_LEGACY_PERSISTED_ENUM_NAMES = frozenset(
     {
-        "AcceptanceKind",
-        "BillingStateObservationKind",
-        "ExternalBillingCustomerBindingState",
-        "ExternalCreateOperationKind",
-        "ExternalSubscriptionCommercialAccessStatus",
-        "ExternalSubscriptionFinancialAccessStatus",
-        "ExternalSubscriptionLifecycleStatus",
-        "LegalEntityStatus",
-        "LegalEntityType",
-        "MagicLinkPurpose",
-        "PurchaseIntentState",
-        "RegionStatus",
-        "UserStatus",
+        "BillingPeriod",
+        "BundleProductStatus",
+        "BundleStatus",
+        "CheckoutSessionStatus",
+        "EntitlementSource",
+        "EntitlementStatus",
+        "OrderItemType",
+        "OrderStatus",
+        "PaymentStatus",
+        "PaymentWebhookEventStatus",
+        "PlanLimitOveragePolicy",
+        "PlanLimitResetPolicy",
+        "PlanPriceComponentType",
+        "PlanStatus",
+        "ProductStatus",
+        "RefundStatus",
+        "SubscriptionEventType",
+        "SubscriptionRenewalMode",
+        "SubscriptionScopeType",
+        "SubscriptionStatus",
+        "WebhookEventStatus",
     }
-)
-REMOVED_BILLING_ENUM_FACADE_NAMES = CANONICAL_PERSISTED_ENUM_NAMES | {
-    "BillingPeriod",
-    "BundleProductStatus",
-    "BundleStatus",
-    "CheckoutSessionStatus",
-    "EntitlementSource",
-    "EntitlementStatus",
-    "OrderItemType",
-    "OrderStatus",
-    "PaymentStatus",
-    "PaymentWebhookEventStatus",
-    "PlanLimitOveragePolicy",
-    "PlanLimitResetPolicy",
-    "PlanPriceComponentType",
-    "PlanStatus",
-    "ProductStatus",
-    "RefundStatus",
-    "SubscriptionEventType",
-    "SubscriptionRenewalMode",
-    "SubscriptionScopeType",
-    "SubscriptionStatus",
-    "WebhookEventStatus",
-}
-REMOVED_LEGACY_PERSISTED_ENUM_NAMES = (
-    REMOVED_BILLING_ENUM_FACADE_NAMES - CANONICAL_PERSISTED_ENUM_NAMES
 )
 
 
@@ -2776,7 +2758,7 @@ def check_python_boundaries(root: Path = ROOT) -> list[str]:
 
 
 def check_canonical_persisted_model_layer(root: Path = ROOT) -> list[str]:
-    """Protect the final ANY-326 model ownership and import boundary."""
+    """Protect canonical persisted-model ownership and removed import facades."""
     app_root = root / "apps/api/app"
     if not app_root.exists():
         return []
@@ -2784,6 +2766,31 @@ def check_canonical_persisted_model_layer(root: Path = ROOT) -> list[str]:
     errors: list[str] = []
     billing_model_facade = app_root / "domains/billing/models.py"
     canonical_enum_module = (app_root / "models/enums.py").resolve()
+    canonical_enum_relative = "apps/api/app/models/enums.py"
+    try:
+        canonical_enum_tree = ast.parse(
+            canonical_enum_module.read_text(encoding="utf-8"),
+            filename=str(canonical_enum_module),
+        )
+    except (OSError, UnicodeError):
+        return [
+            f"{canonical_enum_relative} cannot read canonical enum authority; "
+            "restore a readable Python source file declaring persisted enums"
+        ]
+    except SyntaxError as error:
+        return [
+            f"{canonical_enum_relative}:{error.lineno or 1} cannot parse canonical enum authority; "
+            "fix the Python syntax before running canonical model-layer checks"
+        ]
+    canonical_enum_names = {
+        node.name for node in canonical_enum_tree.body if isinstance(node, ast.ClassDef)
+    }
+    if not canonical_enum_names:
+        return [
+            f"{canonical_enum_relative} canonical enum authority declares no top-level classes; "
+            "restore canonical persisted enum declarations"
+        ]
+    forbidden_billing_enum_names = canonical_enum_names | REMOVED_LEGACY_PERSISTED_ENUM_NAMES
     if billing_model_facade.exists():
         errors.append(
             "apps/api/app/domains/billing/models.py is forbidden; import ORM models from app.models"
@@ -2805,7 +2812,7 @@ def check_canonical_persisted_model_layer(root: Path = ROOT) -> list[str]:
 
         if path.resolve() != canonical_enum_module:
             for node in ast.walk(tree):
-                if isinstance(node, ast.ClassDef) and node.name in CANONICAL_PERSISTED_ENUM_NAMES:
+                if isinstance(node, ast.ClassDef) and node.name in canonical_enum_names:
                     errors.append(
                         f"{relative}:{node.lineno} defines protected persisted enum {node.name}; "
                         "define it only in apps/api/app/models/enums.py"
@@ -2821,6 +2828,14 @@ def check_canonical_persisted_model_layer(root: Path = ROOT) -> list[str]:
                     errors.append(
                         f"{relative}:{node.lineno} imports ORM models through "
                         "app.domains.billing.models; import them from app.models"
+                    )
+                if any(
+                    module_matches(target, "app.domains.billing.enums")
+                    for target in imported_targets
+                ):
+                    errors.append(
+                        f"{relative}:{node.lineno} imports the removed billing enum façade; "
+                        "import persisted enums from app.models"
                     )
                 if any(
                     module_matches(target, "app.domains.legal.enums")
@@ -2862,7 +2877,7 @@ def check_canonical_persisted_model_layer(root: Path = ROOT) -> list[str]:
                             "billing enum façade; import it from app.models"
                         )
             for alias in node.names:
-                if alias.name in REMOVED_BILLING_ENUM_FACADE_NAMES and (
+                if alias.name in forbidden_billing_enum_names and (
                     f"{billing_enum_module}.{alias.name}" in imported_targets
                 ):
                     errors.append(
