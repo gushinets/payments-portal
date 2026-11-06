@@ -324,7 +324,8 @@ that agreement's purchase regardless of tariff. Tariff-scoped competition is
 also retained; ended subscriptions and closed agreements keep their exceptions.
 Known subscription IDs on another purchase's agreement receive the same point
 checks; a contradictory canonical identity proof also triggers them when
-discovery lags. A known sibling is never adopted as an UNKNOWN original.
+discovery lags or omits the known ID. These checks share the existing candidate
+limit and source budget. A known sibling is never adopted as an UNKNOWN original.
 A customer identity conflict discovered while proving an UNKNOWN candidate
 uses the customer-wide fenced writer and discards the now-stale inventory.
 Only a proven original-key mismatch permits original-pair recovery; a generic
