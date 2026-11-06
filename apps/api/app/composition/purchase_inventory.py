@@ -136,19 +136,22 @@ async def collect_inventory(
             lambda: client.discover_subscriptions(user_id=int(current.provider_id), budget=budget), budget
         )
         tariffs = {purchase.accepted.selection.tariff_id for purchase in initial}
-        relevant = tuple(
-            row
+        relevant: dict[str, Subscription | None] = {
+            str(row.subscription_id): row
             for row in rows
             if (row.tariff_id in tariffs or str(row.subscription_id) in bindings or str(row.agreement_id) in agreements)
-        )
+        }
+        # Canonical contradictions need point checks even when discovery omits
+        # the known ID. Do not invent listing fields or treat it as UNKNOWN.
+        for provider_id in conflicting_bindings:
+            relevant.setdefault(provider_id, None)
         if len(relevant) > MAX_RELEVANT_SUBSCRIPTIONS:
             raise PurchaseInventoryIncomplete()
         counts = Counter(row.agreement_id for row in rows)
-        for candidate in relevant:
+        for provider_id, candidate in relevant.items():
             budget.check()
-            provider_id = str(candidate.subscription_id)
             known = bindings.get(provider_id)
-            owner = agreements.get(str(candidate.agreement_id))
+            owner = agreements.get(str(candidate.agreement_id)) if candidate is not None else None
             if (
                 known is not None
                 and provider_id not in conflicting_bindings
@@ -157,7 +160,7 @@ async def collect_inventory(
                 continue
             # A permanently bound sibling can never be this purchase's original
             # UNKNOWN candidate, even when LBX now places it on this agreement.
-            if known is None and owner is not None:
+            if candidate is not None and known is None and owner is not None:
                 operation = next(op for op in owner.operations if op.kind == Kind.SUBSCRIPTION)
                 if counts[candidate.agreement_id] == 1 and operation.bound_id is None:
                     if (
@@ -232,9 +235,12 @@ async def collect_inventory(
                             complete = False
                         continue
             point = await timely_point(
-                lambda: client.get_subscription(subscription_id=candidate.subscription_id, budget=budget), budget
+                lambda: client.get_subscription(subscription_id=int(provider_id), budget=budget), budget
             )
-            if (point.agreement_id, point.tariff_id) != (candidate.agreement_id, candidate.tariff_id):
+            if candidate is not None and (point.agreement_id, point.tariff_id) != (
+                candidate.agreement_id,
+                candidate.tariff_id,
+            ):
                 complete = False
                 if known is None:
                     continue

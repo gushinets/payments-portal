@@ -581,13 +581,29 @@ async def test_unknown_candidate_customer_conflict_invalidates_every_subscriptio
 
 
 @pytest.mark.parametrize(
-    "case", ["dedicated", "moved", "moved-other-tariff", "lag", "misleading", "ended", "closed", "busy"]
+    "case,omitted",
+    [
+        ("dedicated", False),
+        ("moved", False),
+        ("moved-other-tariff", False),
+        ("lag", False),
+        ("misleading", False),
+        ("ended", False),
+        ("closed", False),
+        ("busy", False),
+        ("dedicated", True),
+        ("moved", True),
+        ("moved-other-tariff", True),
+        ("ended", True),
+        ("closed", True),
+    ],
 )
 async def test_known_sibling_cannot_hide_a_shared_dedicated_agreement(
     background_scenario: tuple,
     postgres_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
     case: str,
+    omitted: bool,
 ) -> None:
     transport, sources, purchase = background_scenario
     factory, config = postgres_session_factory, step1_settings()
@@ -636,6 +652,13 @@ async def test_known_sibling_cannot_hide_a_shared_dedicated_agreement(
             )
 
         monkeypatch.setattr(sources.require_lbx(), "discover_subscriptions", stale_listing)
+    if omitted:
+        discover = sources.require_lbx().discover_subscriptions
+
+        async def omit_known(**kwargs: Any) -> tuple[Subscription, ...]:
+            return tuple(row for row in await discover(**kwargs) if row.subscription_id != 568)
+
+        monkeypatch.setattr(sources.require_lbx(), "discover_subscriptions", omit_known)
     recovery.repair_batch(factory, config)
     claim = work.claim_work(factory, config, WorkLane.NORMAL)
     assert claim and claim.kind == recovery.INVENTORY
