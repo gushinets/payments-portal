@@ -324,6 +324,15 @@ original bindings and fresh complete owned original-term/prepaid proof must hold
 without rebinding. Blocked/ended facts remain blocked/ended and held; terminal
 revival has no override.
 
+`select-primary` uses the same observation/fence expectations as
+`restore-original`. It accepts only `primary_selection_required` for the already
+bound subscription, with no unrelated open reviews or financial admission
+conflict. Fresh complete eligible original proof, complete current inventory and
+`PAID_ACCESS_CLOCK_SKEW_SECONDS` are required. It cannot replace another selected
+primary, create a subscription or invent quota. The case, selection, paid state,
+revision, outbox and audit commit together. Repeating the identical command replays
+the saved result without source calls.
+
 `bind-original` also requires `--operation-id` and `--expected-operation-fence`, with
 no reconciliation expectations. Supported cases are financial_binding_conflict /
 accepted_terms_changed_after_preparation / customer_inventory_conflict on an
@@ -467,9 +476,18 @@ source-expiry evidence. Incomplete attempts preserve only finite existing suppor
 known negative/conflicting facts supersede usability. Calendar precision stays
 provider evidence, without an inferred UTC cycle or allowance identity.
 
-Scopes have `primary_subscription_id=NULL` and observations keep
-`resulting_access_revision` null. Step 9 owns primary selection, paid
-grants/allowances, effective-access revisions and atomic outbox production;
-it must attach earlier effective access deadlines to the existing scheduler.
+ANY-765 selects a first primary through complete shared inventory and records
+paid grants/allowances, semantic revisions and a coalesced invalidation outbox.
+The existing local lane uses the earliest supported paid/source deadline. It
+removes expired access or metering without source configuration or HTTP and
+repairs missing, completed or incorrectly delayed deadline jobs after restart.
+It never renews source trust or issues an allowance. A proven same-cycle recovery
+reuses its allowance identity; a proven later cycle issues one current set without
+backfill. Date-only cycles supply no inferred UTC deadline or urgency.
+
+`PAID_ACCESS_CLOCK_SKEW_SECONDS` has no default: supply the deployment's supported
+clock guarantee (1..299 seconds). Without it, positive derivation stays disabled;
+local reductions continue. Foreground default remains 10 seconds, with the
+existing 60-second deployment override; worker source timeout remains 60 seconds.
 Step 10 owns Kernel wire/invalidation delivery and coupled UTC calendar design.
 Step 11 owns complete real paid-access/natural-renewal and launch acceptance.

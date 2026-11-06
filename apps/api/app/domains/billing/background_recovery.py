@@ -370,7 +370,6 @@ def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> RecoveryEscalat
         # Initial lookup may have cached POSSIBLE_SEND before another writer
         # completed. Row locks serialize decisions but do not refresh that cache.
         db.refresh(op)
-        row = work.verify_claim(db, claim)
         now = as_utc(billing_reconciliation.database_now(db))
         deadline = _recovery_deadline(db, op)
         deadline = as_utc(deadline) if deadline else None
@@ -387,6 +386,10 @@ def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> RecoveryEscalat
                 else:
                     service._locked(db, service._snapshot(db, purchase))
                     financial._review(db, purchase, op, reason)
+            from app.domains.billing.paid_access import reduce_paid_access
+
+            reduce_paid_access(db, customer.user_id)
+            work.verify_claim(db, claim)  # Queue ownership follows the paid-state locks.
             _pause_recovery(db, op, customer.external_billing_account_id)
             db.flush()
             case = next(
@@ -403,6 +406,7 @@ def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> RecoveryEscalat
             # SDK accepts it. No reporting/network occurs under these locks.
             db.commit()
             return notice
+        row = work.verify_claim(db, claim)
         work.finish(db, row, claim, due=due)
         db.commit()
         return None

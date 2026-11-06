@@ -22,7 +22,7 @@ async def billing_worker_resources(
     factory: SessionFactory | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> AsyncIterator[BillingWorker | None]:
-    if not configuration.billing_worker_enabled or configuration.lbx_configuration_error is not None:
+    if not configuration.billing_worker_enabled:
         yield None
         return
     source_concurrency = (
@@ -42,7 +42,11 @@ async def billing_worker_resources(
         factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     # Each admitted source owner makes one HTTP call at a time. Both HTTP pools
     # must fit all normal and urgent owners, including retained cleanup slots.
-    client = LbxServerClient(configuration, transport=transport, max_connections=source_concurrency)
+    client = (
+        LbxServerClient(configuration, transport=transport, max_connections=source_concurrency)
+        if configuration.lbx_configuration_error is None
+        else None
+    )
     worker = BillingWorker(configuration, factory, client)
     try:
         await worker.start()
@@ -51,11 +55,12 @@ async def billing_worker_resources(
         # Do not close a client's pool underneath retained source cleanup.
         # A failed drain propagates and remains visible as degraded shutdown.
         await worker.aclose()
-        try:
-            async with asyncio.timeout(configuration.preflight_cleanup_timeout_seconds):
-                await client.aclose()
-        except TimeoutError:
-            worker.failed = True
-            raise PreflightCleanupPending() from None
+        if client is not None:
+            try:
+                async with asyncio.timeout(configuration.preflight_cleanup_timeout_seconds):
+                    await client.aclose()
+            except TimeoutError:
+                worker.failed = True
+                raise PreflightCleanupPending() from None
         if engine is not None:
             await worker.db(WorkLane.LOCAL, engine.dispose)

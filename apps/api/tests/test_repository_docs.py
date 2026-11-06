@@ -1581,3 +1581,24 @@ def test_runtime_env_windows_acl_requires_current_user() -> None:
             runner=lambda command: None,
             icacls_path="icacls",
         )
+
+
+def test_runtime_forwards_paid_clock_and_existing_timeout_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    harness = tmp_path / ".harness"
+    monkeypatch.setattr(repo, "HARNESS_DIR", harness)
+    monkeypatch.setattr(repo, "RUNTIME_JSON", harness / "runtime.json")
+    monkeypatch.setattr(repo, "RUNTIME_ENV", harness / "runtime.env")
+    monkeypatch.setattr(repo, "read_dotenv", lambda: {})
+    values = {
+        "PAID_ACCESS_CLOCK_SKEW_SECONDS": "10",
+        "PREFLIGHT_TOTAL_TIMEOUT_SECONDS": "60",
+        "BILLING_WORKER_IO_TIMEOUT_SECONDS": "60",
+    }
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+    repo.write_runtime(repo.runtime_config(root=tmp_path))
+    written = repo.read_runtime_env()
+    assert {name: written[name] for name in values} == values

@@ -261,7 +261,15 @@ def apply_reconciliation(
                 or proof.read_finished_at >= resolution.expires_at - timedelta(seconds=30)
             ):
                 raise BillingRefused("billing_review_proof_incomplete", 409)
+            if resolution.request.resolution == "select-primary" and (
+                clock_skew_seconds is None
+                or paid_decision(proof) != PaidDecision.GRANT
+                or scope.primary_subscription_id not in {None, current.subscription_id}
+            ):
+                raise BillingRefused("billing_review_primary_unavailable", 409)
             resolved_case = authorize_resolution(db, resolution, row, operations, current, restoring=True)
+            if resolution.request.resolution == "select-primary":
+                scope.primary_subscription_id = current.subscription_id
         reviews = queries.open_reviews(db, current.subscription_id)
         known_review = (
             row.state == PurchaseIntentState.MANUAL_REVIEW
@@ -289,6 +297,11 @@ def apply_reconciliation(
         elif proof.identity == IdentityProof.MATCH and proof.commercial == CommercialProof.MISMATCH:
             conflict = "subscription_commercial_mismatch"
         document = proof.document()
+        if resolution is not None and resolution.request.resolution == "select-primary":
+            document["primary_selection"] = {
+                "review_case_id": str(resolution.request.case_id),
+                "principal": resolution.principal,
+            }
         document["provenance"] = {
             "purchase_intent_id": str(purchase.id),
             "mapping_revision_id": str(purchase.accepted.meaning.revision_id),
@@ -394,6 +407,9 @@ def apply_reconciliation(
                 observation_id=observation.observation_id,
                 proof={
                     "schema": RECONCILIATION_SCHEMA,
+                    "primary_subscription_id": str(scope.primary_subscription_id)
+                    if scope.primary_subscription_id
+                    else None,
                     "identity": proof.identity,
                     "commercial": proof.commercial,
                     "reads": list(proof.reads),

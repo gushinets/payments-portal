@@ -57,8 +57,9 @@ itself establish runtime acceptance. ANY-709 implements purchase preparation
 and request-driven recovery. ANY-715 adds shared reconciliation, embedded durable
 polling and audited operations. ANY-765 connects paid derivation to shared
 reconciliation and first-primary selection to complete shared inventory.
-Deadline execution and Kernel invalidation delivery remain later work in the
-refactor transfer.
+The existing local worker executes and repairs paid deadlines without source
+configuration. Kernel invalidation delivery remains later work in the refactor
+transfer.
 
 ## Physical baseline
 
@@ -322,6 +323,11 @@ not apply those source facts again. A `primary-selection:v1` observation links
 the chosen source to its discovery; selection, paid state, causal revision and
 outbox share the final inventory transaction. Later inventory failures cannot
 roll back earlier authoritative source/paid transactions.
+Customer and financial restrictions retain their existing fence/lease
+invalidation and reduce paid state in the same caller transaction. Customer
+conflicts affect all dependent products; product restrictions preserve independent
+products. Audited `select-primary` accepts only its subscription's primary case
+and fresh original proof; unrelated financial reviews remain blocked.
 
 `purchased_allowances` links a source component and product/metric quantity to
 an external subscription. Quantity is non-negative. Migration `20261031_0006`

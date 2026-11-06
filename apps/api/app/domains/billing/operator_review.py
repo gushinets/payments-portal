@@ -153,7 +153,7 @@ def prepare_resolution(
         service._verify_original_consent(db, row, purchase.accepted)
         now = as_utc(billing_reconciliation.database_now(db))
         saved_request = None
-        if request.resolution == "restore-original":
+        if request.resolution in {"restore-original", "select-primary"}:
             if (
                 subscription is None
                 or subscription.latest_observation_id != request.expected_observation_id
@@ -272,7 +272,7 @@ def authorize_resolution(
         or service.accepted(row) != resolution.purchase.accepted
         or operation_digest(db, operations) != resolution.operation_digest
         or customer_digest(db, resolution.purchase) != resolution.customer_digest
-        or restoring != (request.resolution == "restore-original")
+        or restoring != (request.resolution in {"restore-original", "select-primary"})
     ):
         raise PurchaseRefused("billing_review_stale", 409)
     case, related = validate_case(db, request, resolution.purchase, subscription, operations)

@@ -4,9 +4,11 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
+from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.paid_contracts import EffectiveState
 from app.domains.identity.services.auth import as_utc
 from app.infrastructure.persistence.billing_work import coalesce
+from app.infrastructure.queries import billing_work
 from app.models import BillingProductAccessScope, ExternalSubscription
 
 
@@ -21,6 +23,17 @@ def effective_deadline(scope: BillingProductAccessScope) -> datetime | None:
             *(datetime.fromisoformat(item.valid_until) for item in state.grants if item.valid_until),
         ]
     )
+
+
+def trust_expiry_payload(db: Session, sub: ExternalSubscription) -> dict[str, str]:
+    # Later negative evidence does not establish or renew the source-trust window.
+    basis = billing_work.trust_observation(db, sub.subscription_id)
+    if basis is None:
+        raise BillingRefused("subscription_provenance_unproven", 409)
+    return {
+        "supporting_observation_id": str(basis.observation_id),
+        "deadline": as_utc(sub.projection_valid_until).isoformat(),
+    }
 
 
 def schedule_deadline(db: Session, sub: ExternalSubscription, scope: BillingProductAccessScope | None = None) -> None:
@@ -47,9 +60,10 @@ def schedule_deadline(db: Session, sub: ExternalSubscription, scope: BillingProd
         due=deadline,
         priority=1,
         payload={
-            "supporting_observation_id": str(sub.latest_observation_id),
+            **trust_expiry_payload(db, sub),
             "access_basis_observation_id": str(scope.access_basis_observation_id) if paid else None,
             "deadline": deadline.isoformat(),
         },
         replace_deadline=True,
+        revive_completed=paid is not None,
     )
