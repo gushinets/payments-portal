@@ -18,6 +18,7 @@ from app.domains.billing.paid_contracts import EffectiveState, canonical_state
 from app.domains.billing.reconciliation_contracts import CommercialProof, IdentityProof, SubscriptionProof
 from app.domains.catalog.commercial_offer import CommercialPeriod
 from apps.api.tests.factories.reconciliation import subject_factory
+from apps.api.tests.support.any709_step1 import step1_settings
 
 
 def period(unit: str = "month", length: int = 1, anchor: str = "instance_start") -> CommercialPeriod:
@@ -173,3 +174,109 @@ def test_paid_access_equivalent_timestamp_spelling_preserves_established_cycle()
     original = classify_cycle(first, period())
     recovered = classify_cycle(equivalent, period(), first=first, latest=first)
     assert recovered.kind == CycleKind.SAME and recovered.key == original.key
+
+
+@pytest.mark.parametrize("budget", [0, -1, 300, 301])
+def test_paid_access_clock_budget_has_no_default_and_rejects_invalid(budget: int) -> None:
+    assert step1_settings().paid_access_clock_skew_seconds is None
+    with pytest.raises(ValidationError):
+        step1_settings(paid_access_clock_skew_seconds=budget)
+    assert canonical_state([EffectiveState()]) == EffectiveState()
+
+
+@pytest.mark.parametrize(
+    "start,end,anchor,expected",
+    [
+        ("2026-10-31", "2026-10-31", "2026-10-31", "date"),
+        (
+            "2026-10-31T12:34:56.123456+03:00",
+            "2026-11-30T12:34:56.123456+03:00",
+            "2026-10-31T12:34:56.123456+03:00",
+            "timestamp",
+        ),
+        ("2026-10-31 12:34:56.123456", "2026-11-30 12:34:56.123456", "2026-10-31 12:34:56.123456", "unresolved"),
+        ("2026-10-31", "2026-11-30T12:34:56Z", "2026-10-31", "unresolved"),
+    ],
+)
+def test_paid_access_integration_calendar_is_lossless(start: str, end: str, anchor: str, expected: str) -> None:
+    from app.integrations.lbx.calendar import normalize_calendar
+    from apps.api.tests.factories.reconciliation import subscription_factory
+    from app.integrations.lbx.financial import Subscription
+
+    raw = subscription_factory().model_dump()
+    raw.update(
+        last_tariffication_period_start=start,
+        last_tariffication_period_end=end,
+        subscription_instance_start_date=anchor,
+    )
+    point = Subscription.model_validate(raw)
+    normalized = normalize_calendar(
+        {
+            "last_tariffication_period_start": point.last_tariffication_period_start,
+            "last_tariffication_period_end": point.last_tariffication_period_end,
+            "subscription_instance_start_date": point.subscription_instance_start_date,
+        },
+        "instance_start",
+    )
+    assert normalized.precision == expected and (normalized.start, normalized.end, normalized.anchor) == (
+        start,
+        end,
+        anchor,
+    )
+    with pytest.raises(ValidationError):
+        Subscription.model_validate({**raw, "last_tariffication_period_start": "2026-01-01T00:00:00.123456789Z"})
+
+
+@pytest.mark.parametrize(
+    "anchor_kind,subscription_start,instance_start,expected",
+    [
+        ("first_instance_start", "2026-10-15", "2026-10-20", "2026-10-15"),
+        ("instance_start", "2026-10-15", "2026-10-20", "2026-10-20"),
+        ("calendar_month", "2026-10-15", "2026-10-20", "2026-10-01"),
+    ],
+)
+def test_paid_access_calendar_anchor_keeps_provider_meaning(
+    anchor_kind: str,
+    subscription_start: str,
+    instance_start: str,
+    expected: str,
+) -> None:
+    from app.integrations.lbx.calendar import normalize_calendar
+
+    normalized = normalize_calendar(
+        {
+            "subscription_start_date": subscription_start,
+            "subscription_instance_start_date": instance_start,
+            "last_tariffication_period_start": "2026-10-01",
+            "last_tariffication_period_end": "2026-10-31",
+        },
+        anchor_kind,
+    )
+    assert normalized.anchor == expected
+
+
+def test_paid_access_proof_document_serializes_lossless_cycle_and_finite_end() -> None:
+    import json
+
+    now = subject_factory().claimed_at
+    cycle = calendar(
+        "2026-10-01T12:34:56.123456Z", "2026-11-01T12:34:56.123456Z", "2026-10-01T12:34:56.123456Z", "timestamp"
+    )
+    proof = SubscriptionProof(
+        now,
+        now,
+        IdentityProof.MATCH,
+        CommercialProof.MATCH,
+        "active",
+        "allowed",
+        {},
+        True,
+        True,
+        (),
+        (),
+        cycle=cycle,
+        access_end_at=now,
+    )
+    decoded = json.loads(json.dumps(proof.document()))
+    assert decoded["cycle"] == cycle.model_dump(mode="json")
+    assert decoded["access_end_at"] == now.isoformat()

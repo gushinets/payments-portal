@@ -87,6 +87,8 @@ class Settings(BaseSettings):
     kernel_service_token: SecretStr = SecretStr("")
     kernel_mock_enabled: bool = False
     purchase_test_terms_enabled: bool = False
+    # Deployment supplies its supported clock guarantee; no guessed default.
+    paid_access_clock_skew_seconds: int | None = Field(default=None, gt=0, lt=300)
     # Application policy, in seconds/bytes/operations; not a source-provider SLA.
     preflight_total_timeout_seconds: float = Field(default=10.0, gt=0, le=120, allow_inf_nan=False)
     preflight_cleanup_timeout_seconds: float = Field(default=0.25, gt=0, le=5, allow_inf_nan=False)
@@ -121,6 +123,11 @@ class Settings(BaseSettings):
     # Required by dry-run/publish only; query and the HTTP API do not use it.
     mapping_operator_lock_file: Path | None = None
     mapping_lock_timeout_seconds: float = Field(default=2.0, gt=0, le=10, allow_inf_nan=False)
+
+    @field_validator("paid_access_clock_skew_seconds", mode="before")
+    @classmethod
+    def optional_paid_clock(cls, value: object) -> object:
+        return None if value == "" else value
 
     @field_validator("smtp_use_tls", mode="before")
     @classmethod

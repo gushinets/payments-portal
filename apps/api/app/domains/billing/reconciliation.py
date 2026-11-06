@@ -1,11 +1,11 @@
 """Shared authoritative reconciliation: short claim/apply, no provider I/O."""
 
-from dataclasses import asdict
 from datetime import timedelta
 from uuid import UUID, uuid4
 
 from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused, CustomerOpen
+from app.domains.billing.paid_access import apply_paid_source, commit_paid_state
 from app.domains.billing.customers import lock_customer, lock_user, mark_customer_identity_conflict
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.reconciliation_contracts import (
@@ -161,11 +161,13 @@ def apply_reconciliation(
     *,
     work_claim: WorkClaim | None = None,
     resolution: ReviewResolution | None = None,
+    clock_skew_seconds: int | None = None,
+    allow_simulated_metering: bool = True,
 ) -> ReconciliationResult:
     """Recheck permanent provenance and current fences before any fact changes."""
     with factory() as db:
         purchase = subject.purchase
-        lock_user(db, purchase.user_id)
+        user = lock_user(db, purchase.user_id)
         customer = lock_customer(db, purchase.customer_id)
         customer_op = customer_operation(db, customer.customer_id)
         row = service._locked(db, purchase)
@@ -232,6 +234,11 @@ def apply_reconciliation(
                 and queue_row.coalescing_key != f"{purchase.account_id}:{purchase.customer_id}"
             ):
                 raise BillingRefused("billing_work_stale", 409)
+        latest = (
+            db.get(BillingStateObservation, current.latest_observation_id) if current.latest_observation_id else None
+        )
+        if latest is not None and as_utc(latest.observed_at) > proof.read_started_at:
+            raise BillingRefused("subscription_reconciliation_stale", 409)
         service._verify_original_consent(db, row, purchase.accepted)
         resolved_case = None
         if resolution is not None:
@@ -274,9 +281,7 @@ def apply_reconciliation(
             conflict = "subscription_terminal_revival_conflict"
         elif proof.identity == IdentityProof.MATCH and proof.commercial == CommercialProof.MISMATCH:
             conflict = "subscription_commercial_mismatch"
-        document = asdict(proof)
-        document["read_started_at"] = proof.read_started_at.isoformat()
-        document["read_finished_at"] = proof.read_finished_at.isoformat()
+        document = proof.document()
         document["provenance"] = {
             "purchase_intent_id": str(purchase.id),
             "mapping_revision_id": str(purchase.accepted.meaning.revision_id),
@@ -339,16 +344,29 @@ def apply_reconciliation(
             current.lifecycle_status = proof.lifecycle
             current.financial_access_status = Financial.BLOCKED
             current.latest_observation_id = observation.observation_id
-        if proof.complete and not conflict and not known_review:
+        if proof.complete and not conflict and not known_review and not customer_conflict:
             current.lifecycle_status = proof.lifecycle
             current.financial_access_status = proof.financial
             current.commercial_access_status = Commercial.ELIGIBLE
-            current.last_authoritative_read_at = proof.read_started_at
-            current.projection_valid_until = proof.read_started_at + SOURCE_TRUST
+            if proof.financial == Financial.ALLOWED:
+                current.last_authoritative_read_at = proof.read_started_at
+                current.projection_valid_until = proof.read_started_at + SOURCE_TRUST
             current.latest_observation_id = observation.observation_id
         # Incomplete attempts append evidence, preserving finite LKG support.
         # A negative with incomplete commercial proof reduces usability above,
-        # but never renews trust. No paid-access writer runs in this step.
+        # but never renews trust. Paid state shares this fact transaction.
+        apply_paid_source(
+            db,
+            scope,
+            current,
+            purchase,
+            proof,
+            observation,
+            now,
+            skew_seconds=clock_skew_seconds,
+            review=bool(conflict) or known_review or customer_conflict,
+            allow_simulated_metering=allow_simulated_metering,
+        )
         current.reconciliation_lease_owner = None
         current.reconciliation_lease_expires_at = None
         schedule_reconciliation(
@@ -376,6 +394,7 @@ def apply_reconciliation(
                     "read_finished_at": proof.read_finished_at.isoformat(),
                 },
             )
+        commit_paid_state(db, user, observation, now, allow_simulated_metering=allow_simulated_metering)
         db.flush()
         committed = service._snapshot(db, row)
         db.commit()
