@@ -1,11 +1,12 @@
 """Provider-neutral proof handed from Integration to shared Application apply."""
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
 from app.domains.billing.contracts import CustomerOpen
+from app.domains.billing.paid_cycles import CalendarEvidence
 from app.domains.purchases.contracts import Purchase
 from app.models import (
     ExternalSubscriptionFinancialAccessStatus as Financial,
@@ -66,6 +67,18 @@ class SubscriptionProof:
     reasons: tuple[str, ...]
     # Names of successful point reads, never payloads or credentials.
     reads: tuple[str, ...]
+    cycle: CalendarEvidence | None = None
+    access_end_at: datetime | None = None
+
+    def document(self) -> dict[str, object]:
+        """Redacted JSON evidence shared by preparation and authoritative apply."""
+        return {
+            **asdict(self),
+            "read_started_at": self.read_started_at.isoformat(),
+            "read_finished_at": self.read_finished_at.isoformat(),
+            "cycle": self.cycle.model_dump(mode="json") if self.cycle else None,
+            "access_end_at": self.access_end_at.isoformat() if self.access_end_at else None,
+        }
 
 
 @dataclass(frozen=True)

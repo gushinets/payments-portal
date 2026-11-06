@@ -25,6 +25,7 @@ def coalesce(
     payload: dict,
     hint: bool = False,
     replace_deadline: bool = False,
+    revive_completed: bool = False,
 ) -> None:
     insert = pg_insert if db.get_bind().dialect.name == "postgresql" else sqlite_insert
     statement = insert(BillingWorkItem).values(
@@ -58,7 +59,11 @@ def coalesce(
         index_elements=["work_kind", "coalescing_key"],
         index_where=text(RECURRING_INDEX),
         set_=updates,
-        where=(table.payload_document != payload)
+        where=or_(
+            table.payload_document != payload,
+            table.next_attempt_at != due,
+            (table.work_state == "completed") & revive_completed,
+        )
         if replace_deadline
         else None
         if hint

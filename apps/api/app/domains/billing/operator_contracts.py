@@ -25,7 +25,7 @@ class ResolutionRequest(BaseModel):
     user_id: UUID
     purchase_id: UUID
     case_id: UUID
-    resolution: Literal["restore-original", "bind-original"]
+    resolution: Literal["restore-original", "bind-original", "select-primary"]
     expected_case_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
     expected_observation_id: UUID | None = None
     expected_reconciliation_fence: int | None = Field(default=None, ge=0)
@@ -36,7 +36,7 @@ class ResolutionRequest(BaseModel):
 
     @model_validator(mode="after")
     def require_expectations(self) -> ResolutionRequest:
-        restore = self.resolution == "restore-original"
+        restore = self.resolution in {"restore-original", "select-primary"}
         if restore:
             valid = (
                 self.expected_observation_id is not None

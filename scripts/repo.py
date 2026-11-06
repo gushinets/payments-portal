@@ -235,6 +235,7 @@ def canonical_check_environment(
     for variable in ("TEMP", "TMP", "TMPDIR"):
         environment[variable] = str(temp_dir)
     environment["BILLING_WORKER_ENABLED"] = "false"
+    environment["PURCHASE_TEST_TERMS_ENABLED"] = "false"
     environment["OTEL_EXPORTER_OTLP_ENDPOINT"] = ""
     environment["INSTANCE_TENANT_ID"] = LOCAL_INSTANCE_TENANT_ID
     environment["INSTANCE_REGION"] = LOCAL_INSTANCE_REGION
@@ -490,7 +491,7 @@ def write_runtime(config: RuntimeConfig) -> None:
     # Normal private connection values pass through independently of the mock.
     # Keep them out of runtime.json/doctor/stdout and the public web environment.
     for name in (
-        "KERNEL_BASE_URL", "KERNEL_SERVICE_TOKEN",
+        "KERNEL_BASE_URL", "KERNEL_SERVICE_TOKEN", "PURCHASE_TEST_TERMS_ENABLED", "PAID_ACCESS_CLOCK_SKEW_SECONDS",
         "PREFLIGHT_TOTAL_TIMEOUT_SECONDS",
         "LBX_BASE_URL", "LBX_SERVER_USERNAME", "LBX_SERVER_PASSWORD",
         "LBX_WIDGET_SIGNING_SECRET", "LBX_SELLER_ORGANIZATION_ID",
@@ -3535,7 +3536,7 @@ def build_parser() -> argparse.ArgumentParser:
     purchase.add_argument("action", choices=("inspect", "recover", "reconcile", "resolve-review"))
     purchase.add_argument("--user-id", type=uuid.UUID, required=True)
     purchase.add_argument("--purchase-id", type=uuid.UUID, required=True)
-    purchase.add_argument("--resolution", choices=("restore-original", "bind-original"))
+    purchase.add_argument("--resolution", choices=("restore-original", "bind-original", "select-primary"))
     for name in ("case-id", "expected-observation-id", "operation-id", "expected-operation-fence"):
         purchase.add_argument("--" + name, type=uuid.UUID)
     purchase.add_argument("--expected-case-digest")

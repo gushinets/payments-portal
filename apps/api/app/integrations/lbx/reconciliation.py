@@ -15,6 +15,7 @@ from app.domains.billing.reconciliation_contracts import (
 )
 from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from app.integrations.lbx.client import LbxServerClient
+from app.integrations.lbx.calendar import normalize_access_end, normalize_calendar
 from app.integrations.lbx.customer import LbxUser
 from app.integrations.lbx.dto import LbxRead, LbxTariff
 from app.integrations.lbx.errors import LbxError, LbxResponseInvalid, LbxScopeMismatch
@@ -44,6 +45,9 @@ CALENDAR_FIELDS = (
 
 def _calendar_ordered(left: date | datetime, right: date | datetime, *, strict: bool = False) -> bool:
     if type(left) is type(right):
+        if isinstance(left, datetime) and isinstance(right, datetime):
+            if (left.utcoffset() is None) != (right.utcoffset() is None):
+                return False
         return left < right if strict else left <= right
     left_day = left.date() if isinstance(left, datetime) else left
     right_day = right.date() if isinstance(right, datetime) else right
@@ -67,13 +71,27 @@ def _calendar_complete(calendar: dict[str, str | None]) -> bool:
             start, end = parsed.get(prefix + "_start"), parsed.get(prefix + "_end")
             if start is None or end is None:
                 return False
-        if start is not None and end is not None and not _calendar_ordered(start, end, strict=True):
+        if (
+            start is not None
+            and end is not None
+            and not _calendar_ordered(start, end, strict=isinstance(start, datetime) or isinstance(end, datetime))
+        ):
             return False
     cycle_start = parsed["last_tariffication_period_start"]
     cycle_end = parsed["last_tariffication_period_end"]
     for prefix in ("subscription", "subscription_instance"):
         start, end = parsed.get(prefix + "_start_date"), parsed.get(prefix + "_end_date")
-        if (start and not _calendar_ordered(start, cycle_start)) or (end and not _calendar_ordered(cycle_end, end)):
+        # Calendar dates may straddle activation/termination. Only explicit
+        # timestamps support a more precise containment check.
+        if (
+            start
+            and (isinstance(start, datetime) or isinstance(cycle_start, datetime))
+            and not _calendar_ordered(start, cycle_start)
+        ) or (
+            end
+            and (isinstance(end, datetime) or isinstance(cycle_end, datetime))
+            and not _calendar_ordered(cycle_end, end)
+        ):
             return False
     return True
 
@@ -227,7 +245,6 @@ def normalize_subscription(
             lifecycle, financial = None, None
     positive = financial == Financial.ALLOWED
     if positive and not calendar_complete:
-        financial = None
         reasons.append("current_calendar_incomplete")
     if positive and commercial == CommercialProof.INCOMPLETE:
         financial = None
@@ -239,7 +256,19 @@ def normalize_subscription(
         and agreement_calendar_complete
     )
     return SubscriptionProof(
-        now, now, identity, commercial, lifecycle, financial, calendar, calendar_complete, complete, tuple(reasons), ()
+        now,
+        now,
+        identity,
+        commercial,
+        lifecycle,
+        financial,
+        calendar,
+        calendar_complete,
+        complete,
+        tuple(reasons),
+        (),
+        cycle=normalize_calendar(calendar, accepted.offer.period.anchor) if calendar_complete else None,
+        access_end_at=normalize_access_end(calendar.get("subscription_end_date")),
     )
 
 

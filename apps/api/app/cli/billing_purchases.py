@@ -31,7 +31,9 @@ def parser() -> argparse.ArgumentParser:
         action.add_argument("--user-id", required=True, type=UUID)
         action.add_argument("--purchase-id", required=True, type=UUID)
         if command == "resolve-review":
-            action.add_argument("--resolution", required=True, choices=("restore-original", "bind-original"))
+            action.add_argument(
+                "--resolution", required=True, choices=("restore-original", "bind-original", "select-primary")
+            )
             action.add_argument("--case-id", required=True, type=UUID)
             action.add_argument("--expected-case-digest", required=True)
             action.add_argument("--expected-observation-id", type=UUID)

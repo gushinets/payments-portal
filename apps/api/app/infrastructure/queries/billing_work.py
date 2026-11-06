@@ -6,7 +6,9 @@ from uuid import UUID
 from sqlalchemy import Text, exists, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.infrastructure.queries import paid_access
 from app.models import (
+    BillingProductAccessScope,
     BillingStateObservation,
     BillingWorkItem,
     ExternalSubscription,
@@ -37,23 +39,46 @@ def claimable(
     urgent: bool | None,
     account: str,
     sweep_key: str,
-    trust_urgent_before: datetime,
+    urgent_before: datetime,
+    urgent_attempt_before: datetime,
+    local_scope: tuple[str, str] | None = None,
 ) -> BillingWorkItem | None:
-    query = select(BillingWorkItem).where(
-        BillingWorkItem.work_kind.in_(kinds),
-        BillingWorkItem.work_state.in_(("pending", "running")),
-        BillingWorkItem.next_attempt_at <= now,
-        or_(
+    account_scope = or_(
+        (BillingWorkItem.work_kind == "billing_enrollment_sweep") & (BillingWorkItem.coalescing_key == sweep_key),
+        BillingWorkItem.coalescing_key == account,
+        BillingWorkItem.coalescing_key.startswith(account + ":", autoescape=True),
+        (BillingWorkItem.work_kind == "external_create_recovery")
+        & exists().where(
+            func.cast(ExternalCreateOperation.create_operation_id, Text) == BillingWorkItem.scope_reference,
+            ExternalCreateOperation.customer_id == ExternalBillingCustomer.customer_id,
+            ExternalBillingCustomer.external_billing_account_id == account,
+        ),
+    )
+    if local_scope is not None:
+        tenant, region = local_scope
+        account_scope = or_(
             (BillingWorkItem.work_kind == "billing_enrollment_sweep") & (BillingWorkItem.coalescing_key == sweep_key),
-            BillingWorkItem.coalescing_key == account,
-            BillingWorkItem.coalescing_key.startswith(account + ":", autoescape=True),
-            (BillingWorkItem.work_kind == "external_create_recovery")
+            (BillingWorkItem.work_kind == "subscription_trust_expiry")
+            & exists().where(
+                func.cast(ExternalSubscription.subscription_id, Text) == BillingWorkItem.scope_reference,
+                ExternalSubscription.user_id == User.id,
+                User.tenant_id == tenant,
+                User.region == region,
+            ),
+            (BillingWorkItem.work_kind == "external_create_deadline")
             & exists().where(
                 func.cast(ExternalCreateOperation.create_operation_id, Text) == BillingWorkItem.scope_reference,
                 ExternalCreateOperation.customer_id == ExternalBillingCustomer.customer_id,
-                ExternalBillingCustomer.external_billing_account_id == account,
+                ExternalBillingCustomer.user_id == User.id,
+                User.tenant_id == tenant,
+                User.region == region,
             ),
-        ),
+        )
+    due = BillingWorkItem.next_attempt_at <= now
+    query = select(BillingWorkItem).where(
+        BillingWorkItem.work_kind.in_(kinds),
+        BillingWorkItem.work_state.in_(("pending", "running")),
+        account_scope,
         or_(BillingWorkItem.lease_expires_at.is_(None), BillingWorkItem.lease_expires_at <= now),
     )
     if urgent is not None:
@@ -62,12 +87,34 @@ def claimable(
         trust_due = exists().where(
             ExternalSubscription.external_billing_account_id == account,
             func.cast(ExternalSubscription.subscription_id, Text) == BillingWorkItem.scope_reference,
-            ExternalSubscription.projection_valid_until <= trust_urgent_before,
+            ExternalSubscription.projection_valid_until <= urgent_before,
         )
-        is_urgent = or_(BillingWorkItem.priority > 0, trust_due)
+        allowance_end = (
+            paid_access.latest_paid_allowance_end(ExternalSubscription.subscription_id)
+            .correlate(ExternalSubscription)
+            .scalar_subquery()
+        )
+        paid_scope = (
+            ExternalSubscription.external_billing_account_id == account,
+            func.cast(ExternalSubscription.subscription_id, Text) == BillingWorkItem.scope_reference,
+            BillingProductAccessScope.primary_subscription_id == ExternalSubscription.subscription_id,
+            allowance_end <= urgent_before,
+        )
+        paid_due = exists().where(*paid_scope)
+        paid_retry_due = exists().where(
+            *paid_scope,
+            func.coalesce(BillingWorkItem.last_attempt_started_at, ExternalSubscription.last_authoritative_read_at)
+            <= urgent_attempt_before,
+        )
+        reconciliation = BillingWorkItem.work_kind == "subscription_reconciliation"
+        # Also promote rows scheduled under the old normal cadence. Retain the
+        # attempt-spacing and live-lease guards; only the queue row is locked.
+        due = or_(due, reconciliation & paid_retry_due)
+        is_urgent = or_(BillingWorkItem.priority > 0, trust_due, reconciliation & paid_due)
         query = query.where(is_urgent if urgent else ~is_urgent)
     return db.scalar(
-        query.order_by(BillingWorkItem.next_attempt_at, BillingWorkItem.work_item_id)
+        query.where(due)
+        .order_by(BillingWorkItem.next_attempt_at, BillingWorkItem.work_item_id)
         .limit(1)
         .with_for_update(skip_locked=True)
     )
@@ -106,7 +153,23 @@ def by_key(db: Session, kind: str, key: str) -> BillingWorkItem | None:
     )
 
 
-def backlog(db: Session, account: str, *, sweep_key: str) -> tuple[int, datetime | None, int]:
+def backlog(
+    db: Session, account: str | None, tenant: str, region: str, *, sweep_key: str
+) -> tuple[int, datetime | None, int]:
+    source_scope = (
+        or_(
+            BillingWorkItem.coalescing_key == account,
+            BillingWorkItem.coalescing_key.startswith(account + ":", autoescape=True),
+            (BillingWorkItem.work_kind == "external_create_recovery")
+            & exists().where(
+                func.cast(ExternalCreateOperation.create_operation_id, Text) == BillingWorkItem.scope_reference,
+                ExternalCreateOperation.customer_id == ExternalBillingCustomer.customer_id,
+                ExternalBillingCustomer.external_billing_account_id == account,
+            ),
+        )
+        if account is not None
+        else False
+    )
     rows = db.execute(
         select(BillingWorkItem.work_state, func.count(), func.min(BillingWorkItem.next_attempt_at))
         .where(
@@ -123,14 +186,22 @@ def backlog(db: Session, account: str, *, sweep_key: str) -> tuple[int, datetime
             or_(
                 (BillingWorkItem.work_kind == "billing_enrollment_sweep")
                 & (BillingWorkItem.coalescing_key == sweep_key),
-                BillingWorkItem.coalescing_key == account,
-                BillingWorkItem.coalescing_key.startswith(account + ":", autoescape=True),
-                (BillingWorkItem.work_kind == "external_create_recovery")
+                (BillingWorkItem.work_kind == "subscription_trust_expiry")
+                & exists().where(
+                    func.cast(ExternalSubscription.subscription_id, Text) == BillingWorkItem.scope_reference,
+                    ExternalSubscription.user_id == User.id,
+                    User.tenant_id == tenant,
+                    User.region == region,
+                ),
+                (BillingWorkItem.work_kind == "external_create_deadline")
                 & exists().where(
                     func.cast(ExternalCreateOperation.create_operation_id, Text) == BillingWorkItem.scope_reference,
                     ExternalCreateOperation.customer_id == ExternalBillingCustomer.customer_id,
-                    ExternalBillingCustomer.external_billing_account_id == account,
+                    ExternalBillingCustomer.user_id == User.id,
+                    User.tenant_id == tenant,
+                    User.region == region,
                 ),
+                source_scope,
             ),
         )
         .group_by(BillingWorkItem.work_state)
@@ -140,20 +211,22 @@ def backlog(db: Session, account: str, *, sweep_key: str) -> tuple[int, datetime
     return pending, min(dates) if dates else None, sum(count for state, count, _ in rows if state == "invalid")
 
 
-def missing_deadlines(db: Session, account: str, limit: int) -> list[ExternalSubscription]:
+def missing_deadlines(db: Session, tenant: str, region: str, limit: int) -> list[ExternalSubscription]:
     recorded = exists().where(
         BillingWorkItem.work_kind == "subscription_trust_expiry",
-        BillingWorkItem.coalescing_key == account + ":" + func.cast(ExternalSubscription.subscription_id, Text),
+        BillingWorkItem.scope_reference == func.cast(ExternalSubscription.subscription_id, Text),
     )
     return list(
         db.scalars(
             select(ExternalSubscription)
+            .join(User, User.id == ExternalSubscription.user_id)
             .join(
                 BillingStateObservation,
                 BillingStateObservation.observation_id == ExternalSubscription.latest_observation_id,
             )
             .where(
-                ExternalSubscription.external_billing_account_id == account,
+                User.tenant_id == tenant,
+                User.region == region,
                 BillingStateObservation.evidence_schema_version.in_(
                     ("subscription-reconciliation:v1", "bound-source-negative:v1")
                 ),

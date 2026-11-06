@@ -34,9 +34,12 @@ def record_customer_conflict(
             or customer.billing_customer_key != expected.outer_key
         ):
             raise BillingRefused("billing_customer_pending", 409)
+        mark_customer_identity_conflict(db, customer, operation, provider_id=provider_id)
+        from app.domains.billing.paid_access import reduce_paid_access
+
+        reduce_paid_access(db, customer.user_id)
         if claim is not None:
             from app.domains.billing.work import verify_claim
 
             verify_claim(db, claim)
-        mark_customer_identity_conflict(db, customer, operation, provider_id=provider_id)
         db.commit()

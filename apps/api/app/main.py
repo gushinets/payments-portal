@@ -17,6 +17,7 @@ from app.core.observability import (
     request_context_middleware,
 )
 from app.core.settings import AppEnv, settings
+from app.domains.billing.paid_router import router as paid_access_router
 from app.domains.billing.router import router as billing_router
 from app.domains.catalog.router import router as catalog_router
 from app.domains.identity.password_reset import router as password_reset_router
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(billing_router)
+    app.include_router(paid_access_router)
     app.include_router(purchases_router)
     app.include_router(catalog_router)
     app.include_router(auth_router)

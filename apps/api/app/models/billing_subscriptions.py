@@ -18,6 +18,7 @@ from app.models._shared import (
     text,
     uuid,
     uuid_type,
+    json_type,
 )
 from app.models.enums import (
     ExternalSubscriptionCommercialAccessStatus,
@@ -63,6 +64,13 @@ class BillingProductAccessScope(Base):
     )
     product_id: Mapped[str] = mapped_column(Text, nullable=False)
     primary_subscription_id: Mapped[uuid.UUID | None] = mapped_column(uuid_type, nullable=True)
+    effective_access_document: Mapped[dict | None] = mapped_column(json_type, nullable=True)
+    effective_access_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    access_basis_observation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("billing_state_observations.observation_id", name="fk_access_scope_basis", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    primary_retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

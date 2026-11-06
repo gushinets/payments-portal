@@ -173,7 +173,20 @@
       "unavailable": "No se pudieron cargar tus compras. Puedes abrir la facturación por separado.",
       "loadMore": "Mostrar más",
       "prepared": "Suscripción preparada",
-      "pending": "La preparación de la compra no está completa"
+      "pending": "La preparación de la compra no está completa",
+      "paid": {
+        "loading": "Comprobando el acceso de pago…",
+        "confirmed": "Acceso de pago confirmado",
+        "no_paid_access": "Sin acceso de pago a este producto",
+        "unavailable": "No se pudo confirmar el acceso de pago. Reinténtalo.",
+        "quantity": "Límite adquirido: {quantity} {unit}",
+        "simulated": "Límite de prueba simulado — no es una cuota comercial.",
+        "meteringUnavailable": "Las operaciones con cuota requieren un límite confirmado.",
+        "usageUnavailable": "Uso y cantidad restante no disponibles.",
+        "refresh": "Actualizar acceso de pago",
+        "deadlinePending": "El acceso se está actualizando tras un vencimiento. Inténtalo más tarde.",
+        "empty": "Aún no hay acceso de pago."
+      }
     }
   },
   "PasswordReset": {
@@ -466,7 +479,9 @@
     "reference": "Referencia de compra: {id}",
     "acceptedTerms": "Condiciones aceptadas originalmente",
     "awaitingVerification": "El pago espera una verificación autorizada. Consultar el estado guardado solo lee los registros del Portal y no actualiza los datos de facturación.",
-    "accessDeferred": "El pago y el acceso al producto son independientes. El acceso de pago y el uso/las cuotas llegarán en etapas posteriores; esta pantalla no confirma la activación.",
+    "technicalLimit": "Límite de prueba por ciclo confirmado",
+    "simulatedTerms": "SIMULATED · condiciones de prueba",
+    "technicalUnknown": "Límite técnico sin confirmar; ejecución con cuota no disponible.",
     "fullFunding": "Se requiere financiación completa.",
     "fundingUnspecified": "No se especifican los requisitos de financiación.",
     "states": {
@@ -478,6 +493,7 @@
       "failed_before_external_effect": "La compra se detuvo antes de crear objetos financieros.",
       "manual_review": "La compra necesita recuperación o revisión de un operador."
     },
-    "managedInAccount": "El pago y la gestión de la suscripción están disponibles en tu cuenta."
+    "managedInAccount": "El pago y la gestión de la suscripción están disponibles en tu cuenta.",
+    "accessInAccount": "El acceso de pago confirmado se muestra en tu cuenta. El uso y la cuota restante aún no están disponibles."
   }
 }

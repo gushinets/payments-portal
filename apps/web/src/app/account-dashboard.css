@@ -188,7 +188,10 @@
   overflow-wrap: anywhere;
 }
 
-.account-products-heading > .btn-secondary {
+.account-products-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-top: 14px;
 }
 

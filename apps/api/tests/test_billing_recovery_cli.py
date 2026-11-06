@@ -204,3 +204,15 @@ def test_billing_recovery_cli_unexpected_failure_is_reported_once_without_raw_te
     assert cli.main(["inspect", "--user-id", str(uuid4()), "--purchase-id", str(uuid4())]) == 1
     assert len(reports) == 1
     assert json.loads(capsys.readouterr().err) == {"detail": {"code": "purchase_internal_error"}}
+
+
+def test_billing_recovery_cli_select_primary_uses_reconciliation_expectations() -> None:
+    request = ResolutionRequest.model_validate({**request_factory().model_dump(), "resolution": "select-primary"})
+    args = cli.parser().parse_args(arguments(request))
+    assert args.resolution == "select-primary"
+    assert args.expected_observation_id == request.expected_observation_id
+    invalid = {**request.model_dump(), "expected_observation_id": None}
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        ResolutionRequest.model_validate(invalid)

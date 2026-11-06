@@ -94,8 +94,9 @@ def test_paid_access_scope_is_identical_and_canonical() -> None:
 def test_only_approved_nullable_slot_and_revision_checks_exist() -> None:
     assert _nullable_columns(PaidAccessState) == set()
     assert _nullable_columns(AccessInvalidationOutbox) == {"last_error_classification"}
-    assert _checks(PaidAccessState) == {}
+    assert _checks(PaidAccessState) == {"ck_paid_access_states_revision_positive": "access_revision > 0"}
     assert _checks(AccessInvalidationOutbox) == {
+        "ck_access_invalidation_outbox_delivered_nonnegative": "delivered_revision >= 0",
         "ck_access_invalidation_outbox_pending_revision_positive": "pending_revision > 0",
         "ck_access_invalidation_outbox_revision_order": "pending_revision >= delivered_revision",
     }
