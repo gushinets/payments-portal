@@ -10,7 +10,7 @@ from starlette.concurrency import run_in_threadpool
 from app.composition.purchase_observation import prepared_subscription_observation
 from app.composition.sources import SourceResources
 from app.core.settings import Settings
-from app.core.time import utc_now
+from app.domains.billing.reconciliation import read_source_time
 from app.domains.billing.contracts import CustomerOpen
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.customer_conflicts import record_customer_conflict
@@ -148,12 +148,12 @@ async def recover_one(
     resolution: ReviewResolution | None = None,
 ) -> bool:
     """Prove the original once; operator authorization/audit share its binder."""
-    started = utc_now()
     command = original_command(purchase, operation, customer)
     pending = await delegate(financial.original_request, factory, purchase, operation, command, resolution=resolution)
     if not pending:
         return await _already_bound(sources, configuration, factory, purchase, operation, budget, delegate)
     client = sources.require_lbx()
+    started = await delegate(read_source_time, factory)
     try:
         try:
             user = await timely_point(lambda: client.get_user(user_id=int(customer.provider_id), budget=budget), budget)
@@ -194,16 +194,19 @@ async def recover_one(
                 or proof.lifecycle is None
             ):
                 raise LbxResponseInvalid()
+            finished = await delegate(read_source_time, factory)
             proof = replace(
                 proof,
                 read_started_at=started,
-                read_finished_at=utc_now(),
+                read_finished_at=finished,
                 reads=("customer", "agreement", "subscription", "tariff_policy"),
             )
+        if proof is None:
+            finished = await delegate(read_source_time, factory)
         budget.check()
         original = OriginalOperationProof(
             started,
-            utc_now(),
+            finished,
             digest(command),
             customer,
             proof,

@@ -1,7 +1,7 @@
 """Shared authoritative reconciliation: short claim/apply, no provider I/O."""
 
 from dataclasses import asdict
-from datetime import timedelta
+from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
 from app.core.settings import Settings
@@ -40,6 +40,12 @@ from app.models import (
 
 SOURCE_TRUST = timedelta(hours=6)
 APPLY_SAFETY_SECONDS = 30
+
+
+def read_source_time(factory: SessionFactory) -> datetime:
+    """Bracket source I/O with database time; close the session before HTTP."""
+    with factory() as db:
+        return as_utc(queries.database_now(db))
 
 
 def claim_reconciliation(

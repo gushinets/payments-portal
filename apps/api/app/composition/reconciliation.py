@@ -1,6 +1,7 @@
 """Shared claimed read/apply orchestration for HTTP, worker and operator."""
 
 from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import replace
 from contextlib import asynccontextmanager
 from typing import Any
 from uuid import UUID
@@ -9,14 +10,15 @@ from starlette.concurrency import run_in_threadpool
 
 from app.composition.sources import SourceResources
 from app.core.settings import Settings
-from app.core.time import utc_now
 from app.domains.billing.contracts import BillingRefused
-from app.domains.billing.reconciliation import apply_reconciliation, claim_reconciliation
+from app.domains.billing.reconciliation import apply_reconciliation, claim_reconciliation, read_source_time
 from app.domains.billing.reconciliation_contracts import (
     CommercialProof,
     IdentityProof,
     SubscriptionProof,
     ReconciliationResult,
+    ReconciliationSubject,
+    SubscriptionCandidateSubject,
 )
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases import service
@@ -25,7 +27,23 @@ from app.infrastructure.preflight import PreflightAdmission, PreflightBudget, Pr
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.operator_contracts import ReviewResolution
 from app.integrations.lbx.client import LbxServerClient
-from app.integrations.lbx.reconciliation import read_subscription_proof
+from app.integrations.lbx.reconciliation import read_subscription_proof as read_lbx_subscription_proof
+
+
+async def read_subscription_proof(
+    client: LbxServerClient,
+    subject: ReconciliationSubject | SubscriptionCandidateSubject,
+    configuration: Settings,
+    *,
+    factory: SessionFactory,
+    budget: PreflightBudget,
+    delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
+) -> SubscriptionProof:
+    """Persist only the DB-clock interval surrounding this actual source read."""
+    started = await delegate(read_source_time, factory)
+    proof = await read_lbx_subscription_proof(client, subject, configuration, budget=budget)
+    finished = await delegate(read_source_time, factory)
+    return replace(proof, read_started_at=started, read_finished_at=finished)
 
 
 async def reconcile_subscription(
@@ -57,12 +75,13 @@ async def reconcile_subscription(
             raise PurchaseRefused("purchase_inventory_incomplete", 409)
     # Claim is committed before admission/HTTP; each delegated unit owns its DB.
     # Failure/cancellation leaves a finite lease for safe subsequent reclaim.
-    started = utc_now()
+    started = await delegate(read_source_time, factory)
     try:
         async with _budget(admission, budget) as active_budget:
-            proof = await read_subscription_proof(client, subject, configuration, budget=active_budget)
+            proof = await read_subscription_proof(
+                client, subject, configuration, factory=factory, budget=active_budget, delegate=delegate
+            )
             if resolution is not None:
-                from dataclasses import replace
                 from app.composition.purchase_inventory import collect_inventory
                 from app.domains.purchases.inventory_contracts import InventoryCandidateProof
 
@@ -84,7 +103,7 @@ async def reconcile_subscription(
         # Preflight retains any unfinished HTTP/cleanup resource ownership.
         proof = SubscriptionProof(
             started,
-            utc_now(),
+            await delegate(read_source_time, factory),
             IdentityProof.INCOMPLETE,
             CommercialProof.INCOMPLETE,
             None,

@@ -311,6 +311,25 @@ commercial reacceptance, manual paid or quota command. Terminal revival has no
 override; an inventory review requires fresh proof that competition was corrected. Existing Step 7 proven-unsent automatic
 release keeps its separate rule.
 
+Source proof intervals are bracketed by short PostgreSQL clock reads before
+and after source I/O; their sessions close before HTTP. Reconciliation claims,
+financial possible-send start/deadline and operator-resolution windows use the
+same database clock. API wall-clock skew cannot reject an otherwise current
+proof. Owner/fence, expired lease and prior-attempt checks remain mandatory;
+incomplete reads never extend the six-hour trust, and first binding grants no
+positive trust.
+
+An unexpected live subscription on a known dedicated agreement conflicts with
+that agreement's purchase regardless of tariff. Tariff-scoped competition is
+also retained; ended subscriptions and closed agreements keep their exceptions.
+Known subscription IDs on another purchase's agreement receive the same point
+checks; a contradictory canonical identity proof also triggers them when
+discovery lags. A known sibling is never adopted as an UNKNOWN original.
+A customer identity conflict discovered while proving an UNKNOWN candidate
+uses the customer-wide fenced writer and discards the now-stale inventory.
+Only a proven original-key mismatch permits original-pair recovery; a generic
+source-scope conflict does not.
+
 ## Alerts and outage diagnosis
 
 Inspect /api/health/billing, payment_portal_billing_worker_* metrics and the

@@ -1,6 +1,11 @@
 """Synthetic original proof and durable deadline execution for DB fixtures."""
 
 from dataclasses import replace
+from collections.abc import Callable
+from functools import wraps
+from typing import Any
+
+import pytest
 from datetime import datetime
 from unittest.mock import patch
 
@@ -14,7 +19,7 @@ from app.domains.billing.operator_contracts import OriginalOperationProof
 from app.domains.billing.operator_review import digest
 from app.domains.billing.reconciliation_contracts import SubscriptionCandidateSubject
 from app.domains.billing.work_contracts import WorkLane
-from app.domains.purchases import service
+from app.domains.purchases import financial, service
 from app.domains.purchases.contracts import FinancialOperation, Purchase
 from app.integrations.lbx.customer import LbxUser
 from app.integrations.lbx.financial import Agreement, Subscription
@@ -76,3 +81,15 @@ def advance_deadlines(factory: sessionmaker[Session], *, now: datetime) -> int:
             )
         )
     return len(after - before)
+
+
+def financial_claim_clock(monkeypatch: pytest.MonkeyPatch, clock: Callable[[], datetime]) -> None:
+    """Set historical DB claim time without moving source-read/apply clocks."""
+    claim = financial.claim_financial
+
+    @wraps(claim)
+    def at_time(*args: Any, **kwargs: Any) -> FinancialOperation:
+        with patch.object(financial, "database_now", side_effect=lambda db: clock()):
+            return claim(*args, **kwargs)
+
+    monkeypatch.setattr(financial, "claim_financial", at_time)
