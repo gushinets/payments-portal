@@ -10,6 +10,8 @@ import { newRequestId, safeRequestId } from "./errors";
 import { useAccountPurchases } from "./use-account-purchases";
 import { useBillingWidget } from "./use-billing-widget";
 import { WidgetView } from "./WidgetView";
+import { usePaidAccess } from "./use-paid-access";
+import { PaidProductAccess } from "./PaidProductAccess";
 
 type SelectionState = { status: "loading" | "ready" } | { status: "error"; requestId: string };
 
@@ -23,7 +25,9 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   const t = useTranslations("Account.products");
   const b = useTranslations("Billing");
   const p = useTranslations("Purchase");
+  const a = useTranslations("Account.products.paid");
   const purchases = useAccountPurchases(emailVerified);
+  const paid = usePaidAccess(emailVerified);
   const widget = useBillingWidget(userId, emailVerified);
   const { begin, cancel } = useSessionOperation();
   // undefined permits a visible single-purchase default; null explicitly selects account viewing.
@@ -61,6 +65,8 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   const selection = selectedId === undefined ? defaultPurchase : options.find((item) => item.purchase_intent_id === selectedId);
   const selectionBlocked = selectionState.status !== "ready" || (!!selectedId && !selection);
   const canPay = selection?.state === "linked";
+  const paidOnlyProducts = paid.state.status === "ready"
+    ? [...new Set([...paid.state.data.grants.map((item) => item.product_id), ...paid.state.data.products.map((item) => item.product_id)])].filter((id) => !purchases.items.some((item) => item.product_id === id)) : [];
 
   function choose(id: string) {
     cancel();
@@ -102,14 +108,22 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
         {widget.state.status === "loading" ? b("loading") : widget.state.status === "open" ? b("refresh") : b("open")}
       </button>
       {widget.state.status === "open" && <p id="billing-refresh-hint" className="card-copy">{b("refreshHint")}</p>}
-      <WidgetView widget={widget} />
+      <WidgetView widget={widget} onClose={() => void paid.refresh()} />
     </section>
     <section className="account-products-panel" aria-label={t("title")}>
       <div className="account-products-heading">
         <h2>{t("title")}</h2>
         <p className="card-copy">{t("description")}</p>
-        <Link className="btn-secondary" href="/products">{t("allProducts")}</Link>
+        <div className="account-products-actions">
+          <Link className="btn-secondary" href="/products">{t("allProducts")}</Link>
+          {emailVerified && <button className="btn-secondary" type="button" onClick={() => void paid.refresh()} disabled={paid.state.status === "loading"}>{a("refresh")}</button>}
+        </div>
       </div>
+      {emailVerified && paid.state.status === "unavailable" && <div className="notice error" role="alert">
+        <p>{a(paid.state.deadlinePending ? "deadlinePending" : "unavailable")}</p>
+        {paid.state.requestId && <p>{b("requestId", { id: paid.state.requestId })}</p>}
+      </div>}
+      {emailVerified && paid.state.status === "ready" && paid.state.data.evidence_complete && !paid.state.data.products.length && !paid.state.data.grants.length && <p className="card-copy">{a("empty")}</p>}
       {purchases.status === "loading" && <p role="status">{t("loading")}</p>}
       {purchases.status === "error" && <div className="notice error" role="alert">
         <p>{t("unavailable")}</p>
@@ -121,12 +135,18 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
         {purchases.items.map((item) => <article className="account-product-card" key={item.purchase_intent_id}>
           <div className="account-product-heading"><h3><Link href={`/products/${encodeURIComponent(item.product_id)}`}>{item.product_id}</Link></h3></div>
           <p className="card-copy">{item.state === "linked" ? t("prepared") : t("pending")}</p>
+          {emailVerified && <PaidProductAccess productId={item.product_id} paid={paid} />}
           <div className="account-product-actions">
             <Link className="btn-secondary" href={`/products/${encodeURIComponent(item.product_id)}`}>{t("detailAction")}</Link>
             {item.state === "linked"
               ? <button className="btn-secondary" type="button" disabled={!emailVerified} onClick={() => manage(item.purchase_intent_id)}>{p("manage")}</button>
               : <Link className="btn-secondary" href={`/products/${encodeURIComponent(item.product_id)}`}>{p("continue")}</Link>}
           </div>
+        </article>)}
+        {paidOnlyProducts.map((id) => <article className="account-product-card" key={id}>
+          <div className="account-product-heading"><h3><Link href={`/products/${encodeURIComponent(id)}`}>{id}</Link></h3></div>
+          <PaidProductAccess productId={id} paid={paid} />
+          <Link className="btn-secondary" href={`/products/${encodeURIComponent(id)}`}>{t("detailAction")}</Link>
         </article>)}
       </div>
       {purchases.cursor && <button className="btn-secondary" type="button" disabled={purchases.status === "loading"} onClick={() => void purchases.load(purchases.cursor!)}>{t("loadMore")}</button>}

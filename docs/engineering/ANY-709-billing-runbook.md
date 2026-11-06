@@ -356,7 +356,8 @@ subscription authority. Waiting NULL/1970/3000 calendar values are not paid date
 A nonzero connection charge without explicit effective readback stays pending.
 A newly linked subscription has zero positive trust: a proved source negative
 is `blocked`, otherwise financial status is `unverified`. Preparation creates no
-access primary, grant, allowance or Kernel call. Paid access remains later work.
+access primary, grant, allowance or Kernel call. ANY-765 derives paid access
+separately through shared authoritative reconciliation and complete inventory.
 
 ### Recovery and safe continuation
 
@@ -508,8 +509,9 @@ transitions. Reuse these owners when changing either path:
   Widget, already-bound advance, worker and operator reconciliation acquire the
   subscription lease before point reads and apply through the same fenced
   transaction. Repeated opens do not rebind financial operations or append
-  preparation observations. Paid AccessSnapshot, AccessInvalidation and Kernel
-  delivery/usage remain later work. Preparation grants no paid access.
+  preparation observations. ANY-765 adds committed paid state and authenticated
+  cabinet reads. Kernel wire delivery/usage remain later work. Preparation grants
+  no paid access.
 - Payment presentation requires a committed complete identity/commercial match,
   supported nonterminal lifecycle and final local session/customer/purchase
   admission after Client readiness. Waiting/unpaid and financially blocked
@@ -528,6 +530,36 @@ transitions. Reuse these owners when changing either path:
   financial-operation conflicts restrict only their purchase. Both invalidate
   in-flight reconciliation leases without rewriting source timestamps/history,
   so restoration cannot make an earlier ACTIVE proof valid again.
+
+## Authenticated cabinet paid-access read
+
+`GET /api/paid-access` requires the current deployment's active authenticated
+session and verified email. It reads only local PostgreSQL state, without LBX,
+Kernel, Widget bootstrap or source-admission resources. Both success and refusal
+responses use `Cache-Control: no-store`. Identity may update session last-seen;
+the paid read does not write billing state, renew trust or repair deadlines.
+
+The shared user lock keeps the committed revision, complete grants/allowances,
+provenance and deadline consistent with concurrent writers. An unprocessed
+effective deadline at or before the sampled database time returns `503` with
+`paid_access_deadline_pending`; it never filters expired tuples under an unchanged
+revision. The existing local worker must commit the reduction before reads resume.
+
+The cabinet reads this endpoint independently of held-purchase listing and
+billing Widget availability. It refreshes explicitly, every 30 seconds while
+visible, after visibility returns and after Widget closure. These are local reads,
+not payment confirmation. Session changes/unmount discard late responses and
+stop polling; the displayed result expires conservatively using server duration
+and the browser's monotonic clock.
+
+Per-product confirmed access, fresh authoritative absence and unavailable evidence
+remain distinct. Implicit revision zero with no product evidence is confirmed
+empty; unavailable reads are never presented as empty. Product evidence is bounded
+to 100 entries with `evidence_complete=false` when truncated; committed grants and
+allowances are not truncated. Accepted technical terms and purchased quantities
+are marked `SIMULATED`; legacy purchases with no technical terms stay unknown.
+Actual usage and remaining quota remain unavailable. Production cannot derive
+simulated metering; this read does not implement Kernel enforcement or delivery.
 
 ## Verification commands
 

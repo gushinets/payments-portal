@@ -637,6 +637,190 @@
         "title": "LogoutResponse",
         "type": "object"
       },
+      "PaidAccessAllowanceResponse": {
+        "properties": {
+          "allowance_id": {
+            "title": "Allowance Id",
+            "type": "string"
+          },
+          "metric_key": {
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "provenance": {
+            "const": "SIMULATED",
+            "title": "Provenance",
+            "type": "string"
+          },
+          "quantity": {
+            "minimum": 0.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "allowance_id",
+          "product_id",
+          "metric_key",
+          "unit",
+          "quantity",
+          "provenance"
+        ],
+        "title": "PaidAccessAllowanceResponse",
+        "type": "object"
+      },
+      "PaidAccessGrantResponse": {
+        "properties": {
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          }
+        },
+        "required": [
+          "product_id",
+          "valid_until"
+        ],
+        "title": "PaidAccessGrantResponse",
+        "type": "object"
+      },
+      "PaidAccessProductResponse": {
+        "properties": {
+          "effective_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Until"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProductPaidStatus"
+          }
+        },
+        "required": [
+          "product_id",
+          "status",
+          "observed_at",
+          "effective_until"
+        ],
+        "title": "PaidAccessProductResponse",
+        "type": "object"
+      },
+      "PaidAccessResponse": {
+        "properties": {
+          "access_revision": {
+            "minimum": 0.0,
+            "title": "Access Revision",
+            "type": "integer"
+          },
+          "allowances": {
+            "items": {
+              "$ref": "#/components/schemas/PaidAccessAllowanceResponse"
+            },
+            "title": "Allowances",
+            "type": "array"
+          },
+          "committed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed At"
+          },
+          "effective_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Until"
+          },
+          "evidence_complete": {
+            "title": "Evidence Complete",
+            "type": "boolean"
+          },
+          "grants": {
+            "items": {
+              "$ref": "#/components/schemas/PaidAccessGrantResponse"
+            },
+            "title": "Grants",
+            "type": "array"
+          },
+          "products": {
+            "items": {
+              "$ref": "#/components/schemas/PaidAccessProductResponse"
+            },
+            "maxItems": 100,
+            "title": "Products",
+            "type": "array"
+          },
+          "read_at": {
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_revision",
+          "grants",
+          "allowances",
+          "products",
+          "evidence_complete",
+          "committed_at",
+          "read_at",
+          "effective_until"
+        ],
+        "title": "PaidAccessResponse",
+        "type": "object"
+      },
       "PasswordResetConfirmRequest": {
         "properties": {
           "password": {
@@ -698,6 +882,15 @@
         ],
         "title": "PasswordResetRequestResponse",
         "type": "object"
+      },
+      "ProductPaidStatus": {
+        "enum": [
+          "confirmed",
+          "no_paid_access",
+          "unavailable"
+        ],
+        "title": "ProductPaidStatus",
+        "type": "string"
       },
       "PurchaseConfirmRequest": {
         "additionalProperties": false,
@@ -2196,6 +2389,55 @@
         "summary": "List Required Documents",
         "tags": [
           "legal"
+        ]
+      }
+    },
+    "/api/paid-access": {
+      "get": {
+        "operationId": "paid_access_api_paid_access_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaidAccessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Paid Access",
+        "tags": [
+          "paid-access"
         ]
       }
     },

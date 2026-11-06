@@ -173,7 +173,20 @@
       "unavailable": "Your purchases could not be loaded. You can open billing separately.",
       "loadMore": "Load more",
       "prepared": "Subscription prepared",
-      "pending": "Purchase preparation is incomplete"
+      "pending": "Purchase preparation is incomplete",
+      "paid": {
+        "loading": "Checking paid access…",
+        "confirmed": "Paid access confirmed",
+        "no_paid_access": "No paid access is confirmed for this product",
+        "unavailable": "Paid-access status could not be confirmed. Try again.",
+        "quantity": "Purchased limit: {quantity} {unit}",
+        "simulated": "Simulated test limit — not a commercial allowance.",
+        "meteringUnavailable": "Metered access is unavailable without a proven allowance.",
+        "usageUnavailable": "Used and remaining quantities are unavailable.",
+        "refresh": "Refresh paid access",
+        "deadlinePending": "Access is being updated after a deadline. Try again shortly.",
+        "empty": "There is no paid access yet."
+      }
     }
   },
   "PasswordReset": {
@@ -466,7 +479,9 @@
     "reference": "Purchase reference: {id}",
     "acceptedTerms": "Originally accepted terms",
     "awaitingVerification": "Payment status is awaiting authoritative verification. Checking saved status reads Portal records only; it does not refresh billing facts.",
-    "accessDeferred": "Payment and product access are separate. Paid-access delivery and usage/quota will be implemented in later stages; this screen does not confirm activation.",
+    "technicalLimit": "Test limit per confirmed cycle",
+    "simulatedTerms": "SIMULATED · test terms",
+    "technicalUnknown": "Technical limit is unproven; metered execution is unavailable.",
     "fullFunding": "Full funding is required.",
     "fundingUnspecified": "Funding requirements are not specified.",
     "states": {
@@ -478,6 +493,7 @@
       "failed_before_external_effect": "This purchase stopped before any financial creation.",
       "manual_review": "The purchase needs recovery or operator review."
     },
-    "managedInAccount": "Payment and subscription management are available in your account."
+    "managedInAccount": "Payment and subscription management are available in your account.",
+    "accessInAccount": "Confirmed paid access is shown in your account. Usage and remaining quota are not yet available."
   }
 }

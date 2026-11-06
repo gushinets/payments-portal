@@ -8,6 +8,12 @@ export const purchaseUser: SessionUserResponse = {
 export const purchaseReview: PurchaseReviewResponse = {
   product_id: "proposal_ai", revision_id: "22222222-2222-4222-8222-222222222222",
   expected_fingerprint: "sha256:" + "a".repeat(64), legal_status: "draft",
+  expected_technical_terms_digest: "sha256:" + "d".repeat(64),
+  technical_terms: {
+    source_version: "ANY-765-test-terms:1", source_digest: "sha256:" + "e".repeat(64), provenance: "SIMULATED",
+    offer: { product_id: "proposal_ai", metric_key: "proposal_ai.test_generations", unit: "generation", quantity: 100, quantity_mode: "fixed_per_cycle" },
+    digest: "sha256:" + "d".repeat(64),
+  },
   terms: { recurring_unit_amount: "100", recurring_amount: "100", connection_unit_amount: "0", connection_amount: "0", currency: "RUB", decimal_places: 2, units: "major", commercial_quantity: "1", period_unit: "month", period_length: 1, period_anchor: "instance_start", prepaid: true, full_funding_required: true },
   documents: [{ document_version_id: "33333333-3333-4333-8333-333333333333", acceptance_text_hash: "b".repeat(64), doc_type: "offer", version: "synthetic-v1", content_hash: "c".repeat(64), title: "Тестовый проект оферты", url_path: "/ru/offer", acceptance_text: "Я принимаю тестовые условия оферты." }]
 };
