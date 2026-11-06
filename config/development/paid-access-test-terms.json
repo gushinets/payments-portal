@@ -1,0 +1,22 @@
+{
+  "schema_version": "development-purchase-terms:v1",
+  "source_version": "ANY-765-test-terms:1",
+  "provenance": "SIMULATED",
+  "purpose": "Development purchase examples only; not a Kernel manifest or production offer.",
+  "offers": [
+    {
+      "product_id": "proposal_ai",
+      "metric_key": "proposal_ai.test_generations",
+      "unit": "generation",
+      "quantity": 100,
+      "quantity_mode": "fixed_per_cycle"
+    },
+    {
+      "product_id": "brief_decoder",
+      "metric_key": "brief_decoder.test_analyses",
+      "unit": "analysis",
+      "quantity": 300,
+      "quantity_mode": "fixed_per_cycle"
+    }
+  ]
+}
