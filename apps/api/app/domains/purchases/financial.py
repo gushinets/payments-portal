@@ -111,7 +111,7 @@ def claim_financial(
             op.operation_kind == Kind.AGREEMENT and op.operation_state == State.BOUND for op in operations
         ):
             raise PurchaseRefused("purchase_pending", 409)
-        now = utc_now()
+        now = as_utc(database_now(db))
         operation.send_fence = uuid4()
         operation.operation_state = State.POSSIBLE_SEND
         if not retry_unsent:
@@ -258,7 +258,7 @@ def financial_pending(
         elif op.operation_state == State.PROVEN_NOT_SENT:
             return  # A failed GET cannot erase completed no-send evidence.
         elif op.operation_state != State.BOUND:
-            if deadline and utc_now() >= as_utc(deadline):
+            if deadline and as_utc(database_now(db)) >= as_utc(deadline):
                 _review(db, row, op, "external_create_outcome_unknown:" + op.operation_kind.value)
             elif op.operation_state != State.MANUAL_REVIEW:
                 op.operation_state = State.UNKNOWN if op.unknown_since else State.PENDING

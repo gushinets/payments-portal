@@ -4,6 +4,8 @@ import asyncio
 from datetime import timedelta
 
 import pytest
+
+from apps.api.tests.factories.original_operation import financial_claim_clock
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -100,6 +102,7 @@ def escalated_conflict(
 ) -> tuple[Purchase, ResolutionRequest]:
     transport, _, purchase = scenario
     clock = financial.utc_now
+    financial_claim_clock(monkeypatch, lambda: financial.utc_now())
     monkeypatch.setattr(financial, "utc_now", lambda: clock() - timedelta(hours=3))
     purchase = synthetic_prepare(factory, transport, purchase, uncertain=True)
     monkeypatch.setattr(financial, "utc_now", clock)

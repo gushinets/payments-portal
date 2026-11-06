@@ -438,3 +438,263 @@ async def test_inventory_customer_conflict_preserves_only_proven_original_key_re
     assert tuple(transport.creates(path) for path in ("/users", "/agreements", "/subscriptions")) == creates
     assert all(request.method == "GET" for request in transport.requests[started:])
     assert service.read_purchase(factory, purchase.user_id, purchase.id) == purchase
+
+
+@pytest.mark.parametrize(
+    "tariff,ended,closed", [(999, False, False), (701, False, False), (999, True, False), (999, False, True)]
+)
+async def test_dedicated_agreement_competitor_is_scoped_independently_of_tariff(
+    background_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    tariff: int,
+    ended: bool,
+    closed: bool,
+) -> None:
+    transport, sources, purchase = background_scenario
+    factory = postgres_session_factory
+    purchase = synthetic_prepare(factory, transport, purchase, uncertain=False)
+    sibling = historical_link(factory, purchase, transport, "brief_decoder", 1)
+    extra = {**transport.subscriptions[0], "subscription_id": 9999, "tariff_id": tariff, "state": 3 if ended else 2}
+    transport.subscriptions.append(extra)
+    if closed:
+        transport.agreements[0]["close_date"] = "2026-11-05"
+    recovery.repair_batch(factory, step1_settings())
+    claim = work.claim_work(factory, step1_settings(), WorkLane.NORMAL)
+    assert claim and claim.kind == recovery.INVENTORY
+    result = await inventory(sources, factory, purchase, claim=claim)
+    assert result.complete
+    conflict = not ended and not closed
+    assert (purchase.id in result.conflicts) is conflict
+    assert (sibling.id in result.conflicts) is (conflict and tariff == 701)
+    if conflict:
+        with pytest.raises(PurchaseRefused, match="purchase_existing_subscription_review"):
+            result.require_clear(purchase, original=True)
+    else:
+        result.require_clear(purchase, original=True)
+    recovery.apply_inventory(factory, claim, result, "inventory_conflict" if conflict else None)
+    with factory() as db:
+        reviews = list(db.scalars(select(ManualReviewCase)))
+        if conflict:
+            owner_sub = db.scalar(
+                select(ExternalSubscription).where(ExternalSubscription.purchase_intent_id == purchase.id)
+            )
+            assert owner_sub.commercial_access_status == "ineligible"
+            assert reviews
+        else:
+            assert not reviews
+    if conflict:
+        evidence = inspect_evidence(factory, step1_settings(), purchase.user_id, purchase.id)
+        request = resolution_request(purchase, evidence)
+        with pytest.raises(PurchaseRefused, match="purchase_existing_subscription_review"):
+            await resolve_review(sources, step1_settings(), factory=factory, request=request, principal=PRINCIPAL)
+        with factory() as db:
+            case = db.get(ManualReviewCase, request.case_id)
+            assert case.case_state == "open" and case.resolution_document is None
+    assert not any(req.method == "POST" for req in transport.requests)
+
+
+@pytest.mark.parametrize("conflict", ["original_key", "scope_error"])
+@pytest.mark.parametrize("entrypoint", ["collector", "worker"])
+async def test_unknown_candidate_customer_conflict_invalidates_every_subscription(
+    background_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    conflict: str,
+    entrypoint: str,
+) -> None:
+    from app.composition.billing_background import inventory_customer
+    from app.composition.purchases import recover_financial
+    from app.composition.reconciliation import read_subscription_proof, reconcile_subscription
+    from app.domains.billing.reconciliation import claim_reconciliation, apply_reconciliation
+    from app.domains.purchases.inventory_contracts import InventoryStale
+
+    transport, sources, purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    purchase = synthetic_prepare(factory, transport, purchase, uncertain=True)
+    historical_link(factory, purchase, transport, "brief_decoder", 1)
+    transport.subscriptions[1].update(
+        state=2, last_tariffication_period_start="2026-10-01", last_tariffication_period_end="2026-11-01"
+    )
+    with factory() as db:
+        sibling_id = db.scalar(select(ExternalSubscription.subscription_id))
+    await reconcile_subscription(
+        sources.require_lbx(), sources.billing, config, factory=factory, subscription_id=sibling_id
+    )
+    old = claim_reconciliation(factory, config, sibling_id, io_timeout_seconds=60)
+    async with sources.billing.operation(bound_scope=False) as budget:
+        old_proof = await read_subscription_proof(sources.require_lbx(), old, config, factory=factory, budget=budget)
+    client = sources.require_lbx()
+    get_user = client.get_user
+    reads = 0
+
+    async def changed_second_read(**kwargs: Any) -> Any:
+        nonlocal reads
+        reads += 1
+        if reads == 2:
+            if conflict == "scope_error":
+                raise LbxScopeMismatch()
+            return (await get_user(**kwargs)).model_copy(update={"outer_id": "changed-original-key"})
+        return await get_user(**kwargs)
+
+    monkeypatch.setattr(client, "get_user", changed_second_read)
+    recovery.repair_batch(factory, config)
+    claim = work.claim_work(factory, config, WorkLane.NORMAL)
+    assert claim and claim.kind == recovery.INVENTORY
+    if entrypoint == "collector":
+        with pytest.raises(InventoryStale):
+            await inventory(sources, factory, purchase, claim=claim)
+    else:
+        async with sources.billing.operation(bound_scope=False) as budget:
+            await inventory_customer(
+                client, sources.billing, config, factory=factory, claim=claim, budget=budget, delegate=run_in_threadpool
+            )
+    assert reads == 2
+    with factory() as db:
+        customer = db.get(ExternalBillingCustomer, purchase.customer_id)
+        assert customer.binding_state == Binding.IDENTITY_CONFLICT
+        sub = db.get(ExternalSubscription, sibling_id)
+        assert (sub.financial_access_status, sub.commercial_access_status) == ("blocked", "ineligible")
+        assert sub.reconciliation_fencing_token > old.fence
+        assert sub.reconciliation_lease_owner is None and sub.reconciliation_lease_expires_at is None
+        cases = list(db.scalars(select(ManualReviewCase)))
+        assert len(cases) == 1 and cases[0].scope_kind == "create_operation"
+        assert cases[0].scope_reference == str(old.customer.operation_id)
+        assert cases[0].reason_code == (
+            "customer_original_key_mismatch" if conflict == "original_key" else "customer_identity_conflict"
+        )
+    with pytest.raises(BillingRefused, match="subscription_reconciliation_stale"):
+        apply_reconciliation(factory, old, old_proof)
+    monkeypatch.setattr(client, "get_user", get_user)
+    if conflict == "original_key":
+        await bootstrap_account(sources, config, factory=factory, token=TOKEN)
+        saved = await recover_financial(
+            sources, config, factory=factory, user_id=purchase.user_id, purchase_id=purchase.id
+        )
+        assert saved.state == "linked" and saved.accepted == purchase.accepted
+        with factory() as db:
+            assert db.get(ExternalBillingCustomer, purchase.customer_id).binding_state == Binding.BOUND
+            assert all(case.case_state == "resolved" for case in db.scalars(select(ManualReviewCase)))
+    else:
+        with pytest.raises(BillingRefused, match="billing_identity_conflict"):
+            await bootstrap_account(sources, config, factory=factory, token=TOKEN)
+    assert not any(req.method == "POST" for req in transport.requests)
+
+
+@pytest.mark.parametrize(
+    "case", ["dedicated", "moved", "moved-other-tariff", "lag", "misleading", "ended", "closed", "busy"]
+)
+async def test_known_sibling_cannot_hide_a_shared_dedicated_agreement(
+    background_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+) -> None:
+    transport, sources, purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    purchase = synthetic_prepare(factory, transport, purchase, uncertain=False)
+    sibling = historical_link(factory, purchase, transport, "brief_decoder", 1)
+    transport.pool = factory.kw["bind"].pool
+    for point in transport.subscriptions:
+        point.update(state=2, last_tariffication_period_start="2026-10-01", last_tariffication_period_end="2026-11-01")
+    old = old_proof = None
+    if case == "busy":
+        from app.composition.reconciliation import reconcile_subscription, read_subscription_proof
+        from app.domains.billing.reconciliation import claim_reconciliation
+
+        with factory() as db:
+            sibling_id = db.scalar(
+                select(ExternalSubscription.subscription_id).where(
+                    ExternalSubscription.purchase_intent_id == sibling.id
+                )
+            )
+        await reconcile_subscription(
+            sources.require_lbx(), sources.billing, config, factory=factory, subscription_id=sibling_id
+        )
+        old = claim_reconciliation(factory, config, sibling_id, io_timeout_seconds=60)
+        async with sources.billing.operation(bound_scope=False) as budget:
+            old_proof = await read_subscription_proof(
+                sources.require_lbx(), old, config, factory=factory, budget=budget
+            )
+    if case not in {"dedicated", "misleading"}:
+        transport.subscriptions[1]["agreement_id"] = 456
+    if case in {"moved-other-tariff", "busy"}:
+        transport.subscriptions[1]["tariff_id"] = 999
+    if case == "ended":
+        transport.subscriptions[1]["state"] = 3
+    if case == "closed":
+        transport.agreements[0]["close_date"] = "2026-11-05"
+    if case in {"lag", "misleading"}:
+        discover = sources.require_lbx().discover_subscriptions
+
+        async def stale_listing(**kwargs: Any) -> tuple[Subscription, ...]:
+            rows = await discover(**kwargs)
+            return tuple(
+                row.model_copy(update={"agreement_id": 457 if case == "lag" else 456})
+                if row.subscription_id == 568
+                else row
+                for row in rows
+            )
+
+        monkeypatch.setattr(sources.require_lbx(), "discover_subscriptions", stale_listing)
+    recovery.repair_batch(factory, config)
+    claim = work.claim_work(factory, config, WorkLane.NORMAL)
+    assert claim and claim.kind == recovery.INVENTORY
+    result = await inventory(sources, factory, purchase, claim=claim)
+    conflict = case in {"moved", "moved-other-tariff", "lag", "busy"}
+    assert (purchase.id in result.conflicts) is conflict
+    assert (sibling.id in result.conflicts) is conflict
+    if case == "dedicated":
+        assert result.complete and not result.conflicts
+    reason = "inventory_conflict" if result.conflicts else "inventory_incomplete" if not result.complete else None
+    recovery.apply_inventory(factory, claim, result, reason)
+    if old is not None:
+        from app.domains.billing.reconciliation import apply_reconciliation
+
+        with pytest.raises(BillingRefused, match="subscription_reconciliation_stale"):
+            apply_reconciliation(factory, old, old_proof)
+    with factory() as db:
+        target = db.scalar(select(ExternalSubscription).where(ExternalSubscription.purchase_intent_id == purchase.id))
+        assert target.commercial_access_status == ("ineligible" if conflict else "eligible")
+    if conflict:
+        with pytest.raises(BillingRefused, match="purchase_not_prepared"):
+            await bootstrap_account(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+        evidence = inspect_evidence(factory, config, purchase.user_id, purchase.id)
+        request = resolution_request(purchase, evidence)
+        with pytest.raises(PurchaseRefused, match="purchase_existing_subscription_review"):
+            await resolve_review(sources, config, factory=factory, request=request, principal=PRINCIPAL)
+        with factory() as db:
+            case_row = db.get(ManualReviewCase, request.case_id)
+            assert case_row.case_state == "open" and case_row.resolution_document is None
+    elif case == "closed":
+        with pytest.raises(BillingRefused, match="purchase_not_prepared"):
+            await bootstrap_account(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+    else:
+        widget = await bootstrap_account(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+        assert widget.credential and widget.purchase_id == purchase.id
+    with factory() as db:
+        # Neither discovery nor a changed provider relationship may rebind history.
+        first = db.scalar(select(ExternalSubscription).where(ExternalSubscription.purchase_intent_id == purchase.id))
+        second = db.scalar(select(ExternalSubscription).where(ExternalSubscription.purchase_intent_id == sibling.id))
+        assert (first.external_subscription_id, first.external_agreement_id) == ("567", "456")
+        assert (second.external_subscription_id, second.external_agreement_id) == ("568", "457")
+    assert not any(req.method == "POST" for req in transport.requests)
+
+
+async def test_known_sibling_is_never_an_unknown_original_candidate(
+    background_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    transport, sources, purchase = background_scenario
+    factory = postgres_session_factory
+    purchase = synthetic_prepare(factory, transport, purchase, uncertain=True)
+    sibling = historical_link(factory, purchase, transport, "brief_decoder", 1)
+    transport.subscriptions.pop(0)
+    transport.subscriptions[0]["agreement_id"] = 456
+    result = await inventory(sources, factory, purchase)
+    assert purchase.id in result.conflicts and purchase.id not in result.pending
+    saved = service.read_purchase(factory, purchase.user_id, purchase.id)
+    operation = next(op for op in saved.operations if op.kind == Kind.SUBSCRIPTION)
+    assert operation.bound_id is None and operation.state == State.POSSIBLE_SEND
+    saved_sibling = service.read_purchase(factory, sibling.user_id, sibling.id)
+    assert next(op for op in saved_sibling.operations if op.kind == Kind.SUBSCRIPTION).bound_id == "568"
+    assert not any(req.method == "POST" for req in transport.requests)

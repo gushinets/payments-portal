@@ -6,6 +6,8 @@ from uuid import uuid4
 
 import httpx
 import pytest
+
+from apps.api.tests.factories.original_operation import financial_claim_clock
 from sqlalchemy import delete, func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -194,6 +196,7 @@ async def test_billing_retained_scope_customer_and_financial_repair_recovery_dea
     assert customers.reserve_customer(factory, config, TOKEN).provider_id == "345"
     # Create original immutable possible-send evidence in the past, with an
     # existing provider object whose reply was lost. Recovery remains GET-only.
+    financial_claim_clock(monkeypatch, lambda: financial.utc_now())
     monkeypatch.setattr(financial, "utc_now", lambda: datetime.now(UTC) - timedelta(hours=3))
     purchase = synthetic_prepare(factory, transport, purchase, uncertain=True)
     operation = next(op for op in purchase.operations if op.kind == Kind.SUBSCRIPTION)

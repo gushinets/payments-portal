@@ -9,6 +9,8 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
+
+from apps.api.tests.factories.original_operation import financial_claim_clock
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -54,6 +56,7 @@ async def test_late_proven_unsent_resume_has_one_new_bounded_recovery_window(
     config = step1_settings()
     attempts: list[httpx.Request] = []
     instant = datetime.now(UTC)
+    financial_claim_clock(monkeypatch, lambda: financial.utc_now())
     monkeypatch.setattr(financial, "utc_now", lambda: instant)
 
     def respond(request: httpx.Request) -> httpx.Response:

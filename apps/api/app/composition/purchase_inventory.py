@@ -6,7 +6,7 @@ from typing import Any
 
 from starlette.concurrency import run_in_threadpool
 
-from app.composition.reconciliation import reconcile_subscription
+from app.composition.reconciliation import read_subscription_proof, reconcile_subscription
 from app.core.errors import AppError
 from app.core.settings import Settings
 from app.domains.billing.background_recovery import customer_snapshot
@@ -32,7 +32,7 @@ from app.infrastructure.preflight import (
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.errors import LbxResponseInvalid, LbxScopeMismatch
 from app.integrations.lbx.financial import Subscription, agreement_is_closed, subscription_lifecycle
-from app.integrations.lbx.reconciliation import read_subscription_proof, timely_point
+from app.integrations.lbx.reconciliation import timely_point
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State
 from app.models import ExternalSubscriptionLifecycleStatus as Lifecycle
 
@@ -68,6 +68,7 @@ async def collect_inventory(
         raise InventoryStale()
     conflicts, pending = set(), set()
     complete = True
+    conflicting_bindings: set[str] = set()
     bindings = {
         operation.bound_id: purchase
         for purchase in initial
@@ -107,6 +108,8 @@ async def collect_inventory(
             except AppError:
                 complete = False
                 continue
+        if proof.identity == IdentityProof.CONFLICT and "subscription_identity_conflict" in proof.reasons:
+            conflicting_bindings.add(provider_id)
         # Inventory needs original ownership, applicable terms and lifecycle,
         # not a complete paid-cycle calendar for an already bound object.
         if (
@@ -143,10 +146,18 @@ async def collect_inventory(
         counts = Counter(row.agreement_id for row in rows)
         for candidate in relevant:
             budget.check()
-            if str(candidate.subscription_id) in bindings:
-                continue
+            provider_id = str(candidate.subscription_id)
+            known = bindings.get(provider_id)
             owner = agreements.get(str(candidate.agreement_id))
-            if owner is not None:
+            if (
+                known is not None
+                and provider_id not in conflicting_bindings
+                and (owner is None or owner.id == known.id)
+            ):
+                continue
+            # A permanently bound sibling can never be this purchase's original
+            # UNKNOWN candidate, even when LBX now places it on this agreement.
+            if known is None and owner is not None:
                 operation = next(op for op in owner.operations if op.kind == Kind.SUBSCRIPTION)
                 if counts[candidate.agreement_id] == 1 and operation.bound_id is None:
                     if (
@@ -183,11 +194,29 @@ async def collect_inventory(
                                 owner, current, agreement.bound_id, agreement.key, str(candidate.subscription_id)
                             ),
                             configuration,
+                            factory=factory,
                             budget=budget,
+                            delegate=delegate,
                         )
                     else:
                         proof = None
                     if proof is not None:
+                        if (
+                            "customer_identity_conflict" in proof.reasons
+                            or "customer_original_key_mismatch" in proof.reasons
+                        ):
+                            await delegate(
+                                record_customer_conflict,
+                                factory,
+                                current,
+                                work_claim,
+                                provider_id=current.provider_id
+                                if "customer_original_key_mismatch" in proof.reasons
+                                else None,
+                            )
+                            # The customer writer invalidated every source fence.
+                            # Never apply this snapshot as a purchase-only review.
+                            raise InventoryStale()
                         if (
                             proof.identity == IdentityProof.MATCH
                             and proof.commercial == CommercialProof.MATCH
@@ -207,6 +236,10 @@ async def collect_inventory(
             )
             if (point.agreement_id, point.tariff_id) != (candidate.agreement_id, candidate.tariff_id):
                 complete = False
+                if known is None:
+                    continue
+            owner = agreements.get(str(point.agreement_id))
+            if known is not None and (owner is None or owner.id == known.id):
                 continue
             agreement = await timely_point(
                 lambda: client.get_agreement(agreement_id=point.agreement_id, budget=budget), budget
@@ -216,6 +249,10 @@ async def collect_inventory(
                 continue
             if agreement_is_closed(agreement) or subscription_lifecycle(point)[0] == Lifecycle.ENDED:
                 continue
+            if owner is not None:
+                conflicts.add(owner.id)
+            if known is not None:
+                conflicts.add(known.id)
             conflicts.update(
                 purchase.id for purchase in initial if purchase.accepted.selection.tariff_id == point.tariff_id
             )
@@ -224,6 +261,8 @@ async def collect_inventory(
         )
         if _identities(rows) != _identities(again):
             complete = False
+    except InventoryStale:
+        raise
     except (AppError, PreflightDeadlineExceeded, PreflightCleanupPending):
         complete = False
     return InventoryResult(

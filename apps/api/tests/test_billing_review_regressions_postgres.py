@@ -10,6 +10,8 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+
+from apps.api.tests.factories.original_operation import financial_claim_clock
 import httpx
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
@@ -93,6 +95,7 @@ async def test_deadline_preserves_completion_committed_before_business_locks(
 ) -> None:
     transport, _, purchase = background_scenario
     factory, config = postgres_session_factory, step1_settings()
+    financial_claim_clock(monkeypatch, lambda: financial.utc_now())
     monkeypatch.setattr(financial, "utc_now", lambda: datetime.now(UTC) - timedelta(hours=3))
     purchase = synthetic_prepare(factory, transport, purchase, uncertain=True)
     operation = next(op for op in purchase.operations if op.kind == Kind.SUBSCRIPTION)
@@ -333,6 +336,7 @@ async def test_completed_no_send_deadline_finishes_after_safe_purchase_release(
     command = NewAgreement(
         user_id=345, organization_id=21, agreement_number=operation.key, create_date=date(2026, 10, 27)
     )
+    financial_claim_clock(monkeypatch, lambda: financial.utc_now())
     monkeypatch.setattr(financial, "utc_now", lambda: datetime.now(UTC) - timedelta(hours=3))
     claimed = financial.claim_financial(
         factory, purchase, operation, command.request_document(), configuration=config, token=TOKEN

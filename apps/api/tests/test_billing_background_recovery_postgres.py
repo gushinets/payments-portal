@@ -9,6 +9,8 @@ from uuid import UUID
 
 import httpx
 import pytest
+
+from apps.api.tests.factories.original_operation import financial_claim_clock
 from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -208,6 +210,7 @@ async def test_billing_background_recovery_independent_deadline_and_no_send(
     factory = postgres_session_factory
     # Set original time before claiming; the permanent two-hour pair is immutable.
     past = datetime.now(UTC) - timedelta(hours=3)
+    financial_claim_clock(monkeypatch, lambda: financial.utc_now())
     monkeypatch.setattr(financial, "utc_now", lambda: past)
     purchase = synthetic_prepare(factory, transport, purchase, uncertain=True)
     op = next(op for op in purchase.operations if op.kind == Kind.SUBSCRIPTION)
@@ -473,6 +476,7 @@ async def test_billing_background_recovery_resumed_unsent_uses_active_window_and
     request = NewAgreement(
         user_id=345, organization_id=21, agreement_number=op.key, create_date=date(2026, 10, 27)
     ).request_document()
+    financial_claim_clock(monkeypatch, lambda: financial.utc_now())
     monkeypatch.setattr(financial, "utc_now", lambda: now - timedelta(hours=3))
     claimed = financial.claim_financial(factory, purchase, op, request, configuration=step1_settings(), token=TOKEN)
     financial.proven_not_sent(factory, purchase, claimed)

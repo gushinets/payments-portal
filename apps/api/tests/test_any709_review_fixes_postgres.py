@@ -11,6 +11,8 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
+
+from apps.api.tests.factories.original_operation import financial_claim_clock
 from sqlalchemy import select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import DatabaseError
@@ -58,6 +60,7 @@ async def test_proven_not_sent_resumes_original_operation_only_on_explicit_advan
     config = step1_settings()
     # Start the original send in the past; recovery proof and database time
     # remain on the same real clock when continuing after its first deadline.
+    financial_claim_clock(monkeypatch, lambda: financial.utc_now())
     monkeypatch.setattr(financial, "utc_now", lambda: datetime.now(UTC) - timedelta(days=1))
     failures: list[httpx.Request] = []
 
