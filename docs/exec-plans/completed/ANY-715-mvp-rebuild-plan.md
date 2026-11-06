@@ -1,6 +1,6 @@
 # ANY-715 — Rebuild the MVP implementation from the functional-QA baseline
 
-Status: Stages 0–5 complete; Stage 6 verification performed, acceptance blocked by real Widget readiness.
+Status: Completed on 2026-11-06 by owner decision; verification limits and follow-up work are recorded below.
 Prepared: 2026-11-05. Repository: `gushinets/payments-portal`. Reference PR: #154; delivery: a separate Draft PR created in Stage 0.
 
 ## 1. Outcome and execution instructions
@@ -13,7 +13,7 @@ The owner explicitly chose this rebuild, polling-only MVP and publication throug
 - Stage 0 creates the reviewable branch and Draft PR before refactoring starts. After each later completed stage and its relevant checks, make one coherent commit, normally push it to that same branch, and update the same Draft PR's progress/evidence. These actions are authorized; do not ask for publication permission again. Report the PR URL, commit and remaining checks.
 - Read the named authorities and affected callers. Investigate further only to resolve a concrete contradiction or a failing required scenario.
 - Do not rewrite the plan, generate a new design document, or run an open-ended review loop before implementation.
-- Use one checked-in copy at `docs/exec-plans/active/ANY-715-mvp-rebuild-plan.md`; keep a short checklist/evidence section there. Do not add a handoff document for every stage.
+- The completed canonical copy is `docs/exec-plans/completed/ANY-715-mvp-rebuild-plan.md`; keep the checklist/evidence here. Do not add a handoff document for every stage.
 - Repository documentation, code comments and commit messages remain English. Report progress to the owner in Russian.
 - Preserve PR #154 and its `ANY-715` branch. Do not force-push, close the old PR, resolve review threads, mark the new PR ready, merge or deploy automatically. Stage 0 authorizes the new branch/Draft PR and subsequent normal pushes/progress-body updates, not those separate final actions or live financial operations.
 
@@ -237,7 +237,7 @@ Do not cherry-pick this sequence wholesale. A review thread is not a requirement
 - Push the verified final stage normally to the new branch and update the existing Draft PR with its final scope and fresh evidence. The new PR is the proposed primary implementation; keep it Draft until the owner requests otherwise. PR #154 remains preserved and may be closed as superseded only after the owner's final decision. No rewriting of `ANY-715` or force-push is part of this workflow. Prepare the old-review-to-new-fix/test mapping; reply to or resolve threads only when instructed, without erasing discussions or implying approval.
 - If the proposed reuse demonstrably cannot satisfy a required invariant, record the smallest reproducible counterexample and the exact unmet requirement. Do not silently recreate the rejected subsystem or weaken the invariant. Continue independent bounded work and surface that specific design decision to the owner.
 
-Progress: Stage 0 [x]; Stage 1 [x]; Stage 2 [x]; Stage 3 [x]; Stage 4 [x]; Stage 5 [x]; Stage 6 [ ].
+Progress: Stage 0 [x]; Stage 1 [x]; Stage 2 [x]; Stage 3 [x]; Stage 4 [x]; Stage 5 [x]; Stage 6 [x]. Execution closed by the owner on 2026-11-06; this does not turn unperformed checks into PASS.
 
 ## Stage 0 evidence — 2026-11-05
 
@@ -535,9 +535,10 @@ Progress: Stage 0 [x]; Stage 1 [x]; Stage 2 [x]; Stage 3 [x]; Stage 4 [x]; Stage
 
 ## Stage 6 verification and handoff — 2026-11-06
 
-- Stages 0–5 remain complete. Stage 6 verification/publication is performed;
-  **acceptance remains BLOCKED by real Widget readiness**, not marked PASS.
-  No later program step, paid-access implementation or production enablement.
+- Initial handoff: Stages 0–5 were complete and Stage 6 verification/publication
+  was performed; acceptance was blocked by real Widget readiness at that time.
+  The owner subsequently closed this execution plan; see the completion record
+  below. No later program step, paid-access implementation or production enablement.
 - Verification started at `cfe0855a98229f9d3d3e5957d8c555fc65fa3504`.
   Exact verified Git content SHAs: API/tests tree
   `57e11eae522ff9ea2a5658750d0e0c1dc7c2781a`; web/tests tree
@@ -639,3 +640,56 @@ Progress: Stage 0 [x]; Stage 1 [x]; Stage 2 [x]; Stage 3 [x]; Stage 4 [x]; Stage
   temporary QA processes were stopped; copied containers/volumes were removed.
   One normal Stage 6 commit/push updates the same Draft PR #161, with the live
   acceptance blocker and raw check limitations left explicit.
+
+## Owner-confirmed manual QA on the preserved stand — 2026-11-06
+
+Result: **PASS for the owner-reported manual scenarios below**. Evidence is
+human confirmation in this chat, including Widget screenshots; these scenarios
+were not rerun by the agent after that confirmation.
+
+- Scope: the preserved `ANY-715` stand (`payments-cf94dbf9`), with
+  `proposal_ai` linked to tariff 32 and `brief_decoder` linked to tariff 33.
+  The local total preflight budget was increased from 10 to 60 seconds.
+- The owner confirmed successful product preparation without payment, account
+  and payment Widget opening, and reopening through "Refresh billing".
+- The owner confirmed both purchases in the cabinet, correct intended agreement
+  selection when switching products, persistence after page reload and login,
+  and no duplicate creation when continuing the same purchase.
+- The owner confirmed background checking after browser closure and preservation
+  of unpaid status; opening the Widget does not establish payment or paid access.
+- No actual payment was made. Real charging, natural renewal, real 2/6-hour
+  wall-clock expiry and Kernel paid-access/quota enforcement are not claimed.
+- The earlier preparation timeout and missing supported UNKNOWN resolution/reset
+  path remain tracked in [ANY-819](https://linear.app/paveldik/issue/ANY-819) and
+  [ANY-821](https://linear.app/paveldik/issue/ANY-821), under
+  [ANY-820](https://linear.app/paveldik/issue/ANY-820). This manual PASS does not
+  close those follow-ups.
+- This confirmation applies to the preserved stand, not the rebuilt
+  `refactor/any715-mvp` head `8b92f75ca0dc69979f2f76ffd5f5ec97f7d6e271`
+  in Draft PR #161. Direct manual validation of that exact rebuild was not
+  performed; the earlier automated real-Widget READY failure remains recorded
+  above. The owner closed the execution plan with these evidence limits retained.
+
+
+## Owner completion decision — 2026-11-06
+
+- At the owner's explicit request, mark all stages complete and archive this
+  execution plan in `completed`. Human-confirmed manual PASS applies to the
+  preserved stand as identified above; completion is the owner's disposition
+  of this plan, not a claim of new real-provider validation on the rebuild.
+- Retain the historical automated Widget failure, raw test outcomes and all
+  skipped checks. No actual charge, natural renewal or Kernel enforcement PASS
+  is added by this documentation change.
+- Publish the remaining timeout-configuration forwarding through Compose and
+  the harness so `PREFLIGHT_TOTAL_TIMEOUT_SECONDS` reaches the API. The preserved
+  stand uses a private local value of 60 seconds; the application/default value
+  remains 10 seconds and private environment files are not committed.
+- Further billing work is tracked under
+  [ANY-820](https://linear.app/paveldik/issue/ANY-820), including
+  [ANY-819](https://linear.app/paveldik/issue/ANY-819) for foreground latency and
+  [ANY-821](https://linear.app/paveldik/issue/ANY-821) for terminal resolution/reset.
+- Final publication checks: 81 focused harness-dotenv/preflight tests, Ruff
+  lint, documentation checks, Compose timeout forwarding and diff checks passed.
+  No full database or browser suites were rerun for this configuration/docs change.
+- Keep PR #161 Draft, preserve PR #154 and its branch, and make no merge or
+  production-enablement claim.
