@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused, CustomerOpen
 from app.domains.billing.paid_access import apply_paid_source, commit_paid_state
+from app.domains.billing.paid_policy import PaidDecision, paid_decision
 from app.domains.billing.customers import lock_customer, lock_user, mark_customer_identity_conflict
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.reconciliation_contracts import (
@@ -395,6 +396,15 @@ def apply_reconciliation(
                 },
             )
         commit_paid_state(db, user, observation, now, allow_simulated_metering=allow_simulated_metering)
+        if (
+            clock_skew_seconds is not None
+            and scope.primary_subscription_id is None
+            and paid_decision(proof, review=bool(conflict or known_review or customer_conflict)) == PaidDecision.GRANT
+            and (work_claim is None or work_claim.kind != "customer_inventory")
+        ):
+            from app.domains.billing.background_recovery import hint_inventory
+
+            hint_inventory(db, customer)
         db.flush()
         committed = service._snapshot(db, row)
         db.commit()
