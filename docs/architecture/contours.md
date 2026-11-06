@@ -1,7 +1,7 @@
 # Contours
 
 Status: authoritative target architecture; implemented product remains `ru`
-Last updated: 2026-10-06
+Last updated: 2026-11-06
 
 A **contour** is the compliance zone in which this AnyToolAI Portal is deployed.
 It may serve any number of countries assigned to that zone. It is not a locale,
@@ -146,9 +146,12 @@ Portal-owned checkout/order/payment/subscription/entitlement authority. The
 clean target persistence baseline is contour-local. Only immutable offer
 publication was the original producer. ANY-709 adds immutable purchase consent,
 request-driven preparation/recovery and payment UI.
-ANY-715 implements operating reconciliation/recovery and audited controls in the
-configured contour; real LBX/webhook enablement remains unverified. Paid-access
-derivation remains later work. AnyToolAI Portal is not yet a production billing service.
+ANY-715 implements polling-only reconciliation/recovery and audited controls in
+the configured contour. There is no webhook receiver or receiver enablement
+setting. Real-provider verification scope/results are recorded in the
+[completed ANY-715 plan](../exec-plans/completed/ANY-715-mvp-rebuild-plan.md#stage-6-verification-and-handoff--2026-11-06).
+Paid-access derivation remains later work. AnyToolAI Portal is not yet a
+production billing service.
 
 The long-term production target requires contour enablement/deployment
 configuration to select one concrete external-billing integration. Target

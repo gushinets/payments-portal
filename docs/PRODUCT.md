@@ -1,7 +1,7 @@
 # Product Scope
 
 Status: authoritative
-Last updated: 2026-11-01
+Last updated: 2026-11-06
 
 AnyToolAI Portal combines public product discovery, direct account entry, and
 identity/legal-consent flows for AnyToolAI products, deployed as one contour
@@ -36,9 +36,10 @@ The former CloudPayments/direct-provider implementation and Portal-owned
 catalog/order/payment/subscription/entitlement runtime have been physically
 removed. The clean database contains provider-neutral target persistence;
 ANY-664 can append immutable mapping revisions. Purchase orchestration is
-implemented by ANY-709. ANY-715 implements embedded reconciliation, GET-only
-recovery/inventory, optional default-disabled webhook hints and audited operator
-controls; paid-access producers remain later work. See the
+implemented by ANY-709. ANY-715 implements polling-only embedded reconciliation,
+GET-only recovery/inventory and audited operator controls. The webhook receiver
+is removed and retained inbox history is not processed; paid-access producers
+remain later work. See the
 [billing operations guide](engineering/billing-background-operations.md). The sole long-term
 production target is external-billing-managed.
 
@@ -133,9 +134,9 @@ trust boundary under ANY-541.
   ANY-664 records the historical Step 6 baseline. ANY-709 implements live catalog
   browsing and Step 7 purchase/payment UI;
   there is no periodic source-catalog mirror. ANY-715 implements Step 8
-  reconciliation/recovery. Optional webhooks require deployment-specific
-  authentication and delivery verification before enablement. Paid-access projection and
-  delivery in Step 9 and actual usage/quota integration in Step 10 remain
+  polling-only reconciliation/recovery; webhook reception is outside this build.
+  Paid-access projection and delivery in Step 9 and actual usage/quota integration
+  in Step 10 remain
   deferred ownership boundaries. They populate the
   existing pricing/product/cabinet commercial, access, usage and action slots
   without redesigning the main cabinet. All thirteen ANY-636 steps are marked

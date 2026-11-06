@@ -329,8 +329,9 @@ work and separate account/operation `external_create_deadline` keys for local
 fixed two-hour escalation. Customer inventory coalesces by account/local customer,
 while subscriptions retain account/local subscription keys. Recovery receipts,
 original request/date/fences and customer active-send leases keep their existing
-storage identity. No new table or migration is needed. Inventory observations
-use `customer-inventory:v1`; conflicts never grant access or rewrite bindings.
+storage identity. Step 3 needs no additional table or migration beyond the
+Step 2 worker migration `20261028_0005`. Inventory observations use
+`customer-inventory:v1`; conflicts never grant access or rewrite bindings.
 
 The pre-existing create-recovery index and customer-send lease identity remain
 unchanged. Claims use paired finite ownership; completion preserves newer enqueue
