@@ -178,6 +178,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
         result = await confirmPurchase(token, {
           product_id: productId, revision_id: frozen.review.revision_id,
           expected_fingerprint: frozen.review.expected_fingerprint,
+          expected_technical_terms_digest: frozen.review.expected_technical_terms_digest,
           documents: frozen.review.documents.map(({ document_version_id, acceptance_text_hash }) => ({ document_version_id, acceptance_text_hash }))
         }, frozen.key, id);
       } catch (error) {
@@ -216,6 +217,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
   if (purchase?.state === "linked") return <section className="purchase-panel purchase-complete" aria-label={t("title")}>
     <Heading>{t("states.linked")}</Heading>
     <p className="card-copy">{t("managedInAccount")}</p>
+    <p className="card-copy">{t("accessInAccount")}</p>
     <Link className="btn-primary" href={`/account?purchase=${encodeURIComponent(purchase.purchase_intent_id)}#billing`}>{t("manage")}</Link>
     <details><summary>{t("acceptedTerms")}</summary><PurchaseTerms review={purchase.accepted} /></details>
   </section>;
@@ -258,7 +260,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
         <p>{t("awaitingVerification")}</p>
       </div>}
       {failure && <div className="notice error" role="alert">{b(`errors.${failure.message}`)}{failure.requestId && <p>{b("requestId", { id: failure.requestId })}</p>}</div>}
-      <p className="card-copy">{t("accessDeferred")}</p>
+      <p className="card-copy">{t("accessInAccount")}</p>
     </>}
   </section>;
 }
