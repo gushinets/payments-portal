@@ -14,6 +14,7 @@ from app.models import (
     ExternalSubscription,
     ManualReviewCase,
     BillingStateObservation,
+    PurchaseIntentState,
 )
 
 RESTORABLE = {
@@ -135,7 +136,14 @@ def validate_case(
         raise PurchaseRefused("billing_review_unrelated_cases", 409)
     if case.case_state != "open" or case_digest(case) != request.expected_case_digest:
         raise PurchaseRefused("billing_review_stale", 409)
-    if case.reason_code not in (RESTORABLE if request.resolution == "restore-original" else BINDABLE):
+    supported = (
+        {"primary_selection_required"}
+        if request.resolution == "select-primary"
+        else RESTORABLE
+        if request.resolution == "restore-original"
+        else BINDABLE
+    )
+    if case.reason_code not in supported:
         raise PurchaseRefused("billing_review_resolution_unsupported", 409)
     if request.resolution == "bind-original" and (case.scope_kind, case.scope_reference) != (
         "create_operation",
@@ -145,6 +153,19 @@ def validate_case(
     if case.reason_code == "customer_inventory_conflict" and not inventory_case(case, purchase, operations):
         raise PurchaseRefused("billing_review_resolution_unsupported", 409)
     related = [item for item in cases if item.review_case_id != case.review_case_id]
+    if request.resolution == "select-primary":
+        if subscription is None or (case.scope_kind, case.scope_reference) != (
+            "subscription",
+            str(subscription.subscription_id),
+        ):
+            raise PurchaseRefused("billing_review_stale", 409)
+        if (
+            related
+            or purchase.state != PurchaseIntentState.LINKED
+            or any(op.operation_state != State.BOUND for op in operations)
+        ):
+            raise PurchaseRefused("billing_review_unrelated_cases", 409)
+        return case, []
     target = next((op for op in operations if op.create_operation_id == request.operation_id), None)
     for previous in related:
         if inventory_case(previous, purchase, operations) or (

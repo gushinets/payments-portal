@@ -31,7 +31,6 @@ from app.infrastructure.queries.billing_customers import (
     customer_slot,
     lock_customer as lock_storage_customer,
     lock_user as lock_storage_user,
-    overdue_customer_ids,
     recovery_work,
 )
 from app.models import (
@@ -356,10 +355,11 @@ def apply_customer_read(
         lock_user(db, read_customer(db, expected.customer_id).user_id)
         customer = lock_customer(db, expected.customer_id)
         operation = customer_operation(db, customer.customer_id)
+        from app.domains.billing.paid_access import reduce_paid_access
+
         if work_claim is not None:
             from app.domains.billing.work import verify_operation_claim
 
-            verify_operation_claim(db, work_claim, expected.operation_id)
             if customer.binding_state == Binding.IDENTITY_CONFLICT:
                 raise BillingRefused("billing_identity_conflict", 409)
         if (
@@ -382,6 +382,9 @@ def apply_customer_read(
         )
         if conflict:
             record_customer_conflict(db, customer, operation, provider_id=provider_id, ambiguous=ambiguous)
+            reduce_paid_access(db, customer.user_id)
+            if work_claim is not None:
+                verify_operation_claim(db, work_claim, expected.operation_id)
             db.commit()
             raise BillingRefused("billing_identity_conflict", 409)
         if provider_id is None:
@@ -392,6 +395,9 @@ def apply_customer_read(
             elif operation.operation_state != State.MANUAL_REVIEW:
                 operation.operation_state = State.UNKNOWN
             review_required = operation.operation_state == State.MANUAL_REVIEW
+            reduce_paid_access(db, customer.user_id)
+            if work_claim is not None:
+                verify_operation_claim(db, work_claim, expected.operation_id)
             db.commit()
             raise BillingRefused("billing_customer_review" if review_required else "billing_customer_pending", 409)
         already_bound = (
@@ -412,6 +418,7 @@ def apply_customer_read(
             if work_claim is not None:
                 from app.domains.billing.work import finish
 
+                verify_operation_claim(db, work_claim, expected.operation_id)
                 finish(db, work, work_claim, due=None)
             else:
                 work.work_state = "done"
@@ -431,12 +438,22 @@ def apply_customer_read(
             db.commit()
         except IntegrityError:
             db.rollback()
+            lock_user(db, read_customer(db, expected.customer_id).user_id)
             customer = lock_customer(db, expected.customer_id)
             operation = customer_operation(db, customer.customer_id)
+            if operation is None or operation.send_fence != expected.fence:
+                raise BillingRefused("billing_customer_pending", 409) from None
+            from app.domains.billing.customer_reviews import restrict_subscription
+            from app.infrastructure.queries.billing_reconciliation import customer_subscriptions
+
+            for sub in customer_subscriptions(db, customer.customer_id):
+                restrict_subscription(sub)
             customer.binding_state = Binding.IDENTITY_CONFLICT
-            if operation is not None:
-                operation.send_fence = uuid4()
-                record_customer_review(db, operation, "customer_provider_id_already_bound")
+            operation.send_fence = uuid4()
+            record_customer_review(db, operation, "customer_provider_id_already_bound")
+            reduce_paid_access(db, customer.user_id)
+            if work_claim is not None:
+                verify_operation_claim(db, work_claim, expected.operation_id)
             db.commit()
             raise BillingRefused("billing_identity_conflict", 409) from None
         return result
@@ -471,24 +488,6 @@ def require_widget_session(db: Session, configuration: Settings, token: str, exp
 
 
 def escalate_overdue_customers(factory: SessionFactory, *, now: datetime | None = None, limit: int = 100) -> int:
-    """Callable by later recovery work; no scheduler and no scope release."""
-    instant = now or utc_now()
-    if not 1 <= limit <= 100:
-        raise ValueError("invalid recovery batch limit")
-    with factory() as db:
-        ids = overdue_customer_ids(db, instant, limit)
-    count = 0
-    for customer_id in ids:
-        with factory() as db:
-            lock_customer(db, customer_id)
-            operation = customer_operation(db, customer_id)
-            if (
-                operation
-                and operation.operation_state in {State.POSSIBLE_SEND, State.UNKNOWN}
-                and operation.unknown_recovery_deadline_at
-                and as_utc(operation.unknown_recovery_deadline_at) <= instant
-            ):
-                record_customer_review(db, operation, CUSTOMER_UNKNOWN_REVIEW)
-                count += 1
-                db.commit()
-    return count
+    from app.domains.billing.customer_reviews import escalate_overdue_customers as escalate
+
+    return escalate(factory, now=now or utc_now(), limit=limit)

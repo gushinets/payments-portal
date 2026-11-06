@@ -549,10 +549,12 @@ async def test_billing_worker_embedded_lifespan_smoke_and_reserved_local_progres
     from app.core.settings import Settings
     import httpx
     from app import main
+    from app.core import database
     from app.composition.billing_worker import billing_worker_resources
 
     transport, _, _ = scenario
     factory = postgres_session_factory
+    activate(transport)  # A complete positive, unlike waiting, establishes finite source trust.
     transport.pool = None  # Independent local scans may hold their own DB units.
     config = step1_settings(billing_worker_enabled=True)
 
@@ -565,6 +567,7 @@ async def test_billing_worker_embedded_lifespan_smoke_and_reserved_local_progres
 
     monkeypatch.setattr(main, "billing_worker_resources", resources)
     monkeypatch.setattr(main, "settings", config)
+    monkeypatch.setattr(database, "SessionLocal", factory)
     app = main.create_app()
     before = len(transport.requests)
     async with main.lifespan(app):
@@ -910,7 +913,8 @@ async def test_billing_worker_incomplete_first_read_cannot_expire_preparation_ev
 ) -> None:
     from app.integrations.lbx.errors import LbxUnavailable
 
-    _, sources, _ = scenario
+    transport, sources, _ = scenario
+    activate(transport)
     factory = postgres_session_factory
     original = subs(factory)[0]
     original_get = sources.require_lbx().get_user

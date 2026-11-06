@@ -1,6 +1,7 @@
 """Shared caller-transaction writer: source decisions and whole-user semantic commit."""
 
 from datetime import datetime, timedelta
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -268,3 +269,10 @@ def _dependency_blocked(db: Session, subscription: ExternalSubscription) -> bool
         or (purchase is not None and purchase.state == PurchaseIntentState.MANUAL_REVIEW)
         or any(op.operation_state == OperationState.MANUAL_REVIEW for op in operations)
     )
+
+
+def reduce_paid_access(db: Session, user_id: UUID) -> int:
+    """Finish the caller's restrictions once, under its existing user lock."""
+    from app.infrastructure.queries.billing_reconciliation import database_now
+
+    return commit_paid_state(db, db.get(User, user_id), None, as_utc(database_now(db)))

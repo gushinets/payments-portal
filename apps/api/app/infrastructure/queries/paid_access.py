@@ -1,8 +1,9 @@
 """Paid projection reads and locks; caller owns the user lock and transaction."""
 
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import JSON, SQLColumnExpression, Select, case, exists, func, or_, select, Text, cast
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -16,6 +17,8 @@ from app.models import (
     PaidAccessState,
     PurchasedAllowance,
     PurchaseIntent,
+    BillingWorkItem,
+    User,
 )
 
 
@@ -112,3 +115,71 @@ def dependencies(
         )
     )
     return customer, purchase, operations
+
+
+def latest_paid_allowance_end(subscription_id: UUID | SQLColumnExpression[UUID]) -> Select[tuple[datetime | None]]:
+    """Keep the latest issued cycle relevant after effective metering expires.
+
+    Match issuance ordering. Calendar-only cycles return no UTC bound, while
+    legacy UTC rows without proven calendar meaning never establish urgency.
+    """
+    return (
+        select(PurchasedAllowance.period_end)
+        .where(
+            PurchasedAllowance.subscription_id == subscription_id,
+            PurchasedAllowance.cycle_schema_version.in_(("calendar:v1", "timestamp:v1")),
+        )
+        .order_by(PurchasedAllowance.created_at.desc(), PurchasedAllowance.allowance_id.desc())
+        .limit(1)
+    )
+
+
+def missing_deadline_users(
+    db: Session, tenant: str, region: str, limit: int, *, allow_simulated_metering: bool = True
+) -> list[UUID]:
+    """Persisted scope/identity, independent of today's source account setting."""
+    allowance_end = (
+        latest_paid_allowance_end(BillingProductAccessScope.primary_subscription_id)
+        .correlate(BillingProductAccessScope)
+        .scalar_subquery()
+    )
+    metering_deadline = case(
+        (
+            BillingProductAccessScope.effective_access_document["allowances"] != [],
+            func.coalesce(allowance_end, BillingProductAccessScope.effective_access_until),
+        ),
+        else_=BillingProductAccessScope.effective_access_until,
+    )
+    scheduled = exists().where(
+        BillingWorkItem.work_kind == "subscription_trust_expiry",
+        BillingWorkItem.scope_reference == cast(BillingProductAccessScope.primary_subscription_id, Text),
+        BillingWorkItem.work_state.in_(("pending", "running")),
+        BillingWorkItem.next_attempt_at <= BillingProductAccessScope.effective_access_until,
+        BillingWorkItem.next_attempt_at <= metering_deadline,
+    )
+    needs_repair = ~scheduled
+    if not allow_simulated_metering:
+        simulated = exists().where(
+            ExternalSubscription.subscription_id == BillingProductAccessScope.primary_subscription_id,
+            ExternalSubscription.purchase_intent_id == PurchaseIntent.purchase_intent_id,
+            PurchaseIntent.accepted_snapshot["technical_terms"]["provenance"].as_string() == "SIMULATED",
+        )
+        needs_repair = or_(
+            needs_repair, simulated & (BillingProductAccessScope.effective_access_document["allowances"] != [])
+        )
+    return list(
+        db.scalars(
+            select(BillingProductAccessScope.user_id)
+            .join(User, User.id == BillingProductAccessScope.user_id)
+            .where(
+                User.tenant_id == tenant,
+                User.region == region,
+                BillingProductAccessScope.effective_access_document.is_not(None),
+                BillingProductAccessScope.effective_access_document != JSON.NULL,
+                needs_repair,
+            )
+            .distinct()
+            .order_by(BillingProductAccessScope.user_id)
+            .limit(limit)
+        )
+    )

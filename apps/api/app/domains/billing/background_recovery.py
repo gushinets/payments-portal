@@ -302,7 +302,6 @@ def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> None:
         # Initial lookup may have cached POSSIBLE_SEND before another writer
         # completed. Row locks serialize decisions but do not refresh that cache.
         db.refresh(op)
-        row = work.verify_claim(db, claim)
         now = as_utc(billing_reconciliation.database_now(db))
         deadline = (
             op.unknown_recovery_deadline_at
@@ -319,6 +318,10 @@ def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> None:
                 # A hold is required for escalation, not for finishing completed work.
                 service._locked(db, service._snapshot(db, purchase))
                 financial._review(db, purchase, op, reason)
+            from app.domains.billing.paid_access import reduce_paid_access
+
+            reduce_paid_access(db, customer.user_id)
+        row = work.verify_claim(db, claim)
         work.finish(db, row, claim, due=due)
         db.commit()
 

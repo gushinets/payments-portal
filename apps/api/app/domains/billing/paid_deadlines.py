@@ -52,4 +52,5 @@ def schedule_deadline(db: Session, sub: ExternalSubscription, scope: BillingProd
             "deadline": deadline.isoformat(),
         },
         replace_deadline=True,
+        revive_completed=paid is not None,
     )
