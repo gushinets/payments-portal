@@ -71,6 +71,13 @@ There is no separate process to launch or standalone worker command/container.
   claim/apply margin and refusal retry within the five-minute urgent cadence.
 - `BILLING_WORKER_SCAN_BATCH_SIZE=100`: local enrollment/repair batch, range 1–100.
 
+Foreground purchase preparation and Widget opening use
+`PREFLIGHT_TOTAL_TIMEOUT_SECONDS`, forwarded by development, agent and production
+Compose. The production example currently sets **60 seconds** as a temporary
+operating value pending [ANY-819](https://linear.app/paveldik/issue/ANY-819);
+preserve the working local override. The application default remains 10 seconds.
+This foreground budget is separate from the worker timeout above.
+
 `PREFLIGHT_CLEANUP_TIMEOUT_SECONDS` reserves cleanup within the total I/O budget.
 Finite work/subscription leases include a 30-second local apply margin. Late or
 superseded source results cannot overwrite newer facts. Timely proof may finish

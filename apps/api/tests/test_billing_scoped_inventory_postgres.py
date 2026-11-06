@@ -10,13 +10,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 
+from app.composition.billing import bootstrap_account
 from app.composition.billing_operator import resolve_review
 from app.composition.sources import SourceResources
 from app.domains.catalog.publication import SessionFactory
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.purchases.contracts import Purchase
 from app.domains.purchases.inventory_contracts import InventoryResult
+from app.integrations.lbx.errors import LbxScopeMismatch
 from app.integrations.lbx.financial import Subscription
+from app.jobs.billing import BillingWorker
 from apps.api.tests.support.any709_step3 import PurchaseTransport
 from app.composition.purchase_inventory import collect_inventory
 from app.domains.billing import background_recovery as recovery, work
@@ -29,7 +32,10 @@ from app.domains.purchases.contracts import PurchaseRefused
 from app.domains.purchases.inventory import validate_inventory
 from app.infrastructure.preflight import PreflightBudget
 from app.models import (
+    ExternalBillingCustomer,
+    ExternalBillingCustomerBindingState as Binding,
     ExternalCreateOperationKind as Kind,
+    ExternalCreateOperationState as State,
     ExternalSubscription,
     ManualReviewCase,
     ExternalCreateOperation,
@@ -44,6 +50,7 @@ from apps.api.tests.test_billing_background_recovery_postgres import (
     synthetic_prepare,
 )
 from apps.api.tests.test_billing_worker_postgres import historical_link
+from apps.api.tests.test_any709_step3_postgres import TOKEN
 
 pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
 PRINCIPAL = "os-euid:1000"
@@ -349,3 +356,85 @@ async def test_background_competitor_preserves_unsent_history_without_review(
     assert all(op.fence != prior.fence for op, prior in zip(current.operations, purchase.operations))
     assert tuple(original(factory, op.id) for op in current.operations) == immutable
     assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
+
+
+@pytest.mark.parametrize("entrypoint", ["collect_inventory", "worker"])
+@pytest.mark.parametrize("conflict", ["original_key", "scope_error"])
+async def test_inventory_customer_conflict_preserves_only_proven_original_key_recovery(
+    background_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+    conflict: str,
+) -> None:
+    transport, sources, purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    customer = service.customer_for_purchase(factory, config, purchase)
+    client = sources.require_lbx()
+    get_user = client.get_user
+    creates = tuple(transport.creates(path) for path in ("/users", "/agreements", "/subscriptions"))
+    started = len(transport.requests)
+    if conflict == "original_key":
+        transport.customer["outer_id"] = "synthetic-wrong-key"
+    else:
+
+        async def scope_error(**kwargs: Any) -> None:
+            raise LbxScopeMismatch()
+
+        monkeypatch.setattr(client, "get_user", scope_error)
+    if entrypoint == "collect_inventory":
+        result = await inventory(sources, factory, purchase)
+        assert not result.complete
+    else:
+        recovery.repair_batch(factory, config)
+        worker = BillingWorker(config, factory, client)
+        try:
+            assert await worker.tick(WorkLane.NORMAL)
+        finally:
+            await worker.aclose()
+    with factory() as db:
+        case = db.scalars(select(ManualReviewCase)).one()
+        assert (case.scope_kind, case.scope_reference) == ("create_operation", str(customer.operation_id))
+        assert case.case_state == "open"
+        assert case.reason_code == (
+            "customer_original_key_mismatch" if conflict == "original_key" else "customer_identity_conflict"
+        )
+        case_id = case.review_case_id
+        assert db.get(ExternalBillingCustomer, customer.customer_id).binding_state == Binding.IDENTITY_CONFLICT
+    transport.customer["outer_id"] = customer.outer_key
+    monkeypatch.setattr(client, "get_user", get_user)
+    before_open = len(transport.requests)
+    if conflict == "original_key":
+        widget = await bootstrap_account(sources, config, factory=factory, token=TOKEN)
+        assert widget.credential
+        assert any(request.url.path.endswith("/users/345") for request in transport.requests[before_open:])
+    else:
+        # A generic source-scope contradiction has no paired original-ID proof.
+        with pytest.raises(BillingRefused, match="billing_identity_conflict"):
+            await bootstrap_account(sources, config, factory=factory, token=TOKEN)
+        assert len(transport.requests) == before_open
+    with factory() as db:
+        current = db.scalars(select(ExternalBillingCustomer)).one()
+        operation = db.get(ExternalCreateOperation, customer.operation_id)
+        case = db.get(ManualReviewCase, case_id)
+        assert (current.customer_id, current.provider_customer_id, current.billing_customer_key) == (
+            customer.customer_id,
+            customer.provider_id,
+            customer.outer_key,
+        )
+        assert (operation.bound_external_object_id, operation.request_correlation_key) == (
+            customer.provider_id,
+            customer.outer_key,
+        )
+        if conflict == "original_key":
+            assert current.binding_state == Binding.BOUND and operation.operation_state == State.BOUND
+            assert case.case_state == "resolved" and case.resolved_by_principal == "system:customer-point-read"
+            assert case.resolution_document["proof"] == "original_customer_point_read"
+        else:
+            assert (
+                current.binding_state == Binding.IDENTITY_CONFLICT and operation.operation_state == State.MANUAL_REVIEW
+            )
+            assert case.case_state == "open" and case.resolution_document is None
+    assert tuple(transport.creates(path) for path in ("/users", "/agreements", "/subscriptions")) == creates
+    assert all(request.method == "GET" for request in transport.requests[started:])
+    assert service.read_purchase(factory, purchase.user_id, purchase.id) == purchase

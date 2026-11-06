@@ -127,7 +127,7 @@ async def collect_inventory(
             if user.outer_id is None:
                 raise LbxResponseInvalid()
             if user.outer_id != current.outer_key:
-                await delegate(record_customer_conflict, factory, current, work_claim)
+                await delegate(record_customer_conflict, factory, current, work_claim, provider_id=current.provider_id)
                 raise LbxScopeMismatch()
         rows = await timely_point(
             lambda: client.discover_subscriptions(user_id=int(current.provider_id), budget=budget), budget
