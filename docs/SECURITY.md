@@ -5,6 +5,13 @@ Last verified: 2026-09-24
 
 ## Sensitive data
 
+ANY-715 Step 1 reconciliation persists allowlisted normalized conclusions,
+calendar facts and immutable local provenance, never raw source payloads,
+credentials or contact fields. Scope and original customer/agreement/subscription
+bindings are server-resolved and rechecked under locks before apply. Conflicts
+cannot silently rebind or grant access; see
+[billing operations](engineering/billing-background-operations.md).
+
 Never collect, persist, or log full card data. Redact card-related external
 fields, raw session, password-reset, and email-verification tokens,
 authorization headers, webhook secrets, passwords, and private billing or
@@ -87,6 +94,13 @@ receipt durable. A concrete integration may persist additional payload data only
 under a separately approved integration-specific requirement that defines its
 need, security treatment, and retention.
 
+The ANY-715 MVP is polling-only. `/api/billing/lbx/webhook` has no handler and
+returns 404, and receiver enablement/authentication settings are removed. The
+retained inbox is historical schema/data without an active receiver or processor.
+See [polling-only operations](engineering/billing-background-operations.md#polling-only-operation).
+Any future receiver must satisfy the authentication/redaction/durability rules
+above under its own integration scope.
+
 ## Trust boundaries
 
 - Validate HTTP, environment, webhook, and database-boundary data.
@@ -141,6 +155,7 @@ It enables only the payment presentation flag; subscription create/edit, autopay
 invoice and stop controls stay disabled. Financial CREATE never inherits the
 customer later-open retry policy, and UNKNOWN keeps its hold and original +2h
 deadline. No operation or Widget outcome grants paid access.
+
 Account viewing has no catalog, price, seller-agreement or subscription prerequisite.
 
 Step 4 uses one disposable SDK lifecycle for account and payment views. Opening
@@ -164,6 +179,16 @@ readiness, not client-data, payment, subscription or access authority. Once read
 no loading timer may interrupt an active checkout.
 
 ## High-risk review paths
+
+ANY-715 privileged purchase commands retain the existing OS/deployment access
+boundary. `inspect` is local and read-only; other rechecks use bounded GETs.
+Only fresh original-object proof plus current review/evidence/fence expectations
+permits the two audited resolutions. Principal, bounded reason/reference,
+before/after identities and proof summary stay in existing durable review storage,
+atomically with shared apply/bind. Never include secrets/PII in operator text or
+logs. No terminal hold release, arbitrary identity override, admin API, new role,
+manual paid marking or quota editing is exposed. See the exact
+[effects and refusals](engineering/billing-background-operations.md#privileged-purchase-operations).
 
 Authentication, payments, legal sources and seeds, migrations, telemetry
 redaction, production Compose, deployment configuration, and secret handling

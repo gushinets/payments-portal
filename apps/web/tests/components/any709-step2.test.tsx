@@ -59,16 +59,31 @@ describe("ANY-709 Step 2 account Widget", () => {
     expect(bootstrap).toHaveBeenCalledTimes(1); // Reload requires another explicit open.
   });
 
-  it("keeps billing independent of an unresolved owned-purchases request", async () => {
+  it.each([false, true])("keeps billing independent of an unresolved owned-purchases request (early click: %s)", async (earlyClick) => {
     const fetcher = vi.fn<typeof fetch>((input) => {
       if (String(input).endsWith("/api/auth/session")) return Promise.resolve(new Response(JSON.stringify({ authenticated: true, user }), { status: 200 }));
-      return new Promise<Response>(() => undefined);
+      if (String(input).endsWith("/api/purchase-intents")) return new Promise<Response>(() => undefined);
+      throw new Error("Unexpected API request in billing independence test");
     });
     vi.stubGlobal("fetch", fetcher);
-    renderWithIntl(<AccountClient languageTag="ru" />, { locale: "ru", messages });
-    fireEvent.click(await screen.findByRole("button", { name: ruMessages.Billing.open }));
-    await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
-    expect(fetcher.mock.calls.some(([url]) => String(url).endsWith("/api/purchase-intents"))).toBe(true);
+    // DOM visibility precedes passive effects. Click in that window without sleeps.
+    const observer = new MutationObserver(() => {
+      const button = screen.queryByRole("button", { name: ruMessages.Billing.open });
+      if (button) {
+        observer.disconnect();
+        fireEvent.click(button);
+      }
+    });
+    try {
+      if (earlyClick) observer.observe(document.body, { childList: true, subtree: true });
+      renderWithIntl(<AccountClient languageTag="ru" />, { locale: "ru", messages });
+      if (!earlyClick) fireEvent.click(await screen.findByRole("button", { name: ruMessages.Billing.open }));
+      await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
+      expect(bootstrap).toHaveBeenCalledExactlyOnceWith("portal-session", expect.any(String));
+      expect(fetcher.mock.calls.some(([url]) => String(url).endsWith("/api/purchase-intents"))).toBe(true);
+    } finally {
+      observer.disconnect();
+    }
   });
 
   it("keeps verification and guest guards", async () => {

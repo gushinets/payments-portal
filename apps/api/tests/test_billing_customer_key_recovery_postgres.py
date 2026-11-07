@@ -276,16 +276,16 @@ async def test_key_conflict_blocks_financial_claim_then_original_pair_recovers(
     monkeypatch.setattr("app.integrations.lbx.current_offer.utc_now", lambda: datetime(2026, 10, 27, 12, tzinfo=UTC))
     transport = setup_purchase(factory)
     entered, release = asyncio.Event(), asyncio.Event()
-    reads = 0
 
     async def respond(request: httpx.Request) -> httpx.Response:
-        nonlocal reads
         if request.method == "GET" and request.url.path.endswith("/subscriptions"):
-            if "agreement_id" not in json.loads(request.content):
-                reads += 1
-                if reads == inventory_read:
-                    entered.set()
-                    await release.wait()
+            # Inventory may reread for stability; synchronize on the financial phase.
+            if (
+                "agreement_id" not in json.loads(request.content)
+                and transport.creates("/agreements") == inventory_read - 1
+            ):
+                entered.set()
+                await release.wait()
         return transport.respond(request)
 
     async with source_resources(

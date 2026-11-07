@@ -1,7 +1,7 @@
 # Product Scope
 
 Status: authoritative
-Last updated: 2026-10-27
+Last updated: 2026-11-06
 
 AnyToolAI Portal combines public product discovery, direct account entry, and
 identity/legal-consent flows for AnyToolAI products, deployed as one contour
@@ -36,7 +36,11 @@ The former CloudPayments/direct-provider implementation and Portal-owned
 catalog/order/payment/subscription/entitlement runtime have been physically
 removed. The clean database contains provider-neutral target persistence;
 ANY-664 can append immutable mapping revisions. Purchase orchestration is
-implemented by ANY-709; reconciliation workers and paid-access producers remain later work. The sole long-term
+implemented by ANY-709. ANY-715 implements polling-only embedded reconciliation,
+GET-only recovery/inventory and audited operator controls. The webhook receiver
+is removed and retained inbox history is not processed; paid-access producers
+remain later work. See the
+[billing operations guide](engineering/billing-background-operations.md). The sole long-term
 production target is external-billing-managed.
 
 Contour architecture is defined in [contours](architecture/contours.md).
@@ -56,12 +60,13 @@ The [Billing Authority and Consistency](architecture/billing-authority.md)
 document is historical/superseded only; it is neither current-state nor target
 authority. Implemented `ru` screens are defined in the
 [as-built RU Portal 4F handoff](product/ru-mvp.md), including the durable
-UI/data-ownership matrix and deferred ANY-504 Steps 6–10.
+UI/data-ownership matrix, implemented ANY-504 Steps 6–8 and deferred Steps 9–10.
 
 External Billing owns commercial billing truth and lifecycle. The Portal owns
-current identity/legal and the later anti-corruption, projection,
-reconciliation, recovery, and paid-access delivery boundary. Platform Kernel
-owns technical product/metric identity, actual usage, and quota enforcement.
+current identity/legal, the billing anti-corruption, subscription
+observation/projection, reconciliation and recovery boundary, and future
+paid-access delivery. Platform Kernel owns technical product/metric identity,
+actual usage, and quota enforcement.
 The historically named “Payments Portal” component in the accepted ADR/design
 records maps to this Portal backend boundary; the accepted amendment changes
 only their source-read/admission strategy.
@@ -128,10 +133,11 @@ trust boundary under ANY-541.
   approved offer mappings, subject to real Kernel/LBX and approval gates.
   ANY-664 records the historical Step 6 baseline. ANY-709 implements live catalog
   browsing and Step 7 purchase/payment UI;
-  there is no periodic source-catalog mirror. Operating reconciliation/recovery
-  in Step 8; confirmed paid-access projection and
-  delivery in Step 9; actual usage/quota integration in Step 10. These are
-  deferred ownership boundaries, not implemented runtime. They populate the
+  there is no periodic source-catalog mirror. ANY-715 implements Step 8
+  polling-only reconciliation/recovery; webhook reception is outside this build.
+  Paid-access projection and delivery in Step 9 and actual usage/quota integration
+  in Step 10 remain
+  deferred ownership boundaries. They populate the
   existing pricing/product/cabinet commercial, access, usage and action slots
   without redesigning the main cabinet. All thirteen ANY-636 steps are marked
   `done` in the [completed plan](exec-plans/completed/ANY-636-implementation-plan.md);

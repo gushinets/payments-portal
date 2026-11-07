@@ -7,7 +7,7 @@ are incomplete proof; mutable outer_id and catalog tariff_price are not identity
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
@@ -17,8 +17,13 @@ from app.domains.catalog.product_link import CurrentOffer, ProductLinkRequest
 from app.integrations.lbx.customer import PrivateDto
 from app.integrations.lbx.dto import ExactNumber
 from app.integrations.lbx.errors import LbxResponseInvalid, LbxScopeMismatch
+from app.models import (
+    ExternalSubscriptionFinancialAccessStatus as Financial,
+    ExternalSubscriptionLifecycleStatus as Lifecycle,
+)
 
 Id = Annotated[int, Field(strict=True, gt=0)]
+EMPTY_CALENDAR = {None, "", "0000-00-00", "0000-00-00 00:00:00", "1970-01-01", "1970-01-01 00:00:00"}
 
 
 class Agreement(PrivateDto):
@@ -139,77 +144,115 @@ def prove_agreement(point: Agreement, *, user_id: int, seller_id: int, number: s
         False,
     ):
         raise LbxScopeMismatch()
-    if point.close_date not in {None, "", "0000-00-00", "0000-00-00 00:00:00", "1970-01-01", "1970-01-01 00:00:00"}:
-        raise LbxScopeMismatch()
+
+
+def agreement_is_closed(point: Agreement) -> bool:
+    """Validate calendar evidence without assigning a timezone or an instant."""
+    if point.close_date in EMPTY_CALENDAR:
+        return False
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}(?: [0-9]{2}:[0-9]{2}:[0-9]{2})?", point.close_date):
+        raise LbxResponseInvalid()
+    try:
+        datetime.fromisoformat(point.close_date)
+    except ValueError:
+        raise LbxResponseInvalid() from None
+    return True
+
+
+def subscription_lifecycle(point: Subscription) -> tuple[Lifecycle, Financial, str]:
+    """Recognized canonical states; unknown codes never prove a negative."""
+    states = {
+        (-2, 0): (Lifecycle.INACTIVE, Financial.BLOCKED, "waiting"),
+        (-1, 0): (Lifecycle.INACTIVE, Financial.BLOCKED, "inactive"),
+        (0, 0): (Lifecycle.INACTIVE, Financial.BLOCKED, "inactive"),
+        (2, 0): (Lifecycle.ACTIVE, Financial.ALLOWED, "active"),
+        (2, 1): (Lifecycle.ACTIVE, Financial.BLOCKED, "financial_block"),
+        (2, 3): (Lifecycle.ACTIVE, Financial.BLOCKED, "administrative_block"),
+        (3, 0): (Lifecycle.ENDED, Financial.BLOCKED, "ended"),
+        (3, 1): (Lifecycle.ENDED, Financial.BLOCKED, "ended"),
+        (3, 3): (Lifecycle.ENDED, Financial.BLOCKED, "ended"),
+    }
+    result = states.get((point.state, point.current_blocking))
+    if result is None:
+        raise LbxResponseInvalid()
+    return result
+
+
+def require_preparable_agreement(point: Agreement) -> None:
+    if agreement_is_closed(point):
+        raise LbxResponseInvalid()
+
+
+def require_payable_subscription(point: Subscription) -> None:
+    if subscription_lifecycle(point)[0] == Lifecycle.ENDED:
+        raise LbxResponseInvalid()
 
 
 def prove_subscription(
     point: Subscription, *, agreement_id: int, selection: ProductLinkRequest, offer: CurrentOffer
 ) -> None:
+    """Original effective-term proof is independent of current payability."""
+    prove_effective_terms(point, agreement_id=agreement_id, selection=selection, offer=offer)
+
+
+def prove_effective_terms(
+    point: Subscription, *, agreement_id: int, selection: ProductLinkRequest, offer: CurrentOffer
+) -> None:
+    """Compare accepted effective terms, independently of lifecycle/calendar."""
+    # Relationship contradictions are independent of commercial completeness.
+    if point.agreement_id != agreement_id:
+        raise LbxScopeMismatch()
+    expected = (
+        (point.agreement_id, agreement_id),
+        (point.tariff_id, selection.tariff_id),
+        (point.period_id, selection.period_id),
+        (point.period_type, {"day": 1, "week": 2, "month": 3, "year": 4}[offer.period.unit]),
+        (point.period_length, offer.period.length),
+        (point.is_demo, False),
+        (point.is_offer_agrm, False),
+        (point.total_price, offer.money.recurring_amount),
+    )
     required = (
         point.period_id,
         point.period_type,
         point.period_length,
-        point.state,
-        point.current_blocking,
         point.is_demo,
         point.is_offer_agrm,
         point.currency_symbol,
         point.total_price,
         point.services,
     )
+    for service in point.services or ():
+        required += (service.multiplicator, service.price, service.periodic_service, service.bulk_service)
+        # Zero accepted connection charges need no unrelated optional field.
+        if offer.money.connection_amount != 0:
+            required += (service.connection_price,)
     if any(value is None for value in required):
         raise LbxResponseInvalid()
-    if (
-        point.agreement_id != agreement_id
-        or point.tariff_id != selection.tariff_id
-        or point.period_id != selection.period_id
-    ):
+    # A known difference becomes COMPLETE_MISMATCH only after full material
+    # reconstruction. Current catalog prices never substitute for these facts.
+    if any(value != wanted for value, wanted in expected):
         raise LbxScopeMismatch()
-    if (point.period_type, point.period_length) != (
-        {"day": 1, "week": 2, "month": 3, "year": 4}[offer.period.unit],
-        offer.period.length,
-    ):
-        raise LbxScopeMismatch()
-    if (
-        point.state not in {-2, -1, 0, 2}
-        or point.current_blocking not in {0, 1, 3}
-        or point.is_demo
-        or point.is_offer_agrm
-    ):
-        raise LbxScopeMismatch()
-    if (
-        offer.money.currency != "RUB"
-        or point.currency_symbol.casefold() not in {"rub", "руб", "₽"}
-        or point.total_price != offer.money.recurring_amount
-    ):
+    if offer.money.currency != "RUB" or point.currency_symbol.casefold() not in {"rub", "руб", "₽"}:
         raise LbxScopeMismatch()
     if len(point.services) != 1:
         raise LbxScopeMismatch()
     service = point.services[0]
-    if any(
-        value is None
-        for value in (
-            service.multiplicator,
-            service.price,
-            service.periodic_service,
-            service.bulk_service,
-        )
-    ):
-        raise LbxResponseInvalid()
+    expected_service = (
+        (service.tariff_service_id, selection.tariff_service_id),
+        (service.multiplicator, Decimal(selection.quantity)),
+        (service.price, offer.money.recurring_unit_amount),
+        (service.periodic_service, 1),
+        (service.bulk_service, False),
+        (service.connection_price, offer.money.connection_unit_amount),
+    )
     if (
-        service.tariff_service_id != selection.tariff_service_id
-        or service.multiplicator != Decimal(selection.quantity)
-        or service.price != offer.money.recurring_unit_amount
+        any(value is not None and value != wanted for value, wanted in expected_service)
         or service.bulk_price not in {None, Decimal(0)}
         or service.bulk_include_amount not in {None, Decimal(0)}
-        or service.periodic_service != 1
-        or service.bulk_service
     ):
         raise LbxScopeMismatch()
-    # Swagger's effective service projection does not promise connection_price.
-    # A nonzero accepted connection charge needs explicit effective evidence.
-    if service.connection_price is None and offer.money.connection_amount != 0:
-        raise LbxResponseInvalid()
-    if service.connection_price is not None and service.connection_price != offer.money.connection_unit_amount:
-        raise LbxScopeMismatch()
+
+
+def inventory_terminal(point: Subscription) -> bool:
+    return subscription_lifecycle(point)[0] == Lifecycle.ENDED

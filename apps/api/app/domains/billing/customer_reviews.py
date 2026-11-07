@@ -8,12 +8,16 @@ from sqlalchemy.orm import Session
 
 from app.domains.billing.contracts import BillingRefused
 from app.infrastructure.queries.billing_customers import open_customer_reviews
+from app.infrastructure.queries.billing_reconciliation import customer_subscriptions
 from app.models import (
     ExternalBillingCustomer,
+    ExternalSubscription,
     ExternalBillingCustomerBindingState as Binding,
     ExternalCreateOperation,
     ExternalCreateOperationState as State,
     ManualReviewCase,
+    ExternalSubscriptionFinancialAccessStatus as Financial,
+    ExternalSubscriptionCommercialAccessStatus as Commercial,
 )
 
 CUSTOMER_UNKNOWN_REVIEW = "external_create_outcome_unknown:customer"
@@ -103,6 +107,19 @@ def record_customer_conflict(
         and customer.binding_state in {Binding.BOUND, Binding.IDENTITY_CONFLICT}
         and customer.provider_customer_id == operation.bound_external_object_id == provider_id
     )
+    # Restriction is local and customer-wide; it never rewrites source history
+    # or grants trust. Invalidate every source lease before original-key recovery.
+    for sub in customer_subscriptions(db, customer.customer_id):
+        restrict_subscription(sub)
     customer.binding_state = Binding.IDENTITY_CONFLICT
     operation.send_fence = uuid4()  # Invalidate all earlier in-flight proof.
     record_customer_review(db, operation, CUSTOMER_KEY_REVIEW if original_id else "customer_identity_conflict")
+
+
+def restrict_subscription(sub: ExternalSubscription) -> None:
+    """Restrict the caller's locked scope without rewriting source history."""
+    sub.financial_access_status = Financial.BLOCKED
+    sub.commercial_access_status = Commercial.INELIGIBLE
+    sub.reconciliation_fencing_token += 1
+    sub.reconciliation_lease_owner = None
+    sub.reconciliation_lease_expires_at = None

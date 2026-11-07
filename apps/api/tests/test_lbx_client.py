@@ -42,6 +42,12 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
+@pytest.mark.parametrize("capacity", [0, -1])
+def test_lbx_client_rejects_nonpositive_http_capacity(capacity: int) -> None:
+    with pytest.raises(ValueError, match="capacity must be positive"):
+        LbxServerClient(lbx_settings(), max_connections=capacity)
+
+
 async def test_documented_selected_get_inventory_and_exact_source_values() -> None:
     requests: list[httpx.Request] = []
 

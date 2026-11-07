@@ -348,6 +348,8 @@ async def test_competing_first_publishers_are_serialized_and_deterministic(
     def contender(fresh: FreshMappingEvaluation) -> PublicationResult | MappingRevisionConflict:
         barrier.wait(timeout=2)
         try:
+            # This success-path race must allow the peer's real transaction to
+            # commit. The separate lock-wait test keeps the short busy budget.
             return publish(
                 postgres_session_factory, fresh, lock_timeout_seconds=CONCURRENT_PUBLICATION_LOCK_TIMEOUT_SECONDS
             )

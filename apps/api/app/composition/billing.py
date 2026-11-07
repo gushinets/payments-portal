@@ -7,6 +7,10 @@ import logging
 from dataclasses import dataclass, field, replace
 from random import uniform
 from uuid import UUID
+from collections.abc import Awaitable, Callable
+from typing import Any
+
+from app.domains.billing.work_contracts import WorkClaim
 
 from pydantic import SecretStr
 from starlette.concurrency import run_in_threadpool
@@ -60,7 +64,13 @@ class AccountWidget:
 
 
 async def _find_customer(
-    client: LbxServerClient, factory: SessionFactory, current: CustomerOpen, *, budget: PreflightBudget
+    client: LbxServerClient,
+    factory: SessionFactory,
+    current: CustomerOpen,
+    *,
+    budget: PreflightBudget,
+    work_claim: WorkClaim | None = None,
+    delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
 ) -> CustomerOpen | None:
     """Search candidates, then require original paired identity before binding."""
     saved_id = current.provider_id or current.receipt_id
@@ -74,20 +84,32 @@ async def _find_customer(
                 email_ids.update(await client.discover_users_by_email(email=email, budget=budget))
             candidates = tuple(sorted(email_ids))
     if len(candidates) > 1:
-        await run_in_threadpool(apply_customer_read, factory, current, ambiguous=True)
+        await delegate(apply_customer_read, factory, current, ambiguous=True, work_claim=work_claim)
     if not candidates:
         return None
     point = await client.get_user(user_id=candidates[0], budget=budget)
-    return await run_in_threadpool(
-        apply_customer_read, factory, current, provider_id=str(point.user_id), outer_key=point.outer_id
+    budget.check()
+    return await delegate(
+        apply_customer_read,
+        factory,
+        current,
+        provider_id=str(point.user_id),
+        outer_key=point.outer_id,
+        work_claim=work_claim,
     )
 
 
 async def recover_customer(
-    client: LbxServerClient, factory: SessionFactory, current: CustomerOpen, *, budget: PreflightBudget
+    client: LbxServerClient,
+    factory: SessionFactory,
+    current: CustomerOpen,
+    *,
+    budget: PreflightBudget,
+    work_claim: WorkClaim | None = None,
+    delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
 ) -> CustomerOpen:
     """GET-only recovery entrypoint; never creates or issues Widget credentials."""
-    found = await _find_customer(client, factory, current, budget=budget)
+    found = await _find_customer(client, factory, current, budget=budget, work_claim=work_claim, delegate=delegate)
     if found is None:
         raise BillingAccountFailure("billing_source_unavailable")
     return found
@@ -252,10 +274,12 @@ async def bootstrap_account(
         raise BillingAccountFailure("billing_not_configured")
     customer_ready = False
     try:
-        async with sources.billing.operation() as budget:
+        async with sources.billing.operation(bound_scope=purchase_id is None) as budget:
             try:
                 current = await run_in_threadpool(reserve_customer, factory, configuration, token)
             except BillingRefused as error:
+                if purchase_id is not None and error.code == "billing_busy":
+                    raise BillingRefused("purchase_pending", 409) from None
                 if error.status in {401, 403} or error.code == "billing_busy":
                     raise
                 raise BillingAccountFailure(error.code, error.status) from None
@@ -265,15 +289,13 @@ async def bootstrap_account(
             )
             with customer_diagnostics(str(current.operation_id)):
                 try:
-                    current = await ensure_customer(
-                        client, configuration, factory=factory, token=token, current=current, budget=budget
-                    )
-                    customer_ready = True
                     payment_purchase = None
+                    verification = None
                     if purchase_id is not None:
+                        customer_ready = True
                         from app.composition.purchases import verify_payment_purchase
 
-                        payment_purchase = await verify_payment_purchase(
+                        verification = await verify_payment_purchase(
                             sources,
                             configuration,
                             factory=factory,
@@ -282,6 +304,14 @@ async def bootstrap_account(
                             customer=current,
                             budget=budget,
                         )
+                        payment_purchase = verification.subject.purchase
+                        current = verification.subject.customer
+                    else:
+                        current = await ensure_customer(
+                            client, configuration, factory=factory, token=token, current=current, budget=budget
+                        )
+                        customer_ready = True
+                    budget.check()
                     credential = sign_widget_jwt(
                         customer_id=current.provider_id, secret=configuration.lbx_widget_signing_secret
                     )
@@ -293,7 +323,14 @@ async def bootstrap_account(
                         await run_in_threadpool(apply_customer_read, factory, current, ambiguous=True)
                         raise BillingAccountFailure("billing_identity_conflict", 409)
                     budget.check()
-                    await run_in_threadpool(recheck_widget_session, factory, configuration, token, current)
+                    if payment_purchase is not None:
+                        from app.domains.purchases.widget_admission import recheck_payment_purchase
+
+                        await run_in_threadpool(
+                            recheck_payment_purchase, factory, configuration, token, verification, current
+                        )
+                    else:
+                        await run_in_threadpool(recheck_widget_session, factory, configuration, token, current)
                     budget.check()
                     logger.info(
                         "billing_account_ready",
@@ -302,13 +339,8 @@ async def bootstrap_account(
                         },
                     )
                     if payment_purchase is not None:
-                        from app.domains.purchases.service import recheck_payment_purchase
                         from app.models import ExternalCreateOperationKind
 
-                        await run_in_threadpool(
-                            recheck_payment_purchase, factory, configuration, token, payment_purchase
-                        )
-                        budget.check()
                         agreement = next(
                             op for op in payment_purchase.operations if op.kind == ExternalCreateOperationKind.AGREEMENT
                         )

@@ -1,7 +1,7 @@
 # Documentation Index
 
 Status: authoritative index
-Last verified: 2026-11-01
+Last updated: 2026-11-05
 
 Start with the smallest document that matches the task.
 
@@ -101,6 +101,8 @@ Start with the smallest document that matches the task.
 - [Security](SECURITY.md)
 - [Quality score](QUALITY_SCORE.md)
 - [Execution plans](exec-plans/README.md)
+- [ANY-715 completed MVP rebuild plan](exec-plans/completed/ANY-715-mvp-rebuild-plan.md) — Stages 0–6 closed by owner decision; verification evidence, limitations and follow-ups under ANY-820 are retained.
+- [Background billing operations](engineering/billing-background-operations.md) — worker settings, scheduling, polling-only operation, retained inbox history, operator commands and diagnostics.
 
 ## Legal
 
