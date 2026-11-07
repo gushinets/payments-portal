@@ -32,11 +32,9 @@ from app.infrastructure.preflight import (
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.errors import LbxResponseInvalid, LbxScopeMismatch
 from app.integrations.lbx.financial import Subscription, agreement_is_closed, subscription_lifecycle
-from app.integrations.lbx.reconciliation import timely_point
+from app.integrations.lbx.reconciliation import MAX_RELEVANT_SUBSCRIPTIONS, timely_point
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State
 from app.models import ExternalSubscriptionLifecycleStatus as Lifecycle
-
-MAX_RELEVANT_SUBSCRIPTIONS = 20
 
 
 async def collect_inventory(

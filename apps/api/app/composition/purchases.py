@@ -319,7 +319,9 @@ async def verify_payment_purchase(
         or purchase.state != PurchaseIntentState.LINKED
     ):
         raise PurchaseRefused("purchase_not_prepared", 409)
-    result = await reconcile_bound_purchase(sources, configuration, factory, purchase, budget)
+    result = await reconcile_bound_purchase(
+        sources, configuration, factory, purchase, budget, check_agreement_inventory=True
+    )
     proof = result.proof
     if (
         proof.identity != IdentityProof.MATCH
@@ -327,6 +329,7 @@ async def verify_payment_purchase(
         # A retained block can be authoritative despite an unknown agreement
         # closure; that negative alone cannot prove this agreement payable.
         or "agreement_calendar_incomplete" in proof.reasons
+        or "agreement_inventory_incomplete" in proof.reasons
         or proof.lifecycle not in {Lifecycle.ACTIVE, Lifecycle.INACTIVE}
         or any(op.state != State.BOUND for op in result.subject.purchase.operations)
     ):

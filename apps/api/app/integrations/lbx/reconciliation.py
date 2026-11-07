@@ -32,6 +32,8 @@ from app.models import (
     ExternalSubscriptionLifecycleStatus as Lifecycle,
 )
 
+MAX_RELEVANT_SUBSCRIPTIONS = 20
+
 CALENDAR_FIELDS = (
     "subscription_start_date",
     "subscription_end_date",
@@ -255,12 +257,45 @@ async def timely_point[T](read: Callable[[], Awaitable[T]], budget: PreflightBud
     return value
 
 
+async def _agreement_has_competitor(
+    client: LbxServerClient, subject: ReconciliationSubject | SubscriptionCandidateSubject, budget: PreflightBudget
+) -> bool:
+    """Prove payment isolation using the same lifecycle rules as inventory."""
+    agreement_id = int(subject.agreement_id)
+
+    async def discover() -> tuple[Subscription, ...]:
+        return await client.discover_subscriptions(
+            user_id=int(subject.customer.provider_id), agreement_id=agreement_id, budget=budget
+        )
+
+    rows = await timely_point(discover, budget)
+    if len(rows) > MAX_RELEVANT_SUBSCRIPTIONS:
+        raise LbxResponseInvalid()
+    for candidate in rows:
+        if str(candidate.subscription_id) == subject.provider_subscription_id:
+            continue
+        point = await timely_point(
+            lambda: client.get_subscription(subscription_id=candidate.subscription_id, budget=budget), budget
+        )
+        if (point.agreement_id, point.tariff_id) != (agreement_id, candidate.tariff_id):
+            raise LbxResponseInvalid()
+        if subscription_lifecycle(point)[0] != Lifecycle.ENDED:
+            return True
+    again = await timely_point(discover, budget)
+    if sorted((row.subscription_id, row.tariff_id) for row in rows) != sorted(
+        (row.subscription_id, row.tariff_id) for row in again
+    ):
+        raise LbxResponseInvalid()
+    return False
+
+
 async def read_subscription_proof(
     client: LbxServerClient,
     subject: ReconciliationSubject | SubscriptionCandidateSubject,
     configuration: Settings,
     *,
     budget: PreflightBudget,
+    check_agreement_inventory: bool = False,
 ) -> SubscriptionProof:
     started = utc_now()
     user, agreement, tariff, subscription = None, None, None, None
@@ -313,6 +348,25 @@ async def read_subscription_proof(
         proof = replace(
             proof, identity=IdentityProof.CONFLICT, lifecycle=None, financial=None, reasons=proof.reasons + conflicts
         )
+    if (
+        check_agreement_inventory
+        and proof.identity == IdentityProof.MATCH
+        and proof.commercial == CommercialProof.MATCH
+        and proof.lifecycle in {Lifecycle.ACTIVE, Lifecycle.INACTIVE}
+    ):
+        try:
+            competing = await _agreement_has_competitor(client, subject, budget)
+        except (LbxError, PreflightDeadlineExceeded) as error:
+            failures.extend(("agreement_inventory_incomplete", "agreement_inventory:" + error.code))
+        else:
+            reads.append("agreement_inventory")
+            if competing:
+                proof = replace(
+                    proof,
+                    identity=IdentityProof.CONFLICT,
+                    complete=False,
+                    reasons=proof.reasons + ("subscription_identity_conflict", "dedicated_agreement_conflict"),
+                )
     try:
         budget.check()
     except PreflightDeadlineExceeded:

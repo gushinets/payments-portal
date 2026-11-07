@@ -39,10 +39,13 @@ async def read_subscription_proof(
     factory: SessionFactory,
     budget: PreflightBudget,
     delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
+    check_agreement_inventory: bool = False,
 ) -> SubscriptionProof:
     """Persist only the DB-clock interval surrounding this actual source read."""
     started = await delegate(read_source_time, factory)
-    proof = await read_lbx_subscription_proof(client, subject, configuration, budget=budget)
+    proof = await read_lbx_subscription_proof(
+        client, subject, configuration, budget=budget, check_agreement_inventory=check_agreement_inventory
+    )
     finished = await delegate(read_source_time, factory)
     return replace(proof, read_started_at=started, read_finished_at=finished)
 
@@ -59,6 +62,7 @@ async def reconcile_subscription(
     delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
     resolution: ReviewResolution | None = None,
     expected: Purchase | None = None,
+    check_agreement_inventory: bool = False,
 ) -> ReconciliationResult:
     if configuration.lbx_configuration_error is not None:
         raise BillingRefused("billing_not_configured")
@@ -80,7 +84,13 @@ async def reconcile_subscription(
     try:
         async with _budget(admission, budget) as active_budget:
             proof = await read_subscription_proof(
-                client, subject, configuration, factory=factory, budget=active_budget, delegate=delegate
+                client,
+                subject,
+                configuration,
+                factory=factory,
+                budget=active_budget,
+                delegate=delegate,
+                check_agreement_inventory=check_agreement_inventory,
             )
             if resolution is not None:
                 if "customer_identity_conflict" in proof.reasons:
@@ -130,6 +140,8 @@ async def reconcile_bound_purchase(
     factory: SessionFactory,
     purchase: Purchase,
     budget: PreflightBudget,
+    *,
+    check_agreement_inventory: bool = False,
 ) -> ReconciliationResult:
     try:
         subscription_id = await run_in_threadpool(service.linked_subscription_id, factory, purchase)
@@ -140,6 +152,7 @@ async def reconcile_bound_purchase(
             factory=factory,
             subscription_id=subscription_id,
             budget=budget,
+            check_agreement_inventory=check_agreement_inventory,
         )
     except BillingRefused as error:
         if error.code in {
