@@ -136,10 +136,100 @@ async def test_bound_callers_commit_one_claimed_negative_without_rebinding(
     assert claimed_reads == 1 and snapshot(factory)[1:3] == ("active", "blocked")
     assert observation_count(factory, "prepared-subscription:v1") == 1
     assert all(request.method == "GET" for request in transport.requests[before:])
-    assert not any(request.url.path.endswith("/subscriptions") for request in transport.requests[before:])
+    assert any(request.url.path.endswith("/subscriptions") for request in transport.requests[before:]) is (
+        entrypoint == "payment"
+    )
     with factory() as db:
         latest = db.get(BillingStateObservation, snapshot(factory)[-1])
         assert latest.evidence_schema_version == "subscription-reconciliation:v1"
+        assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
+
+
+@pytest.mark.parametrize("case", ["same_tariff", "other_tariff", "ended", "other_agreement", "clean"])
+async def test_payment_checks_dedicated_agreement_before_background_inventory(
+    scenario: tuple,
+    portal: httpx.AsyncClient,
+    postgres_session_factory: sessionmaker[Session],
+    case: str,
+) -> None:
+    transport, sources, purchase = scenario
+    factory = postgres_session_factory
+    activate(transport)
+    await run(sources, factory)
+    if case != "clean":
+        extra = {**transport.subscriptions[0], "subscription_id": 9999}
+        if case == "other_tariff":
+            extra["tariff_id"] = 999
+        elif case == "ended":
+            extra["state"] = 3
+        elif case == "other_agreement":
+            extra["agreement_id"] = 999
+            transport.agreements.append({**transport.agreements[0], "agreement_id": 999})
+        transport.subscriptions.append(extra)
+    before = len(transport.requests)
+    response = await payment(portal, purchase.id)
+    conflict = case in {"same_tariff", "other_tariff"}
+    assert response.status_code == (409 if conflict else 200)
+    if conflict:
+        assert response.json()["detail"]["code"] == "purchase_not_prepared"
+        assert "credential" not in response.json()
+        assert snapshot(factory)[2:4] == ("blocked", "ineligible")
+        with factory() as db:
+            case_row = db.scalar(select(ManualReviewCase))
+            assert case_row.reason_code == "subscription_identity_conflict" and case_row.case_state == "open"
+            observation = db.get(BillingStateObservation, snapshot(factory)[-1])
+            assert "dedicated_agreement_conflict" in observation.evidence_document["reasons"]
+    else:
+        assert response.json()["presentation"] == "payment"
+        with factory() as db:
+            assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
+    requests = transport.requests[before:]
+    assert all(request.method == "GET" for request in requests)
+    assert sum(request.url.path.endswith("/subscriptions/567") for request in requests) == 1
+    assert any(request.url.path.endswith("/client/user") for request in requests) is not conflict
+    assert response.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.parametrize("failure", ["unavailable", "unstable", "unknown_lifecycle"])
+async def test_payment_incomplete_agreement_inventory_never_mints_or_renews_trust(
+    scenario: tuple,
+    portal: httpx.AsyncClient,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    transport, sources, purchase = scenario
+    factory = postgres_session_factory
+    activate(transport)
+    await run(sources, factory)
+    trusted = snapshot(factory)
+    if failure == "unknown_lifecycle":
+        transport.subscriptions.append({**transport.subscriptions[0], "subscription_id": 9999, "state": 99})
+    else:
+        discover = sources.require_lbx().discover_subscriptions
+        calls = 0
+
+        async def incomplete(**kwargs: object) -> object:
+            nonlocal calls
+            calls += 1
+            if failure == "unavailable":
+                raise LbxUnavailable()
+            rows = await discover(**kwargs)
+            return rows if calls == 1 else ()
+
+        monkeypatch.setattr(sources.require_lbx(), "discover_subscriptions", incomplete)
+    before = len(transport.requests)
+    response = await payment(portal, purchase.id)
+    assert response.status_code == 409 and response.json()["detail"]["code"] == "purchase_not_prepared"
+    assert "credential" not in response.json() and snapshot(factory) == trusted
+    assert not any(request.url.path.endswith("/client/user") for request in transport.requests[before:])
+    with factory() as db:
+        attempt = db.scalar(
+            select(BillingStateObservation)
+            .where(BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v1")
+            .order_by(BillingStateObservation.observed_at.desc())
+        )
+        assert "agreement_inventory_incomplete" in attempt.evidence_document["reasons"]
         assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
 
 

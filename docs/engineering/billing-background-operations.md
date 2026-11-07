@@ -35,6 +35,15 @@ unavailable; it cannot establish a first binding from an unknown candidate.
 Ended is terminal; a later nonterminal state for the same canonical ID
 opens subscription_terminal_revival_conflict.
 
+Payment Widget opening also reads the original agreement's bounded subscription
+inventory under the same reconciliation lease and I/O budget. Unexpected live
+subscriptions conflict regardless of tariff; terminal subscriptions are excluded
+using the shared lifecycle rules. A stable complete re-list is required before
+payment presentation. Incomplete discovery cannot mint a payment Widget or renew
+source trust; confirmed conflicts use the canonical fenced apply immediately,
+without waiting for the background inventory cadence. Account-only viewing does
+not require this purchase-specific check.
+
 Only complete matching proof without a known review refreshes source trust.
 Trust begins at `read_started_at` and lasts at most six hours, with no outage
 grace. Incomplete reads preserve the existing finite support without extending
