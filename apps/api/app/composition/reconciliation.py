@@ -23,6 +23,7 @@ from app.domains.billing.reconciliation_contracts import (
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases import service
 from app.domains.purchases.contracts import Purchase, PurchaseRefused
+from app.domains.purchases.inventory_contracts import InventoryStale
 from app.infrastructure.preflight import PreflightAdmission, PreflightBudget, PreflightDeadlineExceeded
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.operator_contracts import ReviewResolution
@@ -82,6 +83,12 @@ async def reconcile_subscription(
                 client, subject, configuration, factory=factory, budget=active_budget, delegate=delegate
             )
             if resolution is not None:
+                if "customer_identity_conflict" in proof.reasons:
+                    # Keep canonical owner/fence/time checks before any negative write.
+                    # A timely customer negative survives later I/O budget exhaustion,
+                    # but cannot authorize or audit a successful operator resolution.
+                    await delegate(apply_reconciliation, factory, subject, proof, work_claim=work_claim)
+                    raise InventoryStale()
                 from app.composition.purchase_inventory import collect_inventory
                 from app.domains.purchases.inventory_contracts import InventoryCandidateProof
 
