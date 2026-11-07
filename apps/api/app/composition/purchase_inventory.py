@@ -16,7 +16,6 @@ from app.domains.billing.reconciliation_contracts import (
     CommercialProof,
     IdentityProof,
     SubscriptionCandidateSubject,
-    SubscriptionProof,
 )
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.catalog.publication import SessionFactory
@@ -67,8 +66,6 @@ async def collect_inventory(
         raise InventoryStale()
     if reuse is not None and not same_purchase(versions[reuse.purchase.id], reuse.purchase):
         raise InventoryStale()
-    if reuse is not None and reuse.proof is not None:
-        await _reject_customer_conflict(factory, current, reuse.proof, work_claim, delegate)
     conflicts, pending = set(), set()
     complete = True
     conflicting_bindings: set[str] = set()
@@ -207,7 +204,22 @@ async def collect_inventory(
                     else:
                         proof = None
                     if proof is not None:
-                        await _reject_customer_conflict(factory, current, proof, work_claim, delegate)
+                        if (
+                            "customer_identity_conflict" in proof.reasons
+                            or "customer_original_key_mismatch" in proof.reasons
+                        ):
+                            await delegate(
+                                record_customer_conflict,
+                                factory,
+                                current,
+                                work_claim,
+                                provider_id=current.provider_id
+                                if "customer_original_key_mismatch" in proof.reasons
+                                else None,
+                            )
+                            # The customer writer invalidated every source fence.
+                            # Never apply this snapshot as a purchase-only review.
+                            raise InventoryStale()
                         if (
                             proof.identity == IdentityProof.MATCH
                             and proof.commercial == CommercialProof.MATCH
@@ -262,26 +274,6 @@ async def collect_inventory(
     return InventoryResult(
         current, tuple(versions.values()), tuple(sorted(conflicts)), tuple(sorted(pending)), complete
     )
-
-
-async def _reject_customer_conflict(
-    factory: SessionFactory,
-    customer: CustomerOpen,
-    proof: SubscriptionProof,
-    work_claim: WorkClaim | None,
-    delegate: Callable[..., Awaitable[Any]],
-) -> None:
-    if "customer_identity_conflict" in proof.reasons or "customer_original_key_mismatch" in proof.reasons:
-        await delegate(
-            record_customer_conflict,
-            factory,
-            customer,
-            work_claim,
-            provider_id=customer.provider_id if "customer_original_key_mismatch" in proof.reasons else None,
-        )
-        # Persist timely customer negatives before any sibling can block inventory.
-        # This writer invalidated every source fence; discard the old snapshot.
-        raise InventoryStale()
 
 
 def _identities(rows: tuple[Subscription, ...]) -> list[tuple[int, int, int]]:
