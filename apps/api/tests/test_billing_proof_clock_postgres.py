@@ -15,15 +15,17 @@ from app.composition.purchase_recovery import recover_one
 from app.composition.purchases import recover_financial
 from app.composition.reconciliation import reconcile_subscription
 from app.domains.billing.contracts import BillingRefused
-from app.domains.billing import work
+from app.domains.billing import background_recovery as recovery, customers, work
 from app.domains.billing.work_contracts import WorkLane
 from app.domains.billing.operator_diagnostics import inspect_evidence
 from app.domains.billing.operator_review import prepare_resolution
 from app.domains.billing.reconciliation import apply_reconciliation, read_source_time
 from app.domains.purchases import financial, service
 from app.integrations.lbx import reconciliation as lbx_reconciliation
+from app.infrastructure.queries import billing_reconciliation
 from app.models import BillingWorkItem, ExternalCreateOperation, ExternalSubscription, ManualReviewCase
 from apps.api.tests.factories.billing_operator import resolution_request
+from apps.api.tests.test_any709_step2_postgres import TOKEN, seed
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.test_billing_background_recovery_postgres import (
     anyio_backend as anyio_backend,
@@ -241,3 +243,70 @@ async def test_original_clock_fix_keeps_binding_and_operator_guards(
             case = db.get(ManualReviewCase, request.case_id)
             assert case.case_state == "open" and case.resolution_document is None
     assert not any(req.method == "POST" for req in transport.requests)
+
+
+@pytest.mark.parametrize("skew", [-1, 0, 1])
+def test_customer_send_lease_uses_database_clock(
+    migrated_database: object,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    skew: int,
+) -> None:
+    factory = postgres_session_factory
+    config = step1_settings(preflight_total_timeout_seconds=10, preflight_cleanup_timeout_seconds=1)
+    seed(factory)
+    base, elapsed = read_source_time(factory), 0.0
+    monkeypatch.setattr(billing_reconciliation, "database_now", lambda db: base + timedelta(seconds=elapsed))
+    monkeypatch.setattr(customers, "utc_now", lambda: base + timedelta(seconds=elapsed + skew))
+    customer = customers.claim_customer_send(factory, config, TOKEN, customers.reserve_customer(factory, config, TOKEN))
+    duration = config.preflight_total_timeout_seconds + config.preflight_cleanup_timeout_seconds
+    with factory() as db:
+        operation = db.get(ExternalCreateOperation, customer.operation_id)
+        active_send = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == recovery.RECOVERY))
+        assert operation.unknown_since == base
+        assert operation.unknown_recovery_deadline_at == base + timedelta(hours=2)
+        assert active_send.lease_expires_at == base + timedelta(seconds=duration)
+    elapsed = duration - 0.5
+    assert not customers.claim_customer_send(factory, config, TOKEN, customer).may_create
+    assert work.claim_work(factory, config, WorkLane.URGENT) is None
+    elapsed = duration + 0.5
+    claim = work.claim_work(factory, config, WorkLane.URGENT)
+    assert claim is not None and claim.reference == str(customer.operation_id)
+    elapsed = (claim.expires_at - base).total_seconds() + 0.5
+    with factory() as db, pytest.raises(BillingRefused, match="billing_work_stale"):
+        work.verify_operation_claim(db, claim, customer.operation_id)
+
+
+@pytest.mark.parametrize("skew", [-1, 0, 1])
+@pytest.mark.parametrize("entrypoint", ["foreground", "scanner", "worker"])
+def test_customer_deadline_uses_database_clock(
+    migrated_database: object,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    skew: int,
+    entrypoint: str,
+) -> None:
+    factory, config = postgres_session_factory, step1_settings()
+    seed(factory)
+    base, elapsed = read_source_time(factory), 0.0
+    monkeypatch.setattr(billing_reconciliation, "database_now", lambda db: base + timedelta(seconds=elapsed))
+    monkeypatch.setattr(customers, "utc_now", lambda: base + timedelta(seconds=elapsed + skew))
+    customer = customers.claim_customer_send(factory, config, TOKEN, customers.reserve_customer(factory, config, TOKEN))
+    for elapsed in (7200 - 0.5, 7200 + 0.5):
+        overdue = elapsed > 7200
+        if entrypoint == "foreground":
+            code = "billing_customer_review" if overdue else "billing_customer_pending"
+            with pytest.raises(BillingRefused, match=code):
+                customers.apply_customer_read(factory, customer)
+        elif entrypoint == "scanner":
+            assert customers.escalate_overdue_customers(factory) == int(overdue)
+        else:
+            claim = work.claim_work(factory, config, WorkLane.LOCAL)
+            assert (claim is not None) == overdue
+            if claim is not None:
+                assert claim.kind == recovery.DEADLINE
+                recovery.apply_deadline(factory, claim)
+        with factory() as db:
+            operation = db.get(ExternalCreateOperation, customer.operation_id)
+            assert (operation.operation_state == "manual_review") == overdue
+            assert operation.unknown_recovery_deadline_at == base + timedelta(hours=2)

@@ -25,6 +25,7 @@ from app.domains.billing.customer_scope import customer_account
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.errors import InvalidAuthSessionError
 from app.domains.identity.services.auth import as_utc, authenticate_session
+from app.infrastructure.queries import billing_reconciliation
 from app.infrastructure.queries.billing_customers import (
     BillingRowLockBusy,
     customer_operation,
@@ -167,7 +168,7 @@ def claim_customer_send(
             return _snapshot(customer, operation)
         if operation.send_fence != expected.fence:
             return _snapshot(customer, operation)
-        now = utc_now()
+        now = as_utc(billing_reconciliation.database_now(db))
         work = recovery_work(db, operation.create_operation_id)
         if work is not None and work.lease_expires_at is not None and as_utc(work.lease_expires_at) > now:
             return _snapshot(customer, operation)
@@ -387,7 +388,9 @@ def apply_customer_read(
         if provider_id is None:
             if operation.operation_state == State.PENDING:
                 raise BillingRefused("billing_customer_pending", 409)
-            if operation.unknown_recovery_deadline_at and utc_now() >= as_utc(operation.unknown_recovery_deadline_at):
+            if operation.unknown_recovery_deadline_at and as_utc(billing_reconciliation.database_now(db)) >= as_utc(
+                operation.unknown_recovery_deadline_at
+            ):
                 record_customer_review(db, operation, CUSTOMER_UNKNOWN_REVIEW)
             elif operation.operation_state != State.MANUAL_REVIEW:
                 operation.operation_state = State.UNKNOWN
@@ -472,10 +475,10 @@ def require_widget_session(db: Session, configuration: Settings, token: str, exp
 
 def escalate_overdue_customers(factory: SessionFactory, *, now: datetime | None = None, limit: int = 100) -> int:
     """Callable by later recovery work; no scheduler and no scope release."""
-    instant = now or utc_now()
     if not 1 <= limit <= 100:
         raise ValueError("invalid recovery batch limit")
     with factory() as db:
+        instant = as_utc(now if now is not None else billing_reconciliation.database_now(db))
         ids = overdue_customer_ids(db, instant, limit)
     count = 0
     for customer_id in ids:

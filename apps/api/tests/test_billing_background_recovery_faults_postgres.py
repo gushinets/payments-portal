@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -359,11 +360,13 @@ async def test_billing_background_recovery_inventory_refuses_unsafe_other_produc
     await worker.aclose()
 
 
+@pytest.mark.parametrize("lookup", ["outer_id", "email"])
 @pytest.mark.parametrize("mode", ["empty", "one", "ambiguous", "foreign"])
 async def test_billing_background_recovery_customer_send_lease_and_paired_proof(
     migrated_database: object,
     postgres_session_factory: sessionmaker[Session],
     mode: str,
+    lookup: str,
 ) -> None:
     import httpx
 
@@ -387,9 +390,12 @@ async def test_billing_background_recovery_customer_send_lease_and_paired_proof(
         if path.endswith("/auth"):
             return httpx.Response(200, json={"code": 200, "response": {"token": "synthetic-token", "expires_in": 600}})
         if path.endswith("/users"):
+            query = json.loads(request.content or b"{}")
+            if "email" in query:
+                assert query["email"] == "synthetic@example.com"
             data = (
                 []
-                if mode == "empty"
+                if mode == "empty" or (lookup == "email" and "outer_id" in query)
                 else [{"user_id": 345}, {"user_id": 346}]
                 if mode == "ambiguous"
                 else [{"user_id": 345}]
@@ -417,6 +423,10 @@ async def test_billing_background_recovery_customer_send_lease_and_paired_proof(
             )
             assert op.bound_external_object_id == ("345" if mode == "one" else None)
         assert original(factory, customer.operation_id) == saved
+        email_reads = sum("email" in json.loads(request.content or b"{}") for request in calls)
+        assert email_reads == int(lookup == "email" or mode == "empty")
+        point_reads = sum(request.url.path.endswith("/users/345") for request in calls)
+        assert point_reads == int(mode in {"one", "foreign"})
         await worker.aclose()
 
 
