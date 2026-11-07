@@ -721,3 +721,94 @@ async def test_known_sibling_is_never_an_unknown_original_candidate(
     saved_sibling = service.read_purchase(factory, sibling.user_id, sibling.id)
     assert next(op for op in saved_sibling.operations if op.kind == Kind.SUBSCRIPTION).bound_id == "568"
     assert not any(req.method == "POST" for req in transport.requests)
+
+
+@pytest.mark.parametrize("conflict", ["none", "original_key", "scope_error"])
+async def test_restore_original_persists_customer_negative_before_busy_inventory(
+    background_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    conflict: str,
+) -> None:
+    from app.composition.reconciliation import read_subscription_proof, reconcile_subscription
+    from app.domains.billing.reconciliation import apply_reconciliation, claim_reconciliation
+
+    transport, sources, purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    purchase = synthetic_prepare(factory, transport, purchase, uncertain=False)
+    sibling = historical_link(factory, purchase, transport, "brief_decoder", 1)
+    for point in transport.subscriptions:
+        point.update(state=2, last_tariffication_period_start="2026-10-01", last_tariffication_period_end="2026-11-01")
+    with factory() as db:
+        identities = {sub.purchase_intent_id: sub.subscription_id for sub in db.scalars(select(ExternalSubscription))}
+    for identity in identities.values():
+        await reconcile_subscription(
+            sources.require_lbx(), sources.billing, config, factory=factory, subscription_id=identity
+        )
+    transport.subscriptions[0]["services"][0]["price"] = 150
+    await reconcile_subscription(
+        sources.require_lbx(), sources.billing, config, factory=factory, subscription_id=identities[purchase.id]
+    )
+    transport.subscriptions[0]["services"][0]["price"] = 100
+    request = resolution_request(purchase, inspect_evidence(factory, config, purchase.user_id, purchase.id))
+    client = sources.require_lbx()
+    get_user = client.get_user
+    if conflict == "none":
+        result = await resolve_review(sources, config, factory=factory, request=request, principal=PRINCIPAL)
+        assert result["outcome"] == "resolved"
+    else:
+        old = claim_reconciliation(factory, config, identities[sibling.id], io_timeout_seconds=60)
+        async with sources.billing.operation(bound_scope=False) as budget:
+            old_proof = await read_subscription_proof(client, old, config, factory=factory, budget=budget)
+        reads = 0
+
+        async def negative_read(**kwargs: Any) -> Any:
+            nonlocal reads
+            reads += 1
+            if conflict == "scope_error":
+                raise LbxScopeMismatch()
+            return (await get_user(**kwargs)).model_copy(update={"outer_id": "changed-original-key"})
+
+        monkeypatch.setattr(client, "get_user", negative_read)
+        with pytest.raises(PurchaseRefused, match="billing_review_stale"):
+            await resolve_review(sources, config, factory=factory, request=request, principal=PRINCIPAL)
+        assert reads == 1
+        with factory() as db:
+            assert db.get(ExternalBillingCustomer, purchase.customer_id).binding_state == Binding.IDENTITY_CONFLICT
+            for sub in db.scalars(select(ExternalSubscription)):
+                assert (sub.financial_access_status, sub.commercial_access_status) == ("blocked", "ineligible")
+                assert sub.reconciliation_lease_owner is None and sub.reconciliation_lease_expires_at is None
+            assert db.get(ExternalSubscription, identities[sibling.id]).reconciliation_fencing_token > old.fence
+            case = db.get(ManualReviewCase, request.case_id)
+            assert case.case_state == "open" and case.resolution_document is None
+            customer_cases = list(
+                db.scalars(select(ManualReviewCase).where(ManualReviewCase.scope_kind == "create_operation"))
+            )
+            assert len(customer_cases) == 1
+            assert customer_cases[0].scope_reference == str(old.customer.operation_id)
+            assert customer_cases[0].reason_code == (
+                "customer_original_key_mismatch" if conflict == "original_key" else "customer_identity_conflict"
+            )
+        with pytest.raises(BillingRefused, match="subscription_reconciliation_stale"):
+            apply_reconciliation(factory, old, old_proof)
+        monkeypatch.setattr(client, "get_user", get_user)
+        if conflict == "scope_error":
+            with pytest.raises(BillingRefused, match="billing_identity_conflict"):
+                await bootstrap_account(sources, config, factory=factory, token=TOKEN)
+        else:
+            # Exact original-key recovery remains available without an extra purchase review.
+            await bootstrap_account(sources, config, factory=factory, token=TOKEN)
+            request = resolution_request(purchase, inspect_evidence(factory, config, purchase.user_id, purchase.id))
+            result = await resolve_review(sources, config, factory=factory, request=request, principal=PRINCIPAL)
+            assert result["outcome"] == "resolved"
+    if conflict != "scope_error":
+        with factory() as db:
+            assert db.get(ExternalBillingCustomer, purchase.customer_id).binding_state == Binding.BOUND
+            case = db.get(ManualReviewCase, request.case_id)
+            assert case.case_state == "resolved" and case.resolved_by_principal == PRINCIPAL
+    saved = service.read_purchase(factory, purchase.user_id, purchase.id)
+    assert saved.accepted == purchase.accepted
+    assert tuple((op.id, op.bound_id, op.key) for op in saved.operations) == tuple(
+        (op.id, op.bound_id, op.key) for op in purchase.operations
+    )
+    assert not any(req.method == "POST" for req in transport.requests)

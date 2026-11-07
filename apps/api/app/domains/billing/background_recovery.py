@@ -189,7 +189,7 @@ def subject(
             op.operation_kind,
             customer.user_id,
             op.purchase_intent_id,
-            customers._snapshot(customer, customer_op),
+            customers._snapshot(customer, customer_op, user),
             op.operation_state,
         )
 
