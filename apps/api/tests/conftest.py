@@ -4,6 +4,7 @@ import os
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from itertools import count
+from typing import TYPE_CHECKING
 
 import pytest
 from dotenv import load_dotenv
@@ -19,7 +20,9 @@ from .support.postgres import (
     validate_test_database_url,
 )
 from .support.settings import DEFAULT_API_TEST_ENV
-from .factories.paid_access import AcceptedSubscription
+
+if TYPE_CHECKING:
+    from .factories.paid_access import AcceptedSubscription
 
 
 load_dotenv()
@@ -190,6 +193,7 @@ async def paid_terms_scenario(
     from app.composition.sources import source_resources
     from app.domains.catalog.link_publication import publish_product_link
     from app.models import ExternalSubscription, PurchaseIntent
+    from apps.api.tests.factories.paid_access import AcceptedSubscription
     from apps.api.tests.factories.purchase_terms import reviewed_meaning
     from apps.api.tests.support.any709_step1 import link_document, link_selection, step1_settings
     from apps.api.tests.test_any709_step3_postgres import TOKEN, setup_purchase
