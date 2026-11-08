@@ -544,6 +544,16 @@ Kernel, Widget bootstrap or source-admission resources. Both success and refusal
 responses use `Cache-Control: no-store`. Identity may update session last-seen;
 the paid read does not write billing state, renew trust or repair deadlines.
 
+The API lifespan reserves two PostgreSQL connections (no overflow) and two
+framework worker slots for this read, independently of new-purchase and source
+work. Up to eight further reads may wait; excess requests receive retryable
+`503 paid_access_busy`. PostgreSQL lock/statement waits are bounded at 2/10
+seconds and also return `paid_access_busy`; other DB failures retain the ordinary
+failure boundary. Include these two connections per API process in deployment connection
+budgets. Cancelled HTTP waiters retain their DB task/slot until completion;
+shutdown drains those tasks before disposing the pool and reports incomplete
+cleanup rather than closing underneath a running read.
+
 The shared user lock keeps the committed revision, complete grants/allowances,
 provenance and deadline consistent with concurrent writers. An unprocessed
 effective deadline at or before the sampled database time returns `503` with

@@ -4,6 +4,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.composition.sources import SourceResources
 from app.core.settings import Settings
+from app.domains.catalog.admission import SelectedCapabilityUnavailable, require_selected_capability
 from app.domains.catalog.commercial_offer import OfferRefusalKind, SelectedOfferRefused
 from app.domains.catalog.preview import CatalogProductNotFound, require_enabled_product
 from app.domains.catalog.product_link import current_offer_fingerprint
@@ -35,6 +36,18 @@ async def live_original(
     manifest = await sources.require_kernel().fetch_manifest(budget=budget)
     try:
         require_enabled_product(manifest, purchase.accepted.selection.product_id)
+        if technical := purchase.accepted.technical_terms:
+            try:
+                require_selected_capability(
+                    manifest,
+                    product_id=technical.offer.product_id,
+                    metric_units={technical.offer.metric_key: technical.offer.unit},
+                )
+            except SelectedCapabilityUnavailable:
+                # Keep consent and any possible-send history intact. The same
+                # purchase may resume when its accepted capability is available;
+                # current test-offer quantities never reprice this acceptance.
+                raise PurchaseRefused("purchase_technical_terms_unavailable", 503) from None
         offer = await read_current_offer(
             sources.require_lbx(), selection=purchase.accepted.selection, configuration=configuration, budget=budget
         )

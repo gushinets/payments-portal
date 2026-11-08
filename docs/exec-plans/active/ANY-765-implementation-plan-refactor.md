@@ -116,3 +116,50 @@ The plan was updated following verification on 2026-11-06. Code, branches and PR
 
 - Create a new Draft PR from `ANY-765` into `refactor/any715-mvp` if #161 is still open, or into the corresponding `main` after it is merged. In the description, include ANY-765, the replaced PR #157, backup branch `ANY-765-OLD`, the accepted result and current checks. Link the new PR in closed #157. Verify that the new PR's own diff contains only step 9 and the necessary adaptation to #161.
 - After #161 is merged, rebase `ANY-765` onto the corresponding `main` and change the new PR's base; for a squash, port only the own step 9 result. Verify the final diff and required CI on the published HEAD and final base. The PR remains Draft until successful acceptance; old #157 remains closed. Merge requires human approval.
+
+## Local review corrections — 2026-11-08
+
+Scope: the uncommitted result on `867241cacdbee8fe787445f7f5104742639dbbd3`,
+including the rebuilt ANY-715 ancestry. No commit, push or PR update is requested.
+
+- P2-1: check the accepted technical metric's current ownership, unit and
+  enablement before each genuinely new financial send. Preserve accepted
+  quantity, original identities, linked reconciliation and GET-only recovery.
+  Verify refusal before agreement/subscription CREATE, safe resumption and
+  unrelated capability/current-quantity changes.
+- P2-2: expose product-competitor and subscription-metric cases in scoped
+  operator diagnostics. Keep the audited resolution case set unchanged; test
+  unrelated scope exclusion and refusal to resolve these diagnostic cases.
+- ARCH-1: reserve paid-read DB and framework worker capacity outside sale/source
+  pools, with bounded admission and retained cancellation/shutdown ownership.
+  Verify real HTTP/PG reads while purchase authentication exhausts the ordinary
+  DB pool and shared thread limiter, plus overload and cleanup.
+- ARCH-2: pass the worker DB delegate through concurrent-first-binding recovery
+  into shared reconciliation. Verify cancellation retains the committing DB
+  owner in both the recovery race and ordinary reconciliation control.
+
+Run focused regressions, relevant recovery/operator suites and the broadest
+supported canonical checks; record results after verification. DOD-1 live LBX
+acceptance remains NOT_RUN and is not replaced by synthetic test results.
+
+Verification of the local corrections, 2026-11-08:
+
+- `npm run check`: **PASS**, exit 0, with isolated source configuration and
+  disposable local PostgreSQL. Documentation, generated freshness, architecture,
+  Ruff, web boundaries/lint and production build passed; API fast **1,752**,
+  PostgreSQL **911**, web component **414** tests passed.
+- The **27 added PostgreSQL scenarios** cover capability changes before either
+  financial CREATE, immutable quantity and safe resumption, diagnostic scope
+  isolation/resolution refusal, worker cancellation ownership, DB/thread
+  saturation and reader overload/cancellation. Real lock/statement timeouts
+  return retryable `paid_access_busy`; another SQL error retains the ordinary
+  failure boundary. A subsequent read succeeds without paid-state mutation.
+- Affected Playwright purchase/Widget/paid-cabinet journeys: **18 PASS** across
+  desktop/mobile, no retries or skips. Canonical `RUN_E2E=false` is explicit;
+  those browser checks ran separately against the final build.
+- Actual local Portal HTTP/PostgreSQL/browser integration: **15 PASS**, no
+  JavaScript errors, including fresh API and paid-read pool recreation. LBX and
+  Kernel transports were synthetic; this is not live-provider acceptance.
+- Changes remain local and uncommitted. DOD-1 actual LBX purchase-to-cabinet
+  acceptance stays **NOT_RUN**; no real billing mutation or external publication
+  was performed.

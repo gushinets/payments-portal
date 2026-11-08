@@ -10,13 +10,13 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.composition.paid_reads import paid_read_resources
 from app.core.time import utc_now
 from app.core.database import Base
 from app.domains.billing import paid_router as routes, paid_read
 from app.domains.billing.customers import lock_user
 from app.domains.billing.paid_access import commit_paid_state
 from app.domains.identity.services.auth import as_utc
-from app.http.dependencies import get_session_factory
 from app.main import create_app
 from app.models import BillingProductAccessScope
 from apps.api.tests.factories.paid_access import reader_identity
@@ -42,12 +42,14 @@ async def paid_client(
     postgres_session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
 ) -> AsyncIterator[httpx.AsyncClient]:
     app = create_app()
-    app.dependency_overrides[get_session_factory] = lambda: postgres_session_factory
     monkeypatch.setattr(routes, "settings", step1_settings())
-    # No lifespan/source objects: this route must not require billing resources.
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://portal.test") as client:
+    # Only the local reader is composed: no LBX/Kernel/worker resources.
+    async with (
+        paid_read_resources(step1_settings(), factory=postgres_session_factory) as reads,
+        httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://portal.test") as client,
+    ):
+        app.state.paid_reads = reads
         yield client
-    app.dependency_overrides.clear()
 
 
 def billing_snapshot(factory: sessionmaker[Session]) -> dict:

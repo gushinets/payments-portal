@@ -10,6 +10,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.composition.sources import source_resources
 from app.composition.billing_worker import billing_worker_resources
+from app.composition.paid_reads import paid_read_resources
 from app.core.database import SessionLocal, engine
 from app.core.errors import AppError
 from app.core.observability import (
@@ -45,7 +46,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     if os.getenv("SKIP_LEGAL_SEED") != "true":
         await run_in_threadpool(_seed_legal_documents_sync)
 
-    async with source_resources(settings) as sources:
+    async with paid_read_resources(settings) as reads, source_resources(settings) as sources:
+        _app.state.paid_reads = reads
         _app.state.sources = sources
         async with billing_worker_resources(settings) as worker:
             _app.state.billing_worker = worker

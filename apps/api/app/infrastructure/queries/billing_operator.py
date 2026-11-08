@@ -6,11 +6,13 @@ from sqlalchemy import Text, and_, cast, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (
+    BillingProductAccessScope,
     BillingStateObservation,
     BillingWorkItem,
     ExternalCreateOperation,
     ExternalSubscription,
     ManualReviewCase,
+    PurchaseIntent,
 )
 
 
@@ -29,6 +31,7 @@ def reviews(
     *,
     open_only: bool = False,
     lock: bool = False,
+    include_paid_diagnostics: bool = False,
 ) -> list[ManualReviewCase]:
     operations = select(ExternalCreateOperation.create_operation_id).where(
         (ExternalCreateOperation.purchase_intent_id == purchase_id)
@@ -37,20 +40,40 @@ def reviews(
             & (ExternalCreateOperation.purchase_intent_id.is_(None))
         )
     )
-    query = select(ManualReviewCase).where(
-        or_(
-            and_(
-                ManualReviewCase.scope_kind == "create_operation",
-                ManualReviewCase.scope_reference.in_(select(cast(operations.subquery().c.create_operation_id, Text))),
-            ),
-            and_(
-                ManualReviewCase.scope_kind == "subscription", ManualReviewCase.scope_reference == str(subscription_id)
-            ),
-            and_(
-                ManualReviewCase.scope_kind == "purchase_intent", ManualReviewCase.scope_reference == str(purchase_id)
-            ),
+    scopes = [
+        and_(
+            ManualReviewCase.scope_kind == "create_operation",
+            ManualReviewCase.scope_reference.in_(select(cast(operations.subquery().c.create_operation_id, Text))),
+        ),
+        and_(ManualReviewCase.scope_kind == "subscription", ManualReviewCase.scope_reference == str(subscription_id)),
+        and_(ManualReviewCase.scope_kind == "purchase_intent", ManualReviewCase.scope_reference == str(purchase_id)),
+    ]
+    if include_paid_diagnostics:
+        access_scopes = (
+            select(cast(BillingProductAccessScope.access_scope_id, Text))
+            .join(
+                PurchaseIntent,
+                (PurchaseIntent.user_id == BillingProductAccessScope.user_id)
+                & (PurchaseIntent.product_id == BillingProductAccessScope.product_id),
+            )
+            .where(PurchaseIntent.purchase_intent_id == purchase_id)
         )
-    )
+        scopes.append(
+            and_(
+                ManualReviewCase.scope_kind == "product_competitor",
+                ManualReviewCase.scope_reference.in_(access_scopes),
+            )
+        )
+        if subscription_id is not None:
+            scopes.append(
+                and_(
+                    ManualReviewCase.scope_kind == "subscription_metric",
+                    ManualReviewCase.scope_reference.startswith(f"{subscription_id}:", autoescape=True),
+                )
+            )
+    # Diagnostic visibility does not authorize either scope for resolution.
+    # validate_case keeps the original exact purchase/operation/subscription set.
+    query = select(ManualReviewCase).where(or_(*scopes))
     if open_only:
         query = query.where(ManualReviewCase.case_state == "open")
     if lock:

@@ -8,10 +8,10 @@ from pydantic import BaseModel, Field
 
 from app.core.observability import request_id_context
 from app.core.settings import settings
+from app.composition.paid_reads import PaidReadResources
 from app.domains.billing.contracts import BillingRefused
-from app.domains.billing.paid_read import PaidRead, ProductPaidStatus, read_paid_access
-from app.domains.catalog.publication import SessionFactory
-from app.http.dependencies import get_session_factory
+from app.domains.billing.paid_read import PaidRead, ProductPaidStatus
+from app.http.dependencies import get_paid_read_resources
 
 router = APIRouter(prefix="/api", tags=["paid-access"])
 
@@ -83,16 +83,16 @@ def present_paid_access(result: PaidRead) -> PaidAccessResponse:
 
 
 @router.get("/paid-access", response_model=PaidAccessResponse)
-def paid_access(
+async def paid_access(
     response: Response,
-    factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    reads: Annotated[PaidReadResources, Depends(get_paid_read_resources)],
     authorization: Annotated[str | None, Header()] = None,
 ) -> PaidAccessResponse:
     response.headers["Cache-Control"] = "no-store"
     try:
         if not authorization or not authorization.startswith("Bearer ") or not authorization[7:].strip():
             raise BillingRefused("billing_session_required", 401)
-        return present_paid_access(read_paid_access(factory, settings, authorization[7:].strip()))
+        return present_paid_access(await reads.read(settings, authorization[7:].strip()))
     except BillingRefused as error:
         raise HTTPException(
             status_code=error.status,

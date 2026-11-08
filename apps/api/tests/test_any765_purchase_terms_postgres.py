@@ -1,6 +1,7 @@
 """Real isolated PostgreSQL acceptance with synthetic provider reads only."""
 
 from datetime import UTC, datetime
+from copy import deepcopy
 from pathlib import Path
 import time
 
@@ -12,7 +13,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.composition import purchase_terms
-from app.composition.purchases import confirm_purchase, review_purchase
+from app.composition.purchases import advance_purchase, confirm_purchase, review_purchase
 from app.composition.sources import source_resources
 from app.core.settings import Settings
 from app.domains.catalog.link_publication import publish_product_link
@@ -30,6 +31,7 @@ from app.models import (
 )
 from apps.api.tests.factories.purchase_terms import SOURCE_PATH, reviewed_meaning
 from apps.api.tests.support.any709_step1 import link_document, link_selection, step1_settings
+from apps.api.tests.support.kernel import manifest_fixture, resign
 from apps.api.tests.test_any709_step2_postgres import TOKEN
 from apps.api.tests.test_any709_step3_postgres import setup_purchase
 
@@ -68,6 +70,73 @@ def assert_no_paid_state(factory: sessionmaker[Session]) -> None:
     with factory() as db:
         for model in (PaidAccessState, PurchasedAllowance, BillingProductAccessScope, AccessInvalidationOutbox):
             assert db.scalar(select(func.count()).select_from(model)) == 0
+
+
+@pytest.mark.parametrize("stage", ["before_agreement", "before_subscription"])
+@pytest.mark.parametrize("fault", [None, "disabled", "missing", "unit", "owner", "unrelated", "quantity"])
+async def test_new_financial_send_rechecks_accepted_capability_without_repricing_or_breaking_recovery(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    terms_file: Path,
+    stage: str,
+    fault: str | None,
+) -> None:
+    factory = postgres_session_factory
+    config = step1_settings(purchase_test_terms_enabled=True)
+    transport = setup_purchase(factory)
+    changed = False
+
+    def kernel(request: httpx.Request) -> httpx.Response:
+        manifest = deepcopy(manifest_fixture())
+        if changed and (stage == "before_agreement" or transport.creates("/agreements")):
+            metric = manifest["usage_metrics"][0]
+            if fault == "disabled":
+                metric["enabled"] = False
+            elif fault == "missing":
+                manifest["usage_metrics"].pop(0)
+            elif fault == "unit":
+                metric["unit"] = "different_unit"
+            elif fault == "owner":
+                metric["product_id"] = "brief_decoder"
+            elif fault == "unrelated":
+                manifest["usage_metrics"][1]["enabled"] = False
+        return httpx.Response(200, json=resign(manifest))
+
+    async with source_resources(
+        config, kernel_transport=httpx.MockTransport(kernel), lbx_transport=httpx.MockTransport(transport.respond)
+    ) as sources:
+        link, offer, documents, terms = await review_purchase(
+            sources, config, factory=factory, token=TOKEN, product_id="proposal_ai"
+        )
+        purchase = await confirm_purchase(
+            sources,
+            config,
+            factory=factory,
+            token=TOKEN,
+            key="accepted-capability-before-create",
+            meaning=reviewed_meaning("proposal_ai", link.mapping_revision_id, offer.fingerprint, documents, terms),
+        )
+        changed = True
+        if fault == "quantity":
+            terms_file.write_text(terms_file.read_text().replace('"quantity": 100', '"quantity": 50'))
+        rejected = fault in {"disabled", "missing", "unit", "owner"}
+        if rejected:
+            with pytest.raises(PurchaseRefused, match="purchase_technical_terms_unavailable"):
+                await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+            assert transport.creates("/agreements") == int(stage == "before_subscription")
+            assert transport.creates("/subscriptions") == 0
+            saved = service.read_purchase(factory, purchase.user_id, purchase.id)
+            assert saved.held and saved.accepted == purchase.accepted
+            changed = False  # Restore the accepted capability and resume this purchase.
+        result = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+        assert result.state == "linked" and result.accepted.technical_terms.offer.quantity == 100
+        assert transport.creates("/agreements") == transport.creates("/subscriptions") == 1
+        # Once linked, current metric changes cannot revoke or reprice history.
+        changed = True
+        assert (
+            await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+        ).accepted == purchase.accepted
+        assert transport.creates("/agreements") == transport.creates("/subscriptions") == 1
 
 
 @pytest.mark.parametrize("product,quantity", [("proposal_ai", 100), ("brief_decoder", 300)])
