@@ -281,7 +281,7 @@ async def _already_bound(
     if next(op for op in current.operations if op.id == operation.id).bound_id is None:
         raise PurchaseRefused("purchase_pending", 409)
     if operation.kind == Kind.SUBSCRIPTION:
-        await reconcile_bound_purchase(sources, configuration, factory, current, budget)
+        await reconcile_bound_purchase(sources, configuration, factory, current, budget, delegate=delegate)
     return True
 
 

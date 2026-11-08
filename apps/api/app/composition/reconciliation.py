@@ -141,10 +141,11 @@ async def reconcile_bound_purchase(
     purchase: Purchase,
     budget: PreflightBudget,
     *,
+    delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
     check_agreement_inventory: bool = False,
 ) -> ReconciliationResult:
     try:
-        subscription_id = await run_in_threadpool(service.linked_subscription_id, factory, purchase)
+        subscription_id = await delegate(service.linked_subscription_id, factory, purchase)
         return await reconcile_subscription(
             sources.require_lbx(),
             sources.billing,
@@ -152,6 +153,7 @@ async def reconcile_bound_purchase(
             factory=factory,
             subscription_id=subscription_id,
             budget=budget,
+            delegate=delegate,
             check_agreement_inventory=check_agreement_inventory,
         )
     except BillingRefused as error:
