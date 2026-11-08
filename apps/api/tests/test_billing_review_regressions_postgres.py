@@ -27,6 +27,7 @@ from app.domains.billing import background_recovery as recovery, customers, work
 from app.domains.billing.work_contracts import WorkLane
 from app.domains.purchases import financial, service
 from app.infrastructure.preflight import PreflightBudget
+from app.infrastructure.queries import billing_reconciliation
 from app.integrations.lbx.financial import NewAgreement, Subscription
 from app.jobs.billing import BillingWorker
 from app.models import (
@@ -60,10 +61,14 @@ async def test_overdue_customer_deadline_records_one_review_without_source_io(
 ) -> None:
     factory, config = postgres_session_factory, step1_settings()
     transport = setup_purchase(factory)
-    instant = datetime.now(UTC) - timedelta(hours=3)
-    monkeypatch.setattr(customers, "utc_now", lambda: instant)
+    with factory() as db:
+        instant = billing_reconciliation.database_now(db) - timedelta(hours=3)
     customer = customers.reserve_customer(factory, config, TOKEN)
-    customer = customers.claim_customer_send(factory, config, TOKEN, customer)
+    # Claims and deadlines use PostgreSQL time. Backdate only the claim, then
+    # restore the clock so the worker sees the original deadline as overdue.
+    with monkeypatch.context() as clock:
+        clock.setattr(billing_reconciliation, "database_now", lambda db: instant)
+        customer = customers.claim_customer_send(factory, config, TOKEN, customer)
     if completed:
         customers.apply_customer_read(factory, customer, provider_id="345", outer_key=customer.outer_key)
     async with source_resources(config, lbx_transport=httpx.MockTransport(transport.respond)) as sources:
