@@ -8,7 +8,6 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.composition import purchase_inventory, reconciliation as composition
 from app.composition.reconciliation import reconcile_subscription
 from app.domains.billing import background_recovery, work
 from app.domains.billing.work_contracts import WorkLane
@@ -45,8 +44,7 @@ async def issue_timestamp(
     clock = {"now": effective_end - timedelta(minutes=minutes)}
     transport.subscriptions[0].update(timestamp_cycle(year))
     monkeypatch.setattr(billing_reconciliation, "database_now", lambda db: clock["now"])
-    for module in (composition, purchase_inventory, integration):
-        monkeypatch.setattr(module, "utc_now", lambda: clock["now"])
+    monkeypatch.setattr(integration, "utc_now", lambda: clock["now"])
     claim = work.claim_work(factory, config, WorkLane.URGENT)
     assert claim is not None
     await reconcile_subscription(

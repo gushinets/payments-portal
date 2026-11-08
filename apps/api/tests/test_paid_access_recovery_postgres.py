@@ -228,6 +228,12 @@ async def test_paid_access_customer_vs_product_review_blast_radius_and_rollback(
     from apps.api.tests.test_paid_access_reconciliation_postgres import Scenario
 
     await run_inventory(Scenario(factory, config, transport, sources, sub_id))
+    if failure == "expiry":
+        # Give the independent product a later authoritative trust deadline.
+        with factory() as db:
+            refreshed_at = billing_reconciliation.database_now(db) + timedelta(minutes=5)
+        monkeypatch.setattr(billing_reconciliation, "database_now", lambda db: refreshed_at)
+        await reconcile_purchase(sources, config, factory=factory, user_id=user_id, purchase_id=second.id)
     before = effective(factory)
     assert len(before[1]["grants"]) == 2
     if failure == "customer":
@@ -241,6 +247,14 @@ async def test_paid_access_customer_vs_product_review_blast_radius_and_rollback(
                 select(BillingProductAccessScope.effective_access_until).where(
                     BillingProductAccessScope.product_id == "proposal_ai"
                 )
+            )
+            assert (
+                db.scalar(
+                    select(BillingProductAccessScope.effective_access_until).where(
+                        BillingProductAccessScope.product_id == "brief_decoder"
+                    )
+                )
+                > boundary
             )
         monkeypatch.setattr(billing_reconciliation, "database_now", lambda db: as_utc(boundary))
         worker = BillingWorker(config, factory, None)
@@ -511,7 +525,6 @@ async def test_paid_access_allowance_deadline_omits_only_metering_and_schedules_
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from datetime import UTC, datetime
-    from app.composition import purchase_inventory, reconciliation as composition
     from app.integrations.lbx import reconciliation as integration
     from unittest.mock import AsyncMock
 
@@ -526,8 +539,7 @@ async def test_paid_access_allowance_deadline_omits_only_metering_and_schedules_
     )
     instant = datetime(year, 11, 30, 8, tzinfo=UTC)
     monkeypatch.setattr(billing_reconciliation, "database_now", lambda db: instant)
-    for module in (composition, purchase_inventory, integration):
-        monkeypatch.setattr(module, "utc_now", lambda: instant)
+    monkeypatch.setattr(integration, "utc_now", lambda: instant)
     await reconcile(paid_scenario, factory)
     before = effective(factory)[1]
     deadline = as_utc(expiry(factory).next_attempt_at)

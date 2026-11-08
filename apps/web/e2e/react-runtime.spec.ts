@@ -2,8 +2,10 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 import ruMessages from "../src/messages/ru.json";
 import { simulatedProduct } from "../tests/fixtures/catalog";
+import { emptyPaidState } from "../tests/fixtures/paid-access";
 
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/paid-access", (route) => route.fulfill({ json: emptyPaidState() }));
   await page.route("**/api/catalog/products", (route) => route.fulfill({ json: { products: [simulatedProduct] } }));
   await page.route("**/api/purchase-intents", (route) => route.fulfill({ json: { purchases: [], next_cursor: null } }));
   await page.route("**/api/purchase-intents/current?*", (route) => route.fulfill({ json: { purchase: null } }));

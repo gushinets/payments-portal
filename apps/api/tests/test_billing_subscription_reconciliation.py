@@ -308,7 +308,7 @@ def test_billing_subscription_reconciliation_invalid_decoder_and_runbook_contrac
         "COMPLETE_MISMATCH",
         "INCOMPLETE",
         "six hours",
-        "primary_subscription_id=NULL",
+        "complete shared inventory",
         "read_started_at",
     ):
         assert phrase in runbook

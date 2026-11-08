@@ -148,7 +148,7 @@ async def test_any709_step3_complete_preparation_and_historical_manage(
     with factory() as db:
         sub = db.scalar(select(ExternalSubscription))
         assert sub.financial_access_status.value == "blocked"
-        assert sub.projection_valid_until - sub.last_authoritative_read_at == timedelta(hours=6)
+        assert sub.projection_valid_until == sub.last_authoritative_read_at
         assert db.scalar(select(BillingProductAccessScope)).primary_subscription_id is None
         for model in (PaidAccessState, PurchasedAllowance):
             assert db.scalar(select(func.count()).select_from(model)) == 0
@@ -252,7 +252,7 @@ async def test_any709_step3_linked_widget_retries_after_failed_point_proof(
             assert db.scalar(select(func.count()).select_from(model)) == 0
         sub = db.scalar(select(ExternalSubscription))
         assert sub.financial_access_status.value == "blocked"
-        assert sub.projection_valid_until - sub.last_authoritative_read_at == timedelta(hours=6)
+        assert sub.projection_valid_until == sub.last_authoritative_read_at
 
 
 @pytest.mark.parametrize("lost_agreement_response", [False, True])
