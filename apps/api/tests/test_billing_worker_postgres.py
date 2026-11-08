@@ -375,7 +375,7 @@ async def test_retained_negative_observation_backfills_expiry_and_cannot_revive_
                 BillingStateObservation.evidence_schema_version == "subscription-trust-expiry:v1"
             )
         )
-        assert expiry.basis_observation_id == before.latest_observation_id
+        assert expiry.basis_observation_id == trusted.latest_observation_id
     # Fresh ACTIVE source proof must not erase the retained terminal fact.
     await reconcile_subscription(
         sources.require_lbx(),

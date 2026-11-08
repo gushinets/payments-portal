@@ -240,12 +240,21 @@ def schedule_reconciliation(
             reference=str(sub.subscription_id),
             due=as_utc(sub.projection_valid_until),
             priority=1,
-            payload={
-                "supporting_observation_id": str(sub.latest_observation_id),
-                "deadline": as_utc(sub.projection_valid_until).isoformat(),
-            },
+            payload=_trust_expiry_payload(db, sub),
             replace_deadline=True,
         )
+
+
+def _trust_expiry_payload(db: Session, sub: ExternalSubscription) -> dict[str, str]:
+    # Latest evidence may be a conflict which deliberately did not renew trust.
+    # History also repairs missing/pre-fix expiry rows without adopting that ID.
+    basis = queries.trust_observation(db, sub.subscription_id)
+    if basis is None:
+        raise BillingRefused("subscription_provenance_unproven", 409)
+    return {
+        "supporting_observation_id": str(basis.observation_id),
+        "deadline": as_utc(sub.projection_valid_until).isoformat(),
+    }
 
 
 def retry_work(
@@ -302,6 +311,11 @@ def expire_trust(factory: SessionFactory, claim: WorkClaim) -> None:
             finish(db, row, claim, due=as_utc(sub.projection_valid_until))
         else:
             if scope is not None and sub.latest_observation_id is not None:
+                # Validate the stored support against this exact trust interval.
+                # Repair earlier poisoned payloads in the same fenced transaction.
+                payload = _trust_expiry_payload(db, sub)
+                if row.payload_document != payload:
+                    row.payload_document = payload
                 db.add(
                     BillingStateObservation(
                         observation_kind=BillingStateObservationKind.DETERMINISTIC_ACCESS_BOUNDARY,
@@ -310,14 +324,11 @@ def expire_trust(factory: SessionFactory, claim: WorkClaim) -> None:
                         product_id=sub.product_id,
                         access_scope_id=scope.access_scope_id,
                         subscription_id=sub.subscription_id,
-                        basis_observation_id=sub.latest_observation_id,
+                        basis_observation_id=UUID(row.payload_document["supporting_observation_id"]),
                         observed_at=now,
                         effective_at=sub.projection_valid_until,
                         evidence_schema_version="subscription-trust-expiry:v1",
-                        evidence_document={
-                            "supporting_observation_id": str(sub.latest_observation_id),
-                            "deadline": as_utc(sub.projection_valid_until).isoformat(),
-                        },
+                        evidence_document=dict(row.payload_document),
                         completeness_classification="local_deadline",
                         result_classification="source_trust_expired",
                         resulting_access_revision=None,

@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Text, exists, func, or_, select
+from sqlalchemy import BigInteger, Text, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -18,6 +18,24 @@ from app.models import (
 
 def observation(db: Session, observation_id: UUID) -> BillingStateObservation | None:
     return db.get(BillingStateObservation, observation_id)
+
+
+def trust_observation(db: Session, subscription_id: UUID) -> BillingStateObservation | None:
+    """Shared apply atomically renews trust with each complete matching read.
+
+    The claimed fence orders renewals independently of later negative evidence.
+    """
+    return db.scalar(
+        select(BillingStateObservation)
+        .where(
+            BillingStateObservation.subscription_id == subscription_id,
+            BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v1",
+            BillingStateObservation.completeness_classification == "complete",
+            BillingStateObservation.result_classification == "COMPLETE_MATCH",
+        )
+        .order_by(BillingStateObservation.evidence_document["provenance"]["fence"].as_string().cast(BigInteger).desc())
+        .limit(1)
+    )
 
 
 def item(db: Session, identity: UUID) -> BillingWorkItem | None:
