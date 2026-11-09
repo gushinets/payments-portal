@@ -19,6 +19,7 @@ from app.infrastructure.preflight import (
     PreflightBudget,
 )
 from app.integrations.lbx.client import LbxServerClient
+from app.infrastructure.sentry import report_billing_recovery_exhausted
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State
 
 
@@ -32,7 +33,15 @@ async def recover_operation(
     budget: PreflightBudget,
     delegate: Callable[..., Awaitable[Any]],
 ) -> None:
-    kind, user_id, purchase_id, current, state = await delegate(recovery.subject, factory, configuration, claim)
+    try:
+        subject = await delegate(recovery.subject, factory, configuration, claim)
+    except BillingRefused as error:
+        if error.code == "billing_work_stale" and await delegate(recovery.recovery_paused, factory, claim):
+            return  # Deadline can revoke a claim before its first source read.
+        raise
+    if subject is None:
+        return  # Fixed deadline reached; provider-free escalation owns notification.
+    kind, user_id, purchase_id, current, state = subject
     if state in {State.PENDING, State.PROVEN_NOT_SENT, State.BOUND}:
         await delegate(recovery.finish_recovery, factory, claim)
         return
@@ -58,9 +67,20 @@ async def recover_operation(
             work.retry_work, factory, claim, error=error.code if error.code == "billing_busy" else "recovery_incomplete"
         )
         if not saved:
+            if await delegate(recovery.recovery_paused, factory, claim):
+                return  # Deadline deliberately revoked this owner's late result.
             raise BillingRefused("billing_work_stale", 409) from error
         return
     await delegate(recovery.finish_recovery, factory, claim)
+
+
+async def apply_deadline(
+    factory: SessionFactory, claim: WorkClaim, *, delegate: Callable[..., Awaitable[Any]]
+) -> None:
+    notice = await delegate(recovery.apply_deadline, factory, claim)
+    if notice is not None:
+        notified = await delegate(report_billing_recovery_exhausted, notice)
+        await delegate(recovery.finish_deadline_notification, factory, claim, notified=notified)
 
 
 async def inventory_customer(

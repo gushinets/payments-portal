@@ -235,7 +235,14 @@ async def test_billing_background_recovery_independent_deadline_and_no_send(
     assert original(factory, op.id) == before and saved.held
     assert len(transport.requests) == count
     if not unsent:
-        await worker.tick(WorkLane.URGENT)  # Late original object may still bind.
+        assert not await worker.tick(WorkLane.URGENT)  # Automatic discovery is paused.
+        assert job(factory, recovery.RECOVERY, op.id).work_state == "paused"
+        from app.composition.purchases import recover_financial
+
+        await recover_financial(
+            sources, step1_settings(), factory=factory, user_id=purchase.user_id,
+            purchase_id=purchase.id, operation_id=op.id,
+        )
         assert (
             next(
                 item

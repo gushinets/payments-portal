@@ -56,7 +56,7 @@ bodies are preserved. Ownership above and every other clause remain in force.
 [ANY-709](https://linear.app/paveldik/issue/ANY-709), section **"ANY-709 result and
 contract deviations — 2026-10-31"**, owns results and verification. Ordinary issue
 text, reports, passing tests and checkboxes do not create further exceptions.
-The additional owner decision below has only the stated point-read scope.
+The additional owner decisions below have only their explicitly stated scopes.
 
 ### Accepted point-resource identity decision - 2026-11-01
 
@@ -92,6 +92,78 @@ different canonical ID. This decision does not remove relationship checks or
 permit financial replay, paid access or production launch. Concrete evidence
 that a supported point endpoint selects another resource requires a targeted
 reassessment of this assumption.
+
+### Accepted payment-Widget admission decision - 2026-11-09
+
+The owner separates an explicit payment-Widget opening from independent
+background verification failures. Each opening still requires its own fresh
+customer/owner, agreement/seller, accepted effective-term and dedicated-agreement
+inventory proof. A later independent `INCOMPLETE` read, timeout or reconciliation
+fence change does not invalidate that successful opening proof by itself.
+Background polling continues to record observations and maintain finite source
+trust through the shared reconciliation writer.
+
+This resolves the policy question in [PR #161](https://github.com/gushinets/payments-portal/pull/161#discussion_r4506868176).
+The injected concurrent-read failure demonstrated current behavior; it was not
+an observed LBX outage or an established cause of intermittent Widget failures.
+Requiring every unrelated failed poll to cancel an already verified opening
+would introduce an additional availability dependency without proving a change
+to the purchase.
+
+Precise precedence: in the September design's "LBX Widget as RU billing cabinet"
+section, `latest required material verification == COMPLETE_MATCH` and the
+`INCOMPLETE` mint prohibition apply to the opening's own required verification.
+They do not require a globally unchanged reconciliation fence or a successful
+result from every later independent poll. The accepted specification body stays
+unchanged. An opening's own incomplete proof still refuses credentials; retained
+last-known-good trust cannot substitute for that proof.
+
+The final local check still enforces the current session, original customer and
+purchase bindings, consent, unresolved reviews, proven identity/commercial
+conflicts and terminal lifecycle changes. A worker can persist those proven
+facts through the same writer, and they remain binding on the opening.
+Existing lease/claim coordination is retained. This decision does not change
+UNKNOWN recovery, paid-access derivation, source-trust renewal or expiry,
+Kernel contracts or production enablement.
+
+### Accepted UNKNOWN recovery and lifecycle-metadata decisions - 2026-11-09
+
+The owner keeps the fixed two-hour recovery window and makes its expiry a
+durable pause of automatic original-operation discovery, with an actionable
+Sentry notification. The pause survives repair/restart and revokes an in-flight
+automatic queue claim. The original operation, evidence and held scope remain;
+an empty/failed GET or elapsed time never permits another financial CREATE.
+For an escalated paused customer, an explicit opening is also GET-only; C3
+cannot rearm that paused operation from an empty listing. Its pre-pause policy
+and provider uniqueness assumption are otherwise retained.
+Completed bindings and typed PROVEN_NOT_SENT results are not escalated.
+C4 still gives a genuinely new explicit proven-unsent attempt its own fixed
+active window without rewriting original timestamps or request history.
+
+Explicit user or operator recovery remains GET-only and may bind the uniquely
+proven original after that window. Ambiguity, foreign identity, changed effective
+terms and unrelated reviews require the existing proof-based operator path.
+Expiry does not impose an operator-only first-binding rule on an otherwise
+proven original. Precise precedence: these rules narrow the September common
+UNKNOWN section's continued automatic discovery after escalation and clarify
+ANY-715's late-object acceptance condition. No arbitrary rebind, unknown-hold
+release, repeat financial POST or paid-access grant is authorized.
+
+The owner also treats LBX `block_to_close_days` as informational lifecycle
+metadata. LBX owns how long a financially blocked subscription remains before
+closure; Portal consumes the concrete subscription's authoritative blocking and
+terminal facts. Missing or changed block-to-close metadata alone does not refuse
+a current offer, invalidate accepted purchase conditions, or make reconciliation
+or payment-Widget proof incomplete. Owner/seller, money/currency, composition,
+period, prepaid/blocking eligibility and the actual effective terms remain
+required. Portal promises no independently fixed block-to-close period.
+
+Precise precedence: this excludes that one field from the baseline's mandatory
+material-policy reconstruction and live-admission equality rules. New current
+offer fingerprints use `current-terms:v3`. Old accepted snapshots and their
+stored digests remain unchanged and readable; live continuation recomputes both
+old and current offers under the new comparison. Historical approval/mapping
+formats are not rewritten. The accepted specification bodies stay intact.
 
 ## Implementation status
 

@@ -21,3 +21,12 @@ class WorkClaim:
     generation: int
     started_at: datetime
     expires_at: datetime
+
+
+@dataclass(frozen=True)
+class RecoveryEscalation:
+    """Allowlisted local references for one durable uncertain-create case."""
+
+    operation_id: UUID
+    operation_kind: str
+    case_id: UUID

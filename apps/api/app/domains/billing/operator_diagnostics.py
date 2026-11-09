@@ -10,6 +10,40 @@ from app.domains.purchases import service
 from app.domains.purchases.contracts import PurchaseRefused
 from app.infrastructure.queries import billing_operator as queries, billing_reconciliation, purchases
 from app.infrastructure.queries.billing_customers import diagnostic_user
+from app.infrastructure.queries.billing_background import operation_subject
+from app.domains.billing.customer_scope import connection_account
+
+
+def inspect_operation(factory: SessionFactory, configuration: Settings, operation_id: UUID) -> dict:
+    """Resolve a Sentry correlation locally without sending user data to Sentry."""
+    with factory() as db:
+        found = operation_subject(db, operation_id)
+        if found is None:
+            raise PurchaseRefused("purchase_not_found", 404)
+        op, customer = found
+        if (
+            customer.external_billing_account_id != connection_account(db, configuration)
+            or customer.provider_origin != configuration.lbx_provider_origin
+            or diagnostic_user(db, user_id=customer.user_id, tenant_id=configuration.instance_tenant_id,
+                               region=configuration.instance_region) is None
+        ):
+            raise PurchaseRefused("purchase_not_found", 404)
+        result = {
+            "create_operation_id": str(op.create_operation_id),
+            "kind": op.operation_kind.value,
+            "state": op.operation_state.value,
+            "user_id": str(customer.user_id),
+            "purchase_intent_id": str(op.purchase_intent_id) if op.purchase_intent_id else None,
+        }
+        user_id, purchase_id = customer.user_id, op.purchase_intent_id
+    if purchase_id is None:
+        result["inspect_command"] = f".venv/bin/python scripts/repo.py billing-customer diagnose --user-id {user_id}"
+        result["recover_action"] = "Ask the user to explicitly reopen their billing account after source recovery."
+    else:
+        command = f".venv/bin/python scripts/repo.py billing-purchase {{action}} --user-id {user_id} --purchase-id {purchase_id}"
+        result["inspect_command"] = command.format(action="inspect")
+        result["recover_command"] = command.format(action="recover")
+    return result
 
 
 def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: UUID, purchase_id: UUID) -> dict:

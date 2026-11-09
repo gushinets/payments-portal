@@ -10,6 +10,7 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+from pydantic import SecretStr
 
 from apps.api.tests.factories.original_operation import financial_claim_clock
 import httpx
@@ -24,10 +25,13 @@ from app.composition.reconciliation import reconcile_subscription
 from app.composition.sources import source_resources
 from app.core.errors import AppError
 from app.domains.billing import background_recovery as recovery, customers, work
+from app.domains.billing.reconciliation_contracts import CommercialProof
 from app.domains.billing.work_contracts import WorkLane
 from app.domains.purchases import financial, service
 from app.infrastructure.preflight import PreflightBudget
 from app.infrastructure.queries import billing_reconciliation
+from app.integrations.lbx.customer import LbxUser
+from app.integrations.lbx.errors import LbxUnavailable
 from app.integrations.lbx.financial import NewAgreement, Subscription
 from app.jobs.billing import BillingWorker
 from app.models import (
@@ -35,6 +39,7 @@ from app.models import (
     ExternalCreateOperationKind as Kind,
     ExternalSubscription,
     ExternalSubscriptionLifecycleStatus as Lifecycle,
+    BillingStateObservation,
     ManualReviewCase,
 )
 from apps.api.tests.factories.original_operation import original_proof
@@ -199,7 +204,17 @@ async def test_inventory_preserves_proven_conflict_when_next_product_is_incomple
 
 
 @pytest.mark.parametrize(
-    "change", ["healthy_read", "blocked_read", "ended", "customer_conflict", "commercial_conflict", "diagnostic_only"]
+    "change",
+    [
+        "healthy_read",
+        "blocked_read",
+        "ended",
+        "customer_conflict",
+        "commercial_conflict",
+        "commercial_incomplete",
+        "calendar_incomplete",
+        "diagnostic_only",
+    ],
 )
 async def test_payment_widget_last_admission_checks_customer_and_purchase_together(
     background_scenario: tuple,
@@ -227,6 +242,10 @@ async def test_payment_widget_last_admission_checks_customer_and_purchase_togeth
                 transport.subscriptions[0]["state"] = 3
             elif change == "blocked_read":
                 transport.subscriptions[0]["current_blocking"] = 3
+            elif change == "commercial_incomplete":
+                transport.subscriptions[0]["total_price"] = None
+            elif change == "calendar_incomplete":
+                transport.subscriptions[0]["last_tariffication_period_end"] = None
             if change == "diagnostic_only":
                 financial.financial_pending(
                     factory,
@@ -252,6 +271,97 @@ async def test_payment_widget_last_admission_checks_customer_and_purchase_togeth
         with factory() as db:
             assert db.get(ExternalSubscription, identity).lifecycle_status == Lifecycle.ENDED
         assert (await billing.bootstrap_account(sources, config, factory=factory, token=TOKEN)).credential
+
+
+@pytest.mark.parametrize("unavailable", [False, True])
+async def test_payment_widget_own_proof_survives_independent_worker_read(
+    background_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    unavailable: bool,
+) -> None:
+    transport, sources, purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    purchase = synthetic_prepare(factory, transport, purchase, uncertain=False)
+    client = sources.require_lbx()
+    client_user = client.client_user
+    worker = BillingWorker(config, factory, client)
+    injected = False
+
+    async def tariff_unavailable(**kwargs: object) -> None:
+        raise LbxUnavailable()
+
+    async def client_ready(*, token: SecretStr, budget: PreflightBudget) -> LbxUser:
+        nonlocal injected
+        with factory() as db:
+            current = db.scalar(select(ExternalSubscription))
+            identity, fence = current.subscription_id, current.reconciliation_fencing_token
+            trusted = current.last_authoritative_read_at, current.projection_valid_until
+        # The original enrollment remains due: a request's source apply must
+        # not consume the independent worker's queued job or urgent hint.
+        with monkeypatch.context() as background:
+            if unavailable:
+                background.setattr(client, "get_tariff", tariff_unavailable)
+            assert await worker.tick(WorkLane.URGENT)
+        injected = True
+        with factory() as db:
+            current = db.get(ExternalSubscription, identity)
+            assert current.reconciliation_fencing_token == fence + 1
+            observation = db.scalar(
+                select(BillingStateObservation).where(
+                    BillingStateObservation.subscription_id == identity,
+                    BillingStateObservation.evidence_document["provenance"]["fence"].as_integer() == fence + 1,
+                )
+            )
+            assert observation is not None
+            assert observation.evidence_document["commercial"] == (
+                CommercialProof.INCOMPLETE if unavailable else CommercialProof.MATCH
+            )
+            if unavailable:
+                assert (current.last_authoritative_read_at, current.projection_valid_until) == trusted
+                assert job(factory, work.RECONCILIATION, identity).last_error_classification == "source_incomplete"
+        return await client_user(token=token, budget=budget)
+
+    monkeypatch.setattr(client, "client_user", client_ready)
+    try:
+        result = await billing.bootstrap_account(
+            sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id
+        )
+    finally:
+        await worker.aclose()
+    assert injected and result.purchase_id == purchase.id and result.credential
+
+
+async def test_payment_widget_own_incomplete_proof_refuses_and_then_recovers(
+    background_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport, sources, purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    purchase = synthetic_prepare(factory, transport, purchase, uncertain=False)
+    await billing.bootstrap_account(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+    with factory() as db:
+        current = db.scalar(select(ExternalSubscription))
+        identity = current.subscription_id
+        trusted = current.last_authoritative_read_at, current.projection_valid_until
+
+    async def tariff_unavailable(**kwargs: object) -> None:
+        raise LbxUnavailable()
+
+    with monkeypatch.context() as source_failure:
+        source_failure.setattr(sources.require_lbx(), "get_tariff", tariff_unavailable)
+        with pytest.raises(AppError) as refused:
+            await billing.bootstrap_account(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+    assert refused.value.code == "purchase_not_prepared"
+    with factory() as db:
+        current = db.get(ExternalSubscription, identity)
+        assert (current.last_authoritative_read_at, current.projection_valid_until) == trusted
+        assert current.commercial_access_status == "eligible"
+    recovered = await billing.bootstrap_account(
+        sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id
+    )
+    assert recovered.purchase_id == purchase.id and recovered.credential
 
 
 @pytest.mark.parametrize("expire", [False, True])

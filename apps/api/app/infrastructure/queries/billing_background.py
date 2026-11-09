@@ -31,7 +31,7 @@ def missing_operations(db: Session, configuration: Settings, *, account: str) ->
     recovery = exists().where(
         BillingWorkItem.work_kind == "external_create_recovery",
         BillingWorkItem.coalescing_key == func.cast(op.create_operation_id, Text),
-        BillingWorkItem.work_state.in_(("pending", "running", "invalid")),
+        BillingWorkItem.work_state.in_(("pending", "running", "invalid", "paused")),
         # Legacy recovery was due only at escalation. Repair its schedule once.
         BillingWorkItem.priority > 0,
     )

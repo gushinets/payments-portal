@@ -16,6 +16,12 @@ from sentry_sdk.integrations.atexit import AtexitIntegration
 from app.core.errors import AppError
 from app.core.observability import REQUEST_ID_PATTERN, current_trace_ids, request_id_context
 from app.core.settings import Settings
+from app.domains.billing.work_contracts import RecoveryEscalation
+from app.infrastructure.billing_recovery_alerts import (
+    BillingRecoveryExhausted,
+    RECOVERY_EXHAUSTED_MESSAGE,
+    sanitize_billing_recovery_context as _sanitize_billing_recovery_context,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -137,6 +143,30 @@ def report_exception(
         _log_sentry_failure("sentry_reporting_failed", reporting_error)
 
 
+def report_billing_recovery_exhausted(notice: RecoveryEscalation) -> bool:
+    """Report one durable case outside SQL; False retains notification retry work."""
+    try:
+        context = _sanitize_billing_recovery_context(
+            {
+                "operation_id": str(notice.operation_id),
+                "operation_kind": notice.operation_kind,
+                "case_id": str(notice.case_id),
+            }
+        )
+        if not context:
+            return False
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("service", _service_name())
+            scope.set_tag("failure_category", FailureCategory.UNKNOWN_EXTERNAL_OUTCOME.value)
+            scope.set_tag("operation", Operation.BILLING_WORKER.value)
+            scope.set_context("payment_portal", {"error_code": "billing_recovery_exhausted"})
+            scope.set_context("billing_recovery", context)
+            return sentry_sdk.capture_exception(BillingRecoveryExhausted(RECOVERY_EXHAUSTED_MESSAGE)) is not None
+    except Exception as error:
+        _log_sentry_failure("billing_recovery_reporting_failed", error)
+        return False
+
+
 def _silent_shutdown(_pending: int, _timeout: int) -> None:
     return None
 
@@ -218,6 +248,8 @@ def _canonical_uuid(value: object) -> str | None:
     return value if str(parsed) == value else None
 
 
+
+
 def _matched_route(value: object) -> str | None:
     if not isinstance(value, str) or not value.startswith("/") or len(value) > 256:
         return None
@@ -290,6 +322,11 @@ def _before_send(
         payment_portal = _sanitize_payment_portal_context(contexts.get("payment_portal"))
         if payment_portal:
             sanitized["contexts"] = {"payment_portal": payment_portal}
+        if _is_recovery_exhausted(event.get("exception")):
+            recovery = _sanitize_billing_recovery_context(contexts.get("billing_recovery"))
+            if recovery:
+                sanitized.setdefault("contexts", {})["billing_recovery"] = recovery
+                sanitized["fingerprint"] = ["billing_recovery_exhausted"]
 
     sdk = _sanitize_sdk(event.get("sdk"))
     if sdk:
@@ -330,6 +367,8 @@ def _sanitize_exception_value(value: object) -> dict[str, object]:
     module = _matching_string(value.get("module"), _PYTHON_MODULE_PATTERN)
     if module is not None:
         sanitized["module"] = module
+    if exception_type == "BillingRecoveryExhausted" and module == BillingRecoveryExhausted.__module__:
+        sanitized["value"] = RECOVERY_EXHAUSTED_MESSAGE
     stacktrace = _sanitize_stacktrace(value.get("stacktrace"))
     if stacktrace is not None:
         sanitized["stacktrace"] = stacktrace
@@ -337,6 +376,17 @@ def _sanitize_exception_value(value: object) -> dict[str, object]:
     if mechanism:
         sanitized["mechanism"] = mechanism
     return sanitized
+
+
+def _is_recovery_exhausted(value: object) -> bool:
+    if not isinstance(value, Mapping) or not isinstance(value.get("values"), list):
+        return False
+    return any(
+        isinstance(item, Mapping)
+        and item.get("type") == "BillingRecoveryExhausted"
+        and item.get("module") == BillingRecoveryExhausted.__module__
+        for item in value["values"]
+    )
 
 
 def _sanitize_stacktrace(value: object) -> dict[str, object] | None:

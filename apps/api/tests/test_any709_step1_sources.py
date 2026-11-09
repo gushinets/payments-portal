@@ -21,6 +21,7 @@ from app.domains.catalog.commercial_offer import OfferRefusalKind, SelectedOffer
 from app.domains.catalog.preview import CatalogProductNotFound
 from app.domains.catalog.mapping_evidence import MappingRefused
 from app.domains.catalog.product_link import ProductLinkRequest
+from app.domains.catalog.product_link import current_offer_fingerprint
 from app.domains.catalog.router import CatalogMoney
 from app.integrations.lbx.current_offer import read_current_offer
 from app.infrastructure.preflight import PreflightCleanupPending
@@ -85,6 +86,22 @@ async def test_any709_step1_price_change_is_live_without_changing_link_identity(
     assert offer.money.recurring_amount == Decimal("200.02")
     assert offer.period_id == 901 and offer.period_membership_id != offer.period_id
     assert offer.money.connection_amount == Decimal("7.03")
+
+
+@pytest.mark.parametrize("days", [30, 20, None])
+async def test_current_offer_block_to_close_is_optional_metadata(days: int | None) -> None:
+    source = recording()
+    before = await evaluate()
+    if days is None:
+        source.replace("tariff", '"block_to_close_days":30,', "")
+    else:
+        source.replace("tariff", '"block_to_close_days":30', f'"block_to_close_days":{days}')
+    after = await evaluate(source=source)
+    assert after.offer.block_to_close_days == days
+    assert after.offer.fingerprint == before.offer.fingerprint
+    assert after.document.identity_digest == before.document.identity_digest
+    assert current_offer_fingerprint(step1_settings().lbx_external_billing_account_id,
+                                     before.document.selection, before.offer) == after.offer.fingerprint
 
 
 async def test_any709_step1_current_price_keeps_digits_beyond_binary_float_precision() -> None:

@@ -64,6 +64,14 @@ Sentry receives only explicitly allowlisted backend application-failure data:
 - explicitly allowlisted static or bounded diagnostic fields such as an
   invariant identifier or batch size.
 
+The `BillingRecoveryExhausted` notice additionally allows fixed repository-owned
+operator guidance/runbook URL and canonical local operation/review-case UUIDs in
+its dedicated context. Its inspection command resolves those references locally;
+user IDs, purchase-owner data and provider identifiers are not sent. The fixed
+failure-class fingerprint contains no entity/correlation ID. Raw exception text
+and arbitrary URLs/commands remain stripped; the adapter reconstructs only the
+approved fixed guidance and UUID-based local lookup command.
+
 Sentry events must not contain raw exception messages, locals, source-code
 context, request or response bodies, raw URL or path values, query values,
 headers, cookies, user or email data, IP data, provider payloads or external
@@ -129,6 +137,10 @@ Under customer decision C3 linked by
 bounded discover/create/recover cycle. Temporary failures wait with backoff within
 the existing request deadline. A finite active-send lease protects sends; each
 later claim requires fresh successful empty discovery in the same slot/operation.
+After automatic discovery is durably `paused` at its fixed two-hour deadline,
+the [2026-11-09 decision](architecture/decisions/0005-external-billing-boundary.md#accepted-unknown-recovery-and-lifecycle-metadata-decisions---2026-11-09)
+makes later explicit openings GET-only. An empty listing or expired send lease
+cannot rearm CREATE for that paused operation. The pre-pause C3 policy is unchanged.
 A saved receipt must be resolved by point proof. Email-uniqueness rejection
 permits GET recovery only for the rest of the opening; ambiguous identity, failed
 discovery, authorization and permanent validation errors never authorize CREATE.

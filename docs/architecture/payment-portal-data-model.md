@@ -224,10 +224,14 @@ existing paired lease fields protect active account-customer sends, and
 `attempt_count` counts claimed attempts. Under the owner's 2026-10-28 amendment,
 bounded same-opening recovery or a later explicit open can claim a retry after
 fresh successful empty discovery and completion/expiry of the active lease,
-retaining the same operation/key. A saved
-receipt or identity conflict prevents another POST; point proof binds only against
-the current fence. Financial operations have a unique intent/kind identity and a unique permanent
-account/kind/provider-object binding. Their account/customer composite FK prevents
+retaining the same operation/key. This policy applies only before the durable
+deadline pause. Under the [2026-11-09 decision](decisions/0005-external-billing-boundary.md#accepted-unknown-recovery-and-lifecycle-metadata-decisions---2026-11-09),
+a `paused` customer recovery row makes later explicit openings GET-only; empty
+discovery and lease expiry cannot rearm CREATE. The original operation/evidence
+remain intact. A saved receipt or identity conflict also prevents another POST;
+point proof binds only against the current fence. Financial operations have a
+unique intent/kind identity and a unique permanent account/kind/provider-object
+binding. Their account/customer composite FK prevents
 cross-connection ownership. Financial evidence guards prevent deletion, identity
 changes, deadline/request replacement and resetting a possibly sent operation to
 pending. A completed typed no-send result may persist `proven_not_sent`; a later

@@ -3289,12 +3289,9 @@ def cmd_billing_purchase(args: argparse.Namespace) -> None:
         "-m",
         "app.cli.billing_purchases",
         args.action,
-        "--user-id",
-        str(args.user_id),
-        "--purchase-id",
-        str(args.purchase_id),
     ]
     for name in (
+        "user_id", "purchase_id",
         "resolution", "case_id", "expected_case_digest",
         "expected_observation_id", "expected_reconciliation_fence",
         "operation_id", "expected_operation_fence", "reason", "reference",
@@ -3532,9 +3529,10 @@ def build_parser() -> argparse.ArgumentParser:
     purchase = sub.add_parser(
         "billing-purchase", help="Billing evidence, GET-only rechecks and audited resolutions"
     )
-    purchase.add_argument("action", choices=("inspect", "recover", "reconcile", "resolve-review"))
-    purchase.add_argument("--user-id", type=uuid.UUID, required=True)
-    purchase.add_argument("--purchase-id", type=uuid.UUID, required=True)
+    purchase.add_argument("action", choices=("inspect", "inspect-operation", "recover", "reconcile", "resolve-review"))
+    # The application CLI owns required options for each subcommand.
+    purchase.add_argument("--user-id", type=uuid.UUID)
+    purchase.add_argument("--purchase-id", type=uuid.UUID)
     purchase.add_argument("--resolution", choices=("restore-original", "bind-original"))
     for name in ("case-id", "expected-observation-id", "operation-id", "expected-operation-fence"):
         purchase.add_argument("--" + name, type=uuid.UUID)

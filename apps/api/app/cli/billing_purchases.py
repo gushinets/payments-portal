@@ -19,13 +19,15 @@ from app.composition.sources import source_resources
 from app.core.errors import AppError
 from app.core.settings import Settings
 from app.domains.billing.operator_contracts import ResolutionRequest
-from app.domains.billing.operator_diagnostics import inspect_evidence
+from app.domains.billing.operator_diagnostics import inspect_evidence, inspect_operation
 from app.infrastructure.sentry import Operation, report_exception
 
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     commands = result.add_subparsers(dest="command", required=True)
+    lookup = commands.add_parser("inspect-operation", help="Resolve a local Sentry operation reference without HTTP")
+    lookup.add_argument("--operation-id", required=True, type=UUID)
     for command in ("inspect", "recover", "reconcile", "resolve-review"):
         action = commands.add_parser(command)
         action.add_argument("--user-id", required=True, type=UUID)
@@ -50,6 +52,8 @@ def resolution_request(arguments: argparse.Namespace) -> ResolutionRequest:
 async def _run(arguments: argparse.Namespace, configuration: Settings, principal: str) -> dict:
     from app.core.database import SessionLocal
 
+    if arguments.command == "inspect-operation":
+        return await run_in_threadpool(inspect_operation, SessionLocal, configuration, arguments.operation_id)
     if arguments.command == "inspect":
         return await run_in_threadpool(
             inspect_evidence, SessionLocal, configuration, arguments.user_id, arguments.purchase_id

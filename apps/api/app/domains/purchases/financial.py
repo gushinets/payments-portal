@@ -400,9 +400,13 @@ def _bind_financial(
             raise PurchaseRefused("billing_identity_unproven", 409)
         customer_admission_reviews(db, customer, customer_create)
         if work_claim is not None:
+            from app.domains.billing.background_recovery import pause_expired_recovery
             from app.domains.billing.work import verify_operation_claim
 
             verify_operation_claim(db, work_claim, expected.id)
+            if pause_expired_recovery(db, op, customer.external_billing_account_id):
+                db.commit()
+                raise PurchaseRefused("billing_work_stale", 409)
         existing = queries.linked_subscription(db, purchase.id)
         if existing is not None:
             raise PurchaseRefused("purchase_review_required", 409)

@@ -107,10 +107,7 @@ def reserve_customer(factory: SessionFactory, configuration: Settings, token: st
 
 
 def reserve_customer_in_transaction(db: Session, configuration: Settings, user: User) -> CustomerOpen:
-    """Reuse the account slot inside purchase admission's caller-owned transaction.
-
-    Caller has locked the user. No provider calls, consent or commit here.
-    """
+    """Reserve under the caller's user lock; no HTTP, consent or commit here."""
     account = customer_account(db, configuration, user.id)
     customer = customer_slot(db, account, user.id)
     if customer is None:
@@ -170,6 +167,9 @@ def claim_customer_send(
             return _snapshot(customer, operation)
         now = as_utc(billing_reconciliation.database_now(db))
         work = recovery_work(db, operation.create_operation_id)
+        # A paused opening is GET-only; an empty listing never rearms CREATE.
+        if work is not None and work.work_state == "paused":
+            raise BillingRefused("billing_customer_review", 409)
         if work is not None and work.lease_expires_at is not None and as_utc(work.lease_expires_at) > now:
             return _snapshot(customer, operation)
         # Called only after fresh, successful discovery found no customer.
@@ -324,8 +324,7 @@ def finish_customer_attempt(factory: SessionFactory, expected: CustomerOpen) -> 
             work.lease_expires_at = None
         if operation.operation_state == State.POSSIBLE_SEND and customer.provider_customer_id is None:
             operation.operation_state = State.UNKNOWN
-            # Invalidate searches/snapshots taken while this send was active.
-            # A later attempt needs a fresh snapshot and fresh discovery.
+            # Invalidate this send's snapshots; a later attempt needs fresh discovery.
             operation.send_fence = uuid4()
         db.commit()
 
@@ -357,12 +356,6 @@ def apply_customer_read(
         lock_user(db, read_customer(db, expected.customer_id).user_id)
         customer = lock_customer(db, expected.customer_id)
         operation = customer_operation(db, customer.customer_id)
-        if work_claim is not None:
-            from app.domains.billing.work import verify_operation_claim
-
-            verify_operation_claim(db, work_claim, expected.operation_id)
-            if customer.binding_state == Binding.IDENTITY_CONFLICT:
-                raise BillingRefused("billing_identity_conflict", 409)
         if (
             operation is None
             or operation.create_operation_id != expected.operation_id
@@ -374,6 +367,16 @@ def apply_customer_read(
             or operation.request_correlation_key != expected.outer_key
         ):
             raise BillingRefused("billing_identity_conflict", 409)
+        if work_claim is not None:
+            from app.domains.billing.background_recovery import pause_expired_recovery
+            from app.domains.billing.work import verify_operation_claim
+
+            verify_operation_claim(db, work_claim, expected.operation_id)
+            if customer.binding_state == Binding.IDENTITY_CONFLICT:
+                raise BillingRefused("billing_identity_conflict", 409)
+            if pause_expired_recovery(db, operation, customer.external_billing_account_id):
+                db.commit()
+                raise BillingRefused("billing_work_stale", 409)
         reviews = customer_recovery_reviews(db, customer, operation)
         if provider_id is not None and outer_key is None:
             raise BillingRefused("billing_identity_unproven", 409)

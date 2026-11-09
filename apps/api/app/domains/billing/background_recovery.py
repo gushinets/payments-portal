@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.domains.purchases.inventory_contracts import InventoryResult
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -17,7 +17,7 @@ from app.domains.billing import customers, work
 from app.domains.billing.contracts import BillingRefused, CustomerOpen
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.customer_reviews import record_customer_review
-from app.domains.billing.work_contracts import WorkClaim
+from app.domains.billing.work_contracts import WorkClaim, RecoveryEscalation
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import financial, service
@@ -43,6 +43,45 @@ RECOVERY = "external_create_recovery"
 DEADLINE = "external_create_deadline"
 INVENTORY = "customer_inventory"
 INVENTORY_SECONDS = 6 * 60 * 60
+
+
+def _recovery_deadline(db: Session, op: ExternalCreateOperation) -> datetime | None:
+    return (
+        op.unknown_recovery_deadline_at
+        if op.operation_kind == Kind.CUSTOMER
+        else purchases.financial_recovery_deadline(op, billing_customers.recovery_work(db, op.create_operation_id))
+    )
+
+
+def _pause_recovery(db: Session, op: ExternalCreateOperation, account: str) -> None:
+    """Caller holds business locks; revoke automatic work, never its scope hold."""
+    row = billing_customers.recovery_work(db, op.create_operation_id)
+    if row is not None:
+        row.work_state = "paused"
+        row.priority = 1
+        row.lease_owner = None
+        row.lease_expires_at = None
+        row.last_error_classification = "recovery_deadline_reached"
+    deadline = work_queries.by_key(db, DEADLINE, f"{account}:{op.create_operation_id}")
+    if deadline is None:
+        enroll_operation(db, op, account)
+    elif deadline.work_state == "completed" and not deadline.payload_document.get("notification_sent"):
+        deadline.work_state = "pending"
+        deadline.next_attempt_at = billing_reconciliation.database_now(db)
+
+
+def pause_expired_recovery(db: Session, op: ExternalCreateOperation, account: str) -> bool:
+    """Caller holds business locks and verifies the automatic queue claim."""
+    deadline = _recovery_deadline(db, op)
+    if (
+        op.operation_state in {State.POSSIBLE_SEND, State.UNKNOWN, State.MANUAL_REVIEW}
+        and op.bound_external_object_id is None
+        and deadline is not None
+        and as_utc(deadline) <= as_utc(billing_reconciliation.database_now(db))
+    ):
+        _pause_recovery(db, op, account)
+        return True
+    return False
 
 
 def enroll_operation(db: Session, operation: ExternalCreateOperation, account: str, *, sent: bool = False) -> None:
@@ -165,12 +204,24 @@ def _repair_operation(factory: SessionFactory, configuration: Settings, identity
 
 def subject(
     factory: SessionFactory, configuration: Settings, claim: WorkClaim
-) -> tuple[Kind, UUID, UUID | None, CustomerOpen, State]:
+) -> tuple[Kind, UUID, UUID | None, CustomerOpen, State] | None:
     with factory() as db:
         found = queries.operation_subject(db, UUID(claim.reference))
         if found is None:
             raise BillingRefused("billing_recovery_unproven", 409)
         op, customer = found
+        customers.lock_user(db, customer.user_id)
+        customers.lock_customer(db, customer.customer_id)
+        if op.operation_kind == Kind.CUSTOMER:
+            op = billing_customers.customer_operation(db, customer.customer_id)
+        else:
+            purchase = purchases.owned(db, customer.user_id, op.purchase_intent_id, lock=True)
+            op = next(
+                item for item in purchases.operations(db, purchase.purchase_intent_id, lock=True)
+                if item.create_operation_id == op.create_operation_id
+            )
+        db.refresh(op)
+        db.refresh(customer)
         user = db.get(User, customer.user_id)
         if (
             customer.external_billing_account_id != connection_account(db, configuration)
@@ -185,6 +236,9 @@ def subject(
         if customer_op is None or customer_op.request_correlation_key != customer.billing_customer_key:
             raise BillingRefused("billing_identity_unproven", 409)
         work.verify_operation_claim(db, claim, op.create_operation_id)  # Queue lock last.
+        if pause_expired_recovery(db, op, customer.external_billing_account_id):
+            db.commit()
+            return None
         return (
             op.operation_kind,
             customer.user_id,
@@ -265,7 +319,17 @@ def finish_recovery(factory: SessionFactory, claim: WorkClaim) -> None:
         db.commit()
 
 
-def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> None:
+def recovery_paused(factory: SessionFactory, claim: WorkClaim) -> bool:
+    """Distinguish an intentional durable pause from a lost/stale acknowledgement."""
+    with factory() as db:
+        row = work_queries.item(db, claim.id)
+        return bool(
+            row is not None and claim.kind == RECOVERY and row.work_kind == RECOVERY
+            and row.scope_reference == claim.reference and row.work_state == "paused"
+        )
+
+
+def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> RecoveryEscalation | None:
     """No provider I/O, never converts completed no-send evidence into UNKNOWN."""
     with factory() as db:
         found = queries.operation_subject(db, UUID(claim.reference))
@@ -289,22 +353,49 @@ def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> None:
         db.refresh(op)
         row = work.verify_claim(db, claim)
         now = as_utc(billing_reconciliation.database_now(db))
-        deadline = (
-            op.unknown_recovery_deadline_at
-            if op.operation_kind == Kind.CUSTOMER
-            else purchases.financial_recovery_deadline(op, billing_customers.recovery_work(db, op.create_operation_id))
-        )
+        deadline = _recovery_deadline(db, op)
         deadline = as_utc(deadline) if deadline else None
         due = deadline if deadline and deadline > now else None
-        if due is None and deadline and op.operation_state in {State.POSSIBLE_SEND, State.UNKNOWN}:
+        unresolved = op.operation_state in {State.POSSIBLE_SEND, State.UNKNOWN, State.MANUAL_REVIEW} and (
+            op.bound_external_object_id is None
+        )
+        if due is None and deadline and unresolved:
             reason = "external_create_outcome_unknown:" + op.operation_kind.value
-            if purchase is None:
-                record_customer_review(db, op, reason)
-            else:
-                # A hold is required for escalation, not for finishing completed work.
-                service._locked(db, service._snapshot(db, purchase))
-                financial._review(db, purchase, op, reason)
+            cases = billing_customers.open_customer_reviews(db, op.create_operation_id)
+            if not any(case.reason_code == reason for case in cases):
+                if purchase is None:
+                    record_customer_review(db, op, reason)
+                else:
+                    service._locked(db, service._snapshot(db, purchase))
+                    financial._review(db, purchase, op, reason)
+            _pause_recovery(db, op, customer.external_billing_account_id)
+            db.flush()
+            case = next(
+                case for case in billing_customers.open_customer_reviews(db, op.create_operation_id)
+                if case.reason_code == reason
+            )
+            notice = RecoveryEscalation(
+                op.create_operation_id, op.operation_kind.value, case.review_case_id,
+            )
+            # The deadline claim remains durable notification work until the
+            # SDK accepts it. No reporting/network occurs under these locks.
+            db.commit()
+            return notice
         work.finish(db, row, claim, due=due)
+        db.commit()
+        return None
+
+
+def finish_deadline_notification(factory: SessionFactory, claim: WorkClaim, *, notified: bool) -> None:
+    with factory() as db:
+        row = work.verify_claim(db, claim)
+        work.finish(
+            db, row, claim,
+            due=None if notified else as_utc(billing_reconciliation.database_now(db)) + timedelta(minutes=5),
+            error=None if notified else "recovery_notification_pending",
+        )
+        if notified:
+            row.payload_document = {**row.payload_document, "notification_sent": True}
         db.commit()
 
 

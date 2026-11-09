@@ -13,7 +13,7 @@ from uuid import UUID
 import anyio
 
 from app.composition.reconciliation import reconcile_subscription
-from app.composition.billing_background import recover_operation, inventory_customer
+from app.composition.billing_background import recover_operation, inventory_customer, apply_deadline
 from app.domains.billing import background_recovery
 from app.core.settings import Settings
 from app.core.time import utc_now
@@ -143,7 +143,7 @@ class BillingWorker:
                     more=count == self.configuration.billing_worker_scan_batch_size,
                 )
             elif claim.kind == background_recovery.DEADLINE:
-                await self.db(lane, background_recovery.apply_deadline, self.factory, claim)
+                await apply_deadline(self.factory, claim, delegate=partial(self.db, lane))
             else:
                 await self.db(lane, work.expire_trust, self.factory, claim)
         else:

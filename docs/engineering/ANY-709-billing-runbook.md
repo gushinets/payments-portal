@@ -251,7 +251,12 @@ key.
 Customer decision C3 permits bounded discover/create/recover with backoff inside
 a nonrenewable opening budget. A later claim requires fresh successful complete
 empty discovery and completion/expiry of the previous active-send lease. Failed
-reads never prove absence. Email-uniqueness rejection makes the remainder of
+reads never prove absence. This C3 retry policy applies only before the durable
+deadline pause. Under the [2026-11-09 decision](../architecture/decisions/0005-external-billing-boundary.md#accepted-unknown-recovery-and-lifecycle-metadata-decisions---2026-11-09),
+later explicit openings of a `paused` operation are GET-only: an empty listing
+or expired send lease cannot authorize CREATE. See the
+[two-hour recovery procedure](billing-background-operations.md#unknown-create-after-two-hours).
+Email-uniqueness rejection makes the remainder of
 that opening GET-only; authorization/permanent errors stop. **Remote duplicate
 prevention depends on LBX enforcing email uniqueness across repeated/concurrent
 creates.** Local fencing and an unchanged key do not prove an earlier POST had

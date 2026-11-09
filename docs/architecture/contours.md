@@ -89,8 +89,9 @@ been removed. ANY-664 provides source reads, restricted immutable mapping
 publication and historical DB-only browsing. ANY-709 Step 1 now adds direct
 links and source-backed discovery/current offers; genuine Kernel conformance and sales
 remain gated. ANY-709 implements purchase preparation and browser Buy/Continue/
-Manage. ANY-715 implements contour-local embedded reconciliation/recovery and
-default-disabled webhook hints; paid-access producers remain later work. See the
+Manage. ANY-715 implements contour-local embedded polling-only reconciliation
+and recovery. This build has no webhook receiver or receiver enablement setting;
+paid-access producers remain later work. See the
 [as-built RU Portal 4F handoff](../product/ru-mvp.md).
 
 Planned, not implemented:

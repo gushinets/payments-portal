@@ -48,6 +48,9 @@ async def test_inner_retry_acknowledgement_controls_worker_progress(
         if function is work.retry_work:
             retries.append(kwargs["error"])
             return saved
+        if function is recovery.recovery_paused:
+            assert kind == recovery.RECOVERY and not saved
+            return False
         raise AssertionError(f"Unexpected delegation: {function.__name__}")
 
     monkeypatch.setattr(billing_background, "recover_customer", unavailable)

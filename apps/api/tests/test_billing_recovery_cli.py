@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -137,6 +138,52 @@ def test_billing_recovery_cli_inspect_opens_no_source_resources(
     monkeypatch.setattr(cli, "Settings", step1_settings)
     monkeypatch.setattr(cli, "resolve_operator_principal", lambda: "os-euid:1000")
     assert cli.main(["inspect", "--user-id", str(uuid4()), "--purchase-id", str(uuid4())]) == 0
+
+
+def test_operation_lookup_requires_os_access_and_uses_no_source_resources(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    identity = uuid4()
+
+    def forbidden(*args: object) -> None:
+        raise AssertionError("operation lookup opened source resources")
+
+    def inspect(factory: object, configuration: Settings, operation_id: object) -> dict:
+        assert operation_id == identity
+        return {"create_operation_id": str(identity)}
+
+    monkeypatch.setattr(cli, "source_resources", forbidden)
+    monkeypatch.setattr(cli, "inspect_operation", inspect)
+    monkeypatch.setattr(cli, "Settings", step1_settings)
+    monkeypatch.setattr(cli, "resolve_operator_principal", lambda: "os-euid:1000")
+    assert cli.main(["inspect-operation", "--operation-id", str(identity)]) == 0
+    assert json.loads(capsys.readouterr().out)["operator_principal"] == "os-euid:1000"
+
+    def denied() -> str:
+        raise MappingRefused("mapping_operator_identity_unavailable")
+
+    monkeypatch.setattr(cli, "resolve_operator_principal", denied)
+    assert cli.main(["inspect-operation", "--operation-id", str(identity)]) == 1
+    assert "mapping_operator_identity_unavailable" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        cli.parser().parse_args(["inspect-operation"])
+
+
+def test_operation_lookup_harness_forwards_only_its_operation_reference(monkeypatch: pytest.MonkeyPatch) -> None:
+    identity = str(uuid4())
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **kwargs: object) -> SimpleNamespace:
+        calls.append(command)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(repo, "direct_api_environment", lambda: {})
+    monkeypatch.setattr(repo.subprocess, "run", run)
+    arguments = repo.build_parser().parse_args(["billing-purchase", "inspect-operation", "--operation-id", identity])
+    with pytest.raises(SystemExit) as outcome:
+        arguments.func(arguments)
+    assert outcome.value.code == 0
+    assert calls == [[repo.sys.executable, "-m", "app.cli.billing_purchases", "inspect-operation", "--operation-id", identity]]
 
 
 def test_billing_recovery_cli_safe_error(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

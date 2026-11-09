@@ -19,6 +19,13 @@ the same absolute budget; late responses are discarded. Current catalog prices,
 sale visibility and Kernel publication do not reprice accepted history. Balances,
 payments and charges are not a separate Portal settlement authority.
 
+LBX's `block_to_close_days` is informational lifecycle metadata under the
+[2026-11-09 decision](../architecture/decisions/0005-external-billing-boundary.md#accepted-unknown-recovery-and-lifecycle-metadata-decisions---2026-11-09).
+It is optional for current-offer admission and excluded from current material
+fingerprints. Its absence or change alone does not affect Widget admission or
+source trust. Portal uses the concrete subscription's blocking/ended facts;
+LBX owns automatic closure. Existing accepted snapshots/digests remain intact.
+
 Commercial proof is `COMPLETE_MATCH`, `COMPLETE_MISMATCH` or `INCOMPLETE`.
 Missing material effective terms, applicable policy or currency interpretation
 remain `INCOMPLETE` even alongside a known difference. Only full material
@@ -43,6 +50,15 @@ payment presentation. Incomplete discovery cannot mint a payment Widget or renew
 source trust; confirmed conflicts use the canonical fenced apply immediately,
 without waiting for the background inventory cadence. Account-only viewing does
 not require this purchase-specific check.
+
+Payment-Widget admission uses the explicit opening's own fresh proof, under the
+[2026-11-09 owner decision](../architecture/decisions/0005-external-billing-boundary.md#accepted-payment-widget-admission-decision---2026-11-09).
+A later independent incomplete poll or reconciliation fence change does not
+cancel that proof by itself. The post-Client-API local check still refuses a
+changed session/binding/consent, unresolved review, proven identity/commercial
+conflict or ended subscription. An incomplete opening proof still refuses the
+Widget, and retained source trust cannot replace the opening's required reads.
+Background polling and its source-trust deadlines continue independently.
 
 Only complete matching proof without a known review refreshes source trust.
 Trust begins at `read_started_at` and lasts at most six hours, with no outage
@@ -116,6 +132,8 @@ state and local contention remain retryable. Enrollment needs no provider HTTP.
 - Never-positive, blocked, incomplete, conflicted or near-expiry subscriptions
   are urgent, with at most five minutes between scheduled attempts. Near expiry
   means source trust has 30 minutes or less remaining.
+- Automatic uncertain-create recovery runs only inside its fixed two-hour
+  window. Its separate deadline job pauses discovery and reports the case.
 - Stable customer inventory runs approximately every six hours; incomplete or
   conflicting inventory retries urgently within five minutes.
 - Source-trust expiry and uncertain-create escalation run locally without
@@ -131,7 +149,8 @@ from overwriting newer facts, and hints arriving during work remain due.
 one original point-proven candidate may bind; ambiguous/foreign candidates or
 an identity bound to another purchase require review or more proof. Recovery preserves the original
 operation, request/key/date, accepted history and hold. Known financial conflicts
-need audited resolution; a deadline-only escalation can recover normally.
+need audited resolution; a deadline-only escalation permits explicit user/CLI
+GET-only recovery after automatic discovery has paused.
 Advance, worker and operator use the same GET-only original-operation collector
 and transactional binder. The original saved command, actual possible-send
 history and fresh ownership/effective terms are required. A known binding never
@@ -153,6 +172,23 @@ may start a new two-hour active window for that same command. UNKNOWN, GETs,
 backoff and restart cannot extend the window or permit another financial CREATE.
 PENDING and completed PROVEN_NOT_SENT are excluded from overdue UNKNOWN
 escalation and authorize no background send.
+
+At the fixed deadline, unresolved customer/agreement/subscription discovery work
+becomes `paused`; its lease is revoked while the original operation/hold remains.
+Repair and restart do not re-enroll paused work. An independent inventory pass
+still has its own cadence and cannot bind a paused unknown operation. The
+deadline job becomes durable notification work: a failed/disabled Sentry SDK
+keeps it pending with a five-minute retry, without resuming LBX discovery. A
+successful SDK capture completes it. A crash after capture may repeat the event;
+the fixed failure-class fingerprint groups repeats into the same Sentry issue.
+
+Automatic recovery checks the fixed active window before source I/O and again
+inside the first-binding transaction. A GET finishing after the deadline cannot
+bind even if the independent local deadline job has not run yet; recovery
+commits the pause and leaves escalation/notification to that job. A deadline
+pause between queue claim and source entry is acknowledged as stopped work,
+without an additional worker-failure report. Other stale/lost claims remain
+errors. Explicit user/operator GET-only recovery is unchanged.
 
 Completing a deadline job for an already finished operation does not require
 the original purchase hold. Safe no-send release or a new purchase in that
@@ -240,6 +276,7 @@ cannot resolve review.
 
 Invoke `.venv/bin/python scripts/repo.py billing-purchase <action>` with
 `--user-id <portal-user-uuid>` and `--purchase-id <purchase-intent-uuid>`.
+The read-only `inspect-operation` lookup instead takes only `--operation-id`.
 Success JSON includes the operator principal. Exit 0 means the command completed,
 not that payment or positive source proof was established. Exit 1 returns only
 `detail.code`; invalid parser arguments exit 2.
@@ -249,6 +286,10 @@ not that payment or positive source proof was established. Exit 1 returns only
   recent observation summaries, work and review IDs/digests. Work/review lists
   cap at 100 with truncation flags; observations contain the latest 20 records.
   No customer keys, raw requests, credentials or accepted amounts are exposed.
+- `inspect-operation --operation-id <local-operation-uuid>`: resolve the opaque
+  operation reference from Sentry locally. It checks configured origin/account
+  and tenant/region, returns local owner/purchase references and follow-up CLI
+  commands, and opens no source resources. It uses the same trusted OS boundary.
 - `recover`: bounded GET-only recovery of the original possible-send operation.
   It may prove a binding or close deadline-only review, but cannot send CREATE,
   adopt PENDING/PROVEN_NOT_SENT or clear known conflicts. For a bound subscription,
@@ -362,6 +403,60 @@ the normal deployment path and require fresh proof. Use recover for UNKNOWN,
 reconcile for bound subscriptions and only supported audited conflict resolutions.
 Do not delete work, reset deadlines, release holds or extend trust to hide backlog.
 Alert routing remains operator-owned under ANY-86.
+
+## UNKNOWN create after two hours
+
+Sentry exception type: `BillingRecoveryExhausted`. The fixed message explains
+that the LBX create result is still unknown, automatic discovery is paused and
+duplicate-prevention holds remain. Its allowlisted `billing_recovery` context
+contains only local operation/kind/review-case references, the runbook URL, and
+the `inspect-operation` command. Owner/purchase references and follow-up commands
+are resolved locally; no user IDs, provider payload, customer email, provider
+correlation key, card data, credential or token are sent to Sentry.
+
+Use the existing API Sentry DSN/release configuration. Configure occurrence/event
+notifications for this exception type to the existing billing operator so every
+newly paused case alerts even while its failure-class issue is already open.
+New-issue/regression-only rules do not satisfy this requirement. Alert routing
+is operator-managed Sentry project configuration; an SDK capture alone is not
+proof that email or another notification channel is configured or delivered.
+The fingerprint is a fixed failure-class key; correlation IDs stay in contexts.
+Each event identifies its case; repeated events with the same `case_id` refer
+to the same case. An accepted case is not reported on every GET. Delivery testing
+must use an isolated recording transport unless a real alert test is authorized.
+
+Operator procedure:
+
+1. Read the Sentry event and run its `inspect_command` (`inspect-operation`).
+   This local lookup returns the owner/purchase references and the actual
+   inspect/recover commands. Run its returned `inspect_command` to read current
+   evidence. If the original operation has already recovered, verify that its
+   specific review case is resolved and record that case as handled; do not
+   create another object. The Sentry issue groups multiple cases. Keep it open
+   while any case remains unresolved; recovery of one operation is not a reason
+   to close the grouped issue.
+2. Check connection/authentication and LBX availability through normal setup.
+   An empty discovery result still does not prove that creation never happened.
+3. For an agreement/subscription, run the local lookup's `recover_command`. It invokes
+   bounded GET-only original recovery. A unique proven original may bind and
+   resolve its deadline-only review. No new financial POST is sent.
+4. For a customer, run `billing-customer diagnose --user-id <portal-user-uuid>`
+   as provided by the local lookup, then have the user explicitly reopen their billing
+   account after source recovery. Original paired point proof is still required;
+   the paused worker does not send another customer CREATE.
+5. If multiple/foreign candidates, changed effective terms or unrelated cases
+   remain, inspect their exact case IDs/digests. Use only the supported audited
+   `resolve-review` actions above after establishing their required proof. These
+   actions cannot adopt an arbitrary ID or assert payment.
+6. If no original object can be proved, retain the hold and investigate with
+   LBX using the saved original-operation evidence. This build has no supported
+   "declare absent / reset unknown purchase" operation (ANY-821). Do not delete
+   work/operation rows or force-release the hold to start a replacement.
+
+An explicit user's "Continue recovery" also remains available after the pause.
+It can prove the original through GET but cannot repeat an uncertain financial
+CREATE. After a successful recovery, normal monitoring of the now-bound
+subscription resumes; first binding alone does not establish positive trust.
 
 ## Projection and access boundary
 
