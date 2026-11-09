@@ -11,7 +11,7 @@ from app.composition.sources import SourceResources
 from app.core.errors import AppError
 from app.domains.billing.contracts import BillingRefused
 from app.core.settings import AppEnv, Settings
-from app.domains.billing.discovery import persist_discoveries
+from app.domains.billing.discovery import persist_discoveries, apply_inventory
 from app.domains.billing import background_recovery as recovery, work
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.catalog.publication import SessionFactory
@@ -135,7 +135,7 @@ async def _inventory_customer(
     )
     result = await delegate(persist_discoveries, factory, claim, result)
     await delegate(
-        recovery.apply_inventory,
+        apply_inventory,
         factory,
         claim,
         result,

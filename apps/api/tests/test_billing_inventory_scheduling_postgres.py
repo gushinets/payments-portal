@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.domains.billing.discovery import apply_inventory
 from app.domains.billing import background_recovery as recovery, work
 from app.domains.billing.work_contracts import WorkLane
 from app.domains.purchases import service
@@ -84,7 +85,7 @@ async def test_clean_inventory_preserves_new_generation_and_only_otherwise_demot
                 hint=True,
             )
             db.commit()
-    recovery.apply_inventory(factory, claim, result, None)
+    apply_inventory(factory, claim, result, None)
     row = job(factory, recovery.INVENTORY, purchase.customer_id)
     assert row.priority == int(new_hint) and row.lease_owner is None
     if new_hint:

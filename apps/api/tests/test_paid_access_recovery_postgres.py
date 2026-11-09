@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.composition.billing_operator import resolve_review
 from app.composition.billing_worker import billing_worker_resources
-from app.domains.billing import work
+from app.domains.billing import background_recovery, work
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.customers import apply_customer_read
 from app.domains.billing.operator_diagnostics import inspect_evidence
@@ -50,6 +50,75 @@ def anyio_backend() -> str:
 def expiry(factory: sessionmaker[Session]) -> BillingWorkItem:
     with factory() as db:
         return db.scalars(select(BillingWorkItem).where(BillingWorkItem.work_kind == work.EXPIRY)).one()
+
+
+@pytest.mark.parametrize(
+    "reading,queue",
+    [("identity", "normal"), ("commercial", "missing"), ("negative", "old_payload"), ("blocked", "normal")],
+)
+async def test_paid_trust_expiry_retains_complete_proof_after_revocation(
+    paid_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    reading: str,
+    queue: str,
+) -> None:
+    factory = postgres_session_factory
+    transport, _, config, sub_id, _ = paid_scenario
+    await reconcile(paid_scenario, factory)
+    with factory() as db:
+        sub = db.get(ExternalSubscription, sub_id)
+        original, trust_end = sub.latest_observation_id, sub.projection_valid_until
+        allowance_id = db.scalars(select(PurchasedAllowance.allowance_id)).one()
+    if reading == "identity":
+        transport.subscriptions[0]["agreement_id"] = 999
+    elif reading == "commercial":
+        transport.subscriptions[0]["services"][0]["price"] = 15
+    elif reading == "blocked":
+        transport.subscriptions[0]["current_blocking"] = 1
+    else:
+        transport.subscriptions[0].update(total_price=None, current_blocking=1)
+    await reconcile(paid_scenario, factory)
+    assert effective(factory) == (2, {"grants": [], "allowances": []})
+    with factory() as db:
+        sub = db.get(ExternalSubscription, sub_id)
+        assert sub.projection_valid_until == trust_end and sub.latest_observation_id != original
+        job = db.scalars(select(BillingWorkItem).where(BillingWorkItem.work_kind == work.EXPIRY)).one()
+        assert UUID(job.payload_document["supporting_observation_id"]) == original
+        if queue == "missing":
+            db.delete(job)
+        elif queue == "old_payload":
+            job.payload_document = {**job.payload_document, "supporting_observation_id": str(sub.latest_observation_id)}
+        db.commit()
+    missing_sources = config.model_copy(
+        update={"lbx_base_url": "", "lbx_server_username": SecretStr(""), "lbx_server_password": SecretStr("")}
+    )
+    if queue == "missing":
+        assert work.repair_paid_deadlines(factory, missing_sources) == 1
+        assert UUID(expiry(factory).payload_document["supporting_observation_id"]) == original
+    monkeypatch.setattr(billing_reconciliation, "database_now", lambda db: as_utc(trust_end) + timedelta(seconds=1))
+    requests = len(transport.requests)
+    for _ in range(5):
+        claim = work.claim_work(factory, missing_sources, WorkLane.LOCAL)
+        assert claim is not None
+        if claim.kind == work.EXPIRY:
+            break
+        background_recovery.apply_deadline(factory, claim)
+    assert claim.kind == work.EXPIRY
+    work.expire_trust(factory, claim)
+    assert len(transport.requests) == requests and effective(factory) == (2, {"grants": [], "allowances": []})
+    with factory() as db:
+        cause = db.scalars(
+            select(BillingStateObservation).where(
+                BillingStateObservation.evidence_schema_version == "subscription-trust-expiry:v1"
+            )
+        ).one()
+        assert cause.basis_observation_id == original and cause.effective_at == trust_end
+        assert cause.resulting_access_revision is None
+        assert UUID(cause.evidence_document["supporting_observation_id"]) == original
+        assert db.scalar(select(AccessInvalidationOutbox.pending_revision)) == 2
+        assert db.scalars(select(PurchasedAllowance.allowance_id)).one() == allowance_id
+    assert expiry(factory).work_state == "completed"
 
 
 async def test_paid_access_effective_expiry_without_source_configuration_and_same_cycle_recovery(

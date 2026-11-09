@@ -260,6 +260,8 @@ def test_billing_recovery_cli_select_primary_uses_reconciliation_expectations() 
     args = cli.parser().parse_args(arguments(request))
     assert args.resolution == "select-primary"
     assert args.expected_observation_id == request.expected_observation_id
+    wrapper = repo.build_parser().parse_args(["billing-purchase", *arguments(request)])
+    assert wrapper.resolution == "select-primary" and wrapper.expected_observation_id == request.expected_observation_id
     invalid = {**request.model_dump(), "expected_observation_id": None}
     from pydantic import ValidationError
 

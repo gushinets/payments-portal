@@ -358,8 +358,8 @@ async def test_retained_negative_observation_backfills_expiry_and_cannot_revive_
         sub.latest_observation_id = observation.observation_id
         sub.lifecycle_status = Lifecycle.ENDED
         sub.financial_access_status = Financial.BLOCKED
-        sub.projection_valid_until = datetime.now(UTC) - timedelta(seconds=1)
-        sub.last_authoritative_read_at = sub.projection_valid_until - timedelta(hours=6)
+        # Shorten this synthetic lease without changing its complete-read provenance.
+        sub.projection_valid_until = sub.last_authoritative_read_at + timedelta(microseconds=1)
         db.execute(delete(BillingWorkItem).where(BillingWorkItem.work_kind == work.EXPIRY))
         db.commit()
     before = subs(factory)[0]
@@ -408,8 +408,8 @@ async def test_billing_worker_local_expiry_is_provider_free_idempotent_and_refre
     trusted = subs(factory)[0]
     with factory() as db:
         sub = db.get(ExternalSubscription, trusted.subscription_id)
-        sub.projection_valid_until = datetime.now(UTC) - timedelta(seconds=1)
-        sub.last_authoritative_read_at = sub.projection_valid_until - timedelta(hours=6)
+        # Shorten this synthetic lease without changing its complete-read provenance.
+        sub.projection_valid_until = sub.last_authoritative_read_at + timedelta(microseconds=1)
         work.schedule_reconciliation(db, sub, None, complete=False)
         db.commit()
     before_requests = len(transport.requests)
@@ -659,8 +659,8 @@ async def test_billing_worker_normal_and_urgent_have_reserved_capacity_for_local
             db.get(BillingWorkItem, item.work_item_id).next_attempt_at = now - timedelta(seconds=1)
         db.get(BillingWorkItem, normal.work_item_id).next_attempt_at = now - timedelta(seconds=2)
         sub = db.get(ExternalSubscription, UUID(normal.scope_reference))
-        sub.projection_valid_until = now - timedelta(seconds=1)
-        sub.last_authoritative_read_at = sub.projection_valid_until - timedelta(hours=6)
+        # Shorten this synthetic lease without changing its complete-read provenance.
+        sub.projection_valid_until = sub.last_authoritative_read_at + timedelta(microseconds=1)
         work.schedule_reconciliation(db, sub, None, complete=False)
         db.commit()
     # Occupy source lanes independently. Local expiry still completes without HTTP.

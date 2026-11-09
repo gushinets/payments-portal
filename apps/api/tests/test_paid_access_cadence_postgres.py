@@ -138,6 +138,10 @@ async def test_allowance_expiry_stays_urgent_until_proven_next_cycle_without_rew
             break
         background_recovery.apply_deadline(factory, claim)
     assert effective(factory) == (2, {"grants": before["grants"], "allowances": []})
+    with factory() as db:
+        deadline = db.scalars(select(BillingWorkItem).where(BillingWorkItem.work_kind == work.EXPIRY)).one()
+        assert as_utc(deadline.next_attempt_at) > end
+        assert datetime.fromisoformat(deadline.payload_document["deadline"]) == as_utc(deadline.next_attempt_at)
     clock["now"] += timedelta(minutes=5)
     claim = work.claim_work(factory, paid_scenario[2], WorkLane.URGENT)
     assert claim is not None and claim.kind == work.RECONCILIATION

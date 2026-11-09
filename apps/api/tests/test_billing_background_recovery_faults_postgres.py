@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.composition.reconciliation import reconcile_subscription
+from app.domains.billing.discovery import apply_inventory
 from app.domains.billing import background_recovery as recovery, work
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.work_contracts import WorkLane
@@ -209,7 +210,7 @@ async def test_billing_background_recovery_inventory_batch_rejects_stale_apply_a
         from app.domains.purchases.inventory_contracts import InventoryResult
 
         customer = service.customer_for_purchase(factory, step1_settings(), first)
-        recovery.apply_inventory(
+        apply_inventory(
             factory,
             claim,
             InventoryResult(customer, (first, second), (first.id, second.id), (), True),

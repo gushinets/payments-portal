@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.domains.billing.discovery import apply_inventory
 from app.domains.billing import background_recovery as recovery, work
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.discovery import persist_discoveries
@@ -207,7 +208,7 @@ async def test_new_hint_survives_and_invalidates_first_selection_generation(inve
         recovery.hint_inventory(db, db.scalar(select(ExternalBillingCustomer)))
         db.commit()
     with pytest.raises(InventoryStale):
-        recovery.apply_inventory(scenario.factory, claim, result, None, clock_skew_seconds=10)
+        apply_inventory(scenario.factory, claim, result, None, clock_skew_seconds=10)
     assert work.retry_work(scenario.factory, claim, error="inventory_incomplete")
     assert effective(scenario.factory)[0] == 0
     with scenario.factory() as db:
@@ -233,7 +234,7 @@ async def test_late_claim_failure_rolls_back_primary_allowance_revision_and_outb
 
     monkeypatch.setattr(work, "verify_claim", stale_after_write)
     with pytest.raises(BillingRefused, match="billing_work_stale"):
-        recovery.apply_inventory(scenario.factory, claim, result, None, clock_skew_seconds=10)
+        apply_inventory(scenario.factory, claim, result, None, clock_skew_seconds=10)
     assert calls == 1 and effective(scenario.factory)[0] == 0
     with scenario.factory() as db:
         assert db.scalar(select(BillingProductAccessScope.primary_subscription_id)) is None

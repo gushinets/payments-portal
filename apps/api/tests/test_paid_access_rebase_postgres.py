@@ -11,6 +11,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.composition.billing_background import inventory_customer
 from app.composition.purchase_inventory import collect_inventory
+from app.domains.billing.discovery import apply_inventory
 from app.domains.billing import background_recovery as recovery, work
 from app.domains.billing.discovery import DISCOVERY_SCHEMA, persist_discoveries
 from app.domains.billing.work_contracts import WorkClaim, WorkLane
@@ -252,7 +253,7 @@ async def test_newer_source_fence_rejects_persisted_selection_receipt(inventory_
         work_claim=claim,
     )
     with pytest.raises(InventoryStale):
-        recovery.apply_inventory(scenario.factory, claim, result, None, clock_skew_seconds=10)
+        apply_inventory(scenario.factory, claim, result, None, clock_skew_seconds=10)
     assert effective(scenario.factory)[0] == 0
 
 
@@ -263,7 +264,7 @@ async def test_primary_change_during_inventory_cannot_become_fresh_selection(inv
     with scenario.factory() as db:
         db.scalar(select(BillingProductAccessScope)).primary_retired_at = datetime.now(UTC)
         db.commit()
-    recovery.apply_inventory(scenario.factory, claim, result, None, clock_skew_seconds=10)
+    apply_inventory(scenario.factory, claim, result, None, clock_skew_seconds=10)
     assert effective(scenario.factory)[0] == 0
 
 

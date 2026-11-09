@@ -27,7 +27,7 @@ def effective_deadline(scope: BillingProductAccessScope) -> datetime | None:
 
 def trust_expiry_payload(db: Session, sub: ExternalSubscription) -> dict[str, str]:
     # Later negative evidence does not establish or renew the source-trust window.
-    basis = billing_work.trust_observation(db, sub.subscription_id)
+    basis = billing_work.trust_observation(db, sub.subscription_id, sub.last_authoritative_read_at)
     if basis is None:
         raise BillingRefused("subscription_provenance_unproven", 409)
     return {

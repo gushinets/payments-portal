@@ -163,3 +163,63 @@ Verification of the local corrections, 2026-11-08:
 - Changes remain local and uncommitted. DOD-1 actual LBX purchase-to-cabinet
   acceptance stays **NOT_RUN**; no real billing mutation or external publication
   was performed.
+
+## Base refresh — 2026-11-09
+
+Issue: https://linear.app/paveldik/issue/ANY-765
+
+- Original Step 9 HEAD: `7a2a4d8cc13d9b007c550813d0f4c1bdff2b7fca`,
+  preserved locally as `codex/any-765-before-715-rebase-20261109`.
+- New base: `refactor/any715-mvp` at
+  `ed642a75f00d7bbac7713b14a610b90b6b83534c`, verified against GitHub.
+  Replay only the ten Step 9 commits after the original base `09bda5a`.
+- [x] Preserve durable uncertain-create pause, notification retry and explicit
+  GET-only original recovery together with transactional paid-access reductions.
+- [x] Preserve complete-read trust provenance in the shared paid deadline
+  scheduler, deadline repair and deterministic expiry writer.
+- [x] Preserve both `inspect-operation` and `select-primary` CLI capabilities.
+- Inventory completion now lives with primary decisions in the existing
+  `app/domains/billing/discovery.py`; recovery/pause transactions remain in
+  `background_recovery.py`. Both fit the existing 500-line architecture limit.
+- Trust provenance selects the complete observation whose read-start matches
+  the stored trust interval. Complete blocked reads still revoke paid access
+  without renewing trust, preserving Step 9's existing policy and Step 8 history.
+- [x] Verify inherited recovery/trust regressions, paid deadlines, stale owners,
+  unchanged allowance identities and atomic revision/outbox changes.
+- [x] Run the broadest supported canonical checks and affected browser journeys;
+  record evidence and review the final range-diff.
+
+This refresh is local. No push, PR change, live billing mutation or Kernel
+rollout is included; existing live-provider acceptance remains NOT_RUN.
+
+Verification:
+
+- `npm run check`: **PASS**, exit 0. API fast **1,769 passed**, PostgreSQL
+  **956 passed**, web components **414 passed**. Documentation, generated
+  freshness, architecture, Ruff, web boundaries/lint and the production web
+  build passed. The PostgreSQL partition completed in 49m48s.
+- Focused recovery/trust, paid-access, inventory and CLI selection: **230 passed**
+  (**206 PostgreSQL**, **24 unit**).
+  Four new PostgreSQL cases verify trust provenance after paid revocation,
+  including complete blocks, missing queue repair and pre-fix payload repair.
+  Existing allowance-expiry and CLI tests also verify the next deadline payload
+  and coexistence of `inspect-operation` / `select-primary`.
+- Synthetic purchase/Widget/paid-cabinet Playwright against the fresh production
+  build: **18 passed**, desktop and mobile, including accessibility, without
+  retries or skips. Canonical `RUN_E2E=false` is explicit; these affected journeys
+  ran separately. The full unrelated browser suite was not run.
+- The canonical PostgreSQL partition and focused tests used separate disposable
+  databases on the worktree test server. Pytest owned their creation and cleanup;
+  no application database was migrated. Live sources and Sentry were disabled.
+- Local evidence: `.harness/any765-rebase-check.log`,
+  `.harness/any765-rebase-focused.xml`, `.harness/any765-rebase-browser.log` and
+  `.harness/any765-rebase-browser-results/`.
+- Review: all ten original Step 9 commits are preserved. The replay change is
+  confined to recovery/deadline/CLI integration; inventory completion was moved
+  into existing discovery ownership to satisfy the unchanged architecture limit.
+  Its AST matches the original writer apart from the owner/import move. Expiry
+  fixtures retain their original source-proof timestamps. The final own history
+  contains the ten replayed commits and one integration follow-up.
+- Peer impact: **None**. This refresh preserves the existing Portal paid wire
+  and ownership boundaries; no Kernel producer/consumer contract or conformance
+  status changes.
