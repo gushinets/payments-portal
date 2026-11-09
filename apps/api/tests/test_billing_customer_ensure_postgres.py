@@ -50,13 +50,13 @@ def test_customer_ensure_find_create_recover(
 ) -> None:
     factory = postgres_session_factory
     seed(factory)
-    config = step1_settings(preflight_total_timeout_seconds=0.6, preflight_cleanup_timeout_seconds=0.025)
+    config = step1_settings(preflight_total_timeout_seconds=2, preflight_cleanup_timeout_seconds=0.025)
     slot = reserve_customer(factory, config, TOKEN)
     if mode in {"old_review", "expired_claim"}:
         claim_customer_send(factory, config, TOKEN, slot)
         with factory() as db:
             operation = db.scalar(select(ExternalCreateOperation))
-            work = db.scalar(select(BillingWorkItem))
+            work = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == "external_create_recovery"))
             operation.operation_state = State.MANUAL_REVIEW if mode == "old_review" else State.POSSIBLE_SEND
             work.lease_expires_at = utc_now() - timedelta(seconds=1)
             db.commit()
@@ -118,7 +118,7 @@ def test_customer_ensure_find_create_recover(
         assert operation.create_operation_id == slot.operation_id
         if mode not in {"email_unproven", "ambiguous", "duplicate_invisible"}:
             assert customer.provider_customer_id == "345" and operation.operation_state == State.BOUND
-            work = db.scalar(select(BillingWorkItem))
+            work = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == "external_create_recovery"))
             if work:
                 assert work.lease_owner is None and work.work_state == "done"
         else:
@@ -131,7 +131,7 @@ def test_customer_ensure_corrected_email_retries_on_next_open_without_reset(
 ) -> None:
     factory = postgres_session_factory
     seed(factory)
-    config = step1_settings(preflight_total_timeout_seconds=0.6, preflight_cleanup_timeout_seconds=0.025)
+    config = step1_settings(preflight_total_timeout_seconds=2, preflight_cleanup_timeout_seconds=0.025)
     slot = reserve_customer(factory, config, TOKEN)
     posts = []
 
@@ -156,14 +156,24 @@ def test_customer_ensure_corrected_email_retries_on_next_open_without_reset(
             with pytest.raises(BillingAccountFailure):
                 await bootstrap_account(sources, config, factory=factory, token=TOKEN)
             with factory() as db:
-                assert db.scalar(select(BillingWorkItem)).lease_owner is None
+                assert (
+                    db.scalar(
+                        select(BillingWorkItem).where(BillingWorkItem.work_kind == "external_create_recovery")
+                    ).lease_owner
+                    is None
+                )
             assert (await bootstrap_account(sources, config, factory=factory, token=TOKEN)).credential
 
     asyncio.run(scenario())
     assert len(posts) == 2 and all(body["outer_id"] == slot.outer_key for body in posts)
     with factory() as db:
         assert db.scalar(select(ExternalCreateOperation)).create_operation_id == slot.operation_id
-        assert db.scalar(select(BillingWorkItem)).attempt_count == 2
+        assert (
+            db.scalar(
+                select(BillingWorkItem).where(BillingWorkItem.work_kind == "external_create_recovery")
+            ).attempt_count
+            == 2
+        )
 
 
 def test_customer_failed_attempt_invalidates_concurrent_presearch_snapshot(
@@ -188,4 +198,9 @@ def test_customer_failed_attempt_invalidates_concurrent_presearch_snapshot(
         record_customer_receipt(factory, first, 345)
     finish_customer_attempt(factory, first)
     with factory() as db:
-        assert db.scalar(select(BillingWorkItem)).lease_owner == f"customer-send:{fresh.fence}"
+        assert (
+            db.scalar(
+                select(BillingWorkItem).where(BillingWorkItem.work_kind == "external_create_recovery")
+            ).lease_owner
+            == f"customer-send:{fresh.fence}"
+        )

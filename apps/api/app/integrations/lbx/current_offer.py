@@ -86,7 +86,6 @@ def normalize_current_offer(
             (
                 "archive",
                 "balance_blocks",
-                "block_to_close_days",
                 "dynamic_rent",
                 "dynamic_rent_unblock_type",
                 "payment_type",

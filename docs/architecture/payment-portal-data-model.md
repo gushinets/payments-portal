@@ -1,14 +1,14 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-10-29 (one consolidated ANY-709 migration, including active recovery windows)
+Last updated: 2026-10-29 (consolidated ANY-709 billing and ANY-715 worker generations)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261029_0003 (head)
+20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
@@ -32,6 +32,11 @@ the [migration runbook](../engineering/ANY-709-billing-runbook.md#consolidated-a
 never automatic stamping or replay of consolidated DDL. This document owns
 persistence meaning; `docs/generated/db-schema.md` owns column-level output.
 
+`20261028_0005_billing_worker` adds durable enqueue generations, attempt-start
+timestamps and recurring-job uniqueness after consolidated revision
+`20261029_0003`, preserving active deadlines and existing send leases. The chain
+has one current head.
+
 Target commercial ownership and runtime behavior follow, in precedence order:
 
 1. [ADR 0005](decisions/0005-external-billing-boundary.md);
@@ -43,17 +48,18 @@ narrowly supersedes source-catalog mirroring/new-sale TTL; it requires no schema
 change. Subscription trust, reconciliation and AccessSnapshot are unchanged.
 
 The schema is a provider-independent storage baseline. Its presence does not
-itself establish runtime acceptance. ANY-709 Step 3 implements purchase preparation
-and request-driven recovery; workers, paid-access derivation and Kernel
-invalidation delivery remain future work.
+itself establish runtime acceptance. ANY-709 implements purchase preparation
+and request-driven recovery. ANY-715 adds shared reconciliation, embedded durable
+polling and audited operations; paid-access derivation and Kernel invalidation
+delivery remain future work.
 
 ## Physical baseline
 
 A fresh database has exactly 27 application tables: ten retained
 identity/session/legal tables, fifteen original external-billing persistence
 tables, one current product-link pointer and one purchase mutex. Alembic has
-three revisions in one linear chain and one current head; only the last revision
-belongs to ANY-709.
+four revisions in one linear chain and one current head. Revision
+`20261029_0003` belongs to ANY-709; revision `20261028_0005` belongs to ANY-715.
 
 There is no Portal-owned product, plan, order, payment, refund, subscription,
 entitlement, trial, provider-account, or direct-payment webhook table. There is
@@ -218,10 +224,14 @@ existing paired lease fields protect active account-customer sends, and
 `attempt_count` counts claimed attempts. Under the owner's 2026-10-28 amendment,
 bounded same-opening recovery or a later explicit open can claim a retry after
 fresh successful empty discovery and completion/expiry of the active lease,
-retaining the same operation/key. A saved
-receipt or identity conflict prevents another POST; point proof binds only against
-the current fence. Financial operations have a unique intent/kind identity and a unique permanent
-account/kind/provider-object binding. Their account/customer composite FK prevents
+retaining the same operation/key. This policy applies only before the durable
+deadline pause. Under the [2026-11-09 decision](decisions/0005-external-billing-boundary.md#accepted-unknown-recovery-and-lifecycle-metadata-decisions---2026-11-09),
+a `paused` customer recovery row makes later explicit openings GET-only; empty
+discovery and lease expiry cannot rearm CREATE. The original operation/evidence
+remain intact. A saved receipt or identity conflict also prevents another POST;
+point proof binds only against the current fence. Financial operations have a
+unique intent/kind identity and a unique permanent account/kind/provider-object
+binding. Their account/customer composite FK prevents
 cross-connection ownership. Financial evidence guards prevent deletion, identity
 changes, deadline/request replacement and resetting a possibly sent operation to
 pending. A completed typed no-send result may persist `proven_not_sent`; a later
@@ -229,8 +239,9 @@ explicit advance claims the same immutable request/key/history with a fresh fenc
 and reused work item. Its new send has an independent two-hour active recovery
 deadline on that work item; the original operation deadline stays immutable.
 UNKNOWN, empty GET and deadline expiry never authorize this
-transition or a replay. Customer retry semantics remain separate. No background
-worker is enabled.
+transition or a replay. Customer retry semantics remain separate. ANY-715 runs
+GET-only background recovery and local deadlines through its embedded worker;
+background execution never acquires CREATE authority.
 
 `billing_purchase_scope_holds` has `(user_id, product_id)` as its primary key,
 a unique intent and a composite FK to its exact purchase scope. A linked unpaid
@@ -261,6 +272,17 @@ financial status and an immediately expired projection, plus normalized effectiv
 terms and nullable/sentinel calendar observations. It creates no access-primary,
 paid state, grant or allowance, and never extends paid trust on Manage.
 
+ANY-715 Step 1 uses the existing reconciliation lease/fence columns and appends
+`subscription-reconciliation:v1` evidence through shared claim/read/apply logic.
+It creates/reuses a product scope without selecting a primary. Complete matching
+proof anchors at most six hours of source trust to read-set start; incomplete
+attempts preserve the existing deadline and complete support, while decisive
+owned negative/conflict evidence reduces usability. Subsequent preparation
+cannot overwrite monitored facts. All resulting access revisions remain null.
+Step 1 alone added no DDL or worker; Steps 2–5 supply the running worker and
+operations described below. See the
+[operations runbook](../engineering/billing-background-operations.md).
+
 `billing_state_observations` stores evidence whose core fields are immutable.
 Its closed kinds are
 `authoritative_subscription_read`, `target_product_discovery`,
@@ -288,22 +310,51 @@ baseline.
 
 ## Durable operational tables
 
-`external_billing_webhook_deliveries` stores bounded, redacted correlation and
-evidence documents, receipt/processing timestamps, and safe classifications.
-It never stores authorization material, card/payment fields, or a raw provider
-payload, and receipt alone never grants access.
+`external_billing_webhook_deliveries` retains bounded, redacted correlation and
+evidence documents, receipt/processing timestamps and safe classifications from
+older builds. The polling-only ANY-715 MVP retains this table/schema and all
+history but has no receiver or inbox-processing writer. Historical JSON schemas
+`billing-webhook-receipt:v1` / `billing-webhook-work:v1` and canonical text-backed
+`WebhookDeliveryState` values (`pending`, `processed`, `ignored`) remain readable;
+polling does not change those rows. No raw provider payload or authorization/card
+material belongs here, and receipt state never grants access.
 
 `billing_work_items` stores open work/scope/state vocabularies, bounded typed
 payloads, priority, due time, attempt count, paired lease owner/expiry and nullable
-`active_recovery_deadline_at` for the current financial send. The active deadline
-is independent of mutable retry scheduling and changes only in the locked,
-fenced financial send claim; GET recovery does not renew it. It
-is scheduling state, not commercial or access authority. Exact work kinds,
-state transitions and coalescing rules are intentionally deferred.
+`active_recovery_deadline_at` for the current financial send. This active deadline
+changes only in the locked send claim; GET recovery never renews it. It
+is scheduling state, not commercial or access authority. Its work/state
+vocabularies remain open for concrete billing jobs. ANY-715 Step 2 adds
+nonnegative `enqueue_generation`, nullable `last_attempt_started_at` and a partial
+unique `(work_kind, coalescing_key)` index for subscription reconciliation/trust
+expiry, enrollment sweep and the reserved inventory/create-deadline kinds.
+ANY-715 Step 3 reuses permanent create-operation recovery keys for urgent GET
+work and separate account/operation `external_create_deadline` keys for local
+fixed two-hour escalation. Customer inventory coalesces by account/local customer,
+while subscriptions retain account/local subscription keys. Recovery receipts,
+original request/date/fences and customer active-send leases keep their existing
+storage identity. Step 3 needs no additional table or migration beyond the
+Step 2 worker migration `20261028_0005`. Inventory observations use
+`customer-inventory:v1`; conflicts never grant access or rewrite bindings.
+
+The pre-existing create-recovery index and customer-send lease identity remain
+unchanged. Claims use paired finite ownership; completion preserves newer enqueue
+generations. Binding atomically enrolls new canonical subscriptions. Source apply
+atomically reschedules monitoring and the local trust deadline, with no paid-state
+or access-revision writes. Migration `20261028_0005` follows consolidated billing revision
+`20261029_0003` and preserves its active deadline and existing rows.
 
 `manual_review_cases` stores bounded evidence and optional resolution proof.
 It cannot itself activate access, invent an allowance, or rewrite historical
 purchase/mapping evidence.
+ANY-715 Step 5 records `billing-operator-resolution:v1` in those existing slots:
+OS principal, reason/reference, command digest, before/after identities,
+supporting observation and versioned fresh-proof summary. Original evidence is
+preserved. Financial conflict evidence retains the prior operation state/send
+fence to distinguish possible-send history from completed no-send. Known cases
+without sufficient preserved proof refuse binding; no retrospective assertion
+or force override supplies it. Audit, permitted shared apply/bind and scheduling
+commit atomically; terminal holds remain. No Step 5 DDL is required.
 
 ## Persisted vocabularies
 
@@ -316,7 +367,8 @@ Closed text-backed enums are defined only in `app.models.enums`:
 - reconciliation: `ExternalSubscriptionLifecycleStatus`,
   `ExternalSubscriptionFinancialAccessStatus`,
   `ExternalSubscriptionCommercialAccessStatus`,
-  `BillingStateObservationKind`.
+  `BillingStateObservationKind`;
+- webhook inbox: `WebhookDeliveryState`.
 
 Other operational classifications remain open text until their owning runtime
 step closes them. The repository guard prevents duplicate definitions of the

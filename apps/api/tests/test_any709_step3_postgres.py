@@ -30,6 +30,7 @@ from app.models import (
     BillingPurchaseScopeHold,
     BillingProductAccessScope,
     BillingWorkItem,
+    BillingStateObservation,
     DocumentAcceptance,
     ExternalBillingCustomer,
     ExternalCreateOperation,
@@ -43,6 +44,7 @@ from app.models import (
     PurchaseIntentState as IntentState,
     PurchasedAllowance,
 )
+from apps.api.tests.factories.original_operation import advance_deadlines, original_proof
 from apps.api.tests.support.any709_step1 import link_document, link_selection, step1_settings
 from apps.api.tests.support.any709_step3 import PurchaseTransport
 from apps.api.tests.support.postgres import alembic_test_config, reset_public_schema
@@ -132,7 +134,9 @@ async def test_any709_step3_complete_preparation_and_historical_manage(
         widget = await bootstrap_account(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
         assert widget.purchase_id == purchase.id and widget.agreement_reference
         assert widget.seller_reference == "21"
-        assert not any("/tariffs" in req.url.path for req in transport.requests[before:])
+        assert {req.url.path for req in transport.requests[before:] if "/tariffs" in req.url.path} == {
+            "/api/rest/v1/tariffs/701"
+        }
         # Account view shares the exact same customer and customer CREATE use case.
         account = await bootstrap_account(sources, config, factory=factory, token=TOKEN)
         assert account.purchase_id is None
@@ -143,9 +147,10 @@ async def test_any709_step3_complete_preparation_and_historical_manage(
         assert same.id == purchase.id and same.accepted == purchase.accepted
     with factory() as db:
         sub = db.scalar(select(ExternalSubscription))
-        assert sub.financial_access_status.value == "unverified"
-        assert sub.projection_valid_until == sub.last_authoritative_read_at
-        for model in (PaidAccessState, PurchasedAllowance, BillingProductAccessScope):
+        assert sub.financial_access_status.value == "blocked"
+        assert sub.projection_valid_until - sub.last_authoritative_read_at == timedelta(hours=6)
+        assert db.scalar(select(BillingProductAccessScope)).primary_subscription_id is None
+        for model in (PaidAccessState, PurchasedAllowance):
             assert db.scalar(select(func.count()).select_from(model)) == 0
         assert db.scalar(select(func.count()).select_from(BillingPurchaseScopeHold)) == 1
         assert db.scalar(select(func.count()).select_from(ExternalBillingCustomer)) == 1
@@ -216,14 +221,17 @@ async def test_any709_step3_linked_widget_retries_after_failed_point_proof(
             assert [(op.id, op.bound_id) for op in retained.operations] == [
                 (op.id, op.bound_id) for op in prepared.operations
             ]
-            operation = next(
-                op
-                for op in retained.operations
-                if op.kind == (Kind.AGREEMENT if path.startswith("/agreements/") else Kind.SUBSCRIPTION)
-            )
             with factory() as db:
-                work = db.scalar(select(BillingWorkItem).where(BillingWorkItem.coalescing_key == str(operation.id)))
-                assert work.work_state == "pending" and work.payload_document["last_failure"]
+                observation = db.scalars(
+                    select(BillingStateObservation)
+                    .where(BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v1")
+                    .order_by(BillingStateObservation.observed_at.desc())
+                ).first()
+                assert observation.completeness_classification == "incomplete"
+                work = db.scalar(
+                    select(BillingWorkItem).where(BillingWorkItem.work_kind == "subscription_reconciliation")
+                )
+                assert work.work_state == "pending"
             failing = False
             retry_start = len(transport.requests)
             retried = await client.post("/api/billing/widget-bootstrap", json=body)
@@ -234,14 +242,17 @@ async def test_any709_step3_linked_widget_retries_after_failed_point_proof(
                 {request.url.path for request in transport.requests[retry_start:]}
             )
         assert all(request.method == "GET" for request in transport.requests[before:])
-        assert not any("/tariffs" in request.url.path for request in transport.requests[before:])
+        assert {request.url.path for request in transport.requests[before:] if "/tariffs" in request.url.path} == {
+            "/api/rest/v1/tariffs/701"
+        }
     assert [transport.creates(path) for path in ("/users", "/agreements", "/subscriptions")] == [1, 1, 1]
     with factory() as db:
-        for model in (PaidAccessState, PurchasedAllowance, BillingProductAccessScope, ManualReviewCase):
+        assert db.scalar(select(BillingProductAccessScope)).primary_subscription_id is None
+        for model in (PaidAccessState, PurchasedAllowance, ManualReviewCase):
             assert db.scalar(select(func.count()).select_from(model)) == 0
         sub = db.scalar(select(ExternalSubscription))
-        assert sub.financial_access_status.value == "unverified"
-        assert sub.projection_valid_until == sub.last_authoritative_read_at
+        assert sub.financial_access_status.value == "blocked"
+        assert sub.projection_valid_until - sub.last_authoritative_read_at == timedelta(hours=6)
 
 
 @pytest.mark.parametrize("lost_agreement_response", [False, True])
@@ -352,7 +363,8 @@ async def test_any709_step3_api_smoke_review_confirm_continue_payment(
             assert status.json()["accepted"] == accepted["accepted"] and status.json()["paid_access_granted"] is False
     assert [transport.creates(path) for path in ("/users", "/agreements", "/subscriptions")] == [1, 1, 1]
     with factory() as db:
-        for model in (PaidAccessState, PurchasedAllowance, BillingProductAccessScope):
+        assert db.scalar(select(BillingProductAccessScope)).primary_subscription_id is None
+        for model in (PaidAccessState, PurchasedAllowance):
             assert db.scalar(select(func.count()).select_from(model)) == 0
         assert db.scalar(select(func.count()).select_from(BillingPurchaseScopeHold)) == 1
 
@@ -486,8 +498,8 @@ async def test_any709_step3_restart_zero_discovery_deadline_and_get_only_operato
         first = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
         op = next(item for item in first.operations if item.kind == Kind.AGREEMENT)
         assert op.state == State.UNKNOWN and op.deadline is not None
-    assert financial.escalate_overdue_financial(factory, now=op.deadline + timedelta(seconds=1)) == 1
-    assert financial.escalate_overdue_financial(factory, now=op.deadline + timedelta(hours=1)) == 0
+    assert advance_deadlines(factory, now=op.deadline + timedelta(seconds=1)) == 1
+    assert advance_deadlines(factory, now=op.deadline + timedelta(hours=1)) == 0
     async with source_resources(
         config,
         kernel_transport=httpx.MockTransport(transport.kernel),
@@ -805,13 +817,22 @@ async def test_any709_step3_lost_claim_ack_and_late_apply_keep_original_fence_an
         assert recovered.held and transport.creates("/agreements") == 0
         financial.financial_pending(factory, recovered, op, conflict=True)
         with pytest.raises(PurchaseRefused, match="purchase_pending"):
-            financial.bind_financial(factory, recovered, op, 999)
+            financial.bind_financial(
+                factory, recovered, op, 999, proof=original_proof(factory, recovered, op, transport)
+            )
         with factory() as db:
             saved = db.get(ExternalCreateOperation, op.id)
             assert saved.unknown_recovery_deadline_at == op.deadline
             assert saved.operation_state == State.MANUAL_REVIEW and saved.bound_external_object_id is None
             work = db.scalar(select(BillingWorkItem).where(BillingWorkItem.coalescing_key == str(op.id)))
-            assert work and work.next_attempt_at == op.deadline
+            assert work and work.next_attempt_at < op.deadline
+            deadline = db.scalar(
+                select(BillingWorkItem).where(
+                    BillingWorkItem.work_kind == "external_create_deadline",
+                    BillingWorkItem.scope_reference == str(op.id),
+                )
+            )
+            assert deadline.next_attempt_at == op.deadline
 
 
 async def test_any709_step3_api_ownership_local_status_and_same_key_survive_source_outage(

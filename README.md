@@ -7,8 +7,9 @@ Each production deployment serves one contour (compliance zone). This
 repository currently implements the `ru` contour; route locale does not select
 a contour.
 
-It contains a Next.js web application, a FastAPI identity/legal/purchase-preparation API, PostgreSQL
-persistence, and the clean provider-neutral external-billing storage baseline.
+It contains a Next.js web application, a FastAPI identity/legal/billing API,
+PostgreSQL persistence, and provider-neutral external-billing reconciliation
+and recovery.
 The former CloudPayments/direct-provider runtime and Portal-owned catalog,
 order, payment, subscription, entitlement, and trial architecture have been
 physically removed. The accepted Portal-Kernel access contract is the target
@@ -21,11 +22,15 @@ The repository remains pre-production on the surface established by ANY-636 4F. 
 ANY-709 adds source-backed current offers, direct product links, explicit
 verified-email account Widget, immutable purchase consent and request-driven
 financial preparation/recovery. Localized Buy/Continue/Manage uses one shared
-cabinet Widget after fresh ownership/effective-term verification. Confirmed paid
-access, billing workers and actual usage/quota remain later program work.
+cabinet Widget after fresh ownership/effective-term verification. ANY-715 adds
+durable embedded polling, GET-only recovery, shared scoped inventory and
+audited operator commands. Confirmed paid access and actual usage/quota
+remain later program work.
 Delivery and acceptance evidence are in
 [ANY-709](https://linear.app/paveldik/issue/ANY-709); commands, migration transitions
 and diagnostics are in the [billing runbook](docs/engineering/ANY-709-billing-runbook.md).
+Background operation and CLI commands are in the
+[background billing operations guide](docs/engineering/billing-background-operations.md).
 For target billing work, follow [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md),
 the accepted [External Billing Boundary Design](docs/superpowers/specs/2026-09-15-external-billing-boundary-design.md),
 and the accepted
@@ -37,16 +42,17 @@ authority. See also the current
 in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 External Billing owns commercial billing truth and lifecycle. The Portal owns
-identity/legal and the later projection, reconciliation, recovery, and
-paid-access delivery boundary. Platform Kernel owns technical product/metric
+identity/legal, subscription observation/projection, reconciliation and recovery,
+and future paid-access delivery. Platform Kernel owns technical product/metric
 identity, actual usage, and quota enforcement. The component historically named
 “Payments Portal” in the accepted ADR/design records is this Portal backend
 boundary; those records retain their authority and historical names.
 
 The durable [RU Portal 4F handoff](docs/product/ru-mvp.md) records the current
-UI/data sources and the deferred ANY-504 Steps 6–10. Later steps populate the
-existing per-product commercial/access/usage/action slots and pricing surface
-without redesigning the main cabinet. UI “not ready/unknown” does not establish
+UI/data sources and step ownership. Steps 6–8 supply source-backed offers,
+purchase/Widget actions and reconciliation/recovery; Steps 9–10 will populate
+confirmed access and usage/quota in the existing per-product slots and pricing
+surface without redesigning the main cabinet. UI “not ready/unknown” does not establish
 no subscription, no access, or zero usage/quota. The approved RU mockup supplies
 product/visual direction; evolved Bundle 3 is its canonical implementation
 design system, using navy/amber, flat dark panels and compact styling.
@@ -166,9 +172,10 @@ do not use `alembic stamp`, downgrade, or an upgrade bridge.
 - `apps/web` — Next.js AnyToolAI Portal UI: product-first discovery and detail
   screens, pricing placeholder, direct account/auth entry, product-centric
   cabinet, recovery, verification, and canonical RU legal pages.
-- `apps/api` — FastAPI identity, password-reset, legal, health, and metrics API,
-  plus the provider-neutral target persistence model. Billing runtime is not
-  implemented.
+- `apps/api` — FastAPI identity, password-reset, legal, health, metrics and billing
+  API; accepted-purchase preparation, polling-only reconciliation/recovery,
+  scoped inventory and privileged operator commands. Paid-access
+  derivation and Kernel delivery remain future work.
 - `apps/api/alembic` — PostgreSQL schema and first-install legal seed.
 - `docs` — authoritative product, architecture, design, reliability, security,
   legal, planning, and generated documentation.

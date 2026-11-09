@@ -18,11 +18,12 @@ from app.composition.sources import source_resources
 from app.core.errors import AppError
 from app.domains.billing import customers
 from app.domains.billing.contracts import BillingRefused
+from app.domains.billing.reconciliation_contracts import ReconciliationResult
 from app.domains.catalog.commercial_offer import SelectedOfferRefused
 from app.domains.purchases import service
-from app.domains.purchases.contracts import Purchase, PurchaseRefused
+from app.domains.purchases.contracts import PurchaseRefused
 from app.integrations.lbx.errors import LbxCreateNotSent
-from app.models import ExternalBillingCustomer, ExternalCreateOperationState as State
+from app.models import BillingStateObservation, ExternalBillingCustomer, ExternalCreateOperationState as State
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.support.kernel import manifest_fixture, resign
 from apps.api.tests.test_any709_step3_postgres import TOKEN, accept, setup_purchase
@@ -171,7 +172,7 @@ async def test_concurrent_widget_opens_ignore_diagnostics_but_reject_real_confli
         entered, release = asyncio.Event(), asyncio.Event()
         original = purchases.verify_payment_purchase
 
-        async def paused(*args: object, **kwargs: object) -> Purchase:
+        async def paused(*args: object, **kwargs: object) -> ReconciliationResult:
             result = await original(*args, **kwargs)
             if asyncio.current_task().get_name() == "opening-a":
                 entered.set()
@@ -197,10 +198,14 @@ async def test_concurrent_widget_opens_ignore_diagnostics_but_reject_real_confli
                     with pytest.raises(AppError, match="purchase_not_prepared"):
                         await bootstrap_account(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
                     failed = service.read_purchase(factory, purchase.user_id, purchase.id)
-                    assert failed.operations[0].last_failure_code is not None
-                    assert [(op.state, op.bound_id, op.fence) for op in failed.operations] == [
-                        (op.state, op.bound_id, op.fence) for op in prepared.operations
-                    ]
+                    assert failed.operations == prepared.operations
+                    with factory() as db:
+                        attempt = db.scalar(
+                            select(BillingStateObservation)
+                            .where(BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v1")
+                            .order_by(BillingStateObservation.observed_at.desc())
+                        )
+                        assert attempt.result_classification == "INCOMPLETE"
                 else:
                     second = await bootstrap_account(
                         sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id

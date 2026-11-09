@@ -207,6 +207,9 @@ def _operation(db: Session, operation: ExternalCreateOperation, *, may_send: boo
         safe_failure,
         failure_code,
         agreement_date,
+        operation.operation_kind == Kind.AGREEMENT
+        and operation.bound_external_object_id is not None
+        and queries.closed_original_agreement(db, operation.purchase_intent_id, operation.bound_external_object_id),
     )
 
 
@@ -455,16 +458,10 @@ def _locked(db: Session, purchase: Purchase) -> PurchaseIntent:
     return row
 
 
-def recheck_payment_purchase(factory: SessionFactory, configuration: Settings, token: str, expected: Purchase) -> None:
-    """Last local auth/ownership/fence check after all asynchronous Widget work."""
+def linked_subscription_id(factory: SessionFactory, purchase: Purchase) -> UUID:
     with factory() as db:
-        user = authenticate(db, configuration, token)
-        if user.id != expected.user_id:
-            raise PurchaseRefused("purchase_not_found", 404)
-        row = _locked(db, expected)
-        _verify_original_consent(db, row, expected.accepted)
-        current = _snapshot(db, row)
-        if current.state != IntentState.LINKED or tuple(op.admission_snapshot() for op in current.operations) != tuple(
-            op.admission_snapshot() for op in expected.operations
-        ):
-            raise PurchaseRefused("purchase_not_prepared", 409)
+        _locked(db, purchase)
+        sub = queries.linked_subscription(db, purchase.id)
+        if sub is None:
+            raise PurchaseRefused("purchase_history_unproven", 409)
+        return sub.subscription_id

@@ -1,7 +1,7 @@
 # Reliability Requirements
 
 Status: authoritative operational requirements; target external-billing semantics delegated
-Last verified: 2026-09-24
+Last updated: 2026-11-01
 
 ## Target external-billing authority
 
@@ -17,7 +17,8 @@ ownership, persistence, or paid-access derivation.
 
 The direct-provider runtime and Portal-owned commercial/access lifecycle are
 removed. ANY-709 implements live product links/offers, accepted purchase holds
-and request-driven financial preparation/recovery. Billing workers, paid-access
+and request-driven financial preparation/recovery. ANY-715 implements embedded
+reconciliation and GET-only recovery/inventory with local deadlines. Paid-access
 derivation and invalidation delivery remain later work. Source-catalog
 projection tables remain inert. Dated delivery evidence belongs to
 [ANY-709](https://linear.app/paveldik/issue/ANY-709).
@@ -57,9 +58,12 @@ projection tables remain inert. Dated delivery evidence belongs to
 - Webhook receipt, Widget callback, outbound command success, payment state, or
   manual operator input alone never grants paid access.
 
-These constraints govern implemented customer/financial commands and later
-webhook processing, reconciliation workers, paid-access derivation and
-invalidation delivery. The latter producers are not implemented by ANY-709.
+These are cross-cutting constraints. Purchase preparation, embedded polling,
+GET-only recovery and audited operations are implemented; paid-access derivation
+and invalidation delivery remain later work. The MVP has no webhook receiver or
+receipt processor. Retained inbox rows remain history. Durable queue generations,
+claims and bounded retries preserve polling progress independently of callbacks.
+See [polling-only operation](engineering/billing-background-operations.md#polling-only-operation).
 
 ## Transaction, idempotency, and retry contract
 
@@ -72,9 +76,10 @@ transaction.
 
 Current transaction boundaries are documented in
 [ARCHITECTURE.md](../ARCHITECTURE.md#current-transaction-map): identity/legal,
-product-link publication, accepted purchases and fenced financial preparation
-have current writers. Worker reconciliation and paid-access delivery remain
-later work.
+product-link publication, accepted purchases, fenced financial preparation,
+worker reconciliation and audited operator resolution have current writers;
+webhook inbox rows are retained history. Paid-access derivation and invalidation delivery remain later
+work.
 
 Future database retry decisions use these semantics:
 
@@ -146,8 +151,9 @@ worker boundary. Do not add unbounded blocking work, retry loops, or retry
 sleeps.
 
 Password-reset email delivery remains its bounded synchronous framework
-background task. Billing work tables do not establish a worker runtime; the
-durable worker implementation belongs to a later step.
+background task. Billing work tables do not establish a worker runtime by
+themselves. Billing uses the separate bounded embedded runner with durable
+PostgreSQL claims and provider-free deadline capacity documented below.
 
 ## Agent-verifiable signals
 
@@ -221,6 +227,26 @@ request/response bodies, URLs/query values, headers, cookies, authorization,
 provider payloads, secrets, or card/token/payment values.
 
 ## Recovery
+
+ANY-715 Step 5 purchase diagnostics distinguish durable queue progress from
+complete verified subscription proof. Health/metrics expose both; outage/backlog
+never extends source trust. The privileged CLI reuses worker reconciliation and
+financial recovery. Supported review resolutions recheck current original
+provenance/fences under business locks and commit facts/bindings, audit and queue
+changes together. Identical completed commands replay without writes or source
+calls; stale/different commands refuse. A failed read may leave its finite
+reconciliation lease, never an unbounded replacement source request. Terminal
+holds/history and fixed UNKNOWN windows survive inspection, rechecks and refusals.
+
+ANY-715 Step 1 shared reconciliation uses short database-time fenced claims and
+apply transactions around one bounded four-point source read set. Incomplete
+attempts never renew finite source trust; owned blocks/conflicts reduce usability
+without depending on complete unrelated commercial fields. Preparation cannot
+overwrite monitored facts. Steps 2–3 execute it in the bounded embedded worker, with separate provider-free
+trust/create deadlines, urgent GET-only recovery and bounded customer inventory.
+Local contention preserves original send authority; retries and source outages
+never move financial UNKNOWN deadlines or convert completed no-send evidence. See the
+[billing operations runbook](engineering/billing-background-operations.md).
 
 Development environments are worktree-isolated and disposable. The Step-4
 baseline is a destructive compatibility boundary:

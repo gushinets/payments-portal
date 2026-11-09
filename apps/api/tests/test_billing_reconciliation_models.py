@@ -14,6 +14,7 @@ from app.models import (
     ExternalSubscriptionLifecycleStatus,
     ManualReviewCase,
     PurchasedAllowance,
+    WebhookDeliveryState,
 )
 from app.models._shared import PersistedEnumType
 
@@ -139,6 +140,8 @@ def test_target_reconciliation_model_columns_are_exact() -> None:
     }
     assert _column_names(BillingWorkItem) == {
         "work_item_id",
+        "enqueue_generation",
+        "last_attempt_started_at",
         "work_kind",
         "scope_kind",
         "scope_reference",
@@ -206,6 +209,7 @@ def test_nullable_slots_are_limited_to_the_approved_contract() -> None:
         "last_error_classification",
     }
     assert _nullable_columns(BillingWorkItem) == {
+        "last_attempt_started_at",
         "active_recovery_deadline_at",
         "coalescing_key",
         "lease_owner",
@@ -354,6 +358,7 @@ def test_closed_and_open_vocabularies_are_explicit() -> None:
         ExternalSubscription.__table__.c.financial_access_status: ExternalSubscriptionFinancialAccessStatus,
         ExternalSubscription.__table__.c.commercial_access_status: ExternalSubscriptionCommercialAccessStatus,
         BillingStateObservation.__table__.c.observation_kind: BillingStateObservationKind,
+        ExternalBillingWebhookDelivery.__table__.c.processing_state: WebhookDeliveryState,
     }
     for column, enum_cls in enum_columns.items():
         assert isinstance(column.type, PersistedEnumType)
@@ -362,7 +367,6 @@ def test_closed_and_open_vocabularies_are_explicit() -> None:
     open_columns = (
         BillingStateObservation.__table__.c.completeness_classification,
         BillingStateObservation.__table__.c.result_classification,
-        ExternalBillingWebhookDelivery.__table__.c.processing_state,
         BillingWorkItem.__table__.c.work_kind,
         BillingWorkItem.__table__.c.scope_kind,
         BillingWorkItem.__table__.c.work_state,
@@ -403,6 +407,7 @@ def test_step_4_safe_checks_are_exact() -> None:
     assert _check_names(BillingWorkItem) == {
         "ck_billing_work_items_payload_schema_nonempty",
         "ck_billing_work_items_lease_pair",
+        "ck_billing_work_items_generation_nonnegative",
     }
     assert _check_names(ManualReviewCase) == {
         "ck_manual_review_cases_evidence_schema_nonempty",
@@ -502,6 +507,7 @@ def test_lookup_indexes_cover_the_fixed_contract() -> None:
         "ix_billing_work_items_scope": ("scope_kind", "scope_reference"),
         "ix_billing_work_items_coalescing_key": ("coalescing_key",),
         "uq_billing_work_items_create_recovery": ("coalescing_key",),
+        "uq_billing_work_items_recurring": ("work_kind", "coalescing_key"),
         "ix_billing_work_items_priority_retry": ("work_state", "priority", "next_attempt_at"),
         "ix_billing_work_items_lease_expiry": ("lease_expires_at",),
         "ix_billing_work_items_claim_scan": (

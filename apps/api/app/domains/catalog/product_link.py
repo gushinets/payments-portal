@@ -87,7 +87,7 @@ class CurrentOffer:
     price_id: int
     prepaid: bool
     full_funding_required: bool
-    block_to_close_days: int
+    block_to_close_days: int | None
     evidence_mode: CommercialEvidenceMode
     observed_at: datetime
     fingerprint: str
@@ -96,15 +96,16 @@ class CurrentOffer:
 def current_offer_fingerprint(account_id: str, selection: ProductLinkRequest, offer: CurrentOffer) -> str:
     """Current acceptance identity, reproducible from old immutable snapshots.
 
-    The next scheduled price is observation metadata. The selected price's
-    identity/start and all current commercial conditions remain material.
+    Scheduled prices and LBX's block-to-close setting are observation metadata.
+    The selected price's identity/start and purchase conditions remain material.
+    Recomputing old snapshots here never changes their stored accepted digest.
     """
     period = asdict(offer.period)
     del period["price_effective_until"]
     return commercial_digest(
         canonical_document(
             {
-                "schema": "current-terms:v2",
+                "schema": "current-terms:v3",
                 "scope": account_id,
                 "selection": selection.model_dump(),
                 "money": asdict(offer.money),
@@ -115,7 +116,6 @@ def current_offer_fingerprint(account_id: str, selection: ProductLinkRequest, of
                 "defaults": [offer.tariff_service_id],
                 "prepaid": offer.prepaid,
                 "full_funding_required": offer.full_funding_required,
-                "block_to_close_days": offer.block_to_close_days,
             }
         )
     )

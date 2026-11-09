@@ -1,7 +1,7 @@
 # Documentation Index
 
 Status: authoritative index
-Last verified: 2026-11-01
+Last updated: 2026-11-09
 
 Start with the smallest document that matches the task.
 
@@ -12,8 +12,11 @@ Start with the smallest document that matches the task.
   boundary design, then the accepted Portal-Kernel access-contract design.
   The accepted live-source amendment narrowly supersedes their source-catalog
   mirroring/new-sale TTL requirements; paid-access rules are unchanged.
-  ADR 0005 links only the dated ANY-504 C1-C4 exceptions and ANY-709 results;
-  apply those precise exceptions before affected baseline rules.
+  Apply the accepted dated owner decisions recorded in or explicitly linked by
+  ADR 0005 before the affected baseline rules, within each decision's stated
+  scope. These include C1-C4, point-resource identity, payment-Widget admission,
+  UNKNOWN recovery and lifecycle metadata. Implementation results are evidence,
+  not additional contract exceptions.
   Retained billing documents cannot override that target authority chain.
 - `ARCHITECTURE.md` is the factual current-state map and records clearly
   labelled target or transitional constraints where needed.
@@ -26,8 +29,8 @@ Start with the smallest document that matches the task.
 - `AGENTS.md` files provide concise working instructions and navigation; their
   instruction precedence is defined by the root guide.
 - Ordinary Linear issue text and execution plans define implementation scope.
-  Only the fixed dated decision section explicitly linked by ADR 0005
-  supplies the ANY-709 contract exceptions; reports and checkboxes do not.
+  Only accepted dated owner decisions recorded in or explicitly linked by
+  ADR 0005 supply billing contract exceptions; reports and checkboxes do not.
 
 ## Product and design
 
@@ -101,6 +104,8 @@ Start with the smallest document that matches the task.
 - [Security](SECURITY.md)
 - [Quality score](QUALITY_SCORE.md)
 - [Execution plans](exec-plans/README.md)
+- [ANY-715 completed MVP rebuild plan](exec-plans/completed/ANY-715-mvp-rebuild-plan.md) — Stages 0–6 closed by owner decision; verification evidence, limitations and follow-ups under ANY-820 are retained.
+- [Background billing operations](engineering/billing-background-operations.md) — worker settings, scheduling, polling-only operation, retained inbox history, operator commands and diagnostics.
 
 ## Legal
 

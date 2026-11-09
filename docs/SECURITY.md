@@ -5,6 +5,13 @@ Last verified: 2026-09-24
 
 ## Sensitive data
 
+ANY-715 Step 1 reconciliation persists allowlisted normalized conclusions,
+calendar facts and immutable local provenance, never raw source payloads,
+credentials or contact fields. Scope and original customer/agreement/subscription
+bindings are server-resolved and rechecked under locks before apply. Conflicts
+cannot silently rebind or grant access; see
+[billing operations](engineering/billing-background-operations.md).
+
 Never collect, persist, or log full card data. Redact card-related external
 fields, raw session, password-reset, and email-verification tokens,
 authorization headers, webhook secrets, passwords, and private billing or
@@ -57,6 +64,14 @@ Sentry receives only explicitly allowlisted backend application-failure data:
 - explicitly allowlisted static or bounded diagnostic fields such as an
   invariant identifier or batch size.
 
+The `BillingRecoveryExhausted` notice additionally allows fixed repository-owned
+operator guidance/runbook URL and canonical local operation/review-case UUIDs in
+its dedicated context. Its inspection command resolves those references locally;
+user IDs, purchase-owner data and provider identifiers are not sent. The fixed
+failure-class fingerprint contains no entity/correlation ID. Raw exception text
+and arbitrary URLs/commands remain stripped; the adapter reconstructs only the
+approved fixed guidance and UUID-based local lookup command.
+
 Sentry events must not contain raw exception messages, locals, source-code
 context, request or response bodies, raw URL or path values, query values,
 headers, cookies, user or email data, IP data, provider payloads or external
@@ -87,6 +102,13 @@ receipt durable. A concrete integration may persist additional payload data only
 under a separately approved integration-specific requirement that defines its
 need, security treatment, and retention.
 
+The ANY-715 MVP is polling-only. `/api/billing/lbx/webhook` has no handler and
+returns 404, and receiver enablement/authentication settings are removed. The
+retained inbox is historical schema/data without an active receiver or processor.
+See [polling-only operations](engineering/billing-background-operations.md#polling-only-operation).
+Any future receiver must satisfy the authentication/redaction/durability rules
+above under its own integration scope.
+
 ## Trust boundaries
 
 - Validate HTTP, environment, webhook, and database-boundary data.
@@ -115,6 +137,10 @@ Under customer decision C3 linked by
 bounded discover/create/recover cycle. Temporary failures wait with backoff within
 the existing request deadline. A finite active-send lease protects sends; each
 later claim requires fresh successful empty discovery in the same slot/operation.
+After automatic discovery is durably `paused` at its fixed two-hour deadline,
+the [2026-11-09 decision](architecture/decisions/0005-external-billing-boundary.md#accepted-unknown-recovery-and-lifecycle-metadata-decisions---2026-11-09)
+makes later explicit openings GET-only. An empty listing or expired send lease
+cannot rearm CREATE for that paused operation. The pre-pause C3 policy is unchanged.
 A saved receipt must be resolved by point proof. Email-uniqueness rejection
 permits GET recovery only for the rest of the opening; ambiguous identity, failed
 discovery, authorization and permanent validation errors never authorize CREATE.
@@ -141,6 +167,7 @@ It enables only the payment presentation flag; subscription create/edit, autopay
 invoice and stop controls stay disabled. Financial CREATE never inherits the
 customer later-open retry policy, and UNKNOWN keeps its hold and original +2h
 deadline. No operation or Widget outcome grants paid access.
+
 Account viewing has no catalog, price, seller-agreement or subscription prerequisite.
 
 Step 4 uses one disposable SDK lifecycle for account and payment views. Opening
@@ -164,6 +191,16 @@ readiness, not client-data, payment, subscription or access authority. Once read
 no loading timer may interrupt an active checkout.
 
 ## High-risk review paths
+
+ANY-715 privileged purchase commands retain the existing OS/deployment access
+boundary. `inspect` is local and read-only; other rechecks use bounded GETs.
+Only fresh original-object proof plus current review/evidence/fence expectations
+permits the two audited resolutions. Principal, bounded reason/reference,
+before/after identities and proof summary stay in existing durable review storage,
+atomically with shared apply/bind. Never include secrets/PII in operator text or
+logs. No terminal hold release, arbitrary identity override, admin API, new role,
+manual paid marking or quota editing is exposed. See the exact
+[effects and refusals](engineering/billing-background-operations.md#privileged-purchase-operations).
 
 Authentication, payments, legal sources and seeds, migrations, telemetry
 redaction, production Compose, deployment configuration, and secret handling

@@ -206,7 +206,7 @@ bound. Customer-only proven scope also governs first product publication.
 
 All writing API/CLI processes must use the shared origin-lock protocol before
 rollout; older binaries do not participate. See the exact lock order in the
-[Step 8 handoff](#step-8-integration-handoff). Caller timeouts return temporary
+[concurrency and preparation boundary](#concurrency-and-preparation-boundary). Caller timeouts return temporary
 `503 billing_busy` for customer/purchase contention, or `mapping_storage_busy`
 for publication, without renewing deadlines. Exact accepted-request replay stays
 local. READ COMMITTED is required; provider HTTP stays outside transactions.
@@ -251,7 +251,12 @@ key.
 Customer decision C3 permits bounded discover/create/recover with backoff inside
 a nonrenewable opening budget. A later claim requires fresh successful complete
 empty discovery and completion/expiry of the previous active-send lease. Failed
-reads never prove absence. Email-uniqueness rejection makes the remainder of
+reads never prove absence. This C3 retry policy applies only before the durable
+deadline pause. Under the [2026-11-09 decision](../architecture/decisions/0005-external-billing-boundary.md#accepted-unknown-recovery-and-lifecycle-metadata-decisions---2026-11-09),
+later explicit openings of a `paused` operation are GET-only: an empty listing
+or expired send lease cannot authorize CREATE. See the
+[two-hour recovery procedure](billing-background-operations.md#unknown-create-after-two-hours).
+Email-uniqueness rejection makes the remainder of
 that opening GET-only; authorization/permanent errors stop. **Remote duplicate
 prevention depends on LBX enforcing email uniqueness across repeated/concurrent
 creates.** Local fencing and an unchanged key do not prove an earlier POST had
@@ -320,12 +325,16 @@ For API inspection use the authenticated verified owner's session:
    manual/demo activation and subscription start dates. Original accepted terms
    and customer-wide same-tariff inventory are checked before **each** new
    financial send, including subscription continuation after proven no-send.
-   Incomplete inventory stays pending; an unproven competitor requires review.
-   Another point-proven original Portal purchase may remain admissible.
+   Incomplete inventory stays pending. A competitor blocks unsent admission while
+   preserving PENDING/PROVEN_NOT_SENT evidence and explicit continuation after
+   correction; it never manufactures a permanent financial review before send.
+   Another permanently bound Portal purchase remains its own product even during
+   review; its leased reconciliation handles its own commercial conflict.
    If its subscription send is still unresolved, the new purchase waits with its
    existing hold and no financial send. Resume it after the original purchase
-   completes; a saved receipt mismatch or failed owner/seller/terms proof still
-   requires review.
+   completes. An ambiguous candidate or failed owner/seller/terms proof cannot
+   authorize a send. Possible-send and canonical inventory conflicts require the
+   audited original operator path after correction.
    Its local snapshot uses the existing bounded user-row lock shared by purchase
    transitions; provider HTTP runs after that transaction closes.
    The number of other held Portal purchases is not a separate admission quota.
@@ -350,7 +359,8 @@ tariff/period, fixed-service effective price and quantity/total. Today's catalog
 price, price-row/association IDs and mutable subscription `outer_id` are not
 subscription authority. Waiting NULL/1970/3000 calendar values are not paid dates.
 A nonzero connection charge without explicit effective readback stays pending.
-A linked subscription is prepared, financially `unverified`, with no paid trust,
+A newly linked subscription has zero positive trust: a proved source negative
+is `blocked`, otherwise financial status is `unverified`. Preparation creates no
 access primary, grant, allowance or Kernel call. Paid access remains later work.
 
 ### Recovery and safe continuation
@@ -370,6 +380,21 @@ and coalesced work before financial POST. A timeout, 500/error, malformed succes
 crash, lost commit acknowledgement, empty discovery or expiry never permits
 another financial CREATE. UNKNOWN is GET-only and keeps its hold. Overdue work
 enters review; point proof may resolve deadline escalation, not a known conflict.
+Advance, worker and operator share `composition/purchase_recovery.py`: saved
+original command/key, possible-send history, original dedicated agreement and
+fresh ownership/applicable effective terms must be proved before first binding.
+The operator collects each required point once and reuses the normalized proof
+for the existing authorization/bind/audit transaction.
+
+A proved original ended subscription or closed agreement remains recoverable.
+First binding records the immutable relationship and known negative in the same
+transaction, with no positive trust or payment admission. A closed agreement is
+retained as `prepared-agreement:v1` product-scoped evidence; both advance and the
+financial claim reject a new subscription send for that historical closure.
+A legitimate waiting subscription needs no fictitious paid cycle dates to prove
+its original creation. Already bound financial recovery is a no-op, including
+bound operations placed in review; a concurrent first binder makes the losing
+candidate proof stale and its caller uses claimed subscription reconciliation.
 
 Only completed typed `LbxCreateNotSent` evidence permits a later explicit advance
 of the same operation/request with a fresh fence. Its fixed active +2h deadline
@@ -387,6 +412,12 @@ only for changed accepted terms while **all** financial operations are provably
 unsent under send-claim locks. Other release needs trustworthy audited evidence;
 there is no force-release/grant command or absence inference from zero results.
 
+Final payment admission rechecks session, ownership, operation fences and the
+canonical subscription under the same locks. An ENDED fact committed after
+source readback refuses payment opening; a healthy reread or financial block
+alone does not invalidate fresh payment proof. Account-only viewing remains
+independent of purchase lifecycle.
+
 ## Browser operation and diagnostics
 
 Prepared product detail links to `/account?purchase=<id>#billing`. The deep link
@@ -403,6 +434,9 @@ deadline covering body consumption; identity/local purchase GETs use five
 seconds. A lost confirm/advance reply triggers one local inspection, retaining
 its original key/purchase; no POST repeats automatically. Pending/error UI keeps
 a safe request ID. Local status is not an LBX refresh or paid verification.
+ANY-715 now supplies persisted observation/reconciliation facts and operator
+diagnostics; it does not add a new public billing-status UI contract. See the
+[billing operations guide](billing-background-operations.md).
 
 SDK `render()` is not readiness. The isolated host waits up to 20 seconds for
 `lbx-widget` READY from the exact nested window at the configured provider origin.
@@ -436,10 +470,10 @@ one dedicated agreement/subscription. Repeated opens/advance/Manage must retain
 these identities. Never delete/relabel holds, receipts, reviews or accepted pins
 to recover a UI or provider failure.
 
-## Step 8 integration handoff
+## Concurrency and preparation boundary
 
-ANY-715/ANY-765 must carry the origin-scope and customer-conflict fixes together.
-Use existing owner functions, not duplicated admission logic:
+Purchase and background recovery share the same ownership and send-authority
+transitions. Reuse these owners when changing either path:
 
 - New customer reservation, purchase acceptance and origin-backed publication
   share the tenant/region/normalized-origin transaction advisory lock.
@@ -465,14 +499,40 @@ Use existing owner functions, not duplicated admission logic:
   admission, all distinct review causes and immutable accepted history together.
 - `app.composition.billing.recover_customer` and
   `app.composition.purchases.recover_financial` perform GET-only recovery;
-  domain `escalate_overdue_customers`/`escalate_overdue_financial` are bounded
-  callable escalation. Financial limit is 1..100 due operations. Reuse coalesced
-  `external_create_recovery` work and active deadlines, retaining source/recovery
-  capacity separation. No scheduler runs in ANY-709.
+  customer escalation retains `escalate_overdue_customers`. Financial escalation
+  uses durable `external_create_deadline` claim/apply through
+  `domains/billing/background_recovery.py`; the unused financial scanner/query
+  are removed. Reuse coalesced `external_create_recovery` work and active
+  deadlines, retaining source/recovery capacity separation. The embedded GET-only worker has isolated normal/urgent
+  capacity; see [background operations](billing-background-operations.md).
 - `prepared-subscription:v1` observations are `preparation_only` /
-  `not_paid_verified`, with `paid_verified=false`; no paid trust is extended.
-  Workers/webhooks/reconciliation belong to Step 8; paid access and Kernel
-  delivery/usage belong to later steps. Preparation is not their implementation.
+  `not_paid_verified` or `source_negative`, with `paid_verified=false`; no
+  positive trust is extended. They contain redacted original-proof evidence.
+  First-binding persistence cannot rewrite an existing canonical subscription.
+  Shared claimed reconciliation owns ongoing lifecycle and trust. Payment
+  Widget, already-bound advance, worker and operator reconciliation acquire the
+  subscription lease before point reads and apply through the same fenced
+  transaction. Repeated opens do not rebind financial operations or append
+  preparation observations. Paid AccessSnapshot, AccessInvalidation and Kernel
+  delivery/usage remain later work. Preparation grants no paid access.
+- Payment presentation requires a committed complete identity/commercial match,
+  supported nonterminal lifecycle and final local session/customer/purchase
+  admission after Client readiness. Waiting/unpaid and financially blocked
+  subscriptions can be payable. Missing paid-cycle calendar dates do not block
+  payment when identity, material terms and nonterminal lifecycle are proven;
+  they still prevent positive trust renewal. Unknown agreement closure remains
+  non-payable even when its subscription's block is proven. Incomplete identity/commercial or
+  terminal proof cannot return payment credentials; account-only Widget remains independent. Lease contention
+  returns retryable `purchase_pending`, without unclaimed source reads.
+- Bound HTTP reconciliation keeps the source budget separate from short DB
+  apply, preserving a timely negative when later policy I/O expires. Every
+  source call and final credential admission still check the absolute deadline.
+  HTTP/operator reads coalesce follow-up work without finishing another queue
+  owner's claim; inventory-origin observations cannot finish a customer job.
+- Customer identity conflicts atomically restrict all linked subscriptions;
+  financial-operation conflicts restrict only their purchase. Both invalidate
+  in-flight reconciliation leases without rewriting source timestamps/history,
+  so restoration cannot make an earlier ACTIVE proof valid again.
 
 ## Verification commands
 

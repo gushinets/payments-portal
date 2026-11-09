@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import replace
+from datetime import timedelta
 
 import httpx
 import pytest
@@ -14,6 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.composition.billing import bootstrap_account
 from app.composition.sources import source_resources
+from app.core.time import utc_now
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.customers import (
     apply_customer_read,
@@ -21,7 +23,12 @@ from app.domains.billing.customers import (
     record_customer_receipt,
     reserve_customer,
 )
-from app.models import ExternalBillingCustomer, ExternalCreateOperation, ExternalCreateOperationState as State
+from app.models import (
+    BillingWorkItem,
+    ExternalBillingCustomer,
+    ExternalCreateOperation,
+    ExternalCreateOperationState as State,
+)
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.test_any709_step2_postgres import TOKEN, seed
 
@@ -234,7 +241,7 @@ def test_any709_qa_uncertain_commit_preserves_active_claim_or_saved_receipt(
 
     factory = postgres_session_factory
     seed(factory)
-    config = step1_settings(preflight_total_timeout_seconds=0.6, preflight_cleanup_timeout_seconds=0.025)
+    config = step1_settings(preflight_total_timeout_seconds=2, preflight_cleanup_timeout_seconds=0.25)
     posts = []
     target = "claim_customer_send" if commit_phase == "claim" else "record_customer_receipt"
     original = getattr(billing, target)
@@ -263,6 +270,14 @@ def test_any709_qa_uncertain_commit_preserves_active_claim_or_saved_receipt(
                 await bootstrap_account(sources, config, factory=factory, token=TOKEN)
             monkeypatch.setattr(billing, target, original)
             if commit_phase == "claim":
+                # This scenario is specifically an active lease, not expiry
+                # during the next opening. Keep that precondition explicit.
+                with factory() as db:
+                    work = db.scalar(
+                        select(BillingWorkItem).where(BillingWorkItem.work_kind == "external_create_recovery")
+                    )
+                    work.lease_expires_at = utc_now() + timedelta(seconds=10)
+                    db.commit()
                 with pytest.raises(BillingRefused):
                     await bootstrap_account(sources, config, factory=factory, token=TOKEN)
             else:

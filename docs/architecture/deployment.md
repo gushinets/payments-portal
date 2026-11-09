@@ -88,10 +88,11 @@ The conceptual user-facing destination is the AnyToolAI Portal for the selected
 contour, with Platform Kernel as a separate API/service boundary; no separate
 Application Portal peer frontend is required. The Resolver API schema remains
 undefined, and this topology defines no response fields or client behavior.
-There is no current provider webhook runtime or callback endpoint. If a future
-External Billing webhook integration is implemented by its owning later step,
-it is contour-local and terminates at that contour's API; Region Resolver is
-not a webhook proxy.
+The ANY-715 MVP build uses contour-local embedded polling and has no webhook
+receiver. `/api/billing/lbx/webhook` returns 404; there are no receiver settings
+to forward through Compose/harness. Keep polling enabled and use the
+[polling-only operations guide](../engineering/billing-background-operations.md#polling-only-operation).
+Retain existing receipt tables/history; this build does not process that inbox.
 
 The clean baseline validates the configured scope and then bootstraps only the
 currently supported `anytoolai` / `ru` contour and its RU country membership.

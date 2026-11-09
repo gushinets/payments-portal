@@ -37,6 +37,7 @@ from app.models.enums import (
     PurchaseIntentState,
     RegionStatus,
     UserStatus,
+    WebhookDeliveryState,
 )
 from app.models.identity import (
     AuthSession,
@@ -95,4 +96,5 @@ __all__ = [
     "RegionStatus",
     "User",
     "UserStatus",
+    "WebhookDeliveryState",
 ]

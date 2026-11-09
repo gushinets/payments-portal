@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
 from uuid import uuid4
 
 import pytest
@@ -11,11 +10,12 @@ from sqlalchemy import select, text
 from sqlalchemy.engine import Engine, URL
 from sqlalchemy.orm import Session
 
+from app.domains.billing.background_recovery import DEADLINE, enroll_operation
 from app.infrastructure.queries import purchases as queries
 from app.models import BillingWorkItem, ExternalCreateOperation
 from apps.api.tests.support.postgres import alembic_test_config, reset_public_schema
 from apps.api.tests.test_any709_migration_postgres import _columns, _rows
-from apps.api.tests.test_target_persistence_postgres import CUSTOMER_ID, PURCHASE_ID, USER_ID, _seed_subscription_graph
+from apps.api.tests.test_target_persistence_postgres import CUSTOMER_ID, PURCHASE_ID, _seed_subscription_graph
 
 pytestmark = pytest.mark.postgres
 
@@ -57,5 +57,8 @@ def test_recovery_window_upgrade_preserves_history_and_original_deadline_fallbac
         work = db.scalar(select(BillingWorkItem))
         assert work.active_recovery_deadline_at is None
         assert queries.financial_recovery_deadline(operation, work) == operation.unknown_recovery_deadline_at
-        assert queries.overdue_financial(db, operation.unknown_recovery_deadline_at - timedelta(seconds=1), 10) == ()
-        assert queries.overdue_financial(db, operation.unknown_recovery_deadline_at, 10) == ((USER_ID, PURCHASE_ID),)
+        enroll_operation(db, operation, "ru-lbx-main")
+        deadline = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == DEADLINE))
+        assert deadline.next_attempt_at == operation.unknown_recovery_deadline_at
+        assert work.active_recovery_deadline_at is None
+        assert work.payload_document["candidate_id"] == "456"

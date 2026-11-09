@@ -16,7 +16,7 @@ from app.composition.billing import bootstrap_account
 from app.composition.purchases import advance_purchase
 from app.composition.sources import source_resources
 from app.domains.billing.contracts import BillingAccountFailure
-from app.infrastructure.preflight import PreflightDeadlineExceeded
+from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from app.models import BillingWorkItem, ExternalCreateOperation
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State, PurchaseIntentState
 from apps.api.tests.support.any709_step1 import step1_settings
@@ -38,7 +38,10 @@ def test_customer_cleanup_preserves_caller_cancellation_and_normalizes_owned_dea
 ) -> None:
     factory = postgres_session_factory
     transport = setup_purchase(factory)
-    short = step1_settings(preflight_total_timeout_seconds=1.5, preflight_cleanup_timeout_seconds=0.4)
+    # Give DB/auth preparation its own ample margin; cancel as soon as close
+    # starts. A cleanup reserve longer than the work window guarantees that
+    # protected cleanup crosses the owned deadline without a tight sleep race.
+    short = step1_settings(preflight_total_timeout_seconds=6, preflight_cleanup_timeout_seconds=4)
 
     async def scenario() -> None:
         closing = asyncio.Event()
@@ -75,10 +78,14 @@ def test_customer_cleanup_preserves_caller_cancellation_and_normalizes_owned_dea
                 else bootstrap_account(sources, short, factory=factory, token=TOKEN)
             )
             try:
-                await asyncio.wait_for(closing.wait(), timeout=3)
+                try:
+                    await asyncio.wait_for(closing.wait(), timeout=5)
+                except TimeoutError:
+                    if opening.done():
+                        await opening  # Surface preparation failure instead of masking it in teardown.
+                    raise
                 if caller_cancel:
                     budget = next(iter(sources.billing._active))
-                    await asyncio.sleep(max(0, budget.work_deadline - time.monotonic() - 0.2))
                     assert time.monotonic() < budget.work_deadline
                     opening.cancel("synthetic caller disconnect before deadline")
                     with pytest.raises(asyncio.CancelledError):
@@ -111,7 +118,11 @@ def test_customer_cleanup_preserves_caller_cancellation_and_normalizes_owned_dea
                         assert work is None
             finally:
                 finish.set()
-                await asyncio.wait_for(closed.wait(), timeout=2)
+                if closing.is_set():
+                    await asyncio.wait_for(closed.wait(), timeout=5)
+                if not opening.done():
+                    opening.cancel()
+                await asyncio.gather(opening, return_exceptions=True)
         assert sources.billing.active_count == 0
         # Another explicit opening uses the same operation; a completed synthetic
         # POST is recovered by point proof instead of dispatching a second CREATE.
@@ -140,10 +151,12 @@ def test_deadline_after_customer_proof_keeps_its_original_classification(
 
     factory = postgres_session_factory
     transport = setup_purchase(factory)
-    short = step1_settings(preflight_total_timeout_seconds=0.5, preflight_cleanup_timeout_seconds=0.1)
+    short = step1_settings(preflight_total_timeout_seconds=2, preflight_cleanup_timeout_seconds=0.1)
 
-    async def wait_after_customer(*args: object, **kwargs: object) -> None:
-        await asyncio.Event().wait()
+    async def wait_after_customer(*args: object, budget: PreflightBudget, **kwargs: object) -> None:
+        # Match source I/O ownership: apply transactions intentionally finish
+        # outside the outer timeout, while each source operation is budgeted.
+        await budget.run(asyncio.Event().wait)
 
     async def scenario() -> None:
         normal = step1_settings()

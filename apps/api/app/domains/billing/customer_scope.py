@@ -24,6 +24,14 @@ def lock_customer_connection(db: Session, configuration: Settings) -> None:
         raise BillingRefused("billing_busy", 503) from None
 
 
+def connection_account(db: Session, configuration: Settings) -> str:
+    """Resolve proven origin-backed storage identity without relabelling history."""
+    accounts = connection_accounts(db, configuration.lbx_provider_origin)
+    if len(accounts) > 1:
+        raise BillingRefused("billing_connection_conflict", 409)
+    return next(iter(accounts), configuration.lbx_external_billing_account_id)
+
+
 def customer_account(db: Session, configuration: Settings, user_id: UUID) -> str:
     """Prove scope under the shared lock before reserving a permanent identity.
 
@@ -31,10 +39,7 @@ def customer_account(db: Session, configuration: Settings, user_id: UUID) -> str
     before product locking; reacquiring that same transaction lock is safe.
     """
     lock_customer_connection(db, configuration)
-    accounts = connection_accounts(db, configuration.lbx_provider_origin)
-    if len(accounts) > 1:
-        raise BillingRefused("billing_connection_conflict", 409)
-    account = next(iter(accounts), configuration.lbx_external_billing_account_id)
+    account = connection_account(db, configuration)
     # Only authorized publication can attach origin proof to a retained head.
     if any(
         head.provider_origin is None and head.external_billing_account_id != account

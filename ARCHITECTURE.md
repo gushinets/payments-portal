@@ -1,7 +1,7 @@
 # AnyToolAI Portal Architecture
 
 Status: authoritative current-state map
-Last updated: 2026-10-22
+Last updated: 2026-11-02
 
 ## System boundary
 
@@ -16,9 +16,10 @@ The current Portal combines public discovery, product detail, account/auth and
 an owned-purchase cabinet. ANY-709 implements direct product links, live current
 offers, account Widget, accepted-purchase preparation/recovery and localized
 Buy/Continue/Manage with one shared payment-capable Widget. It remains
-pre-production. Billing lifecycle workers, paid access, actual usage/quota and
-real Kernel enablement belong to later program steps. Delivery and acceptance
-evidence are recorded in [ANY-709](https://linear.app/paveldik/issue/ANY-709).
+pre-production. ANY-715 supplies embedded lifecycle polling and GET-only
+recovery/inventory. Paid access, actual usage/quota and real Kernel enablement
+belong to later program steps. Delivery and acceptance evidence are recorded in
+[ANY-709](https://linear.app/paveldik/issue/ANY-709).
 
 Each production deployment serves exactly one contour. Region Resolver is a
 separate planned service for contour selection; it is not implemented here.
@@ -58,7 +59,37 @@ identity/session/legal tables, fifteen original target billing tables, a current
 product-link pointer and a purchase hold. The billing tables start empty. Direct
 link publication and explicit customer/purchase flows populate their owned
 records. Source-catalog projection slots have no runtime readers/writers.
-Workers, paid-access derivation and invalidation delivery remain later work.
+ANY-715 Step 2 adds embedded reconciliation polling; paid-access derivation
+and invalidation delivery remain later work.
+
+ANY-715 Step 1 supplies shared authoritative subscription reconciliation through
+`composition/reconciliation.py`, billing Application contracts/apply and LBX
+normalization. Four bounded point reads run outside transactions; short fenced
+claim/apply transactions preserve original purchase/legal provenance. Complete
+matching proof establishes finite source trust; incomplete attempts cannot
+renew it, and owned negative/conflict evidence reduces usability immediately.
+Preparation writes initial facts only; bound subscriptions use the claimed
+path. Original-operation recovery is shared by advance, worker and operator,
+including terminal originals, with one transactional binder and no financial
+replay. Initial binding can retain a negative but creates no positive trust.
+Scope provenance has no chosen primary, and no access revision, allowance or paid grant is produced. Step 2
+adds atomic enrollment, bounded embedded execution and provider-free trust-expiry
+evidence. Step 3 dispatches shared GET-only uncertain-create recovery, separate
+fixed two-hour local deadlines and bounded customer inventory. Permanent operation
+keys, original accepted proof and customer send leases remain authoritative;
+no background CREATE or cross-product adoption is permitted. The ANY-715 MVP
+rebuild is polling-only: `/api/billing/lbx/webhook` has no route or enablement
+configuration. Existing inbox tables/history remain, but this build neither
+receives nor processes receipts. Shared scoped inventory uses permanent
+bindings and claimed reconciliation; operator exits reuse that same inventory.
+See [billing operations](docs/engineering/billing-background-operations.md).
+
+Step 5 extends the existing privileged purchase CLI with local inspection,
+GET-only recovery/reconciliation and two audited resolutions: restore original
+canonical facts or bind the uniquely proven original possible-send operation.
+Fresh proof, expected review/evidence/fences and OS principal are rechecked in the
+shared writer; facts/binding, review audit and scheduling commit atomically.
+No terminal hold release, arbitrary rebind or access authority is introduced.
 
 The canonical target is defined, in precedence order, by
 [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md), the
@@ -79,11 +110,11 @@ revalidates it and pins exact terms and append-only legal evidence. See the [nor
 Paid-access derivation, subscription reconciliation/trust and AccessSnapshot
 deadlines are unchanged.
 External Billing owns commercial billing truth and lifecycle. The AnyToolAI
-Portal owns the implemented identity and legal acceptance flows and the later
-external-billing anti-corruption/projection/reconciliation/recovery boundary
-and provider-neutral paid-access projection and delivery. Platform Kernel owns
-technical product and metric vocabulary, durable actual usage, and quota
-enforcement.
+Portal owns implemented identity/legal acceptance and the external-billing
+anti-corruption, subscription observation/projection, reconciliation and recovery
+boundary, plus future provider-neutral paid-access projection and delivery.
+Platform Kernel owns technical product and metric vocabulary, durable actual
+usage, and quota enforcement.
 
 The component historically named “Payments Portal” in those accepted records
 maps to the Portal backend boundary implemented here. ADR 0005 and the accepted
@@ -146,7 +177,8 @@ See the [Step 3 runbook](docs/engineering/ANY-709-billing-runbook.md#purchase-ap
 - **Catalog admission and billing persistence** — live source validation,
   direct immutable product links with one current product head and live catalog reads;
   accepted purchase evidence and fenced request-driven preparation/recovery are
-  implemented. Reconciliation workers, paid-access derivation and invalidation
+  implemented. ANY-715 adds embedded polling/reconciliation/recovery and audited operator
+  resolutions. Webhook inbox rows are retained history without a runtime writer. Paid-access derivation and invalidation
   delivery remain later stages.
 - **Presentation** — locale-prefixed product-first home, catalog,
   product detail pages, pricing placeholder, direct account/auth entry,
@@ -190,7 +222,9 @@ link to product details; incomplete accepted purchases remain resumable. Product
 details own review, consent and preparation. Prepared purchases link to
 `/account?purchase=<id>#billing`; the cabinet owns one wide disposable Widget.
 Every payment entry uses the same original-purchase bootstrap and fresh proof.
-Payment/access reconciliation and usage remain deferred to Steps 8–10.
+ANY-715 reconciles subscription facts and recovers uncertain operations in the
+background. Confirmed paid-access derivation and actual usage/quota remain
+deferred to Steps 9–10; the cabinet does not present Step 8 facts as paid access.
 
 `/pricing` and public Pricing navigation are presentation-only: localized
 metadata, an honest unavailable/not-ready state and home/products links. The
@@ -211,8 +245,8 @@ The transitional pre-production `/{locale}/auth-checkout` and
 `/{locale}/payment-result` routes were removed without redirects or compatibility
 routes because they have no production compatibility obligation. This does not
 set a permanent rule for future production route changes. The durable
-[RU Portal 4F handoff](docs/product/ru-mvp.md) records the data ownership and
-deferred ANY-504 Steps 6–10.
+[RU Portal 4F handoff](docs/product/ru-mvp.md) records current data ownership,
+implemented Steps 6–8 and the remaining Steps 9–10 handoff.
 
 ## Locale runtime and public routing
 
@@ -456,10 +490,11 @@ commercial behavior:
 - immutable mapping revisions and purchase snapshots preserve accepted
   commercial/legal provenance;
 - external create operations preserve uncertain outcomes for safe recovery;
-- webhook delivery rows preserve bounded/redacted evidence, not authority;
+- webhook delivery rows preserve retained bounded/redacted history, not authority;
+  polling-only runtime neither receives nor processes them;
 - work items are scheduling state, not business truth;
-- normalized subscription/observation/allowance rows support later
-  reconciliation;
+- subscription and observation rows have ANY-715 reconciliation writers;
+  allowance production remains Step 9 work;
 - paid-access state and the invalidation outbox support later provider-neutral
   access delivery.
 
@@ -514,7 +549,8 @@ payment state, or manual operator input alone never grant paid access.
 | Commercial mapping publication | `publish_product_link()` appends a v2 immutable revision and CAS-updates one product head after live checks; same identity is a no-op across price changes. Catalog HTTP runs outside short resource-owning worker DB units. |
 | Accepted purchase | `pin_purchase()` atomically commits immutable terms, consent, local customer slot, permanent financial identities and one product hold after source reads. |
 | Financial preparation | `claim_financial()` commits permanent possible-send evidence/work before HTTP; fenced point-read apply owns separate short binding/observation transactions. |
-| Other target billing tables | Source-catalog slots are inert; worker reconciliation and paid-access behavior belong to later `ANY-504` steps. |
+| Subscription reconciliation | Claims commit before source reads; shared fenced apply atomically writes observations, facts and work. Audited operator resolutions use that same apply/bind transaction. |
+| Other target billing tables | Source-catalog slots are inert; paid-access behavior belongs to later `ANY-504` steps. |
 
 ## Enforced architecture guards
 
@@ -586,8 +622,11 @@ trace/span, and structured-log context remain correlated across the framework
 worker boundary.
 
 Password-reset email delivery remains the existing synchronous framework
-background task. The clean baseline does not introduce a billing worker
-runtime merely because durable work tables exist.
+background task. ANY-715 Step 2 adds a durable billing runner embedded in the API lifespan. It
+uses isolated worker HTTP/DB resources, PostgreSQL claims/generations and the
+shared fenced reconciliation path. Local enrollment and trust expiry perform
+no provider HTTP. Paid-access production remains deferred; see the
+[billing operations runbook](docs/engineering/billing-background-operations.md).
 
 The web dependency direction is:
 

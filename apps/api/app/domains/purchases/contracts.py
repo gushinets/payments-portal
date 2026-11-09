@@ -29,8 +29,8 @@ class EffectiveServiceEvidence:
 class PreparedSubscriptionObservation:
     subscription_id: str
     agreement_id: str
-    state: int
-    current_blocking: int
+    state: int | None
+    current_blocking: int | None
     accepted_fingerprint: str
     period_id: int
     period_type: int
@@ -102,6 +102,7 @@ class FinancialOperation:
     last_failure: tuple[int | None, int | None, str] | None = None
     last_failure_code: str | None = None
     agreement_create_date: date | None = None
+    agreement_closed: bool = False
 
     def admission_snapshot(self) -> FinancialOperation:
         """Keep every admission field except mutable failure observations."""
