@@ -297,7 +297,7 @@ def test_billing_subscription_reconciliation_invalid_decoder_and_runbook_contrac
                 "subscription_start_date": "secret arbitrary text",
             }
         )
-    runbook = Path("docs/engineering/billing-background-operations.md").read_text()
+    runbook = " ".join(Path("docs/engineering/billing-background-operations.md").read_text().split())
     for phrase in (
         RECONCILIATION_SCHEMA,
         "/users/{id}",
@@ -308,7 +308,8 @@ def test_billing_subscription_reconciliation_invalid_decoder_and_runbook_contrac
         "COMPLETE_MISMATCH",
         "INCOMPLETE",
         "six hours",
-        "complete shared inventory",
+        "`restore-original` and `bind-original` retain complete customer-wide inventory admission",
+        "`select-primary` uses complete relevant product proof",
         "read_started_at",
     ):
         assert phrase in runbook

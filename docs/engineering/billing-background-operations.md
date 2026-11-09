@@ -61,9 +61,10 @@ Widget, and retained source trust cannot replace the opening's required reads.
 Background polling and its source-trust deadlines continue independently.
 
 Only complete matching proof without a known review refreshes source trust.
-Trust begins at `read_started_at` and lasts at most six hours, with no outage
-grace. Incomplete reads preserve the existing finite support without extending
-it. Authoritative subscription apply reduces usability for proven owned
+Trust begins at `read_started_at` and lasts at most six hours:
+`projection_valid_until = last_authoritative_read_at + 6h`.
+There is no outage grace. Incomplete reads preserve the existing finite support
+without extending it. Authoritative subscription apply reduces usability for proven owned
 negative/conflicting facts even if unrelated commercial fields are missing.
 Customer inventory applies its collected evidence separately, as described
 below. Polling cannot clear a known financial/subscription conflict merely
