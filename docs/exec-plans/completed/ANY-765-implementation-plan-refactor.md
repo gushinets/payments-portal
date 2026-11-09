@@ -1,11 +1,19 @@
 # Port ANY-765 onto the rebuilt ANY-715
 
-## Verified baseline
+Status: **DONE** — port implementation and local review follow-up completed.
+Archived: 2026-11-09 at the owner's explicit request.
+Current-version live acceptance remains partial; verification limits are retained below.
+Latest local result: [2026-11-09 review follow-up](#local-review-follow-up--2026-11-09).
+The planning sequence and earlier verification entries below are historical
+records of their stated snapshots, not instructions to repeat the port or a
+claim that the current local diff has a complete canonical PASS.
+
+## Historical planning baseline — 2026-11-06
 
 - [PR #157](https://github.com/gushinets/payments-portal/pull/157): HEAD `ff4f4cd`, branch `ANY-765`, currently based on the old `ANY-715`.
 - [PR #161](https://github.com/gushinets/payments-portal/pull/161): HEAD `8c49a84`, branch `refactor/any715-mvp`; still open, not merged.
 - The own-change boundary is confirmed: `76ea1a7..ff4f4cd` contains exactly 16 commits and 155 changed files. Port their final result, rather than the full diff of #157 or the old step 8 fix history.
-- Read the [current ANY-765 plan](https://github.com/gushinets/payments-portal/blob/ff4f4cd/docs/exec-plans/active/ANY-765-implementation-plan.md), [ticket](https://linear.app/paveldik/issue/ANY-765), ADR 0005 and the linked C1–C4 decisions. Preserve accepted purchase terms, financial identities, retry CREATE restrictions and trust in authenticated point URLs without repeated self-ID checks.
+- Read the [original ANY-765 plan](https://github.com/gushinets/payments-portal/blob/ff4f4cd/docs/exec-plans/active/ANY-765-implementation-plan.md), [ticket](https://linear.app/paveldik/issue/ANY-765), ADR 0005 and the linked C1–C4 decisions. Preserve accepted purchase terms, financial identities, retry CREATE restrictions and trust in authenticated point URLs without repeated self-ID checks.
 
 The plan was updated following verification on 2026-11-06. Code, branches and PRs were not changed while checking and editing the plan. The chosen order is to preserve the original branch as `ANY-765-OLD`, close the old PR #157 without merging, continue work in `ANY-765` and open a new PR after the port.
 
@@ -223,3 +231,95 @@ Verification:
 - Peer impact: **None**. This refresh preserves the existing Portal paid wire
   and ownership boundaries; no Kernel producer/consumer contract or conformance
   status changes.
+
+## Local review follow-up — 2026-11-09
+
+Issue: https://linear.app/paveldik/issue/ANY-765
+
+Reviewed baseline: `ac8743ff35c5cfaf0fdaf108fa89ad5e71bf49cd`, based on
+`refactor/any715-mvp` at `ed642a75f00d7bbac7713b14a610b90b6b83534c`.
+Apply locally without changing branches, publishing, or altering the concurrent
+ANY-766 documentation work.
+
+- [x] P2-3: use complete relevant product inventory for audited primary selection;
+  preserve customer identity, conflict, provenance and final local-version checks.
+  Ordinary financial admission continues to require complete customer inventory.
+  Cover unrelated incomplete proof and controls for incomplete relevant proof
+  and failed discovery through the real PostgreSQL/operator path.
+- [x] ARCH-3: separate the selected technical meaning used for confirmation from
+  whole-source audit fingerprints. Keep immutable full evidence and exact replay
+  of existing v2 purchases. Cover unrelated metric/quantity/version changes,
+  selected changes and historical digest compatibility.
+- [x] DOD-2: restore a compact current Step 10 handoff in the billing operations
+  runbook, including decision/provenance, locks/fences, cycle/allowance identity,
+  revision/outbox, B10 compatibility, configuration and evidence limits.
+- [x] Run focused regressions and the broadest supported canonical checks;
+  record results and inspect the final local diff.
+
+DOD-1 remains partial: the actual Widget/LBX/worker/cabinet path passed on
+`7a2a4d8`, while current-HEAD live acceptance and live allowance issuance were
+not established. These fixes authorize no real billing mutation and do not
+replace that checkpoint with synthetic evidence.
+
+Verification of the local follow-up:
+
+- The 13 new PostgreSQL/HTTP/operator scenarios first reproduced **4 FAIL / 9
+  PASS**; after the fixes all **13 PASS**. Controls retain refusal for incomplete
+  relevant proof, failed discovery and changed selected terms. Successful cases
+  retain complete fresh audit evidence and exact historical v2 replay.
+- Focused existing operator-primary authorization/refusal and immutable allowance
+  scenarios: **14 PASS**. Pure purchase-terms tests: **18 PASS**.
+- Canonical checks passed documentation, generated freshness, architecture, Ruff,
+  **38** web boundary/tooling checks, **414** web component tests, web lint,
+  **1,769** API fast tests and the production build. The initial attempt used an
+  incorrect diagnostic environment (`OTEL_SDK_DISABLED` and the harness's Kernel
+  mock flag spelling); after correcting only that temporary runner, the affected
+  observability/documentation controls passed **206/206** and the canonical
+  pre-PostgreSQL checks passed in full.
+- The full **969-case** PostgreSQL partition was **INTERRUPTED** at approximately
+  **70%**, at the user's request to limit remaining testing. No failure had been
+  reported before interruption; this is not a complete PostgreSQL PASS or a
+  successful aggregate `npm run check`. Remaining broad PostgreSQL and browser
+  suites were not run. The changed paths have the focused passing results above.
+- Final documentation and `git diff --check` passed. Logs are retained locally at
+  `/tmp/any765-fixes-red.log`, `/tmp/any765-fixes-green.log`,
+  `/tmp/any765-fixes-focused.log`, `/tmp/any765-fixes-check-final.log` and
+  `/tmp/any765-fixes-docs-final.log`.
+- No migration or public wire shape changed. Historical full-source buyer
+  digests remain read-compatible; older pre-fix readers cannot consume new
+  selected-digest acceptances. The runbook records this rollback limitation.
+- Work remains uncommitted at the reviewed ANY-765 HEAD. The active branch was
+  ANY-766 initially and ANY-765 at handoff, with the same SHA; the agent did not
+  switch branches. Concurrent ANY-766 documentation is preserved. No commit,
+  publication, real billing mutation or Kernel change was performed. The two
+  disposable databases were removed, the test-only PostgreSQL server stopped,
+  and the pre-existing runtime files restored.
+
+Documentation consistency follow-up:
+
+- Aligned the current README, architecture/product maps, API guide, reliability,
+  security, deployment and development guidance with implemented Step 9.
+  Confirmed 27 ORM tables and the five-revision chain ending at `0006` without
+  connecting to a database. Corrected `0003` forward-upgrade instructions and
+  separated the pre-Step-4 reset from retired ANY-709 label transitions.
+- Removed repeated settings/recovery/source-policy prose from the handoff and
+  clarified product-scoped primary selection and trusted-primary competitor
+  diagnostics. Review follow-up REV-1 corrects the calendar distinction: missing,
+  sentinel or contradictory cycle bounds prevent metering, while otherwise
+  complete eligible product proof may grant access and refresh finite trust.
+- REV-2 updates current implementation status in the contour map and ADR 0005;
+  its accepted ownership/precedence decisions remain unchanged.
+- Refreshed the integration map from pinned Kernel `72ff15bc` source: Manifest
+  producer exists; paid HTTP integration and conformance/enablement gates remain
+  separate. Linked historical mock/handoff statuses to that current map; removed
+  repeated contract summaries and obsolete commercial/auth/locking debt entries.
+  Quality grades remain explicitly tied to their dated verification baseline.
+  No peer files or accepted specification bodies were changed.
+- Marked this porting sequence and its old PASS/NOT_RUN entries as historical;
+  the latest local result remains the partial canonical run recorded above.
+- Validation: `npm run docs:check`, **195 repository-doc tests** and
+  `git diff --check` passed. Application code/tests are unchanged by these
+  documentation passes; no PostgreSQL/browser/full application suite was rerun.
+  The owner removed the accidentally included ANY-766 plan; its dangling index
+  link was removed. The ANY-765 plan was marked DONE and moved to `completed`
+  at the owner's request, with its evidence limits preserved.

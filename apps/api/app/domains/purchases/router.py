@@ -140,7 +140,7 @@ def present_review(
         product_id=product_id,
         revision_id=revision_id,
         expected_fingerprint=offer.fingerprint,
-        expected_technical_terms_digest=technical_terms.digest if technical_terms else None,
+        expected_technical_terms_digest=technical_terms.confirmation_digest() if technical_terms else None,
         technical_terms=PurchaseTechnicalTermsResponse(
             source_version=technical_terms.source_version,
             source_digest=technical_terms.source_digest,
@@ -181,6 +181,9 @@ def present_purchase(purchase: Purchase) -> PurchaseIntentResponse:
             purchase.accepted.offer,
             purchase.accepted.documents,
             purchase.accepted.technical_terms,
+        ).model_copy(
+            # Exact historical replay retains the digest the buyer supplied.
+            update={"expected_technical_terms_digest": purchase.accepted.meaning.expected_technical_terms_digest}
         ),
     )
 

@@ -1,7 +1,7 @@
 # Contours
 
 Status: authoritative target architecture; implemented product remains `ru`
-Last updated: 2026-11-06
+Last updated: 2026-11-09
 
 A **contour** is the compliance zone in which this AnyToolAI Portal is deployed.
 It may serve any number of countries assigned to that zone. It is not a locale,
@@ -90,8 +90,10 @@ publication and historical DB-only browsing. ANY-709 Step 1 now adds direct
 links and source-backed discovery/current offers; genuine Kernel conformance and sales
 remain gated. ANY-709 implements purchase preparation and browser Buy/Continue/
 Manage. ANY-715 implements contour-local embedded polling-only reconciliation
-and recovery. This build has no webhook receiver or receiver enablement setting;
-paid-access producers remain later work. See the
+and recovery. ANY-765 adds contour-local paid grants/allowances, semantic
+revisions/outbox, autonomous expiry and authenticated cabinet reads. This build
+has no webhook receiver or receiver enablement setting; Kernel delivery and
+production enablement retain their separate gates. See the
 [as-built RU Portal 4F handoff](../product/ru-mvp.md).
 
 Planned, not implemented:
@@ -151,8 +153,10 @@ ANY-715 implements polling-only reconciliation/recovery and audited controls in
 the configured contour. There is no webhook receiver or receiver enablement
 setting. Real-provider verification scope/results are recorded in the
 [completed ANY-715 plan](../exec-plans/completed/ANY-715-mvp-rebuild-plan.md#stage-6-verification-and-handoff--2026-11-06).
-Paid-access derivation remains later work. AnyToolAI Portal is not yet a
-production billing service.
+ANY-765 implements local paid-access derivation and cabinet reads in the same
+configured contour. Kernel delivery remains ANY-766 work, and current-version
+live acceptance remains partial. AnyToolAI Portal is not yet a production billing
+service.
 
 The long-term production target requires contour enablement/deployment
 configuration to select one concrete external-billing integration. Target

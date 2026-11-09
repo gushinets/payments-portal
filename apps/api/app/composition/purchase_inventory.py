@@ -130,13 +130,12 @@ async def collect_inventory(
                 continue
         if proof.identity == IdentityProof.CONFLICT and "subscription_identity_conflict" in proof.reasons:
             conflicting_bindings.add(provider_id)
-        if committed is not None:
-            if proof.complete and committed.purchase.state != PurchaseIntentState.MANUAL_REVIEW:
-                conclusion = (
-                    Conclusion.ELIGIBLE if paid_decision(proof) == PaidDecision.GRANT else Conclusion.INELIGIBLE
-                )
-            elif proof.identity == IdentityProof.MATCH and proof.lifecycle == Lifecycle.ENDED:
-                conclusion = Conclusion.INELIGIBLE
+        # Reused operator proof contributes completeness but supplies no committed
+        # source receipt: only the final audited writer may apply/select it.
+        if proof.complete and (committed is None or committed.purchase.state != PurchaseIntentState.MANUAL_REVIEW):
+            conclusion = Conclusion.ELIGIBLE if paid_decision(proof) == PaidDecision.GRANT else Conclusion.INELIGIBLE
+        elif proof.identity == IdentityProof.MATCH and proof.lifecycle == Lifecycle.ENDED:
+            conclusion = Conclusion.INELIGIBLE
         product_complete[product] &= conclusion != Conclusion.INCOMPLETE
         candidates[product].append(
             DiscoveredCandidate(

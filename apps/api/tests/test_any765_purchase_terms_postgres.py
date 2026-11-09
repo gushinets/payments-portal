@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from copy import deepcopy
+import json
 from pathlib import Path
 import time
 
@@ -261,6 +262,142 @@ async def test_confirmation_revalidates_new_acceptance_and_refuses_without_write
                 assert db.scalar(select(func.count()).select_from(model)) == 0
     assert_no_paid_state(factory)
     assert not any(req.method == "POST" for req in transport.requests)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "none",
+        "other_metric_disabled",
+        "other_quantity",
+        "source_version",
+        "selected_quantity",
+        "selected_metric_disabled",
+    ],
+)
+async def test_http_confirmation_compares_selected_meaning_and_keeps_full_audit_evidence(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    terms_file: Path,
+    change: str,
+) -> None:
+    factory = postgres_session_factory
+    transport = setup_purchase(factory)
+    config = step1_settings(purchase_test_terms_enabled=True)
+    changed = False
+
+    def kernel(request: httpx.Request) -> httpx.Response:
+        document = deepcopy(manifest_fixture())
+        if changed and change in {"other_metric_disabled", "selected_metric_disabled"}:
+            product = "brief_decoder" if change == "other_metric_disabled" else "proposal_ai"
+            next(metric for metric in document["usage_metrics"] if metric["product_id"] == product)["enabled"] = False
+        return httpx.Response(200, json=resign(document))
+
+    app = portal_app(factory, config, monkeypatch)
+    headers = {"Authorization": "Bearer " + TOKEN, "Idempotency-Key": "selected-meaning"}
+    async with source_resources(
+        config,
+        kernel_transport=httpx.MockTransport(kernel),
+        lbx_transport=httpx.MockTransport(transport.respond),
+    ) as sources:
+        app.state.sources = sources
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://portal.test") as client:
+            review = await client.post("/api/purchases/review", json={"product_id": "proposal_ai"}, headers=headers)
+            assert review.status_code == 200
+            displayed = review.json()
+            meaning = {
+                key: displayed[key]
+                for key in ("product_id", "revision_id", "expected_fingerprint", "expected_technical_terms_digest")
+            }
+            meaning["documents"] = [
+                {key: doc[key] for key in ("document_version_id", "acceptance_text_hash")}
+                for doc in displayed["documents"]
+            ]
+            changed = True
+            if change in {"other_quantity", "selected_quantity", "source_version"}:
+                payload = json.loads(terms_file.read_text())
+                if change == "source_version":
+                    payload["source_version"] += ":updated"
+                else:
+                    product = "brief_decoder" if change == "other_quantity" else "proposal_ai"
+                    next(item for item in payload["offers"] if item["product_id"] == product)["quantity"] += 1
+                terms_file.write_text(json.dumps(payload))
+            confirmed = await client.post("/api/purchase-intents", json=meaning, headers=headers)
+            if change in {"selected_quantity", "selected_metric_disabled"}:
+                expected = "terms_changed" if change == "selected_quantity" else "purchase_technical_terms_unavailable"
+                assert confirmed.status_code == (409 if change == "selected_quantity" else 503)
+                assert confirmed.json()["detail"]["code"] == expected
+                with factory() as db:
+                    for model in (PurchaseIntent, LegalAcceptanceEvent, DocumentAcceptance):
+                        assert db.scalar(select(func.count()).select_from(model)) == 0
+            else:
+                assert confirmed.status_code == 200
+                accepted = confirmed.json()["accepted"]
+                assert accepted["expected_technical_terms_digest"] == meaning["expected_technical_terms_digest"]
+                assert accepted["technical_terms"]["offer"] == displayed["technical_terms"]["offer"]
+                with factory() as db:
+                    saved = service.accepted(db.scalars(select(PurchaseIntent)).one())
+                    assert saved.technical_terms.offer.quantity == 100
+                    if change != "none":
+                        assert saved.technical_terms.digest != displayed["technical_terms"]["digest"]
+                    if change == "other_metric_disabled":
+                        assert saved.technical_terms.kernel_manifest_version != manifest_fixture()["manifest_version"]
+                    elif change in {"other_quantity", "source_version"}:
+                        assert saved.technical_terms.source_digest != displayed["technical_terms"]["source_digest"]
+                app.state.sources = object()
+                replay = await client.post("/api/purchase-intents", json=meaning, headers=headers)
+                assert replay.json() == confirmed.json()
+    assert_no_paid_state(factory)
+    assert not any(req.method == "POST" for req in transport.requests)
+
+
+async def test_historical_v2_full_digest_preserves_exact_replay(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    terms_file: Path,
+) -> None:
+    factory = postgres_session_factory
+    transport = setup_purchase(factory)
+    config = step1_settings(purchase_test_terms_enabled=True)
+
+    def historical_insert(db: Session, flush_context: object, instances: object) -> None:
+        for row in db.new:
+            if isinstance(row, PurchaseIntent):
+                row.accepted_snapshot["meaning"]["expected_technical_terms_digest"] = row.accepted_snapshot[
+                    "technical_terms"
+                ]["digest"]
+
+    event.listen(Session, "before_flush", historical_insert)
+    try:
+        async with source_resources(
+            config,
+            kernel_transport=httpx.MockTransport(transport.kernel),
+            lbx_transport=httpx.MockTransport(transport.respond),
+        ) as sources:
+            link, offer, documents, terms = await review_purchase(
+                sources, config, factory=factory, token=TOKEN, product_id="proposal_ai"
+            )
+            original = await confirm_purchase(
+                sources,
+                config,
+                factory=factory,
+                token=TOKEN,
+                key="historical-v2",
+                meaning=reviewed_meaning("proposal_ai", link.mapping_revision_id, offer.fingerprint, documents, terms),
+            )
+    finally:
+        event.remove(Session, "before_flush", historical_insert)
+    assert original.accepted.meaning.expected_technical_terms_digest == terms.digest
+    terms_file.unlink()
+    replay = await confirm_purchase(
+        object(), config, factory=factory, token=TOKEN, key="historical-v2", meaning=original.accepted.meaning
+    )
+    assert replay == original
+    presented = routes.present_purchase(replay)
+    assert presented.accepted.expected_technical_terms_digest == terms.digest
+    assert presented.accepted.technical_terms.digest == terms.digest
+    assert_no_paid_state(factory)
 
 
 async def test_legacy_v1_same_key_replay_never_attaches_new_test_terms(

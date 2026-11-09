@@ -1,7 +1,7 @@
 # Reliability Requirements
 
 Status: authoritative operational requirements; target external-billing semantics delegated
-Last updated: 2026-11-01
+Last updated: 2026-11-09
 
 ## Target external-billing authority
 
@@ -18,8 +18,9 @@ ownership, persistence, or paid-access derivation.
 The direct-provider runtime and Portal-owned commercial/access lifecycle are
 removed. ANY-709 implements live product links/offers, accepted purchase holds
 and request-driven financial preparation/recovery. ANY-715 implements embedded
-reconciliation and GET-only recovery/inventory with local deadlines. Paid-access
-derivation and invalidation delivery remain later work. Source-catalog
+reconciliation and GET-only recovery/inventory with local deadlines. ANY-765
+adds local paid projection, atomic revision/outbox and provider-free access
+expiry. HTTP invalidation delivery remains ANY-766. Source-catalog
 projection tables remain inert. Dated delivery evidence belongs to
 [ANY-709](https://linear.app/paveldik/issue/ANY-709).
 
@@ -59,8 +60,8 @@ projection tables remain inert. Dated delivery evidence belongs to
   manual operator input alone never grants paid access.
 
 These are cross-cutting constraints. Purchase preparation, embedded polling,
-GET-only recovery and audited operations are implemented; paid-access derivation
-and invalidation delivery remain later work. The MVP has no webhook receiver or
+GET-only recovery, audited operations and local paid derivation are implemented;
+Kernel invalidation delivery remains later work. The MVP has no webhook receiver or
 receipt processor. Retained inbox rows remain history. Durable queue generations,
 claims and bounded retries preserve polling progress independently of callbacks.
 See [polling-only operation](engineering/billing-background-operations.md#polling-only-operation).
@@ -77,11 +78,13 @@ transaction.
 Current transaction boundaries are documented in
 [ARCHITECTURE.md](../ARCHITECTURE.md#current-transaction-map): identity/legal,
 product-link publication, accepted purchases, fenced financial preparation,
-worker reconciliation and audited operator resolution have current writers;
-webhook inbox rows are retained history. Paid-access derivation and invalidation delivery remain later
-work.
+worker reconciliation, audited operator resolution and paid-state/deadline
+commits have current writers; webhook inbox rows are retained history.
+Paid GET is local and read-only after identity bookkeeping; an overdue boundary
+refuses until the ordinary worker commits its reduction. Kernel delivery remains
+later work.
 
-Future database retry decisions use these semantics:
+Database retry decisions use these semantics:
 
 - a transaction known to have rolled back before commit may retry the whole
   logical operation with the same operation identity where supported;
@@ -119,20 +122,22 @@ correctness, idempotency, reconciliation, or replay store.
   immutable where the clean migration installs PostgreSQL protections.
   Observation core fields are immutable, while
   `resulting_access_revision` has only a one-time `NULL`-to-value storage
-  transition; ANY-504 Step 9 owns positivity and semantic/causal validation.
+  transition. Migration `20261031_0006` requires positive assigned revisions;
+  the shared paid writer owns semantic/causal validation.
 - Webhook delivery rows contain bounded/redacted correlation and evidence,
   never raw payload, authorization, secret, or card/payment fields.
 - Durable work/lease rows are scheduling state, not commercial/access truth.
-- Paid-access state storage holds a complete provider-neutral document and a
-  non-null revision slot. The clean baseline does not enforce positive or
-  monotonic paid-access transitions; ANY-504 Step 9 owns those runtime
-  semantics. Invalidation storage physically requires a positive pending
-  revision and forbids an acknowledged revision beyond it; later runtime owns
-  coalescing and delivery behavior.
+- Paid-access state stores a complete provider-neutral document. Migration
+  `20261031_0006` enforces positive, single-step revisions and unchanged meaning
+  within a revision. Runtime keeps absent state as implicit empty revision 0,
+  compares the whole-user set and atomically coalesces pending invalidation.
+  Outbox guards forbid revision regression, negative delivered values or an
+  acknowledgement beyond pending. HTTP delivery/captured-revision ACK remains
+  Step 10 work. See the [paid producer handoff](engineering/billing-background-operations.md#step-10-handoff--any-765).
 - Durable observations and manual-review evidence explain uncertainty/conflict;
   they cannot independently grant access.
 
-The persistence shape does not authorize later runtime behavior. Open work,
+The persistence shape alone does not establish runtime acceptance. Open work,
 processing, classification, and review vocabularies remain open until their
 owning `ANY-504` step closes them.
 

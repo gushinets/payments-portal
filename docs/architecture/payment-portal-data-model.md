@@ -1,7 +1,7 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-11-06 (ANY-765 accepted terms and paid-access schema)
+Last updated: 2026-11-09 (ANY-765 accepted terms and paid-access schema)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
@@ -56,18 +56,18 @@ The schema is a provider-independent storage baseline. Its presence does not
 itself establish runtime acceptance. ANY-709 implements purchase preparation
 and request-driven recovery. ANY-715 adds shared reconciliation, embedded durable
 polling and audited operations. ANY-765 connects paid derivation to shared
-reconciliation and first-primary selection to complete shared inventory.
+reconciliation and first-primary selection to complete relevant shared inventory.
 The existing local worker executes and repairs paid deadlines without source
-configuration. Kernel invalidation delivery remains later work in the refactor
-transfer.
+configuration. Kernel invalidation delivery remains ANY-766 work.
 
 ## Physical baseline
 
 A fresh database has exactly 27 application tables: ten retained
 identity/session/legal tables, fifteen original external-billing persistence
 tables, one current product-link pointer and one purchase mutex. Alembic has
-four revisions in one linear chain and one current head. Revision
-`20261029_0003` belongs to ANY-709; revision `20261028_0005` belongs to ANY-715.
+five revisions in one linear chain and one current head. Revision
+`20261029_0003` belongs to ANY-709, `20261028_0005` to ANY-715 and
+`20261031_0006` to ANY-765.
 
 There is no Portal-owned product, plan, order, payment, refund, subscription,
 entitlement, trial, provider-account, or direct-payment webhook table. There is
@@ -217,8 +217,9 @@ closed states are `created`, `preparing`, `awaiting_external_result`, `linked`,
 `resolved_no_external_effect`, `failed_before_external_effect`, and
 `manual_review`. PostgreSQL triggers keep the accepted evidence/provenance
 fields immutable. ANY-765 writes `accepted-purchase:v2`, including the optional
-SIMULATED technical terms and confirmation digest. Historical v1 stays readable
-without invented limits; exact replay uses saved evidence rather than current
+SIMULATED technical terms and selected-meaning confirmation digest, separately
+from full source/audit digests. Historical v2 full-digest acceptances and v1 stay
+readable without invented limits; exact replay uses saved evidence rather than current
 source configuration. The development fixture is disabled by default and
 rejected in production.
 

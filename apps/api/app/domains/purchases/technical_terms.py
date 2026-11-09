@@ -69,6 +69,23 @@ class AcceptedTechnicalTerms(BaseModel):
             raise ValueError("invalid technical terms identity")
         return self
 
+    def confirmation_digest(self) -> str:
+        """Selected accepted meaning, separate from full-source audit identity."""
+        return commercial_digest(
+            canonical_document(
+                {
+                    "schema_version": "selected-technical-terms:v1",
+                    "provenance": self.provenance,
+                    "offer": self.offer.model_dump(mode="json"),
+                    "account_id": self.account_id,
+                    "revision_id": str(self.revision_id),
+                    "selection": self.selection.model_dump(mode="json"),
+                    "commercial_fingerprint": self.commercial_fingerprint,
+                    "kernel_provenance": self.kernel_provenance,
+                }
+            )
+        )
+
 
 def bind_test_terms(
     source: TestTermsSource,

@@ -95,7 +95,10 @@ class AcceptedPurchase(BaseModel):
         terms = self.technical_terms
         if self.schema_version == "accepted-purchase:v1" and (terms or self.meaning.expected_technical_terms_digest):
             raise ValueError("legacy purchase has no technical evidence")
-        if self.meaning.expected_technical_terms_digest != (terms.digest if terms else None):
+        # Existing v2 history pinned the whole-source digest. New confirmations
+        # pin selected meaning; both retain the independently verified audit hash.
+        digests = {terms.digest, terms.confirmation_digest()} if terms else {None}
+        if self.meaning.expected_technical_terms_digest not in digests:
             raise ValueError("technical acceptance mismatch")
         if terms and (
             terms.revision_id != self.meaning.revision_id

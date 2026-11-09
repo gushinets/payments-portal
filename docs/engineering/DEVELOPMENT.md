@@ -98,7 +98,12 @@ The complete backend flow uses `npm run test:api` in the middle. The
 
 ## Local Kernel Manifest Mock (ANY-664, development only)
 
-**Status: ANY-664 implementation Step 1 adds the standalone mock and provisional contract/test source; human verification is pending.** The real source of product identity is Platform Kernel (`gushinets/anytoolai-platform`), not Portal mock fixtures or UI placeholders. All ANY-664 implementation belongs to this Portal repository. Real Kernel producer delivery and actual-producer conformance are later enablement gates, not prerequisites for completing the Portal ticket.
+The standalone mock and provisional contract are implemented development/test
+tools from ANY-664. Dated manual/browser results are recorded below; they do not
+certify every reproduction command or real-producer compatibility. Platform
+Kernel owns product identity. Its implemented producer and the remaining
+conformance/enablement gates are pinned in the
+[integration map](../integrations/platform-kernel.md#observed-implementation).
 
 The [provisional manifest contract](../contracts/kernel-capability-manifest/v1/README.md) records the source pins, complete six-product test deployment, TEST-ONLY metric, provisional bearer/digest conventions, startup scenarios and exact manual commands. Start the standalone server from the Portal root:
 
@@ -113,19 +118,23 @@ The mock uses the standard-library `ThreadingHTTPServer`; an actively delayed ma
 
 For local visual development, [Step 7 wiring](#step-7-optional-http-mock-walkthrough) adds an opt-in HTTP mock container on the worktree backend network and a real Portal backend/PostgreSQL/localized frontend walkthrough. The joined positive browser acceptance passed on 2026-10-21; see the execution record below. The mock exposes the manifest and local documentation routes, not a whole Kernel or a shared SDK.
 
-- Portal implements **one** production-shaped typed Kernel HTTP client, currently verified against the mock and selected by internal service URL and configured service authentication. Portal runtime must not import mock code/fixtures or fall back to them. Only dev/test configuration may select the mock; no browser calls to mock internals. A compatible real endpoint can later use this client after real conformance and separate production enablement; unknown wire/hash/auth/scope differences must first be reconciled.
+- Portal implements **one** typed Kernel HTTP client for configured real or explicit dev/test mock sources. Local mock checks do not establish real-producer conformance or sales approval; see the [current integration map](../integrations/platform-kernel.md#observed-implementation) for the implemented producer and pinned evidence. Runtime must not import mock fixtures or fall back to them, and browsers do not call mock internals.
 - Local mock is **disabled by default**; it can be stopped and removed without preventing Portal builds, database migrations, or normal startup. Missing Kernel must fail closed for **new publication and new purchase admission**, with no source-manifest cache fallback; previously confirmed paid subscriptions retain their separate finite trust rules. Mock-derived mapping evidence must be **SIMULATED**, rejected by real admission and excluded from production catalog queries even after changing URLs. No configuration switch upgrades an old simulated revision.
-- No mock process/config/image/test data/auth bypass may be enabled or bundled in production Compose, production API/web image, or production deployment. Step 1 excludes mock files from root Docker build inputs and rejects standalone startup outside explicit development/test environments. Production integration/config rejection and Compose removal checks remain part of the later optional wiring.
+- No mock process/config/image/test data/auth bypass may be enabled or bundled in production Compose, production API/web image, or production deployment. Mock files are excluded from root Docker build inputs, and standalone startup requires explicit development/test configuration.
 
 ### Keep the mock aligned with real Kernel
 
-The **implemented, versioned, service-authorized** manifest contract in `gushinets/anytoolai-platform` becomes the source of truth when it exists. Until then, the accepted specs and explicitly provisional local conventions/independent fixtures define the mock boundary. Product identity provenance is pinned to Kernel commit `079eb03e28d7a50b980795c63c3e4533b785d11f`; that pin does not prove a manifest endpoint, paid registry or approved release.
+Kernel now implements the versioned, service-authorized Manifest producer; the
+[integration map](../integrations/platform-kernel.md) pins the inspected source.
+The provisional ANY-664 fixtures remain independent historical test inputs, not
+proof of joint compatibility. Their product-identity pin
+`079eb03e28d7a50b980795c63c3e4533b785d11f` does not approve a paid registry or sales.
 
 ANY-664 delivers Portal-local schema/client/mock conformance. Check shape/required fields, tenant/region, product/metric relationships, enabled semantics, independent literal digest and auth/HTTP errors. Historical product identity pins remain provenance only. This work must not import a Kernel runtime package, edit Kernel or require a matching checkout.
 
-- Run focused local conformance checks in the existing Portal PR CI. The owner removed external source monitoring on 2026-10-19 because the real manifest API is not implemented; no replacement monitor is required here.
-- Distinguish local fixture conformance from the missing real producer and actual future incompatibility. Never report a local PASS as actual-producer verification.
-- When Kernel delivers its actual contract, reconcile endpoint/schema/hash/auth/scope and run conformance against that implementation before real enablement. Its delivery date, production credentials and paid metric approvals do not block fixture-based Portal implementation or ticket completion.
+- Run focused local conformance checks in Portal CI. The owner removed external source monitoring on 2026-10-19, when the real API was not implemented; no replacement monitor is required.
+- Distinguish local fixture conformance from actual-producer verification. Never report a local PASS as a joint compatibility result.
+- Before real enablement, reconcile endpoint/schema/hash/auth/scope and run conformance against the pinned producer. Production credentials and paid metric approvals remain separate gates; they do not prevent fixture-based development.
 - Keep the mechanism small and use existing repository test/CI practices. Real API verification is a separate mandatory task before real publication or sales.
 
 ### Required local verification
@@ -172,7 +181,13 @@ curl --fail-with-body --max-time 2 -i http://127.0.0.1:8091/openapi.json
 
 The focused test suite includes an event-synchronized check of this overlap using an actual HTTP manifest request; it holds the request at its delay boundary until both metadata responses have completed.
 
-The later Portal walkthrough must demonstrate the real UI/backend with the optional mock for complete, disabled/missing, malformed/partial/version-incompatible and unavailable/unauthorized cases, refusing a **new** publication and recovering on a fresh read. No retired manifest-LKG rule applies. Demonstrate mock removal and production exclusion, plus a deliberately incompatible local contract case. Actual-producer transition/conformance remains explicitly unverified until a compatible Kernel endpoint exists.
+The ANY-664 walkthrough covers the real Portal UI/backend with the optional mock
+for complete, disabled/missing, malformed/partial/version-incompatible and
+unavailable/unauthorized sources, refusal of new publication and recovery on a
+fresh read. Its dated execution record below retains the actual results. Mock
+removal, production exclusion and incompatible local contracts are separate
+checks. No retired manifest-LKG rule applies; these mock results do not establish
+conformance to the now-implemented real producer.
 
 These are **Portal delivery requirements of ANY-664**, with real producer and production enablement tracked separately. No local demonstration authorizes real sales, payments or paid execution.
 
@@ -180,16 +195,15 @@ These are **Portal delivery requirements of ANY-664**, with real producer and pr
 
 The [Step 8 handoff](../contracts/kernel-capability-manifest/v1/step-8-handoff.md)
 records the local HTTP/spec/client checker, exact positive/negative manual
-commands and mandatory future real producer acceptance. Existing CI retains
+commands and the separate real-producer acceptance requirements. Existing CI retains
 local conformance and negative cases; the external source monitor is removed.
 The handoff records local conformance PASS in
 [CI run 39260471356](https://github.com/gushinets/payments-portal/actions/runs/39260471356)
 at `15736d6b69c57deb8681e4a951959d78031fb992`, separately from the historical
 implementation-agent formatting/lint-only report. This is not a fresh run or
-blanket manual acceptance. Real Kernel conformance remains
-**DEFERRED_NOT_IMPLEMENTED**; checking
-the provisional local contract does not verify the real API. The existing mock,
-client and Compose walkthrough are retained unchanged.
+blanket manual acceptance. Its **DEFERRED_NOT_IMPLEMENTED** status describes
+that historical checkpoint; current joint conformance remains unverified.
+Checking the provisional local contract does not verify the real API.
 
 The handoff also records the CodeQL review of the two operator JSON sinks.
 Their output is restricted evidence, including verbatim `reason`, approval
@@ -209,7 +223,7 @@ is pinned in selected evidence/digest. No LBX tariff is mutated.
 Historical ANY-664 v1 approval files pinned independent technical/commercial/legal
 versions. ANY-709 Step 1 supersedes that operator workflow: a direct product link
 contains no price or file approval. Current prices come from LBX without
-re-publication; future purchase consent freezes the accepted exact terms. The
+re-publication; implemented purchase consent freezes the accepted exact terms. The
 v1 history reader and test-only fixture harness retain the old evidence format.
 
 ### Operator publication bounds
@@ -235,6 +249,11 @@ multiple operator hosts without the same local lock require a separate design.
 Current link publication keeps the shared monotonic operation deadline across
 source cleanup and PostgreSQL lock/CAS. A link is an association, not an accepted
 price or calendar lease. Current offer reads need the configured billing calendar.
+
+The remaining dated ANY-664 sections retain reproduction procedures and evidence
+for their stated snapshots. Current publication/setup uses the
+[connection/link runbook](ANY-709-billing-runbook.md); the historical approval-file
+workflow below is not a current operator requirement.
 
 ## Step 6 stored catalog acceptance (historical ANY-664)
 
@@ -547,7 +566,7 @@ processes additionally share the configured local file lock, including the
 walkthrough helper above. Its container path maps to the same file under the
 host's `.harness/kernel-walkthrough` bind mount; filesystem permissions must
 allow the chosen execution identities to open that private file. This is not
-distributed saturation or later paid-access/reconciliation load evidence.
+distributed saturation or paid-access/reconciliation load evidence.
 
 ### Compatible target switch and production exclusion
 

@@ -42,7 +42,7 @@ def reviewed_meaning(
         product_id=product_id,
         revision_id=revision_id,
         expected_fingerprint=fingerprint,
-        expected_technical_terms_digest=terms.digest if terms else None,
+        expected_technical_terms_digest=terms.confirmation_digest() if terms else None,
         documents=tuple(
             LegalSelection(document_version_id=d.document_version_id, acceptance_text_hash=d.acceptance_text_hash)
             for d in documents

@@ -59,6 +59,11 @@ Start with the smallest document that matches the task.
   The original proposal remains in Git. Normative dated C1-C4 decisions are in
   [ANY-504](https://linear.app/paveldik/issue/ANY-504); ticket acceptance remains in
   [ANY-709](https://linear.app/paveldik/issue/ANY-709).
+- [ANY-765 paid producer and Step 10 handoff](engineering/billing-background-operations.md#step-10-handoff--any-765)
+  — implemented local projection/allowance/revision/outbox semantics, B10 boundary
+  and acceptance limits; verification history is in the linked porting plan.
+- [ANY-765 completed porting plan](exec-plans/completed/ANY-765-implementation-plan-refactor.md)
+  — DONE and archived by owner request on 2026-11-09; verification and live-evidence limits retained.
 - [ANY-664 completed implementation plan](exec-plans/completed/ANY-664-implementation-plan.md)
   — all eight Portal steps DONE; implementation-commit CI evidence, retained
   real-enablement gates and handoff to ANY-504 program Step 7
@@ -67,8 +72,8 @@ Start with the smallest document that matches the task.
   standalone development HTTP mock and human verification commands; actual
   Kernel producer conformance remains a future enablement gate
 - [ANY-664 Step 8 local conformance handoff](contracts/kernel-capability-manifest/v1/step-8-handoff.md)
-  — local checker, deferred real Kernel API verification, separate evidence
-  statuses and real producer delivery acceptance; local CI PASS, real API deferred
+  — historical local CI PASS and 2026-10-19 real-API deferral; current producer
+  availability is in the integration map, with joint conformance still unverified
 - [Portal identity, session, and legal baseline](architecture/portal-identity-session-legal-baseline.md)
   — as-built `ANY-504` Step 3 retained-schema contract and exact Step 4 handoff
 - [External Billing Persistence Reset](architecture/external-billing-persistence-reset.md)

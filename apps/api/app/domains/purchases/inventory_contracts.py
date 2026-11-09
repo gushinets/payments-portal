@@ -31,15 +31,24 @@ class InventoryResult:
     sources: tuple[ReconciliationResult, ...] = ()
     discovery_ids: tuple[UUID, ...] = ()
 
-    def require_clear(self, purchase: Purchase, *, original: bool = False) -> None:
+    def require_clear(self, purchase: Purchase, *, original: bool = False, primary: bool = False) -> None:
         if purchase.id in self.conflicts:
             raise PurchaseRefused("purchase_existing_subscription_review", 409)
+        product_id = purchase.accepted.selection.product_id
+        product = next((item for item in self.products if item.product_id == product_id), None)
+        # A primary decision needs its product's complete proof. Financial
+        # admission retains the stricter customer-wide inventory requirement.
+        complete = product is not None and product.complete if primary else self.complete
         relevant = {
             item.id
             for item in self.purchases
-            if item.accepted.selection.tariff_id == purchase.accepted.selection.tariff_id
+            if (
+                item.accepted.selection.product_id == product_id
+                if primary
+                else item.accepted.selection.tariff_id == purchase.accepted.selection.tariff_id
+            )
         }
-        if not self.complete or any(
+        if not complete or any(
             (identity != purchase.id or not original) and identity in relevant for identity in self.pending
         ):
             raise PurchaseInventoryIncomplete()

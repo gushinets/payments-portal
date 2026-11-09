@@ -261,7 +261,9 @@ def authorize_resolution(
 
     if resolution.inventory is None:
         raise PurchaseRefused("billing_review_proof_incomplete", 409)
-    resolution.inventory.require_clear(resolution.purchase, original=True)
+    resolution.inventory.require_clear(
+        resolution.purchase, original=True, primary=resolution.request.resolution == "select-primary"
+    )
     validate_inventory(db, resolution.inventory)
     request = resolution.request
     now = as_utc(billing_reconciliation.database_now(db))
@@ -313,6 +315,12 @@ def authorize_resolution(
         },
         "related_deadline_cases": [{"id": str(item.review_case_id), "digest": case_digest(item)} for item in related],
     }
+    if request.resolution == "select-primary":
+        document["inventory"]["primary_product"] = next(
+            item
+            for item in resolution.inventory.products
+            if item.product_id == resolution.purchase.accepted.selection.product_id
+        ).model_dump(mode="json")
     for item in (case, *related):
         item.case_state = "resolved"
         item.resolved_at = now

@@ -2,9 +2,13 @@
 
 Status: specification-derived development contract; SIMULATED fixtures.
 Implementation: ANY-664 implementation Step 1 (part of ANY-504 program Step 6).
-Verification: local conformance CI PASS is recorded in the [Step 8 handoff](step-8-handoff.md);
-real producer conformance is DEFERRED_NOT_IMPLEMENTED. This does not certify
-every manual procedure below or a new verification run.
+Verification: historical local conformance CI PASS and
+`REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED` are recorded in the
+[2026-10-19 Step 8 handoff](step-8-handoff.md). The
+[current pinned implementation map](../../../integrations/platform-kernel.md#observed-implementation)
+records the subsequently implemented Kernel producer; joint conformance remains
+unverified. These records do not certify every manual procedure below or a new
+verification run.
 
 This directory describes the documented manifest boundary and explicit local
 conventions. It is not a Kernel-owned OpenAPI export, a delivered producer, a
@@ -272,23 +276,12 @@ PASS is separate from manual execution of these commands; record any manual
 results independently rather than inferring them from CI.
 
 ANY-664 completion concerns Portal outputs against this provisional contract.
-Real Kernel producer delivery, production paid registry/release/quantity,
-service-auth/scope deployment and actual producer conformance remain future
-enablement gates. A compatible endpoint can later replace the mock through
-URL/credentials; incompatible wire/hash/auth requires explicit Integration
-boundary alignment first. ANY-709 Step 1 permits ordinary configured HTTPS
-connections as CONFIGURED_SOURCE without claiming producer conformance. Explicit
-`KERNEL_MOCK_ENABLED` stays development/test-only and SIMULATED even after URL
-changes. Separate reviewed real producer conformance/launch approval is required.
-No production sale or paid execution is authorized
-by a local mock demonstration.
-
-The [Step 8 handoff](step-8-handoff.md) retains local conformance CI and records
-the 2026-10-19 owner decision to remove external Kernel source monitoring.
-`REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED`; actual Kernel API verification
-is a separate mandatory task before real publication or sales. Historical source
-pins above remain provenance, not actual-producer evidence.
-
-The final correction aligns ANY-664's external-monitoring requirements in
-Linear and PR #139's description with that decision. It leaves other ANY-504
-requirements and PR #138 unchanged and claims no real Kernel API PASS.
+Real publication/sales still require producer conformance, approved paid
+registry/release/quantity and deployed service-auth/scope acceptance. A compatible
+endpoint uses the existing client through configured URL/credentials;
+incompatible wire/hash/auth requires explicit Integration-boundary alignment.
+ANY-709 permits ordinary configured HTTPS connections as CONFIGURED_SOURCE.
+Explicit `KERNEL_MOCK_ENABLED` remains development/test-only and SIMULATED even
+after URL changes. Local mock evidence authorizes no production sale or paid
+execution. The [Step 8 handoff](step-8-handoff.md) retains the historical CI and
+external-monitor-removal decision; source pins remain provenance.

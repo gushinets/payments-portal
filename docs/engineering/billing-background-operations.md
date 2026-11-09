@@ -31,9 +31,9 @@ Missing material effective terms, applicable policy or currency interpretation
 remain `INCOMPLETE` even alongside a known difference. Only full material
 reconstruction can establish `COMPLETE_MISMATCH`; original-key/owner/relationship
 contradictions remain decisive independently of commercial completeness.
-Waiting/unpaid is inactive/blocked and may have null cycle dates. Complete owned ACTIVE/unblocked
-proof with matching terms and coherent cycle evidence records operational
-active/allowed facts. Financial and administrative blocks are distinct negative
+Waiting/unpaid is inactive/blocked and may have null cycle dates. Complete owned
+ACTIVE/unblocked proof with matching terms records operational active/allowed
+facts. Financial and administrative blocks are distinct negative
 facts. State 3 with recognized blocking values 0, 1 or 3 is ended. A valid
 agreement closure also proves ended for the owned subscription. For an already
 bound subscription, complete customer/agreement ownership plus the retained
@@ -69,9 +69,13 @@ Customer inventory applies its collected evidence separately, as described
 below. Polling cannot clear a known financial/subscription conflict merely
 because later terms match.
 
-Provider calendar dates retain their original precision. Missing, sentinel or
-contradictory current-cycle bounds cannot establish positive trust. Date-only
-facts do not imply a timezone, UTC boundary or allowance identity.
+Provider calendar dates retain their original precision. Otherwise complete
+ownership, commercial and ACTIVE/ALLOWED proof may establish or refresh finite
+source trust and independently supported product access even with missing,
+sentinel, contradictory or unresolved cycle evidence. That read cannot issue or
+reuse an allowance without a proven cycle. Dates alone imply no timezone or UTC
+boundary; allowance identity requires the accepted period and cycle
+classification in the handoff below.
 
 Purchase consent, original terms, permanent bindings and held product scope
 survive reconciliation, outages and ended state. Existing proven account scope
@@ -80,21 +84,26 @@ as billing_connection_conflict. A customer-key conflict uses the existing explic
 account-open recovery policy; background recovery cannot restore that conflict.
 See [customer diagnosis and recovery](ANY-709-billing-runbook.md#customer-diagnosis-cli).
 
-The worker produces subscription facts and expiry evidence. It does not choose an
-access primary, grant access or create allowances/revisions/invalidations.
+The worker uses shared reconciliation, inventory and the paid writer to produce
+source facts, primary decisions, grants/allowances and revision/outbox changes.
+Preparation or recovery binding alone still supplies no positive paid authority.
 
 ## Embedded worker settings and resource limits
 
 The initial deployment is one API process/replica with an embedded worker.
 There is no separate process to launch or standalone worker command/container.
 
-- `BILLING_WORKER_ENABLED=true`: starts embedded execution when LBX is configured.
+- `BILLING_WORKER_ENABLED=true`: enables local expiry/repair; source lanes start
+  only when LBX is configured. Disabling the worker stops both kinds of work.
 - `BILLING_WORKER_URGENT_CONCURRENCY=2`: urgent source slots, range 1–16.
 - `BILLING_WORKER_NORMAL_CONCURRENCY=1`: normal source slots, range 1–16.
 - `BILLING_WORKER_IO_TIMEOUT_SECONDS=60`: total source/cleanup budget; greater
   than the cleanup reserve and at most 240 seconds. This leaves the 30-second
   claim/apply margin and refusal retry within the five-minute urgent cadence.
 - `BILLING_WORKER_SCAN_BATCH_SIZE=100`: local enrollment/repair batch, range 1–100.
+- `PAID_ACCESS_CLOCK_SKEW_SECONDS`: supported deployment clock budget, 1–299
+  seconds with no default. Unset prevents new positive derivation while local
+  reductions continue; existing allowance UTC bounds remain frozen.
 
 Foreground purchase preparation and Widget opening use
 `PREFLIGHT_TOTAL_TIMEOUT_SECONDS`, forwarded by development, agent and production
@@ -131,7 +140,9 @@ state and local contention remain retryable. Enrollment needs no provider HTTP.
 - Normal subscription reconciliation runs approximately every 15 minutes.
 - Never-positive, blocked, incomplete, conflicted or near-expiry subscriptions
   are urgent, with at most five minutes between scheduled attempts. Near expiry
-  means source trust has 30 minutes or less remaining.
+  means source trust or a supported frozen UTC allowance end has 30 minutes or
+  less remaining. Expired metering stays urgent until a proven later cycle moves
+  that bound forward; date-only cycles imply no UTC urgency.
 - Automatic uncertain-create recovery runs only inside its fixed two-hour
   window. Its separate deadline job pauses discovery and reports the case.
 - Stable customer inventory runs approximately every six hours; incomplete or
@@ -219,8 +230,11 @@ The scan still checks later candidates. A closed agreement or terminal subscript
 is not a live competitor. Proven competition records scoped customer-inventory:v1
 evidence. For a PENDING/PROVEN_NOT_SENT purchase without a canonical subscription,
 it rotates unsent admission fences while preserving no-send evidence and the hold;
-correction permits another explicit advance of the same operation. For an active
-binding or possible-send operation it creates customer_inventory_conflict review.
+correction permits another explicit advance of the same operation. A later
+competitor against an independently trusted primary records
+`customer_inventory_competitor` in product-scoped diagnostics without replacing
+or revoking that primary. Other bound or possible-send targets enter
+`customer_inventory_conflict` review.
 Incomplete passes never clear reviews. Local binding/operation versions are
 rechecked at commit, using versions returned by this attempt's own claimed applies;
 concurrent changes require a fresh attempt.
@@ -327,7 +341,8 @@ revival has no override.
 `select-primary` uses the same observation/fence expectations as
 `restore-original`. It accepts only `primary_selection_required` for the already
 bound subscription, with no unrelated open reviews or financial admission
-conflict. Fresh complete eligible original proof, complete current inventory and
+conflict. Fresh complete eligible original proof, complete relevant product
+inventory and
 `PAID_ACCESS_CLOCK_SKEW_SECONDS` are required. It cannot replace another selected
 primary, create a subscription or invent quota. The case, selection, paid state,
 revision, outbox and audit commit together. Repeating the identical command replays
@@ -346,8 +361,9 @@ audit. Complete original creation is separate from a complete paid-cycle proof.
 
 The conflict evidence must retain original POSSIBLE_SEND/UNKNOWN state and send
 fence; the same operation's deadline-review evidence may supply it. Missing
-history or PENDING/PROVEN_NOT_SENT cannot be turned into send proof. Both commands
-use the same fresh inventory check. Restore claims the target once,
+history or PENDING/PROVEN_NOT_SENT cannot be turned into send proof.
+`restore-original` and `bind-original` retain complete customer-wide inventory
+admission; `select-primary` uses complete relevant product proof. Restore claims the target once,
 keeps that lease through proof/inventory, then commits target facts, exact case
 resolution and audit together. Inventory reuses those target reads; independently
 claimed sibling negatives may commit without resolving the target. Bind may accept
@@ -469,25 +485,182 @@ subscription resumes; first binding alone does not establish positive trust.
 
 ## Projection and access boundary
 
-Consume subscription-reconciliation:v1 observations, original ownership/legal/
-accepted provenance, commercial classification, last_authoritative_read_at and
-projection_valid_until. subscription-trust-expiry:v1 supplies deterministic
-source-expiry evidence. Incomplete attempts preserve only finite existing support;
-known negative/conflicting facts supersede usability. Calendar precision stays
-provider evidence, without an inferred UTC cycle or allowance identity.
+ANY-765 consumes authoritative observations and complete relevant inventory to
+commit local paid access, stable allowances and revision/outbox changes. The
+existing local lane reduces expired access and repairs deadlines without source
+HTTP. The [implemented handoff](#step-10-handoff--any-765) below defines these
+producer seams and the remaining Step 10 wire/B10 work. Step 9 retains its own
+test-LBX-to-cabinet checkpoint; Step 11 owns the broader deployed journey,
+natural renewal and launch acceptance.
 
-ANY-765 selects a first primary through complete shared inventory and records
-paid grants/allowances, semantic revisions and a coalesced invalidation outbox.
-The existing local lane uses the earliest supported paid/source deadline. It
-removes expired access or metering without source configuration or HTTP and
-repairs missing, completed or incorrectly delayed deadline jobs after restart.
-It never renews source trust or issues an allowance. A proven same-cycle recovery
-reuses its allowance identity; a proven later cycle issues one current set without
-backfill. Date-only cycles supply no inferred UTC deadline or urgency.
+## Step 10 handoff — ANY-765
 
-`PAID_ACCESS_CLOCK_SKEW_SECONDS` has no default: supply the deployment's supported
-clock guarantee (1..299 seconds). Without it, positive derivation stays disabled;
-local reductions continue. Foreground default remains 10 seconds, with the
-existing 60-second deployment override; worker source timeout remains 60 seconds.
-Step 10 owns Kernel wire/invalidation delivery and coupled UTC calendar design.
-Step 11 owns complete real paid-access/natural-renewal and launch acceptance.
+This is the implemented local producer baseline for
+[ANY-766](https://linear.app/paveldik/issue/ANY-766), not an internal HTTP wire.
+The reviewed Portal snapshot is `ac8743ff35c5cfaf0fdaf108fa89ad5e71bf49cd`, based
+on rebuilt ANY-715 `ed642a75f00d7bbac7713b14a610b90b6b83534c`. The local review
+follow-up and its verification are recorded in the
+[completed porting plan](../exec-plans/completed/ANY-765-implementation-plan-refactor.md#local-review-follow-up--2026-11-09).
+No Kernel change or real-producer conformance is implied by this handoff.
+
+### Inputs, acceptance and decisions
+
+Consume `subscription-reconciliation:v1` under the
+[source authority policy](#source-authority-and-trust) above: complete original
+ownership/legal/term proof and supported prepaid ACTIVE/ALLOWED facts. Integration
+alone translates LBX codes; Kernel does not become a settlement verifier.
+
+`prepared-subscription:v1` is preparation-only: `paid_verified=false`, financially
+unverified and without positive paid trust. Binding only enrolls monitoring.
+Worker/operator/HTTP source application, not payment/Widget callbacks, supplies
+the authoritative facts consumed below.
+
+| Normalized input | Product/metric result | Revision and follow-up |
+| --- | --- | --- |
+| Complete original-term ACTIVE/ALLOWED proof, existing primary or complete relevant discovery | Grant; issue/reuse only allowances supported by immutable acceptance and coherent cycle evidence | Commit only a changed effective set; refresh finite source support and deadline |
+| Owned block, inactive/ended or commercial/identity conflict | Remove dependent access immediately; preserve independent products and immutable history | Atomic reduction/audit/outbox; scoped conflict review where applicable; no trust extension |
+| Incomplete observation or source outage | No new grant/allowance; retain only previously proven finite support | Preserve original deadline; retry; local expiry commits the eventual reduction |
+| Complete eligible product proof with missing/invalid cycle bounds or an unresolved/re-anchored allowance cycle | Grant or retain independently supported product access; omit the affected metric and, for accepted metered terms, open `allowance_cycle_conflict` | Refresh finite source trust from complete product proof; no invented bucket, timezone or quantity |
+| Incomplete relevant discovery or competing eligible first candidates | No unsafe first primary | Retry incomplete proof; retain scoped review for proven competition; no automatic promotion |
+| Retired primary with an older eligible candidate | No automatic replacement | Audited `select-primary` requires fresh complete relevant product proof and all original identity/version checks |
+| Clock budget absent | No new positive derivation | Existing local reductions remain enabled |
+
+`accepted-purchase:v2` freezes technical metric/unit/fixed quantity and complete
+source provenance. New confirmation compares the selected technical meaning;
+`source_digest`, full `kernel_manifest_version` and technical `digest` retain the
+complete audit identity. A change to another product or a global source version
+cannot require reacceptance of unchanged selected terms. Historical v2 purchases
+whose buyer digest was the full audit digest remain readable and replay exactly;
+v1 purchases acquire no invented technical quantity. Pre-fix Step 9 readers only
+understand full-source buyer digests; rolling them back over newly accepted
+selected-digest purchases is not supported. Current manifest disablement
+is new-operation admission, not historical access revocation.
+
+### Writers, reads and transaction ownership
+
+- [Shared reconciliation](../../apps/api/app/domains/billing/reconciliation.py)
+  claims a fenced finite lease, commits, reads outside DB transactions, then
+  rechecks ownership, provenance, consent, fence and DB-clock freshness on apply.
+  Source facts and effective access share the final transaction.
+- [Discovery](../../apps/api/app/domains/billing/discovery.py) consumes persisted
+  source receipts, bounded current inventory and the local nonterminal-source
+  union. Final primary selection rechecks receipt/fence/scope/generation; it
+  neither replays source facts nor promotes a competitor after retirement.
+  Operator primary selection uses complete relevant product inventory; financial
+  CREATE admission and other original-resolution checks retain their existing
+  customer-wide inventory requirements.
+- [Paid writer](../../apps/api/app/domains/billing/paid_access.py)
+  `commit_paid_state()` is the sole whole-user semantic writer. Callers acquire
+  the canonical user lock first, then customer/original purchase/operations and
+  product/source locks. State/outbox are serialized by that user lock; queued
+  work ownership is checked last. The writer flushes but never commits itself.
+  A stale owner or later failure rolls back facts, primary, allowance, causal
+  observations, state/revision, outbox and scheduling in that transaction.
+- [Deadlines](../../apps/api/app/domains/billing/paid_deadlines.py) reuse the
+  existing durable local lane and startup/minute repair sweep. They select the
+  earliest supported source/grant/UTC-allowance boundary and recheck current
+  authority before reducing. No source HTTP, trust renewal or bucket creation
+  occurs there. Repair works with historical local identity even without current
+  LBX configuration; disabling the worker disables this lane too.
+- [Customer read](../../apps/api/app/domains/billing/paid_read.py) uses a shared
+  user lock and samples DB time after local reads. Overdue unprocessed deadlines
+  return `503 paid_access_deadline_pending` without filtering the old revision,
+  repairing work or mutating billing. Its independent bounded pool/worker budget
+  and cabinet refresh rules are in the
+  [authenticated read runbook](ANY-709-billing-runbook.md#authenticated-cabinet-paid-access-read).
+  `/api/paid-access` is not the future internal AccessSnapshot DTO.
+
+### Cycle and immutable allowance identity
+
+[Cycle classification](../../apps/api/app/domains/billing/paid_cycles.py) uses
+the frozen initial anchor and accepted commercial period. For example, this
+sanitized evidence is coherent for an accepted one-month calendar period:
+
+```json
+{"schema_version":"source-calendar:v1","precision":"date","start":"2026-10-01","end":"2026-10-31","anchor":"2026-10-01"}
+```
+
+With complete eligible source proof and accepted SIMULATED ProposalAI terms,
+this can produce exactly 100 `proposal_ai.test_generations` in `generation`.
+The independent Brief Decoder fixture fixes 300 `brief_decoder.test_analyses`
+in `analysis`. Quantities come from acceptance, never Manifest or a service
+multiplicator. These examples are development/test authority only.
+
+The logical uniqueness key is local subscription + accepted service component +
+metric + classified cycle key (`date:2026-10-01:2026-10-31` in the example).
+[Issuance](../../apps/api/app/domains/billing/paid_allowances.py) persists one
+opaque allowance UUID, immutable quantity/unit/terms and lossless calendar.
+Same-cycle reread, block/unblock, outage/restart and recovery reuse that ID.
+A coherent later current cycle creates one new set, skipping missed cycles
+without backfill. Time passing, a new charge or edited/recalculated periods do
+not create a refill. An overlapping end date or changed frozen anchor is a
+negative example: omit only the metric, retain history and require original
+cycle proof. Operators cannot supply dates, quota or arbitrary source IDs.
+
+`calendar:v1` uses inclusive provider dates and has no inferred UTC bounds.
+`timestamp:v1` requires explicit zones and freezes conservative half-open UTC
+bounds using the clock budget at issuance. A changed budget never rewrites
+those tuples. `legacy-utc:v1` remains historical UTC evidence; it cannot prove
+a calendar anchor or authorize an inferred replacement allowance.
+
+### Revision, outbox and remaining B10 work
+
+Absent state is immutable empty revision 0 with no outbox row. The first material
+set is revision 1; later empty state retains its positive revision. Canonical
+whole-user equal grants/allowances are a semantic no-op even when source trust
+refreshes. Material changes increment exactly once with causal observation and
+`pending_revision=max(existing, committed)` in the same transaction. Existing
+`delivered_revision`, attempt/retry bookkeeping and immutable allowance history
+survive concurrent product changes. A null observation `resulting_access_revision`
+means no material commit, not an implicit successful invalidation.
+
+Step 10 owns HTTP delivery and authenticated Kernel consumption. Capture
+`sent_revision=N` before sending; ACK N may advance delivered only to
+`max(delivered,N)`. Re-read current pending under the delivery transaction;
+pending N+1 remains work after ACK N. Never acknowledge the latest pending value
+merely because an older request succeeded. Full delivery/ACK races remain Step
+10 checks; this implementation produces durable coalesced work only.
+
+Coordinate B10 against the external-billing design's
+[Allowances and quota identity](../superpowers/specs/2026-09-15-external-billing-boundary-design.md#allowances-and-quota-identity)
+and [Subscription lifetime and allowance periods](../superpowers/specs/2026-09-15-external-billing-boundary-design.md#subscription-lifetime-and-allowance-periods),
+and the access design's [AccessSnapshot](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md#accesssnapshot)
+UTC tuple, clock-haircut/cache rules and
+[quota-ledger lifetime](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md#quota-ownership-and-allowance-ledger-lifetime).
+Their existing UTC `period_start/period_end` requirements do not turn LBX calendar
+dates into instants. Review/version both producer and consumer DTOs, validation,
+specs, fixtures/hashes and compatibility together; do not serialize the local
+calendar document as an alternate unreviewed wire. Preserve durable usage keyed
+by allowance identity, six-hour last-complete-read trust and the up-to-five-minute
+snapshot ceiling. An unobserved cycle rollover may retain the old cycle only
+within those finite bounds; no exact LBX-midnight cutoff or outage extension is
+claimed. Independently proven UTC deadlines still reduce access earlier.
+
+### Migration, configuration, recovery and evidence limits
+
+The consolidated chain is `20260924_0001 → 20261001_0002 → 20261029_0003 →
+20261028_0005 → 20261031_0006`; there is no `0004` dependency to recreate.
+`0006` preserves legacy UTC and v2 purchases, preflights incompatible history,
+enforces immutable allowance/logical identity and monotonic state/outbox guards,
+and refuses destructive downgrade. Running clean ANY-715/0005 code against a
+populated v2/0006 DB is not a supported rollback. See the
+[schema reference](../architecture/payment-portal-data-model.md).
+
+Use the [worker settings](#embedded-worker-settings-and-resource-limits), operator
+procedures above and the authenticated-read runbook for configuration, connection
+budgets and incident recovery. `PURCHASE_TEST_TERMS_ENABLED` is development/test
+only and refused in production. Customer conflicts reduce all dependent products;
+product/metric conflicts remain scoped. Operators cannot supply paid flags or quota.
+
+Current local canonical/focused/browser evidence and the review corrections are
+recorded in the linked porting plan. The actual Widget → LBX → ordinary worker →
+revision/outbox → authenticated API/cabinet checkpoint passed on Portal
+`7a2a4d8cc13d9b007c550813d0f4c1bdff2b7fca` and Kernel
+`4cd2e0aa39b67d648cd40540db0a59a2559fd4f2`; that is not current-HEAD live acceptance.
+Live allowance issuance remained unproved because LBX cycle evidence was
+ambiguous. Deterministic PostgreSQL/source fixtures verify the owned metered,
+failure/concurrency and recovery logic separately. DOD-1 current-HEAD LBX
+acceptance remains owned by ANY-765; ANY-711 owns approved production metric/unit
+vocabulary, ANY-766 the coordinated wire/delivery/enforcement and actual usage,
+and ANY-767 the deployed journey/natural renewal/production enablement. No
+test-only limit or historical positive QA result waives those gates.

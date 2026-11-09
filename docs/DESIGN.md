@@ -1,7 +1,7 @@
 # Design System
 
 Status: authoritative entry point
-Last updated: 2026-10-08
+Last updated: 2026-11-09
 
 AnyToolAI Portal UI follows AnyToolAI Bundle 3, the single canonical
 implementation design system. The approved ANY-539 RU Portal mockup, supplied
@@ -26,8 +26,8 @@ The current composition is product-first home/catalog, substantial two-column
 product screens with labeled schematic illustrations and supporting content,
 a presentation-only pricing placeholder, direct auth entry, and a
 product-centric cabinet with compact identity context. Per-product
-commercial/access/usage/action slots are the durable presentation surface for
-later parent ANY-504 Steps 6–10; missing business sources remain honest
+commercial/access/usage/action slots are the durable presentation surface owned
+by parent ANY-504 Steps 6–10; missing business sources remain honest
 not-ready/unknown/unavailable states. Mobile layouts stack the content while
 preserving discovery, auth and product navigation.
 
@@ -55,7 +55,7 @@ purchase controls; those remain parent ANY-504 Steps 6 and 7 respectively.
 Ordinary Portal-owned copy follows the active route locale (`en`, `fr`, `it`,
 `de`, `es`, `ru`, or `pt`) within the implemented `ru` contour. Locale does not
 select a contour or data plane. Canonical RU legal content and acceptance text
-remain source-owned and Russian. Billing, paid-access, and usage/quota panels
-must present unavailable/unknown states without implying no subscription, no
-access, or zero usage/quota. See the
+remain source-owned and Russian. When billing, paid-access or usage/quota
+evidence is unavailable, panels must show that uncertainty without implying no
+subscription, no access or zero usage/quota. See the
 [as-built RU Portal 4F handoff](product/ru-mvp.md).

@@ -3,7 +3,10 @@
 Status: maintained baseline
 Last verified: 2026-07-14
 
-| Area | Initial | Current | Target | Evidence |
+These grades record that verification baseline. Current branch acceptance is
+recorded in its execution plan and handoff; the grades are not a fresh CI result.
+
+| Area | Initial | Recorded | Target | Evidence |
 |---|---:|---:|---:|---|
 | Knowledge and documentation | C | A | A | `npm run docs:check` |
 | Reproducible development | C | A | A | `npm run repo:doctor`, worktree smoke |

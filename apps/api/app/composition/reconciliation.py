@@ -121,7 +121,9 @@ async def reconcile_subscription(
                     reuse=InventoryCandidateProof(subject.purchase, subject.provider_subscription_id, proof),
                     delegate=delegate,
                 )
-                inventory.require_clear(subject.purchase, original=True)
+                inventory.require_clear(
+                    subject.purchase, original=True, primary=resolution.request.resolution == "select-primary"
+                )
                 resolution = replace(resolution, inventory=inventory)
     except PreflightDeadlineExceeded:
         # Record a failed attempt, never apply facts returned after its budget.

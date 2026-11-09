@@ -320,7 +320,8 @@ def pin_purchase(
             or head.provider_origin != configuration.lbx_provider_origin
             or link.mapping_revision_id != meaning.revision_id
             or offer.fingerprint != meaning.expected_fingerprint
-            or meaning.expected_technical_terms_digest != (technical_terms.digest if technical_terms else None)
+            or meaning.expected_technical_terms_digest
+            != (technical_terms.confirmation_digest() if technical_terms else None)
             or configuration.purchase_test_terms_enabled != (technical_terms is not None)
             or current_documents != documents
             or selected != tuple((doc.document_version_id, doc.acceptance_text_hash) for doc in meaning.documents)

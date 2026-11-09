@@ -1,7 +1,7 @@
 # Product Scope
 
 Status: authoritative
-Last updated: 2026-11-06
+Last updated: 2026-11-09
 
 AnyToolAI Portal combines public product discovery, direct account entry, and
 identity/legal-consent flows for AnyToolAI products, deployed as one contour
@@ -17,8 +17,9 @@ held accepted purchases. Brief cards link to product details and the full
 catalog remains one link away. Identity/verification/logout context supports
 one wide billing Widget with an explicit purchase selection. Account/session/email-verification,
 password-recovery and legal-acceptance flows remain implemented. Current offers
-come from LBX; accepted purchase terms remain immutable. Paid access is unknown and
-actual usage/quota unavailable. The repository remains pre-production on the
+come from LBX; accepted purchase terms remain immutable. The cabinet reads local
+committed paid access; actual usage/remaining quota is unavailable. The repository
+remains pre-production on the
 surface established by ANY-636 4F. ANY-664 adds
 historical read-only source clients and controlled immutable offer publication.
 ANY-709 Step 1 adds direct versioned links and source-backed catalog/current
@@ -38,8 +39,9 @@ removed. The clean database contains provider-neutral target persistence;
 ANY-664 can append immutable mapping revisions. Purchase orchestration is
 implemented by ANY-709. ANY-715 implements polling-only embedded reconciliation,
 GET-only recovery/inventory and audited operator controls. The webhook receiver
-is removed and retained inbox history is not processed; paid-access producers
-remain later work. See the
+is removed and retained inbox history is not processed. ANY-765 implements local
+paid projection, allowances, revisions/outbox and autonomous expiry; Kernel
+delivery remains later work. See the
 [billing operations guide](engineering/billing-background-operations.md). The sole long-term
 production target is external-billing-managed.
 
@@ -60,12 +62,13 @@ The [Billing Authority and Consistency](architecture/billing-authority.md)
 document is historical/superseded only; it is neither current-state nor target
 authority. Implemented `ru` screens are defined in the
 [as-built RU Portal 4F handoff](product/ru-mvp.md), including the durable
-UI/data-ownership matrix, implemented ANY-504 Steps 6–8 and deferred Steps 9–10.
+UI/data-ownership matrix, implemented ANY-504 Steps 6–9 and remaining Step 10 work.
 
 External Billing owns commercial billing truth and lifecycle. The Portal owns
 current identity/legal, the billing anti-corruption, subscription
-observation/projection, reconciliation and recovery boundary, and future
-paid-access delivery. Platform Kernel owns technical product/metric identity,
+observation/projection, reconciliation/recovery and local paid-access authority.
+Portal-to-Kernel delivery remains later work. Platform Kernel owns technical
+product/metric identity,
 actual usage, and quota enforcement.
 The historically named “Payments Portal” component in the accepted ADR/design
 records maps to this Portal backend boundary; the accepted amendment changes
@@ -87,6 +90,11 @@ only their source-read/admission strategy.
   purchase in the cabinet; every payment action uses fresh original-purchase
   verification before opening the one wide Widget. Account-only viewing remains
   available without a purchase or healthy source catalog.
+- Local committed product grants, fixed purchased allowances and semantic access
+  revisions from authoritative subscription facts. The authenticated cabinet
+  distinguishes confirmed access, fresh absence and unavailable evidence;
+  paid products remain visible when purchase listing is unavailable. Development
+  quantities are explicitly SIMULATED; usage/remaining stays unavailable.
 - The approved RU mockup's product/visual direction encoded by evolved Bundle 3
   and applied across the active Portal: navy/amber, flat dark panels, thin
   borders, compact radii/spacing and Manrope (the ANY-636 basic Cyrillic coverage
@@ -99,7 +107,8 @@ only their source-read/admission strategy.
   consent, original held-purchase recovery and verified payment bootstrap. The
   UI distinguishes unknown from no purchase and awaits financial verification.
   One disposable SDK lifecycle replaces account/payment views and rejects late
-  credentials after close, product/user change or logout. No access is granted.
+  credentials after close, product/user change or logout. Purchase preparation
+  and Widget outcomes alone grant no access.
 - Canonical RU legal pages and generated registration acceptance copy.
 - Versioned `ru` legal-document metadata and append-only acceptance evidence.
 - One clean PostgreSQL first-install schema with configured-contour and legal
@@ -129,22 +138,15 @@ trust boundary under ANY-541.
 - Login/registration contour confirmation through Region Resolver.
 - Isolated `eu` and `us` deployments, legal trees, operators, and selected
   external-billing integrations. Those are not implemented product surfaces.
-- Genuine enablement of ANY-504 Step 6's live-source clients and immutable
-  approved offer mappings, subject to real Kernel/LBX and approval gates.
-  ANY-664 records the historical Step 6 baseline. ANY-709 implements live catalog
-  browsing and Step 7 purchase/payment UI;
-  there is no periodic source-catalog mirror. ANY-715 implements Step 8
-  polling-only reconciliation/recovery; webhook reception is outside this build.
-  Paid-access projection and delivery in Step 9 and actual usage/quota integration
-  in Step 10 remain
-  deferred ownership boundaries. They populate the
-  existing pricing/product/cabinet commercial, access, usage and action slots
-  without redesigning the main cabinet. All thirteen ANY-636 steps are marked
-  `done` in the [completed plan](exec-plans/completed/ANY-636-implementation-plan.md);
-  the parent program's provider-dependent Phase 0 gates remain in force.
-- Portal <-> Kernel integration under the accepted wire contract. Workflow
+- Remaining real-source acceptance and approved production sales/metering
+  enablement. Step 9's current-version test-LBX checkpoint remains partial;
+  historical positive QA does not establish live allowance delivery or launch.
+- ANY-766 Portal <-> Kernel snapshot/invalidation integration, authenticated paid
+  execution and actual usage/remaining under the reviewed contract. Workflow
   execution, artifacts, actual usage, and quota enforcement remain in the
   separate Platform Kernel repository.
+- ANY-767 deployed billing journey, natural-renewal acceptance and production
+  rollout.
 
 ## Product invariants
 
