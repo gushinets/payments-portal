@@ -13,8 +13,17 @@ from app.composition.sources import source_resources
 from app.core.settings import Settings
 from app.domains.catalog.commercial_offer import CommercialScope, canonical_document, commercial_digest
 from app.domains.catalog.mapping_evidence import MappingRefused
+from app.domains.catalog.admission import require_selected_capability
+from app.domains.catalog.contracts import SourceProvenance
 from app.domains.catalog.preview import require_enabled_product
-from app.domains.catalog.product_link import LINK_SCHEMA, CurrentOffer, ProductLinkDocument, ProductLinkRequest
+from app.domains.catalog.product_link import (
+    LINK_SCHEMA,
+    QUANTITY_LINK_SCHEMA,
+    CurrentOffer,
+    ProductLinkDocument,
+    ProductLinkRequest,
+)
+from app.domains.catalog.technical_offer import TechnicalOffer
 from app.integrations.lbx.current_offer import read_current_offer
 
 
@@ -55,6 +64,7 @@ async def fresh_link_evaluation(
     *,
     selection: ProductLinkRequest,
     principal: str,
+    technical_offer: TechnicalOffer | None = None,
     kernel_transport: httpx.AsyncBaseTransport | None = None,
     lbx_transport: httpx.AsyncBaseTransport | None = None,
 ) -> FreshLinkEvaluation:
@@ -67,22 +77,36 @@ async def fresh_link_evaluation(
         async with sources.preflight.operation() as budget:
             manifest = await sources.require_kernel().fetch_manifest(budget=budget)
             require_enabled_product(manifest, selection.product_id)
+            if technical_offer is not None:
+                if technical_offer.product_id != selection.product_id:
+                    raise MappingRefused("mapping_technical_product_mismatch")
+                if manifest.provenance != SourceProvenance.CONFIGURED_SOURCE:
+                    raise MappingRefused("mapping_live_kernel_required")
+                require_selected_capability(
+                    manifest,
+                    product_id=selection.product_id,
+                    metric_units={technical_offer.metric_key: technical_offer.unit},
+                )
             offer = await read_current_offer(
                 sources.require_lbx(), selection=selection, configuration=configuration, budget=budget
             )
             now = utc_now()
+            schema = QUANTITY_LINK_SCHEMA if technical_offer is not None else LINK_SCHEMA
             identity = canonical_document(
                 {
-                    "schema": LINK_SCHEMA,
+                    "schema": schema,
                     "scope": asdict(scope),
                     "selection": selection.model_dump(mode="json"),
                     "kernel_provenance": manifest.provenance,
                     "lbx_evidence_mode": offer.evidence_mode,
+                    **({"technical_offer": technical_offer.model_dump(mode="json")} if technical_offer else {}),
                 }
             )
             document = ProductLinkDocument(
+                schema_version=schema,
                 scope=scope,
                 selection=selection,
+                technical_offer=technical_offer,
                 kernel_provenance=manifest.provenance,
                 lbx_evidence_mode=offer.evidence_mode,
                 manifest_version=manifest.manifest_version,

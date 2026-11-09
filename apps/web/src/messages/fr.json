@@ -479,7 +479,7 @@
     "reference": "Référence de l’achat : {id}",
     "acceptedTerms": "Conditions initialement acceptées",
     "awaitingVerification": "Le paiement attend une vérification auprès de la facturation. La consultation de l’état enregistré lit uniquement le Portail et n’actualise pas les données de facturation.",
-    "technicalLimit": "Limite de test par cycle confirmé",
+    "technicalLimit": "Limite par cycle confirmé",
     "simulatedTerms": "SIMULATED · conditions de test",
     "technicalUnknown": "Limite technique non confirmée ; exécution avec quota indisponible.",
     "fullFunding": "Un financement intégral est requis.",

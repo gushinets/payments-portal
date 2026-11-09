@@ -27,7 +27,7 @@ class PaidAccessAllowanceResponse(BaseModel):
     metric_key: str
     unit: str
     quantity: int = Field(strict=True, ge=0)
-    provenance: Literal["SIMULATED"]
+    provenance: Literal["SIMULATED", "CONFIGURED_SOURCE"]
 
 
 class PaidAccessProductResponse(BaseModel):

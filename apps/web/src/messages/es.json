@@ -479,7 +479,7 @@
     "reference": "Referencia de compra: {id}",
     "acceptedTerms": "Condiciones aceptadas originalmente",
     "awaitingVerification": "El pago espera una verificación autorizada. Consultar el estado guardado solo lee los registros del Portal y no actualiza los datos de facturación.",
-    "technicalLimit": "Límite de prueba por ciclo confirmado",
+    "technicalLimit": "Límite por ciclo confirmado",
     "simulatedTerms": "SIMULATED · condiciones de prueba",
     "technicalUnknown": "Límite técnico sin confirmar; ejecución con cuota no disponible.",
     "fullFunding": "Se requiere financiación completa.",

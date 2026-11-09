@@ -479,7 +479,7 @@
     "reference": "Kaufreferenz: {id}",
     "acceptedTerms": "Ursprünglich akzeptierte Bedingungen",
     "awaitingVerification": "Der Zahlungsstatus wartet auf eine verbindliche Prüfung. Die Statusabfrage liest nur Portal-Daten und aktualisiert keine Abrechnungsdaten.",
-    "technicalLimit": "Testlimit je bestätigtem Zyklus",
+    "technicalLimit": "Limit je bestätigtem Zyklus",
     "simulatedTerms": "SIMULATED · Testbedingungen",
     "technicalUnknown": "Technisches Limit nicht bestätigt; Ausführung mit Kontingent nicht verfügbar.",
     "fullFunding": "Vollständige Deckung ist erforderlich.",

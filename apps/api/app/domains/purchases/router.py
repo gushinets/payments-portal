@@ -86,7 +86,7 @@ class PurchaseTermsResponse(BaseModel):
 class PurchaseTechnicalTermsResponse(BaseModel):
     source_version: str
     source_digest: Digest
-    provenance: Literal["SIMULATED"]
+    provenance: Literal["SIMULATED", "CONFIGURED_SOURCE"]
     offer: TechnicalOffer
     digest: Digest
 

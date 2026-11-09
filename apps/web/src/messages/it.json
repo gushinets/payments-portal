@@ -479,7 +479,7 @@
     "reference": "Riferimento acquisto: {id}",
     "acceptedTerms": "Condizioni accettate inizialmente",
     "awaitingVerification": "Il pagamento attende una verifica autorevole. Il controllo dello stato salvato legge solo i dati del Portale e non aggiorna i dati di fatturazione.",
-    "technicalLimit": "Limite di test per ciclo confermato",
+    "technicalLimit": "Limite per ciclo confermato",
     "simulatedTerms": "SIMULATED · condizioni di test",
     "technicalUnknown": "Limite tecnico non confermato; esecuzione con quota non disponibile.",
     "fullFunding": "È richiesta la copertura completa.",
