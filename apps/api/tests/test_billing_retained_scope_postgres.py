@@ -13,7 +13,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.composition.billing_operator import reconcile_purchase, resolve_review
-from app.composition.purchases import advance_purchase
+from app.composition.purchases import advance_purchase, recover_financial
 from app.composition.sources import SourceResources, source_resources
 from app.core.settings import Settings
 from app.domains.billing import background_recovery as recovery, customers, work
@@ -45,7 +45,7 @@ from apps.api.tests.support.any709_step3 import PurchaseTransport
 from apps.api.tests.test_any709_connection_scope_postgres import head
 from apps.api.tests.test_any709_step2_postgres import seed, TOKEN
 from apps.api.tests.test_any709_step3_postgres import accept
-from apps.api.tests.test_billing_background_recovery_postgres import original, synthetic_prepare
+from apps.api.tests.test_billing_background_recovery_postgres import job, original, synthetic_prepare
 from apps.api.tests.test_billing_subscription_reconciliation_postgres import activate
 
 pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
@@ -192,37 +192,66 @@ async def test_billing_retained_scope_customer_and_financial_repair_recovery_dea
         db.commit()
     assert recovery.repair_batch(factory, config)
     worker = BillingWorker(config, factory, sources.require_lbx())
-    assert await worker.tick(WorkLane.URGENT)
-    assert customers.reserve_customer(factory, config, TOKEN).provider_id == "345"
-    # Create original immutable possible-send evidence in the past, with an
-    # existing provider object whose reply was lost. Recovery remains GET-only.
-    financial_claim_clock(monkeypatch, lambda: financial.utc_now())
-    monkeypatch.setattr(financial, "utc_now", lambda: datetime.now(UTC) - timedelta(hours=3))
-    purchase = synthetic_prepare(factory, transport, purchase, uncertain=True)
-    operation = next(op for op in purchase.operations if op.kind == Kind.SUBSCRIPTION)
-    before = original(factory, operation.id)
-    with factory() as db:
-        db.execute(delete(BillingWorkItem).where(BillingWorkItem.scope_reference == str(operation.id)))
-        db.commit()
-    assert recovery.repair_batch(factory, config)
-    assert await worker.tick(WorkLane.LOCAL)
-    await worker.tick(WorkLane.LOCAL)  # The already-bound agreement may have an earlier deadline.
-    saved = service.read_purchase(factory, purchase.user_id, purchase.id)
-    assert next(op for op in saved.operations if op.id == operation.id).state == State.MANUAL_REVIEW
-    assert await worker.tick(WorkLane.URGENT)
-    saved = service.read_purchase(factory, purchase.user_id, purchase.id)
-    assert saved.state == PurchaseIntentState.LINKED and saved.held
-    assert next(op for op in saved.operations if op.kind == Kind.SUBSCRIPTION).state == State.BOUND
-    assert original(factory, operation.id) == before
-    with factory() as db:
-        deadline = db.scalar(
-            select(BillingWorkItem).where(
-                BillingWorkItem.work_kind == recovery.DEADLINE, BillingWorkItem.scope_reference == str(operation.id)
-            )
-        )
+    try:
+        assert await worker.tick(WorkLane.URGENT)
+        assert customers.reserve_customer(factory, config, TOKEN).provider_id == "345"
+        # Create original immutable possible-send evidence in the past, with an
+        # existing provider object whose reply was lost. Recovery remains GET-only.
+        financial_claim_clock(monkeypatch, lambda: financial.utc_now())
+        monkeypatch.setattr(financial, "utc_now", lambda: datetime.now(UTC) - timedelta(hours=3))
+        purchase = synthetic_prepare(factory, transport, purchase, uncertain=True)
+        operation = next(op for op in purchase.operations if op.kind == Kind.SUBSCRIPTION)
+        before = original(factory, operation.id)
+        with factory() as db:
+            db.execute(delete(BillingWorkItem).where(BillingWorkItem.scope_reference == str(operation.id)))
+            db.commit()
+        assert recovery.repair_batch(factory, config)
+        requests = len(transport.requests)
+        assert await worker.tick(WorkLane.LOCAL)
+        await worker.tick(WorkLane.LOCAL)  # The already-bound agreement may have an earlier deadline.
+        saved = service.read_purchase(factory, purchase.user_id, purchase.id)
+        pending = next(op for op in saved.operations if op.id == operation.id)
+        assert saved.state == PurchaseIntentState.MANUAL_REVIEW and saved.held
+        assert saved.account_id == purchase.account_id and saved.accepted == purchase.accepted
+        assert pending.state == State.MANUAL_REVIEW and pending.bound_id is None
+        assert original(factory, operation.id) == before
+        paused = job(factory, recovery.RECOVERY, operation.id)
+        assert paused.work_state == "paused"
+        assert paused.lease_owner is None and paused.lease_expires_at is None
+        deadline = job(factory, recovery.DEADLINE, operation.id)
         assert deadline.coalescing_key == f"{purchase.account_id}:{operation.id}"
-    assert all(req.method == "GET" for req in transport.requests)
-    await worker.aclose()
+        recovery.repair_batch(factory, config)
+        assert job(factory, recovery.RECOVERY, operation.id).work_state == "paused"
+        assert not await worker.tick(WorkLane.URGENT)
+        await worker.aclose()
+        worker = BillingWorker(config, factory, sources.require_lbx())
+        assert not await worker.tick(WorkLane.URGENT)
+        assert len(transport.requests) == requests
+        assert service.read_purchase(factory, purchase.user_id, purchase.id) == saved
+        assert original(factory, operation.id) == before
+        # Only an explicit GET-only recovery may bind the overdue original.
+        recovered = await recover_financial(
+            sources,
+            config,
+            factory=factory,
+            user_id=purchase.user_id,
+            purchase_id=purchase.id,
+            operation_id=operation.id,
+        )
+        assert recovered.state == PurchaseIntentState.LINKED and recovered.held
+        assert recovered.account_id == purchase.account_id and recovered.accepted == purchase.accepted
+        assert next(op for op in recovered.operations if op.id == operation.id).state == State.BOUND
+        assert original(factory, operation.id) == before
+        with factory() as db:
+            sub = db.scalar(select(ExternalSubscription))
+            assert sub.external_billing_account_id == purchase.account_id
+            assert (
+                db.get(ExternalBillingCustomer, purchase.customer_id).external_billing_account_id == purchase.account_id
+            )
+            assert job(factory, work.RECONCILIATION, sub.subscription_id).work_state == "pending"
+        assert all(req.method == "GET" for req in transport.requests)
+    finally:
+        await worker.aclose()
 
 
 async def test_billing_retained_scope_audited_original_binding(
