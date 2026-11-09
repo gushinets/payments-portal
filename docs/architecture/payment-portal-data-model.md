@@ -184,7 +184,10 @@ is explicitly the **link identity digest**, not a price or whole-catalog digest.
 The versioned document pins connection scope, selected Kernel product and LBX
 service/tariff/period/quantity, independent source provenance, manifest evidence
 and operator audit. It contains no price, approval certificates or invented
-technical allowance. `commercial_product_heads` has primary key
+technical allowance. ANY-766 Step 3 adds `product-link-v3` in the same table;
+its identity also pins one explicit fixed-per-cycle product/metric/unit/quantity
+offer, with configured Kernel/LBX provenance. Historical documents are unchanged.
+`commercial_product_heads` has primary key
 `(external_billing_account_id, product_id)`, a restrictive composite FK to the
 immutable revision in the same account, and a positive product revision counter.
 Nullable `provider_origin` records only a proven canonical origin. Its unique
@@ -222,6 +225,17 @@ from full source/audit digests. Historical v2 full-digest acceptances and v1 sta
 readable without invented limits; exact replay uses saved evidence rather than current
 source configuration. The development fixture is disabled by default and
 rejected in production.
+
+ANY-766 Step 3 writes `accepted-purchase:v3` for v3 links, containing required
+`purchased-technical-terms:v2` with `CONFIGURED_SOURCE` provenance. Terms pin the
+mapping identity digest/revision, complete source/audit digest, account/selection,
+commercial fingerprint and fresh manifest evidence. Buyer confirmation continues
+to pin selected meaning separately. Quantities are strict integers in 0…2^53−1;
+LBX commercial quantity retains its separate meaning. These versions require no
+new table or migration. Readers predating Step 3 cannot consume these documents;
+the reader compatibility floor must accompany the unchanged migration head.
+Existing accepted subscriptions keep their quantity across republished links
+and proven new cycles. Production derivation/HTTP delivery remains Step 5 work.
 
 `external_create_operations` records customer, agreement, or subscription
 create work. Customer creation has no purchase intent; agreement and

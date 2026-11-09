@@ -322,7 +322,20 @@ def pin_purchase(
             or offer.fingerprint != meaning.expected_fingerprint
             or meaning.expected_technical_terms_digest
             != (technical_terms.confirmation_digest() if technical_terms else None)
-            or configuration.purchase_test_terms_enabled != (technical_terms is not None)
+            or (
+                link.document.technical_offer is None
+                and configuration.purchase_test_terms_enabled != (technical_terms is not None)
+            )
+            or (
+                link.document.technical_offer is not None
+                and (
+                    technical_terms is None
+                    or technical_terms.schema_version != "purchased-technical-terms:v2"
+                    or technical_terms.offer != link.document.technical_offer
+                    or technical_terms.mapping_digest != link.document.identity_digest
+                    or technical_terms.source_digest != link.document.content_digest()
+                )
+            )
             or current_documents != documents
             or selected != tuple((doc.document_version_id, doc.acceptance_text_hash) for doc in meaning.documents)
         ):
@@ -335,7 +348,7 @@ def pin_purchase(
         if slot.binding_state == Binding.IDENTITY_CONFLICT:
             raise PurchaseRefused("billing_identity_conflict", 409)
         evidence = AcceptedPurchase(
-            schema_version="accepted-purchase:v2",
+            schema_version="accepted-purchase:v3" if link.document.technical_offer else "accepted-purchase:v2",
             meaning=meaning,
             selection=link.document.selection,
             offer=offer,

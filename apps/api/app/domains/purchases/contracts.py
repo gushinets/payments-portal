@@ -81,7 +81,9 @@ class PurchaseMeaning(BaseModel):
 
 class AcceptedPurchase(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    schema_version: Literal["accepted-purchase:v1", "accepted-purchase:v2"] = "accepted-purchase:v1"
+    schema_version: Literal["accepted-purchase:v1", "accepted-purchase:v2", "accepted-purchase:v3"] = (
+        "accepted-purchase:v1"
+    )
     meaning: PurchaseMeaning
     selection: ProductLinkRequest
     offer: CurrentOffer
@@ -95,9 +97,20 @@ class AcceptedPurchase(BaseModel):
         terms = self.technical_terms
         if self.schema_version == "accepted-purchase:v1" and (terms or self.meaning.expected_technical_terms_digest):
             raise ValueError("legacy purchase has no technical evidence")
+        if self.schema_version == "accepted-purchase:v3":
+            if terms is None or terms.schema_version != "purchased-technical-terms:v2":
+                raise ValueError("configured purchase requires published technical terms")
+        elif terms is not None and terms.schema_version != "purchased-technical-terms:v1":
+            raise ValueError("historical purchase cannot acquire configured technical terms")
         # Existing v2 history pinned the whole-source digest. New confirmations
         # pin selected meaning; both retain the independently verified audit hash.
-        digests = {terms.digest, terms.confirmation_digest()} if terms else {None}
+        digests = (
+            {terms.confirmation_digest()}
+            if self.schema_version == "accepted-purchase:v3"
+            else {terms.digest, terms.confirmation_digest()}
+            if terms
+            else {None}
+        )
         if self.meaning.expected_technical_terms_digest not in digests:
             raise ValueError("technical acceptance mismatch")
         if terms and (

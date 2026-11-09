@@ -23,6 +23,7 @@ from app.domains.catalog.link_publication import (
     query_product_link,
 )
 from app.domains.catalog.product_link import ProductLinkRequest
+from app.domains.catalog.technical_offer import TechnicalOffer
 from app.domains.catalog.publication import StoredMapping
 from app.infrastructure.operator_preflight import operator_preflight_lock
 
@@ -36,12 +37,17 @@ def parser() -> argparse.ArgumentParser:
     identity.add_argument("--offer-id")
     query.add_argument("--revision", type=int, help="Offer history sequence; requires --offer-id")
     for action in ("dry-run", "publish"):
-        source = actions.add_parser(action, help="Validate live sources for one product association")
+        source = actions.add_parser(
+            action, help="Validate live sources for one product association", allow_abbrev=False
+        )
         source.add_argument("--product-id", required=True)
         source.add_argument("--tariff-id", type=int, required=True)
         source.add_argument("--tariff-service-id", type=int, required=True)
         source.add_argument("--period-id", type=int, required=True)
         source.add_argument("--quantity", type=int, default=1, help="Commercial service quantity; not a quota")
+        source.add_argument("--metric-key", required=True, help="Enabled Kernel metric owned by this product")
+        source.add_argument("--unit", required=True, help="Exact Kernel metric unit")
+        source.add_argument("--allowance-quantity", type=int, required=True, help="Fixed technical quantity per cycle")
         if action == "publish":
             source.add_argument(
                 "--expected-previous-revision",
@@ -119,9 +125,23 @@ def execute(arguments: argparse.Namespace, configuration: Settings) -> str:
         period_id=arguments.period_id,
         quantity=arguments.quantity,
     )
+    technical_offer = TechnicalOffer(
+        product_id=selection.product_id,
+        metric_key=arguments.metric_key,
+        unit=arguments.unit,
+        quantity=arguments.allowance_quantity,
+        quantity_mode="fixed_per_cycle",
+    )
     with operator_preflight_lock(configuration.mapping_operator_lock_file):
         with asyncio.Runner() as runner:
-            evaluation = runner.run(fresh_link_evaluation(configuration, selection=selection, principal=principal))
+            evaluation = runner.run(
+                fresh_link_evaluation(
+                    configuration,
+                    selection=selection,
+                    principal=principal,
+                    technical_offer=technical_offer,
+                )
+            )
         if arguments.command == "dry-run":
             return json.dumps(
                 {

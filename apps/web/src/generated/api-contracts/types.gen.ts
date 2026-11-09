@@ -413,7 +413,7 @@ export type PaidAccessAllowanceResponse = {
     /**
      * Provenance
      */
-    provenance: 'SIMULATED';
+    provenance: 'SIMULATED' | 'CONFIGURED_SOURCE';
     /**
      * Quantity
      */
@@ -657,7 +657,7 @@ export type PurchaseTechnicalTermsResponse = {
     /**
      * Provenance
      */
-    provenance: 'SIMULATED';
+    provenance: 'SIMULATED' | 'CONFIGURED_SOURCE';
     /**
      * Source Digest
      */

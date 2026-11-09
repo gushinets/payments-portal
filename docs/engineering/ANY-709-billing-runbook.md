@@ -163,9 +163,11 @@ for that operator and set `MAPPING_OPERATOR_LOCK_FILE` to its absolute path
 
 ```bash
 PYTHONPATH=apps/api .venv/bin/python -m app.cli.commercial_mappings dry-run \
-  --product-id proposal_ai --tariff-id 32 --tariff-service-id 1 --period-id 1
+  --product-id proposal_ai --tariff-id 32 --tariff-service-id 1 --period-id 1 \
+  --metric-key proposal_ai.generations --unit generation --allowance-quantity "$APPROVED_ALLOWANCE_QUANTITY"
 PYTHONPATH=apps/api .venv/bin/python -m app.cli.commercial_mappings publish \
   --product-id proposal_ai --tariff-id 32 --tariff-service-id 1 --period-id 1 \
+  --metric-key proposal_ai.generations --unit generation --allowance-quantity "$APPROVED_ALLOWANCE_QUANTITY" \
   --expected-previous-revision 0
 PYTHONPATH=apps/api .venv/bin/python -m app.cli.commercial_mappings query \
   --product-id proposal_ai
@@ -176,6 +178,32 @@ ID, not association 82 or price-row 288. Quantity defaults to one commercial
 service subject to source bounds; it is not a Kernel allowance. Non-unit
 connection charges without proven quantity semantics remain unsupported.
 
+ANY-766 Step 3 requires all three technical flags for `dry-run` and `publish`.
+The operator supplies an owner-approved integer `APPROVED_ALLOWANCE_QUANTITY`;
+there is no launch default. Zero is a finite zero allowance. Booleans, floats,
+negative values and values above 2^53−1 are rejected. `--quantity` still selects
+LBX commercial service quantity; it never determines the technical allowance.
+The exact product/metric/unit must be enabled in a fresh configured Kernel
+manifest. The development Kernel mock cannot publish configured technical terms.
+Ordinary production commercial flags remain disabled until sales approval;
+these examples authorize neither real associations nor enablement.
+
+New publications use `product-link-v3` in the existing immutable mapping table.
+Its selected identity includes the fixed-per-cycle technical offer, LBX selection
+and source provenance. Fresh selected-offer LBX reads, OS principal, product CAS,
+history and uncertain-commit recovery remain required. Unrelated manifest/version
+changes do not create a new selected identity. New buyer acceptance pins
+`purchased-technical-terms:v2` inside `accepted-purchase:v3`, including mapping
+revision/digest, account/selection, commercial fingerprint and manifest evidence.
+The complete source/audit digests remain separate from `confirmation_digest()`.
+Review shows quantity/unit before consent; changed selected terms require a new
+review. Accepted purchases and their renewal quantities never rebind to a newer
+mapping. Existing v1/v2 links and purchases, SIMULATED terms and exact historical
+v2 full-digest replay remain readable without rewriting stored documents.
+Legacy links without a published quantity cannot start a new production purchase;
+original accepted-operation replay/recovery remains independent of new-sale terms.
+Production allowance derivation and snapshot transport remain Step 5 work.
+
 For the configured harness, use its shared lock and current host UID:
 
 ```bash
@@ -184,8 +212,10 @@ portal_operator() {
     api python -m app.cli.commercial_mappings "$@"
 }
 portal_operator query --product-id proposal_ai
-portal_operator dry-run --product-id proposal_ai --tariff-id 32 --tariff-service-id 1 --period-id 1
+portal_operator dry-run --product-id proposal_ai --tariff-id 32 --tariff-service-id 1 --period-id 1 \
+  --metric-key proposal_ai.generations --unit generation --allowance-quantity "$APPROVED_ALLOWANCE_QUANTITY"
 portal_operator publish --product-id proposal_ai --tariff-id 32 --tariff-service-id 1 --period-id 1 \
+  --metric-key proposal_ai.generations --unit generation --allowance-quantity "$APPROVED_ALLOWANCE_QUANTITY" \
   --expected-previous-revision 0
 ```
 
@@ -577,8 +607,8 @@ Per-product confirmed access, fresh authoritative absence and unavailable eviden
 remain distinct. Implicit revision zero with no product evidence is confirmed
 empty; unavailable reads are never presented as empty. Product evidence is bounded
 to 100 entries with `evidence_complete=false` when truncated; committed grants and
-allowances are not truncated. Accepted technical terms and purchased quantities
-are marked `SIMULATED`; legacy purchases with no technical terms stay unknown.
+allowances are not truncated. Technical terms retain their `SIMULATED` or
+`CONFIGURED_SOURCE` provenance; legacy purchases without terms stay unknown.
 Actual usage and remaining quota remain unavailable. Production cannot derive
 simulated metering; this read does not implement Kernel enforcement or delivery.
 

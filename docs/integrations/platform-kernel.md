@@ -55,6 +55,19 @@ ANY-766. See the [Step 10 handoff](../engineering/billing-background-operations.
 for producer semantics, B10 and current acceptance limits. This source refresh
 changes no wire contract or conformance status.
 
+ANY-766 Step 3 adds Portal-owned immutable quantity publication and purchase
+acceptance: `product-link-v3`, `purchased-technical-terms:v2` and
+`accepted-purchase:v3`. The protected CLI validates the enabled selected
+product/metric/unit through the existing manifest client. It retains LBX
+commercial quantity separately, selected-consent versus full audit digests,
+historical v1/v2 replay and accepted renewal quantities. See the
+[operator and compatibility details](../engineering/ANY-709-billing-runbook.md).
+The peer's Step 2 production declarations were inspected locally at
+`b9b6c78bf524a613496f1053278c074c4c4554cc`; they remain commercially disabled.
+This Portal-only change requires no new Kernel API/schema. Kernel paid identity,
+production derivation, transport and real joint acceptance remain later steps;
+synthetic configured-source tests are not live-source or sales approval.
+
 Evidence: [Portal paid writer](https://github.com/gushinets/payments-portal/blob/ac8743ff35c5cfaf0fdaf108fa89ad5e71bf49cd/apps/api/app/domains/billing/paid_access.py),
 [typed client](https://github.com/gushinets/payments-portal/blob/ac8743ff35c5cfaf0fdaf108fa89ad5e71bf49cd/apps/api/app/integrations/kernel/client.py),
 [Kernel routes](https://github.com/gushinets/anytoolai-platform/blob/72ff15bc0b77903c87aa39f7b10186dccc556d09/apps/platform-api/src/anytoolai_platform_api/main.py)

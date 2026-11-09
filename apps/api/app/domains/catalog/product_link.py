@@ -20,9 +20,12 @@ from app.domains.catalog.commercial_offer import (
 )
 from app.domains.catalog.contracts import MAX_PRODUCT_ID_LENGTH, SourceProvenance
 from app.domains.catalog.mapping_evidence import Digest, ImmutableInput, Nonempty, PositiveInteger
+from app.domains.catalog.technical_offer import TechnicalOffer
 
 
 LINK_SCHEMA = "product-link-v2"
+QUANTITY_LINK_SCHEMA = "product-link-v3"
+LINK_SCHEMAS = (LINK_SCHEMA, QUANTITY_LINK_SCHEMA)
 
 
 class ProductLinkRequest(ImmutableInput):
@@ -41,9 +44,10 @@ class ProductLinkRequest(ImmutableInput):
 
 
 class ProductLinkDocument(ImmutableInput):
-    schema_version: Literal["product-link-v2"] = LINK_SCHEMA
+    schema_version: Literal["product-link-v2", "product-link-v3"] = LINK_SCHEMA
     scope: CommercialScope
     selection: ProductLinkRequest
+    technical_offer: TechnicalOffer | None = Field(default=None, exclude_if=lambda value: value is None)
     kernel_provenance: SourceProvenance
     lbx_evidence_mode: CommercialEvidenceMode
     manifest_version: Digest
@@ -55,19 +59,34 @@ class ProductLinkDocument(ImmutableInput):
     identity_digest: Digest
     product_revision_number: PositiveInteger | None = None
 
+    def content_digest(self) -> str:
+        """Complete immutable source/audit document, separate from selected identity."""
+        return commercial_digest(canonical_document(self.model_dump(mode="json")))
+
     def identity_json(self) -> str:
         return canonical_document(
             {
-                "schema": LINK_SCHEMA,
+                "schema": self.schema_version,
                 "scope": asdict(self.scope),
                 "selection": self.selection.model_dump(mode="json"),
                 "kernel_provenance": self.kernel_provenance,
                 "lbx_evidence_mode": self.lbx_evidence_mode,
+                **({"technical_offer": self.technical_offer.model_dump(mode="json")} if self.technical_offer else {}),
             }
         )
 
     @model_validator(mode="after")
     def validate_identity(self) -> ProductLinkDocument:
+        if self.schema_version == QUANTITY_LINK_SCHEMA:
+            if (
+                self.technical_offer is None
+                or self.technical_offer.product_id != self.selection.product_id
+                or self.kernel_provenance != SourceProvenance.CONFIGURED_SOURCE
+                or self.lbx_evidence_mode != CommercialEvidenceMode.CONFIGURED_SOURCE
+            ):
+                raise ValueError("invalid configured technical offer")
+        elif self.technical_offer is not None:
+            raise ValueError("legacy product link has no technical offer")
         if commercial_digest(self.identity_json()) != self.identity_digest or self.published_at < self.evaluated_at:
             raise ValueError("invalid product link identity/audit")
         return self

@@ -652,7 +652,10 @@
             "type": "string"
           },
           "provenance": {
-            "const": "SIMULATED",
+            "enum": [
+              "SIMULATED",
+              "CONFIGURED_SOURCE"
+            ],
             "title": "Provenance",
             "type": "string"
           },
@@ -1096,7 +1099,10 @@
             "$ref": "#/components/schemas/TechnicalOffer"
           },
           "provenance": {
-            "const": "SIMULATED",
+            "enum": [
+              "SIMULATED",
+              "CONFIGURED_SOURCE"
+            ],
             "title": "Provenance",
             "type": "string"
           },
