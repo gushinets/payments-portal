@@ -84,11 +84,17 @@ earlier checkpoint, not today's endpoint availability.
   connections without a blanket production refusal. Explicit Kernel mock mode
   remains development/test-only and SIMULATED, including after URL changes.
   A non-mock endpoint is CONFIGURED_SOURCE, never proof of producer conformance
-  or production sales approval. Producer conformance and approved vocabulary
-  retain ANY-711 ownership. Portal can start without Kernel config.
+  or production sales approval. ANY-711 remains Done for its delivered manifest
+  producer/conformance and TEST-ONLY vocabulary. The
+  [2026-11-09 ANY-766 scope clarification](https://linear.app/paveldik/issue/ANY-766)
+  assigns selected production metric/unit declarations and scenario bindings to
+  ANY-766. Commercial quantities, exact LBX associations and sales enablement
+  still require separate owner approval. Portal can start without Kernel config.
 - **Usage and launch:** the three operations above do not define an actual
-  usage/remaining API for the cabinet. That contract and authenticated cross-app
-  launch remain separate work. Kernel product-to-product handoff is not Portal
+  usage/remaining API for the cabinet. The
+  [ANY-766 target bundle](../contracts/portal-kernel-paid/README.md) now specifies
+  usage/exhaustion and authenticated cross-app launch; runtime delivery remains
+  later ANY-766 work. Kernel product-to-product handoff is not Portal
   login handoff; common product IDs do not imply common origins or sessions.
 - **Commercial meaning:** Kernel product configs and guest quotas do not
   approve a paid registry. `proposal_ai.test_generations` is TEST-ONLY. Live

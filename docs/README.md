@@ -70,6 +70,10 @@ Start with the smallest document that matches the task.
 - [ANY-664 completed implementation plan](exec-plans/completed/ANY-664-implementation-plan.md)
   — all eight Portal steps DONE; implementation-commit CI evidence, retained
   real-enablement gates and handoff to ANY-504 program Step 7
+- [ANY-766 paid integration target contracts](contracts/portal-kernel-paid/README.md)
+  — reviewed target schemas, producer/consumer copies and offline fixtures for
+  snapshot V2, identity, invalidation, usage/exhaustion and cabinet contracts;
+  runtime implementation remains pending.
 - [Provisional Kernel Capability Manifest v1](contracts/kernel-capability-manifest/v1/README.md)
   — ANY-664 specification-derived schema, independent SIMULATED fixtures,
   standalone development HTTP mock and human verification commands; actual
@@ -114,6 +118,7 @@ Start with the smallest document that matches the task.
 - [Security](SECURITY.md)
 - [Quality score](QUALITY_SCORE.md)
 - [Execution plans](exec-plans/README.md)
+- [ANY-766 active implementation plan](exec-plans/active/ANY-766-implementation-plan.md) — authoritative Portal–Kernel plan for the runtime-research workspace; repository preparation and materialization complete, implementation subject to its gates.
 - [ANY-715 completed MVP rebuild plan](exec-plans/completed/ANY-715-mvp-rebuild-plan.md) — Stages 0–6 closed by owner decision; verification evidence, limitations and follow-ups under ANY-820 are retained.
 - [Background billing operations](engineering/billing-background-operations.md) — worker settings, scheduling, polling-only operation, retained inbox history, operator commands and diagnostics.
 

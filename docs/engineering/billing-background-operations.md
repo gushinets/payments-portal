@@ -684,7 +684,13 @@ revision/outbox → authenticated API/cabinet checkpoint passed on Portal
 Live allowance issuance remained unproved because LBX cycle evidence was
 ambiguous. Deterministic PostgreSQL/source fixtures verify the owned metered,
 failure/concurrency and recovery logic separately. DOD-1 current-HEAD LBX
-acceptance remains owned by ANY-765; ANY-711 owns approved production metric/unit
-vocabulary, ANY-766 the coordinated wire/delivery/enforcement and actual usage,
+acceptance remains owned by ANY-765. Under the
+[2026-11-09 ANY-766 scope clarification](https://linear.app/paveldik/issue/ANY-766),
+ANY-711 remains Done for delivered manifest/TEST-ONLY vocabulary; ANY-766 owns
+the selected production metric/unit declarations and scenario bindings as well
+as coordinated wire/delivery/enforcement and actual usage,
 and ANY-767 the deployed journey/natural renewal/production enablement. No
-test-only limit or historical positive QA result waives those gates.
+test-only limit or historical positive QA result waives those gates. Commercial
+quantities, exact LBX associations and sales enablement require separate owner
+approval. The [ANY-766 contract bundle](../contracts/portal-kernel-paid/README.md)
+records the formalized target, not implemented runtime delivery.
