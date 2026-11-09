@@ -9,6 +9,135 @@ supersedes source-catalog mirroring and the 24h new-sale catalog TTL only.
 The relevant sections below reflect that decision. Paid-access derivation,
 AccessSnapshot, subscription reconciliation and trust deadlines are unchanged.
 
+## ANY-766 boundary formalization — 2026-11-09
+
+Status: **selected target contracts; runtime work remains pending**. The accepted
+2026-11-03 strategy and [ANY-766's 2026-11-09 scope clarification](https://linear.app/paveldik/issue/ANY-766)
+assign the selected production vocabulary/scenario bindings and consuming Portal
+work to ANY-766. ANY-711 remains Done for its delivered manifest/TEST-ONLY
+baseline; ANY-507/814 supply the existing metering/recovery mechanism. No new
+commercial quantity, LBX association, sales enablement or production acceptance
+is inferred. Step 1 performs technical contract review without another
+preliminary protocol-approval prerequisite.
+
+The companion [access design's dated ANY-766 section](2026-09-15-portal-kernel-access-contract-design.md#any-766-selected-contracts--2026-11-09)
+and its [paired schema/fixture bundle](../../contracts/portal-kernel-paid/README.md)
+formalize the following changes. Their exact wire field names, route ownership,
+permissions, statuses and validation rules are normative target details.
+This section supersedes only conflicting September B10 UTC-wire/tuple rules,
+the three-operation inventory and statements that usage/launch have no selected
+contract. All other accepted ownership, provider-proof, reconciliation, identity,
+history and finite-trust rules remain. The original body below is preserved;
+its pending B10 review is closed at specification/fixture level by Step 1, not
+by runtime or live-provider acceptance.
+
+### B10 and immutable authority
+
+Portal retains LBX calendar-cycle evidence without guessing a timezone or UTC
+midnight. Snapshot V2 keeps the existing GET route and exposes canonical
+scope/user, revision, refresh/expiry, product grants with nullable UTC valid_until
+and allowances containing allowance_id/product_id/metric_key/**unit**/quantity.
+The frozen tuple has no UTC period fields; committed snapshot membership gives
+current authority. Portal retains independently proven UTC deadlines internally,
+does not expose future facts before proven start, and schedules authoritative
+reconciliation at that start. Local time never creates positive authority/refill.
+Same-cycle block/recovery preserves IDs/quantity/Kernel usage; only a proven new
+cycle gets a new bucket. Historical identity survives snapshot omission.
+
+For Portal DB time T and local/staging cross-service budget B=5 seconds:
+expires_at=min(T+300 seconds, included effective source/grant/proven UTC
+deadlines)−B; refresh_after=min(T+60 seconds,expires_at). With no included facts,
+only the 300-second bound applies. Do not double-subtract B from an already
+conservative wire grant; existing LBX conservatism remains separate. Production
+must independently support its clock budget. Source trust remains at most six
+hours. Known-user implicit empty revision zero is read-only; subsequent empty
+states have positive revisions. Semantic changes atomically commit revision,
+outbox and deadlines through the sole whole-user writer. Overdue reductions
+return `503` until that writer commits, rather than GET editing the set.
+
+Kernel refreshes on requests and never extends expiry. Valid cached authority
+must satisfy the durable floor and every admission predicate. Service 401/403
+and unexpected 404 remain integration failures. Manifest/invalidation remain V1;
+install compatible V2 consumers before connecting the producer. No adapter
+fabricates interval semantics. Strict integer Q in 0…2^53−1 is retained.
+
+### Identity, execution and observational events
+
+Use the existing Portal session with a 60-second random one-use S256 PKCE code
+and a narrow delegated Kernel Bearer lasting at most 30 minutes/parent expiry.
+Portal owns hashed delegation storage linked to AuthSession, atomic exchange,
+audience/parent/active-user introspection and canonical user UUID. No identity
+mapping or refresh token is added. Security writes lock User → AuthSession →
+delegation; internal reads do not commit. Kernel introspects every protected
+request under independent reverse service authentication. Safe expiry versus
+parent-revocation codes govern recovery; unavailable identity never becomes guest.
+
+Fixed Kernel launch/callback and localized Portal authorization use state and
+fragment-only callback secrets, immediately cleared. Tab sessionStorage holds
+delegated token/owner and an owner-bound versioned CE-kit prepared start descriptor
+persisted before a new send. Freeze the original request/key across uncertain
+responses, reload and same-owner reauthorization. Acceptance retains a session
+reference and removes inputs. Storage refusal blocks a new send; logout, parent
+revocation or owner change clears private state and pending input. Ignore late
+identity-generation responses and restore validated product/result/handoff
+continuation without another start or guest fallback.
+
+Kernel's one durable coherence row serializes floor/cache/install/invalidation/
+admission. Authenticate and try owner/hash replay before HTTP refresh; lock and
+repeat replay, resolve the server scenario metric/exact allowance, reserve through
+ANY-507 in the caller Session, then recheck DB wall time, identity, revision/floor,
+expiry and grant after bucket/reservation waits. Commit atomically or roll back
+all acceptance writes. No HTTP under those locks, second meter or history reset.
+Late retryable handoff authority refusal rolls back target linkage/reservation
+and preserves retryable consent. Owned accepted results remain readable with
+valid identity after grant expiry; jobs finalize the original bucket.
+
+All paid start/handoff/poll/next-action/result/artifact/event surfaces use trusted
+ownership, never body user_id. ClientEventService accepts a trusted paid owner,
+checks scenario ownership, derives user_id and permits pre-scenario product
+events while preserving guest/event-id behavior. Events are observational only.
+
+### Delivery and truthful usage
+
+Independent directional credentials, receiver-owned per-operation permissions,
+one Bearer header, configured scope, verified TLS, no browser Origin and no-store
+responses extend the ANY-711 convention. Portal invalidation reuses its outbox,
+work claims and embedded worker with a bounded delivery lane; exact sent-N ACK
+cannot clear pending N+1 or newer work generations. Retain User → outbox → queue
+locks, HTTP outside transactions, durable retry/parking and restart repair.
+
+Kernel internal usage V1 accepts 1–100 distinct allowance IDs and returns one
+ordered observed or unobserved item per request. Only observed rows carry the
+complete tuple, successful_used/reserved/remaining/available and read_at. Unknown
+and foreign are indistinguishable; failure is `503`, never zero. Public product
+usage derives owner by introspection. Existing ANY-507 readback owns counters;
+reads create no buckets. Snapshot ingestion establishes actual zero-use rows.
+remaining=max(Q-successful_used,0), available=max(Q-successful_used-reserved,0).
+
+Kernel writes immutable exhaustion V1 in the SAME finalization transaction on
+became_exhausted, including rollback recovery. A bounded leased worker sends it
+to Portal; unique identity is scoped user/allowance/event type. Portal verifies
+the issued full tuple and durably commits one immutable allowance_exhaustion
+work hint before `204`, also for identical duplicate/historical delivery.
+Mismatch is `409`, malformed is `422`; completed duplicates never revive.
+Current hints request GET-only reconciliation; historical hints cannot affect
+new cycles. No payment, subscription termination, grant revocation, refill or
+Portal usage counters follow from exhaustion.
+
+Separate `/api/paid-usage` reuses active verified-email billing auth and its own
+bounded Kernel resources, preserving `/api/paid-access` local capacity. Derive
+current IDs or latest historical allowance per product locally; validate remote
+owner/tuple and recheck local revision after I/O outside SQL. Revision change
+returns `503 paid_usage_state_changed`. Generated DTOs retain local terms and
+current/historical classification; observed items carry actual counters, while
+unobserved/unavailable omit them. Outage is `503`, tuple mismatch marks only
+that item unavailable with diagnostics. Portal stores no runtime usage ledger.
+
+## Preserved September baseline
+
+The original accepted body follows. Explicitly conflicting clauses are historical
+under the dated formalization above; the rest of the authority chain is retained.
+
 ## Goal
 
 Redesign Payments Portal around a strict bounded-context split:
