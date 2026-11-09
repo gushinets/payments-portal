@@ -24,8 +24,13 @@ def inspect_operation(factory: SessionFactory, configuration: Settings, operatio
         if (
             customer.external_billing_account_id != connection_account(db, configuration)
             or customer.provider_origin != configuration.lbx_provider_origin
-            or diagnostic_user(db, user_id=customer.user_id, tenant_id=configuration.instance_tenant_id,
-                               region=configuration.instance_region) is None
+            or diagnostic_user(
+                db,
+                user_id=customer.user_id,
+                tenant_id=configuration.instance_tenant_id,
+                region=configuration.instance_region,
+            )
+            is None
         ):
             raise PurchaseRefused("purchase_not_found", 404)
         result = {

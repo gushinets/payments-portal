@@ -324,9 +324,7 @@ async def test_payment_widget_own_proof_survives_independent_worker_read(
 
     monkeypatch.setattr(client, "client_user", client_ready)
     try:
-        result = await billing.bootstrap_account(
-            sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id
-        )
+        result = await billing.bootstrap_account(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
     finally:
         await worker.aclose()
     assert injected and result.purchase_id == purchase.id and result.credential
@@ -358,9 +356,7 @@ async def test_payment_widget_own_incomplete_proof_refuses_and_then_recovers(
         current = db.get(ExternalSubscription, identity)
         assert (current.last_authoritative_read_at, current.projection_valid_until) == trusted
         assert current.commercial_access_status == "eligible"
-    recovered = await billing.bootstrap_account(
-        sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id
-    )
+    recovered = await billing.bootstrap_account(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
     assert recovered.purchase_id == purchase.id and recovered.credential
 
 

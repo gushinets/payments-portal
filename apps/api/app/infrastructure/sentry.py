@@ -248,8 +248,6 @@ def _canonical_uuid(value: object) -> str | None:
     return value if str(parsed) == value else None
 
 
-
-
 def _matched_route(value: object) -> str | None:
     if not isinstance(value, str) or not value.startswith("/") or len(value) > 256:
         return None

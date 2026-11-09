@@ -100,8 +100,12 @@ async def test_current_offer_block_to_close_is_optional_metadata(days: int | Non
     assert after.offer.block_to_close_days == days
     assert after.offer.fingerprint == before.offer.fingerprint
     assert after.document.identity_digest == before.document.identity_digest
-    assert current_offer_fingerprint(step1_settings().lbx_external_billing_account_id,
-                                     before.document.selection, before.offer) == after.offer.fingerprint
+    assert (
+        current_offer_fingerprint(
+            step1_settings().lbx_external_billing_account_id, before.document.selection, before.offer
+        )
+        == after.offer.fingerprint
+    )
 
 
 async def test_any709_step1_current_price_keeps_digits_beyond_binary_float_precision() -> None:

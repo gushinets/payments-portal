@@ -217,7 +217,8 @@ def subject(
         else:
             purchase = purchases.owned(db, customer.user_id, op.purchase_intent_id, lock=True)
             op = next(
-                item for item in purchases.operations(db, purchase.purchase_intent_id, lock=True)
+                item
+                for item in purchases.operations(db, purchase.purchase_intent_id, lock=True)
                 if item.create_operation_id == op.create_operation_id
             )
         db.refresh(op)
@@ -324,8 +325,11 @@ def recovery_paused(factory: SessionFactory, claim: WorkClaim) -> bool:
     with factory() as db:
         row = work_queries.item(db, claim.id)
         return bool(
-            row is not None and claim.kind == RECOVERY and row.work_kind == RECOVERY
-            and row.scope_reference == claim.reference and row.work_state == "paused"
+            row is not None
+            and claim.kind == RECOVERY
+            and row.work_kind == RECOVERY
+            and row.scope_reference == claim.reference
+            and row.work_state == "paused"
         )
 
 
@@ -371,11 +375,14 @@ def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> RecoveryEscalat
             _pause_recovery(db, op, customer.external_billing_account_id)
             db.flush()
             case = next(
-                case for case in billing_customers.open_customer_reviews(db, op.create_operation_id)
+                case
+                for case in billing_customers.open_customer_reviews(db, op.create_operation_id)
                 if case.reason_code == reason
             )
             notice = RecoveryEscalation(
-                op.create_operation_id, op.operation_kind.value, case.review_case_id,
+                op.create_operation_id,
+                op.operation_kind.value,
+                case.review_case_id,
             )
             # The deadline claim remains durable notification work until the
             # SDK accepts it. No reporting/network occurs under these locks.
@@ -390,7 +397,9 @@ def finish_deadline_notification(factory: SessionFactory, claim: WorkClaim, *, n
     with factory() as db:
         row = work.verify_claim(db, claim)
         work.finish(
-            db, row, claim,
+            db,
+            row,
+            claim,
             due=None if notified else as_utc(billing_reconciliation.database_now(db)) + timedelta(minutes=5),
             error=None if notified else "recovery_notification_pending",
         )

@@ -74,9 +74,7 @@ async def recover_operation(
     await delegate(recovery.finish_recovery, factory, claim)
 
 
-async def apply_deadline(
-    factory: SessionFactory, claim: WorkClaim, *, delegate: Callable[..., Awaitable[Any]]
-) -> None:
+async def apply_deadline(factory: SessionFactory, claim: WorkClaim, *, delegate: Callable[..., Awaitable[Any]]) -> None:
     notice = await delegate(recovery.apply_deadline, factory, claim)
     if notice is not None:
         notified = await delegate(report_billing_recovery_exhausted, notice)

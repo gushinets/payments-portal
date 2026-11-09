@@ -183,7 +183,9 @@ def test_operation_lookup_harness_forwards_only_its_operation_reference(monkeypa
     with pytest.raises(SystemExit) as outcome:
         arguments.func(arguments)
     assert outcome.value.code == 0
-    assert calls == [[repo.sys.executable, "-m", "app.cli.billing_purchases", "inspect-operation", "--operation-id", identity]]
+    assert calls == [
+        [repo.sys.executable, "-m", "app.cli.billing_purchases", "inspect-operation", "--operation-id", identity]
+    ]
 
 
 def test_billing_recovery_cli_safe_error(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
