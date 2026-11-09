@@ -48,6 +48,25 @@ async def _fetch(payload: dict[str, Any]) -> CapabilityManifest:
             return await sources.require_kernel().fetch_manifest(budget=budget)
 
 
+@pytest.mark.parametrize("name", ["default-disabled-manifest.json", "current-test-enabled-manifest.json"])
+async def test_current_kernel_inventory_retains_disabled_production_metrics(name: str) -> None:
+    payload = json.loads((CONTRACT / "fixtures" / name).read_text(encoding="utf-8"))
+    manifest = await _fetch(payload)
+    assert manifest.manifest_version == independent_digest(payload)
+    expected = {
+        "proposal_ai.generations": ("proposal_ai", "generation"),
+        "client_update_writer.messages": ("client_update_writer", "message"),
+        "brief_decoder.analyses": ("brief_decoder", "analysis"),
+        "acceptance_builder.results": ("acceptance_builder", "result"),
+    }
+    assert len(manifest.usage_metrics) == 6
+    for metric_key, (product_id, unit) in expected.items():
+        metric = next(item for item in manifest.usage_metrics if item.metric_key == metric_key)
+        assert (metric.product_id, metric.unit, metric.enabled) == (product_id, unit, False)
+        with pytest.raises(SelectedCapabilityUnavailable):
+            require_selected_capability(manifest, product_id=product_id, metric_units={metric_key: unit})
+
+
 async def test_independent_literal_contract_and_fresh_get_on_every_operation() -> None:
     payload = manifest_fixture()
     assert payload["manifest_version"] == independent_digest(payload) == EXPECTED_DIGEST
