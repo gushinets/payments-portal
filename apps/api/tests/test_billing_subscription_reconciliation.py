@@ -159,19 +159,8 @@ def test_billing_subscription_reconciliation_known_difference_without_total_is_i
     assert proof.identity == IdentityProof.MATCH and proof.commercial == CommercialProof.INCOMPLETE
 
 
-@pytest.mark.parametrize(
-    "change",
-    [
-        {"state": 99},
-        {"current_blocking": 99},
-        {"last_tariffication_period_start": None},
-        {"last_tariffication_period_start": "1970-01-01 00:00:00"},
-        {"last_tariffication_period_end": "2026-09-01"},
-        {"last_tariffication_period_start": "2026-02-30"},
-        {"subscription_instance_start_date": "2026-10-15"},
-    ],
-)
-def test_billing_subscription_reconciliation_unknown_or_incomplete(change: dict) -> None:
+@pytest.mark.parametrize("change", [{"state": 99}, {"current_blocking": 99}])
+def test_billing_subscription_reconciliation_unknown_lifecycle(change: dict) -> None:
     subject = subject_factory()
     proof = normalize_subscription(
         subject,
@@ -182,6 +171,29 @@ def test_billing_subscription_reconciliation_unknown_or_incomplete(change: dict)
         subscription=subscription_factory().model_copy(update=change),
     )
     assert not proof.complete and proof.financial is None
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"last_tariffication_period_start": None},
+        {"last_tariffication_period_start": "1970-01-01 00:00:00"},
+        {"last_tariffication_period_end": "2026-09-01"},
+        {"last_tariffication_period_start": "2026-02-30"},
+    ],
+)
+def test_billing_subscription_reconciliation_calendar_does_not_erase_product_proof(change: dict) -> None:
+    subject = subject_factory()
+    proof = normalize_subscription(
+        subject,
+        step1_settings(),
+        user=user_factory(),
+        agreement=agreement_factory(),
+        tariff=tariff_factory(subject),
+        subscription=subscription_factory().model_copy(update=change),
+    )
+    assert proof.complete and proof.financial == "allowed"
+    assert not proof.calendar_complete and proof.cycle is None
 
 
 @pytest.mark.parametrize("kind", ["customer", "agreement", "seller", "subscription"])
@@ -285,7 +297,7 @@ def test_billing_subscription_reconciliation_invalid_decoder_and_runbook_contrac
                 "subscription_start_date": "secret arbitrary text",
             }
         )
-    runbook = Path("docs/engineering/billing-background-operations.md").read_text()
+    runbook = " ".join(Path("docs/engineering/billing-background-operations.md").read_text().split())
     for phrase in (
         RECONCILIATION_SCHEMA,
         "/users/{id}",
@@ -296,7 +308,8 @@ def test_billing_subscription_reconciliation_invalid_decoder_and_runbook_contrac
         "COMPLETE_MISMATCH",
         "INCOMPLETE",
         "six hours",
-        "primary_subscription_id=NULL",
+        "`restore-original` and `bind-original` retain complete customer-wide inventory admission",
+        "`select-primary` uses complete relevant product proof",
         "read_started_at",
     ):
         assert phrase in runbook
@@ -395,8 +408,9 @@ def test_billing_subscription_reconciliation_preserves_calendar_precision(
         tariff=tariff_factory(subject),
         subscription=Subscription.model_validate(raw),
     )
-    assert proof.calendar_complete is complete and proof.complete is complete
-    assert (proof.financial == "allowed") is complete
+    assert proof.calendar_complete is complete
+    assert proof.complete and proof.financial == "allowed"
+    assert (proof.cycle is not None) is complete
     assert proof.calendar["subscription_instance_start_date"] == start
     assert proof.calendar["last_tariffication_period_end"] == cycle_end
 
@@ -614,3 +628,41 @@ def test_billing_subscription_reconciliation_identity_conflict_survives_unrelate
     )
     assert proof.identity == IdentityProof.CONFLICT and proof.commercial == CommercialProof.INCOMPLETE
     assert proof.financial is None
+
+
+@pytest.mark.parametrize(
+    "start,end,anchor,calendar_complete",
+    [
+        ("2026-10-31", "2026-10-31", "2026-10-31", True),
+        ("2026-10-01", "2026-10-31", "2026-10-15", True),
+        ("2026-10-01T12:34:56Z", "2026-11-01T12:34:56Z", "2026-10-01 12:34:56", False),
+    ],
+)
+def test_billing_subscription_reconciliation_inclusive_dates_and_mixed_zones(
+    start: str,
+    end: str,
+    anchor: str,
+    calendar_complete: bool,
+) -> None:
+    subject = subject_factory()
+    point = subscription_factory().model_copy(
+        update={
+            "last_tariffication_period_start": start,
+            "last_tariffication_period_end": end,
+            "subscription_instance_start_date": anchor,
+        }
+    )
+    proof = normalize_subscription(
+        subject,
+        step1_settings(),
+        user=user_factory(),
+        agreement=agreement_factory(),
+        tariff=tariff_factory(subject),
+        subscription=point,
+    )
+    assert proof.complete and proof.financial == "allowed"
+    assert proof.calendar_complete is calendar_complete
+    if calendar_complete:
+        assert proof.cycle.start == start and proof.cycle.end == end and proof.cycle.anchor == anchor
+    else:
+        assert proof.cycle is None

@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 
 import ruMessages from "../src/messages/ru.json";
+import { emptyPaidState } from "../tests/fixtures/paid-access";
 
 const removedContracts = [
   "/api/auth/checkout-intent",
@@ -20,6 +21,7 @@ test("subscription-state guard permits an empty catalog but rejects invented acc
 });
 
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/paid-access", (route) => route.fulfill({ json: emptyPaidState() }));
   // These layout journeys cover a genuinely empty technical catalog. Unknown
   // product IDs are 404; source outages are covered separately in catalog-preview.
   // Positive source-ID and exact-money coverage lives in catalog-preview.spec.
@@ -103,6 +105,7 @@ async function expectPortalBoundary(
   // Public browsing and local owned inventory do not open billing or create purchases.
   expect(traffic.apiRequests.filter((request) => request !== "GET /api/auth/session" &&
     request !== "GET /api/purchase-intents" &&
+    request !== "GET /api/paid-access" &&
     !request.startsWith("GET /api/catalog/products")))
     .toEqual([]);
   const main = page.getByRole("main");

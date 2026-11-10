@@ -1,11 +1,13 @@
 """Shared authoritative reconciliation: short claim/apply, no provider I/O."""
 
-from dataclasses import asdict
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
 from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused, CustomerOpen
+from app.domains.billing.paid_access import apply_paid_source, commit_paid_state, resolve_access_end
+from app.domains.billing.paid_deadlines import effective_deadline
+from app.domains.billing.paid_policy import PaidDecision, paid_decision
 from app.domains.billing.customers import lock_customer, lock_user, mark_customer_identity_conflict
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.reconciliation_contracts import (
@@ -167,11 +169,13 @@ def apply_reconciliation(
     *,
     work_claim: WorkClaim | None = None,
     resolution: ReviewResolution | None = None,
+    clock_skew_seconds: int | None = None,
+    allow_simulated_metering: bool = True,
 ) -> ReconciliationResult:
     """Recheck permanent provenance and current fences before any fact changes."""
     with factory() as db:
         purchase = subject.purchase
-        lock_user(db, purchase.user_id)
+        user = lock_user(db, purchase.user_id)
         customer = lock_customer(db, purchase.customer_id)
         customer_op = customer_operation(db, customer.customer_id)
         row = service._locked(db, purchase)
@@ -238,7 +242,25 @@ def apply_reconciliation(
                 and queue_row.coalescing_key != f"{purchase.account_id}:{purchase.customer_id}"
             ):
                 raise BillingRefused("billing_work_stale", 409)
+        latest = (
+            db.get(BillingStateObservation, current.latest_observation_id) if current.latest_observation_id else None
+        )
+        if latest is not None and as_utc(latest.observed_at) > proof.read_started_at:
+            raise BillingRefused("subscription_reconciliation_stale", 409)
         service._verify_original_consent(db, row, purchase.accepted)
+        due = effective_deadline(scope)
+        if due is not None and due <= now:
+            # Preserve the expired revision before new proof can replace its
+            # support. Both semantic transitions share this transaction; the
+            # final writer schedules work from the resulting state.
+            commit_paid_state(
+                db,
+                user,
+                None,
+                now,
+                allow_simulated_metering=allow_simulated_metering,
+                schedule_deadlines=False,
+            )
         resolved_case = None
         if resolution is not None:
             from app.domains.billing.operator_review import authorize_resolution
@@ -253,7 +275,15 @@ def apply_reconciliation(
                 or proof.read_finished_at >= resolution.expires_at - timedelta(seconds=30)
             ):
                 raise BillingRefused("billing_review_proof_incomplete", 409)
+            if resolution.request.resolution == "select-primary" and (
+                clock_skew_seconds is None
+                or paid_decision(proof) != PaidDecision.GRANT
+                or scope.primary_subscription_id not in {None, current.subscription_id}
+            ):
+                raise BillingRefused("billing_review_primary_unavailable", 409)
             resolved_case = authorize_resolution(db, resolution, row, operations, current, restoring=True)
+            if resolution.request.resolution == "select-primary":
+                scope.primary_subscription_id = current.subscription_id
         reviews = queries.open_reviews(db, current.subscription_id)
         known_review = (
             row.state == PurchaseIntentState.MANUAL_REVIEW
@@ -280,9 +310,18 @@ def apply_reconciliation(
             conflict = "subscription_terminal_revival_conflict"
         elif proof.identity == IdentityProof.MATCH and proof.commercial == CommercialProof.MISMATCH:
             conflict = "subscription_commercial_mismatch"
-        document = asdict(proof)
-        document["read_started_at"] = proof.read_started_at.isoformat()
-        document["read_finished_at"] = proof.read_finished_at.isoformat()
+        access_end_at, end_basis = resolve_access_end(db, current, proof)
+        document = proof.document()
+        if end_basis is not None:
+            document["retained_access_end"] = {
+                "observation_id": str(end_basis),
+                "access_end_at": access_end_at.isoformat(),
+            }
+        if resolution is not None and resolution.request.resolution == "select-primary":
+            document["primary_selection"] = {
+                "review_case_id": str(resolution.request.case_id),
+                "principal": resolution.principal,
+            }
         document["provenance"] = {
             "purchase_intent_id": str(purchase.id),
             "mapping_revision_id": str(purchase.accepted.meaning.revision_id),
@@ -345,16 +384,30 @@ def apply_reconciliation(
             current.lifecycle_status = proof.lifecycle
             current.financial_access_status = Financial.BLOCKED
             current.latest_observation_id = observation.observation_id
-        if proof.complete and not conflict and not known_review:
+        if proof.complete and not conflict and not known_review and not customer_conflict:
             current.lifecycle_status = proof.lifecycle
             current.financial_access_status = proof.financial
             current.commercial_access_status = Commercial.ELIGIBLE
-            current.last_authoritative_read_at = proof.read_started_at
-            current.projection_valid_until = proof.read_started_at + SOURCE_TRUST
+            if proof.financial == Financial.ALLOWED:
+                current.last_authoritative_read_at = proof.read_started_at
+                current.projection_valid_until = proof.read_started_at + SOURCE_TRUST
             current.latest_observation_id = observation.observation_id
         # Incomplete attempts append evidence, preserving finite LKG support.
         # A negative with incomplete commercial proof reduces usability above,
-        # but never renews trust. No paid-access writer runs in this step.
+        # but never renews trust. Paid state shares this fact transaction.
+        apply_paid_source(
+            db,
+            scope,
+            current,
+            purchase,
+            proof,
+            observation,
+            now,
+            skew_seconds=clock_skew_seconds,
+            access_end_at=access_end_at,
+            review=bool(conflict) or known_review or customer_conflict,
+            allow_simulated_metering=allow_simulated_metering,
+        )
         current.reconciliation_lease_owner = None
         current.reconciliation_lease_expires_at = None
         schedule_reconciliation(
@@ -375,6 +428,9 @@ def apply_reconciliation(
                 observation_id=observation.observation_id,
                 proof={
                     "schema": RECONCILIATION_SCHEMA,
+                    "primary_subscription_id": str(scope.primary_subscription_id)
+                    if scope.primary_subscription_id
+                    else None,
                     "identity": proof.identity,
                     "commercial": proof.commercial,
                     "reads": list(proof.reads),
@@ -382,6 +438,16 @@ def apply_reconciliation(
                     "read_finished_at": proof.read_finished_at.isoformat(),
                 },
             )
+        commit_paid_state(db, user, observation, now, allow_simulated_metering=allow_simulated_metering)
+        if (
+            clock_skew_seconds is not None
+            and scope.primary_subscription_id is None
+            and paid_decision(proof, review=bool(conflict or known_review or customer_conflict)) == PaidDecision.GRANT
+            and (work_claim is None or work_claim.kind != "customer_inventory")
+        ):
+            from app.domains.billing.background_recovery import hint_inventory
+
+            hint_inventory(db, customer)
         db.flush()
         committed = service._snapshot(db, row)
         db.commit()

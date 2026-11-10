@@ -245,10 +245,6 @@ def financial_pending(
     with factory() as db:
         row = _locked(db, purchase)
         op = next(op for op in queries.operations(db, purchase.id, lock=True) if op.create_operation_id == expected.id)
-        if work_claim is not None:
-            from app.domains.billing.work import verify_operation_claim
-
-            verify_operation_claim(db, work_claim, expected.id)
         if op.send_fence != expected.fence:
             return  # A stale failure cannot demote a newer proven result.
         work = recovery_work(db, op.create_operation_id)
@@ -274,6 +270,13 @@ def financial_pending(
             work.next_attempt_at = utc_now()
         if work and failure_facts:
             work.payload_document = {**work.payload_document, "last_failure": failure_facts}
+        from app.domains.billing.paid_access import reduce_paid_access
+
+        reduce_paid_access(db, row.user_id)
+        if work_claim is not None:
+            from app.domains.billing.work import verify_operation_claim
+
+            verify_operation_claim(db, work_claim, expected.id)
         db.commit()
 
 
@@ -300,6 +303,9 @@ def changed_unsent_terms(factory: SessionFactory, purchase: Purchase) -> None:
             row.resolved_at = utc_now()
             row.state_updated_at = utc_now()
             db.delete(queries.hold(db, row.user_id, row.product_id))
+        from app.domains.billing.paid_access import reduce_paid_access
+
+        reduce_paid_access(db, row.user_id)
         db.commit()
 
 

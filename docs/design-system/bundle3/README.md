@@ -41,8 +41,8 @@ mechanism and single token authority remain unchanged.
 The current composition includes product-first home/catalog,
 substantial product pages, presentation-only pricing navigation, direct auth
 entry and a product-centric cabinet with compact identity context and
-per-product commercial/access/usage/action slots. Later parent ANY-504 Steps
-6–10 populate those slots from their owning sources without redesigning the
+per-product commercial/access/usage/action slots. Parent ANY-504 Steps
+6–10 own those slots and their sources without redesigning the
 main cabinet or introducing a second design system.
 
 The original archive also contains `extension.md` and `mobile.md`; they are not

@@ -1,7 +1,7 @@
 # Deployment Architecture
 
 Status: authoritative current deployment plus target contour isolation
-Last verified: 2026-09-24
+Last source review: 2026-11-09; deployment acceptance remains separate.
 
 ## Current `ru` deployment
 
@@ -44,10 +44,14 @@ scope requires its dedicated contour/legal enablement ticket; the current
 deployment variables are not a generic contour bootstrap selector.
 
 The direct-provider and CloudPayments runtime has been physically removed.
-Current API composition exposes no provider registry, callback route, provider
-configuration, or billing lifecycle command. Checkout remains unavailable.
-ANY-636 4F adds no External Billing/provider runtime, purchase/Widget,
-confirmed paid-access, or usage/quota integration.
+The API implements configured External Billing source reads, purchase/Widget
+flows, embedded polling/recovery and local paid projection/cabinet reads. Its
+worker runs inside the API process; there is no separate worker service.
+Production source conformance, metered vocabulary and launch retain their
+acceptance gates. Kernel snapshot/invalidation delivery and actual usage remain
+ANY-766 work. Configuration and resource limits are in the
+[billing runbook](../engineering/ANY-709-billing-runbook.md#connection-and-deployment)
+and [worker operations guide](../engineering/billing-background-operations.md#embedded-worker-settings-and-resource-limits).
 
 Production exposes optional `SENTRY_DSN` and `SENTRY_RELEASE` values to the
 shared API/migration environment. An empty DSN keeps Sentry disabled; when a
@@ -77,8 +81,8 @@ and return HTTP 404.
 
 ## Target contour deployments
 
-Each production contour is its own data plane: web, API, PostgreSQL, and any
-future External Billing credentials and webhook endpoints. A `ru` instance
+Each production contour is its own data plane: web, API, PostgreSQL and configured
+External Billing credentials and objects. A `ru` instance
 does not serve `eu` or `us`. No user or payment data may be silently replicated
 between contour data planes.
 
@@ -99,17 +103,21 @@ currently supported `anytoolai` / `ru` contour and its RU country membership.
 It never silently substitutes RU data for a different configured scope or
 authorizes one production database to operate as two contours.
 
-## One-time Step-4 recreate and bootstrap
+## One-time Step-4 recreate and current bootstrap
 
 The Step-4 database is a destructive compatibility boundary. Pre-Step-4
 application binaries must never run against it. A database stamped with any
-discarded migration revision is recreated, not upgraded, downgraded, stamped,
-or bridged into the sole clean head. Image-only rollback across this boundary
+discarded pre-Step-4 migration revision is recreated, not upgraded, downgraded,
+stamped or bridged into the clean baseline. Image-only rollback across this boundary
 is forbidden: rollback or recovery restores a matching application and
 database baseline. Any reset, bootstrap, schema verification, or smoke failure
 blocks rollout.
 
-Before starting, identify the exact Step-4 application revision/image and
+Retired post-Step-4 ANY-709 branch labels use the separately verified
+[consolidation transition](../engineering/ANY-709-billing-runbook.md#consolidated-any-709-migration).
+They must not be confused with discarded pre-Step-4 databases.
+
+Before starting, identify the exact target application revision/image and
 target environment, and record the pre-reset application/database pairing.
 Stop every pre-Step-4 API, web, worker, and scheduler process that can access
 the database and verify that it cannot restart against the clean database.
@@ -129,20 +137,22 @@ python scripts/repo.py migrate-api
 `test-db up` starts only PostgreSQL. `migrate-api` applies `alembic upgrade head`
 to that harness database.
 
-The sole clean migration owns schema creation plus configured-contour and legal
-bootstrap. Do not create a separate bootstrap CLI. Before starting normal
-runtime, perform the Step-7 PostgreSQL schema/bootstrap verification and prove:
+The clean baseline migration owns schema creation and configured-contour/legal
+bootstrap; subsequent revisions apply through the same `upgrade head`. The
+[schema reference](payment-portal-data-model.md#physical-baseline) owns the
+current five-revision chain and table inventory. Do not create a separate
+bootstrap CLI. Before starting normal runtime on a fresh database, verify:
 
 - Alembic reports one head and the database is at that head;
-- exactly 25 application tables exist;
+- the current head is `20261031_0006` and exactly 27 application tables exist;
 - every removed legacy catalog/order/payment/provider/subscription/
   entitlement/trial table is absent;
-- all fifteen target billing tables are empty;
+- all seventeen billing/link/purchase tables are empty before explicit flows;
 - only the configured contour/country state is present;
 - the expected legal entity and six current legal document rows match the
   canonical legal source.
 
-After verification succeeds, start only the matching Step-4 stack:
+After verification succeeds, start only the matching application stack:
 
 ```bash
 python scripts/repo.py up --reuse
@@ -159,7 +169,7 @@ environment's authoritative process-stop and database destroy/recreate
 mechanisms. This repository has no canonical shared-environment commands for
 those actions, so the runbook does not fabricate them. The required order is
 still: stop and fence old consumers; recreate the old-stamped database; apply
-the sole clean head/bootstrap from the matching Step-4 build; perform the same
+the current head/bootstrap from the matching build; perform the same
 schema/bootstrap checks; start only the matching runtime; run the
 provider-independent auth/legal smoke suite.
 
@@ -174,12 +184,13 @@ worktree. PostgreSQL, the one-shot migration service, web, API, and the optional
 observability service are scoped to that project. No fixed container names are
 permitted in development Compose.
 
-## Future Platform Kernel connection
+## Platform Kernel connection
 
 Platform Kernel is a separately deployed service and repository in the **same**
-contour. Future calls will use verified contour identity and the access
-boundary defined by [ADR 0005](decisions/0005-external-billing-boundary.md) and
-the accepted
+contour. Portal already reads its configured Capability Manifest endpoint;
+paid snapshot/invalidation HTTP integration remains ANY-766 work. Follow the
+[pinned implementation map](../integrations/platform-kernel.md) and the boundary
+defined by [ADR 0005](decisions/0005-external-billing-boundary.md) and the accepted
 [Portal <-> Kernel Access Contract Design](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
 This repository must not copy Platform Kernel runtime tables or store its
 artifacts and usage events.

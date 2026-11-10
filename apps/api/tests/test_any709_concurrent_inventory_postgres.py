@@ -82,7 +82,7 @@ async def test_sibling_inventory_waits_for_original_preparation_without_hiding_c
         lbx_transport=httpx.MockTransport(transport.respond),
     ) as sources:
         first = await accept(sources, factory, key="product-a")
-        link, offer, documents = await purchases.review_purchase(
+        link, offer, documents, _terms = await purchases.review_purchase(
             sources, configuration, factory=factory, token=TOKEN, product_id="brief_decoder"
         )
         second = await purchases.confirm_purchase(
@@ -201,7 +201,7 @@ async def test_sibling_completion_between_inventory_reads_keeps_purchase_retryab
         lbx_transport=httpx.MockTransport(transport.respond),
     ) as sources:
         first = await accept(sources, factory, key="product-a")
-        link, offer, documents = await purchases.review_purchase(
+        link, offer, documents, _terms = await purchases.review_purchase(
             sources, configuration, factory=factory, token=TOKEN, product_id="brief_decoder"
         )
         second = await purchases.confirm_purchase(

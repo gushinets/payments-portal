@@ -80,13 +80,7 @@ def record_first_binding(
             "read_started_at": proof.read_started_at.isoformat(),
             "read_finished_at": proof.read_finished_at.isoformat(),
             "agreement_close_date": proof.agreement_close_date,
-            "subscription": {
-                **asdict(proof.subscription),
-                "read_started_at": proof.subscription.read_started_at.isoformat(),
-                "read_finished_at": proof.subscription.read_finished_at.isoformat(),
-            }
-            if proof.subscription
-            else None,
+            "subscription": proof.subscription.document() if proof.subscription else None,
         }
         scope = None
         if sub is None:

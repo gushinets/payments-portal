@@ -248,8 +248,8 @@ async def test_billing_qa_product_failure_expiry_and_recovery_isolation(
             # Expire only this product's finite support while its source still fails.
             with factory() as db:
                 row = db.get(ExternalSubscription, target.subscription_id)
-                row.projection_valid_until = datetime.now(UTC) - timedelta(seconds=1)
-                row.last_authoritative_read_at = row.projection_valid_until - timedelta(hours=6)
+                # Keep the authoritative proof timestamp while making this synthetic lease due.
+                row.projection_valid_until = row.last_authoritative_read_at + timedelta(microseconds=1)
                 work.schedule_reconciliation(db, row, None, complete=False)
                 db.commit()
             before_local = len(transport.requests)

@@ -7,6 +7,11 @@ at `15736d6b69c57deb8681e4a951959d78031fb992`. See the
 for the full implementation evidence and ANY-504 Step 7 handoff. This records
 CI results, not additional human verification or actual producer evidence.
 
+This is a dated ANY-664 evidence record. The
+[current pinned integration map](../../../integrations/platform-kernel.md#observed-implementation)
+records the subsequently implemented Kernel producer and remaining enablement
+gates; the historical status below does not describe today's endpoint availability.
+
 ```text
 LOCAL_SPEC_CONFORMANCE=PASS
 REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED
@@ -49,7 +54,7 @@ and runtime proofs remain outside this step.
 ## Owner decision and retained CI
 
 On 2026-10-19 the owner removed external Kernel source monitoring from ANY-664:
-the real Capability Manifest API does not exist yet. The dedicated workflow,
+the real Capability Manifest API did not exist at that checkpoint. The dedicated workflow,
 reference script and exclusive tests are removed without replacement. No daily
 schedule, source-access credential or external-monitor status is required.
 Historical source SHA and links in the [contract provenance](README.md#authority-and-provenance)

@@ -92,21 +92,26 @@ portal_compose up -d --build api web
 
 ### Consolidated ANY-709 migration
 
-The branch contains one migration, `20261029_0003`, after main's unchanged
+ANY-709 consolidated its migrations into `20261029_0003`, following
 `20261001_0002`. It retains all operations from the former branch-local
 `20261026_0003` / `0004` / `0005` / `20261027_0006` chain and the later
 `20261028_0004` active financial recovery window, including indexes, constraints,
-triggers, operation-account backfill and purchase holds. Upgrade order is the
-exact old `0003` then `0004` order; downgrade reverses `0004` before `0003`.
-The final schema, legal seed, historical consent and accepted-purchase meaning
-are unchanged.
+triggers, operation-account backfill and purchase holds. Within the consolidated
+revision, upgrade preserves the old `0003` then `0004` operation order;
+downgrade reverses those operations.
+The consolidation preserved that baseline's schema, legal seed, historical
+consent and accepted-purchase meaning. The current chain continues through
+ANY-715 `20261028_0005` to ANY-765 `20261031_0006`; see the
+[current schema reference](../architecture/payment-portal-data-model.md#physical-baseline).
+The retained transitions below align old ANY-709 branch labels at `0003` before
+the normal forward upgrade; they do not make `0003` the current head.
 
 - Fresh databases and databases at `20261001_0002` use the normal migration
   command above. Conflicting old identities or held scopes abort the transaction;
   the migration never chooses, deletes or relabels those records.
-- A database already at the final `20261029_0003`, with the nullable active
-  recovery column and the complete expected schema, runs normal `upgrade head`
-  as a no-op.
+- A database at `20261029_0003`, with the nullable active recovery column and
+  its complete expected schema, runs normal `upgrade head` to apply `0005` and
+  `0006`. The paid migration refuses incompatible history without repairing it.
 - A **pre-consolidation** database at `20261027_0003` may lack
   `billing_work_items.active_recovery_deadline_at`. The new distinct revision ID
   makes `upgrade head` refuse this retired label instead of silently skipping
@@ -118,8 +123,9 @@ are unchanged.
   indexes, functions and triggers with a fresh final `20261029_0003` database.
   After an exact match, use a guarded transaction that requires the single old
   `0004` version row to change only `alembic_version` to `20261029_0003`.
-  Preserve/fingerprint all application rows before and after, then verify normal
-  `upgrade head` is a no-op. Never replay the consolidated DDL on that database.
+  Preserve/fingerprint all application rows across that label-only transition,
+  then run normal `upgrade head` to apply `0005` and `0006`. Never replay the
+  consolidated DDL on that database.
 - A fully upgraded database at retired `20261027_0006` has the pre-window schema, but
   its old label is not in the new graph. Verify that its columns, constraints,
   indexes, functions and triggers match the pre-window `0003` in checkout
@@ -361,7 +367,8 @@ subscription authority. Waiting NULL/1970/3000 calendar values are not paid date
 A nonzero connection charge without explicit effective readback stays pending.
 A newly linked subscription has zero positive trust: a proved source negative
 is `blocked`, otherwise financial status is `unverified`. Preparation creates no
-access primary, grant, allowance or Kernel call. Paid access remains later work.
+access primary, grant, allowance or Kernel call. ANY-765 derives paid access
+separately through shared authoritative reconciliation and complete inventory.
 
 ### Recovery and safe continuation
 
@@ -513,8 +520,9 @@ transitions. Reuse these owners when changing either path:
   Widget, already-bound advance, worker and operator reconciliation acquire the
   subscription lease before point reads and apply through the same fenced
   transaction. Repeated opens do not rebind financial operations or append
-  preparation observations. Paid AccessSnapshot, AccessInvalidation and Kernel
-  delivery/usage remain later work. Preparation grants no paid access.
+  preparation observations. ANY-765 adds committed paid state and authenticated
+  cabinet reads. Kernel wire delivery/usage remain later work. Preparation grants
+  no paid access.
 - Payment presentation requires a committed complete identity/commercial match,
   supported nonterminal lifecycle and final local session/customer/purchase
   admission after Client readiness. Waiting/unpaid and financially blocked
@@ -533,6 +541,46 @@ transitions. Reuse these owners when changing either path:
   financial-operation conflicts restrict only their purchase. Both invalidate
   in-flight reconciliation leases without rewriting source timestamps/history,
   so restoration cannot make an earlier ACTIVE proof valid again.
+
+## Authenticated cabinet paid-access read
+
+`GET /api/paid-access` requires the current deployment's active authenticated
+session and verified email. It reads only local PostgreSQL state, without LBX,
+Kernel, Widget bootstrap or source-admission resources. Both success and refusal
+responses use `Cache-Control: no-store`. Identity may update session last-seen;
+the paid read does not write billing state, renew trust or repair deadlines.
+
+The API lifespan reserves two PostgreSQL connections (no overflow) and two
+framework worker slots for this read, independently of new-purchase and source
+work. Up to eight further reads may wait; excess requests receive retryable
+`503 paid_access_busy`. PostgreSQL lock/statement waits are bounded at 2/10
+seconds and also return `paid_access_busy`; other DB failures retain the ordinary
+failure boundary. Include these two connections per API process in deployment connection
+budgets. Cancelled HTTP waiters retain their DB task/slot until completion;
+shutdown drains those tasks before disposing the pool and reports incomplete
+cleanup rather than closing underneath a running read.
+
+The shared user lock keeps the committed revision, complete grants/allowances,
+provenance and deadline consistent with concurrent writers. An unprocessed
+effective deadline at or before the sampled database time returns `503` with
+`paid_access_deadline_pending`; it never filters expired tuples under an unchanged
+revision. The existing local worker must commit the reduction before reads resume.
+
+The cabinet reads this endpoint independently of held-purchase listing and
+billing Widget availability. It refreshes explicitly, every 30 seconds while
+visible, after visibility returns and after Widget closure. These are local reads,
+not payment confirmation. Session changes/unmount discard late responses and
+stop polling; the displayed result expires conservatively using server duration
+and the browser's monotonic clock.
+
+Per-product confirmed access, fresh authoritative absence and unavailable evidence
+remain distinct. Implicit revision zero with no product evidence is confirmed
+empty; unavailable reads are never presented as empty. Product evidence is bounded
+to 100 entries with `evidence_complete=false` when truncated; committed grants and
+allowances are not truncated. Accepted technical terms and purchased quantities
+are marked `SIMULATED`; legacy purchases with no technical terms stay unknown.
+Actual usage and remaining quota remain unavailable. Production cannot derive
+simulated metering; this read does not implement Kernel enforcement or delivery.
 
 ## Verification commands
 

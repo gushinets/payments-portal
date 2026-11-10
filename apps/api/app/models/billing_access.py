@@ -30,6 +30,7 @@ class PaidAccessState(Base):
             name="fk_paid_access_states_user_scope",
             ondelete="RESTRICT",
         ),
+        CheckConstraint("access_revision > 0", name="ck_paid_access_states_revision_positive"),
         UniqueConstraint(
             "tenant_id",
             "region",
@@ -75,6 +76,7 @@ class AccessInvalidationOutbox(Base):
             "pending_revision >= delivered_revision",
             name="ck_access_invalidation_outbox_revision_order",
         ),
+        CheckConstraint("delivered_revision >= 0", name="ck_access_invalidation_outbox_delivered_nonnegative"),
         Index(
             "ix_access_invalidation_outbox_next_attempt_at",
             "next_attempt_at",

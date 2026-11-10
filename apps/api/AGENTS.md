@@ -125,7 +125,9 @@ database lifecycle.
   scoped inventory and audited operator controls; the receiver is removed and
   retained inbox history is not processed. See
   [billing operations](../../docs/engineering/billing-background-operations.md).
-  Paid-access derivation remains future work; real LBX conformance remains gated. See the [runbook](../../docs/engineering/ANY-709-billing-runbook.md).
+  ANY-765 implements local paid derivation and authenticated reads; Kernel
+  delivery and real-source acceptance retain their gates. See the
+  [Step 10 handoff](../../docs/engineering/billing-background-operations.md#step-10-handoff--any-765).
 - Never log authentication tokens, authorization headers, secrets, card fields,
   or unredacted webhook bodies.
 - Legal acceptance records are append-only.

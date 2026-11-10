@@ -152,6 +152,7 @@ async def test_billing_retained_scope_sweep_inventory_polling_and_local_expiry(
         response = await client.post("/api/billing/lbx/webhook", json={"event": "change_subscription"})
     assert response.status_code == 404
     assert len(transport.requests) == requests
+    activate(transport)
     with factory() as db:
         assert db.scalar(select(ExternalBillingWebhookDelivery)) is None
         # The normal existing polling job remains sufficient without a callback.
@@ -162,6 +163,9 @@ async def test_billing_retained_scope_sweep_inventory_polling_and_local_expiry(
     with factory() as db:
         sub = db.scalar(select(ExternalSubscription))
         deadline = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == work.EXPIRY))
+        assert sub.financial_access_status == "allowed"
+        assert sub.projection_valid_until - sub.last_authoritative_read_at == timedelta(hours=6)
+        assert deadline is not None
         sub.projection_valid_until = deadline.next_attempt_at = datetime.now(UTC) - timedelta(seconds=1)
         db.commit()
     requests = len(transport.requests)

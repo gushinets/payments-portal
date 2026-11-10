@@ -149,10 +149,13 @@ async def test_lifespan_owns_one_resource_set_without_any_startup_http(monkeypat
     application = main.create_app()
     async with main.lifespan(application):
         sources = application.state.sources
+        reads = application.state.paid_reads
         assert sources is application.state.sources
         assert sources.kernel is not None
         assert sources.preflight.active_count == 0
+        assert not reads.closed and reads.factory is not main.SessionLocal
     assert sources.preflight.closed
+    assert reads.closed and reads.engine is None
 
 
 async def test_partial_billing_configuration_leaves_portal_identity_available(monkeypatch: pytest.MonkeyPatch) -> None:

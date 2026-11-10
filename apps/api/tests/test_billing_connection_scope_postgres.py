@@ -25,6 +25,7 @@ from app.domains.catalog.mapping_evidence import MappingRefused
 from app.domains.catalog.product_link import CurrentOffer
 from app.domains.purchases import service
 from app.domains.purchases.contracts import LegalEvidence, LegalSelection, PurchaseMeaning
+from app.domains.purchases.technical_terms import AcceptedTechnicalTerms
 from app.models import CommercialProductHead, ExternalBillingCustomer, PurchaseIntent
 from apps.api.tests.support.any709_step1 import link_document, step1_settings
 from apps.api.tests.support.any709_step3 import PurchaseTransport
@@ -282,7 +283,9 @@ def test_purchase_acquires_origin_before_product(
     monkeypatch.setattr("app.integrations.lbx.current_offer.utc_now", lambda: datetime(2026, 10, 27, 12, tzinfo=UTC))
     transport = PurchaseTransport()
 
-    async def review() -> tuple[links.StoredProductLink, CurrentOffer, tuple[LegalEvidence, ...]]:
+    async def review() -> tuple[
+        links.StoredProductLink, CurrentOffer, tuple[LegalEvidence, ...], AcceptedTechnicalTerms | None
+    ]:
         async with source_resources(
             config,
             kernel_transport=httpx.MockTransport(transport.kernel),
@@ -290,7 +293,7 @@ def test_purchase_acquires_origin_before_product(
         ) as sources:
             return await review_purchase(sources, config, factory=factory, token=TOKEN, product_id="proposal_ai")
 
-    link, offer, documents = asyncio.run(review())
+    link, offer, documents, _terms = asyncio.run(review())
     meaning = PurchaseMeaning(
         product_id="proposal_ai",
         revision_id=link.mapping_revision_id,

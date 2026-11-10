@@ -153,7 +153,7 @@ def prepare_resolution(
         service._verify_original_consent(db, row, purchase.accepted)
         now = as_utc(billing_reconciliation.database_now(db))
         saved_request = None
-        if request.resolution == "restore-original":
+        if request.resolution in {"restore-original", "select-primary"}:
             if (
                 subscription is None
                 or subscription.latest_observation_id != request.expected_observation_id
@@ -261,7 +261,9 @@ def authorize_resolution(
 
     if resolution.inventory is None:
         raise PurchaseRefused("billing_review_proof_incomplete", 409)
-    resolution.inventory.require_clear(resolution.purchase, original=True)
+    resolution.inventory.require_clear(
+        resolution.purchase, original=True, primary=resolution.request.resolution == "select-primary"
+    )
     validate_inventory(db, resolution.inventory)
     request = resolution.request
     now = as_utc(billing_reconciliation.database_now(db))
@@ -272,7 +274,7 @@ def authorize_resolution(
         or service.accepted(row) != resolution.purchase.accepted
         or operation_digest(db, operations) != resolution.operation_digest
         or customer_digest(db, resolution.purchase) != resolution.customer_digest
-        or restoring != (request.resolution == "restore-original")
+        or restoring != (request.resolution in {"restore-original", "select-primary"})
     ):
         raise PurchaseRefused("billing_review_stale", 409)
     case, related = validate_case(db, request, resolution.purchase, subscription, operations)
@@ -313,6 +315,12 @@ def authorize_resolution(
         },
         "related_deadline_cases": [{"id": str(item.review_case_id), "digest": case_digest(item)} for item in related],
     }
+    if request.resolution == "select-primary":
+        document["inventory"]["primary_product"] = next(
+            item
+            for item in resolution.inventory.products
+            if item.product_id == resolution.purchase.accepted.selection.product_id
+        ).model_dump(mode="json")
     for item in (case, *related):
         item.case_state = "resolved"
         item.resolved_at = now

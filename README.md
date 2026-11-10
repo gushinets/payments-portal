@@ -12,8 +12,8 @@ PostgreSQL persistence, and provider-neutral external-billing reconciliation
 and recovery.
 The former CloudPayments/direct-provider runtime and Portal-owned catalog,
 order, payment, subscription, entitlement, and trial architecture have been
-physically removed. The accepted Portal-Kernel access contract is the target
-paid-access boundary, but its runtime implementation remains future program
+physically removed. Portal implements local paid-access projection and cabinet
+reads; the accepted Portal-Kernel snapshot/invalidation boundary remains Step 10
 work. Platform Kernel code is maintained in the separate
 [anytoolai-platform](https://github.com/gushinets/anytoolai-platform) repository.
 
@@ -24,8 +24,9 @@ verified-email account Widget, immutable purchase consent and request-driven
 financial preparation/recovery. Localized Buy/Continue/Manage uses one shared
 cabinet Widget after fresh ownership/effective-term verification. ANY-715 adds
 durable embedded polling, GET-only recovery, shared scoped inventory and
-audited operator commands. Confirmed paid access and actual usage/quota
-remain later program work.
+audited operator commands. ANY-765 adds committed paid grants/allowances,
+semantic revisions/outbox, local expiry and authenticated cabinet reads.
+Kernel delivery/enforcement and actual usage/remaining remain later work.
 Delivery and acceptance evidence are in
 [ANY-709](https://linear.app/paveldik/issue/ANY-709); commands, migration transitions
 and diagnostics are in the [billing runbook](docs/engineering/ANY-709-billing-runbook.md).
@@ -42,17 +43,18 @@ authority. See also the current
 in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 External Billing owns commercial billing truth and lifecycle. The Portal owns
-identity/legal, subscription observation/projection, reconciliation and recovery,
-and future paid-access delivery. Platform Kernel owns technical product/metric
-identity, actual usage, and quota enforcement. The component historically named
+identity/legal, subscription observation/projection, reconciliation/recovery and
+local paid-access authority, with Kernel delivery remaining later work. Platform
+Kernel owns technical product/metric identity, actual usage, and quota enforcement.
+The component historically named
 “Payments Portal” in the accepted ADR/design records is this Portal backend
 boundary; those records retain their authority and historical names.
 
 The durable [RU Portal 4F handoff](docs/product/ru-mvp.md) records the current
 UI/data sources and step ownership. Steps 6–8 supply source-backed offers,
-purchase/Widget actions and reconciliation/recovery; Steps 9–10 will populate
-confirmed access and usage/quota in the existing per-product slots and pricing
-surface without redesigning the main cabinet. UI “not ready/unknown” does not establish
+purchase/Widget actions and reconciliation/recovery; Step 9 supplies confirmed
+access in the existing per-product slots. Step 10 still owns actual usage/quota
+integration. UI “not ready/unknown” does not establish
 no subscription, no access, or zero usage/quota. The approved RU mockup supplies
 product/visual direction; evolved Bundle 3 is its canonical implementation
 design system, using navy/amber, flat dark panels and compact styling.
@@ -174,8 +176,8 @@ do not use `alembic stamp`, downgrade, or an upgrade bridge.
   cabinet, recovery, verification, and canonical RU legal pages.
 - `apps/api` — FastAPI identity, password-reset, legal, health, metrics and billing
   API; accepted-purchase preparation, polling-only reconciliation/recovery,
-  scoped inventory and privileged operator commands. Paid-access
-  derivation and Kernel delivery remain future work.
+  scoped inventory, privileged operator commands, local paid projection and
+  authenticated paid reads. Kernel delivery remains future work.
 - `apps/api/alembic` — PostgreSQL schema and first-install legal seed.
 - `docs` — authoritative product, architecture, design, reliability, security,
   legal, planning, and generated documentation.
@@ -321,10 +323,12 @@ repository. No direct-provider runtime exists in this repository.
   SMTP-backed password reset are implemented; the repository remains
   pre-production.
 - Contour confirmation via Region Resolver is planned and not implemented.
-- The accepted Portal-Kernel capability, access-snapshot, and invalidation
-  contracts remain target architecture. ANY-664 adds a
-  [provisional manifest contract and standalone development mock](docs/contracts/kernel-capability-manifest/v1/README.md);
-  real Kernel producer delivery and conformance remain future enablement gates.
+- The typed Manifest client and a real Kernel producer are implemented; their
+  [pinned source inspection and verification limits](docs/integrations/platform-kernel.md#observed-implementation)
+  do not establish conformance or production enablement. The
+  [provisional mock](docs/contracts/kernel-capability-manifest/v1/README.md)
+  remains a development/test tool. Snapshot/invalidation HTTP integration is
+  ANY-766 work.
 - The owner-approved [live-source admission amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
   requires live Kernel/LBX checks for offer publication and each new purchase,
   without periodic source-catalog mirrors. ANY-709 Step 1 now uses direct versioned product links, source-backed Kernel
@@ -335,7 +339,8 @@ repository. No direct-provider runtime exists in this repository.
 - Account-only Widget viewing uses the real configured SDK after explicit open,
   verified email, paired customer identity and Client readiness. It requires no
   product price or subscription; see the runbook for human acceptance.
-- Accepted purchases can be prepared/recovered and opened for verified payment
-  presentation. Paid-access state and usage/quota await their owning program
-  steps; provider-dependent work remains subject to Phase 0 gates.
+- Local paid state is implemented. Current-version live-LBX acceptance remains
+  partial, SIMULATED limits do not authorize production metering, and Kernel
+  integration/natural-renewal/launch retain their separate gates. See the
+  [Step 10 handoff](docs/engineering/billing-background-operations.md#step-10-handoff--any-765).
 - Legal documents are drafts until reviewed and approved by counsel.

@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
 from app.domains.billing.contracts import BillingRefused
+from app.domains.catalog.publication import SessionFactory
+from app.domains.identity.services.auth import as_utc
+from app.infrastructure.queries import billing_reconciliation
+from app.infrastructure.queries.billing_customers import customer_operation, overdue_customer_ids
 from app.infrastructure.queries.billing_customers import open_customer_reviews
 from app.infrastructure.queries.billing_reconciliation import customer_subscriptions
 from app.models import (
@@ -123,3 +128,34 @@ def restrict_subscription(sub: ExternalSubscription) -> None:
     sub.reconciliation_fencing_token += 1
     sub.reconciliation_lease_owner = None
     sub.reconciliation_lease_expires_at = None
+
+
+def escalate_overdue_customers(factory: SessionFactory, *, now: datetime | None = None, limit: int = 100) -> int:
+    """Callable by later recovery work; no scheduler and no scope release."""
+    from app.domains.billing.customers import lock_customer, lock_user
+
+    if not 1 <= limit <= 100:
+        raise ValueError("invalid recovery batch limit")
+    with factory() as db:
+        instant = as_utc(now if now is not None else billing_reconciliation.database_now(db))
+        ids = overdue_customer_ids(db, instant, limit)
+    count = 0
+    for customer_id in ids:
+        with factory() as db:
+            from app.infrastructure.queries.billing_background import customer as read_customer
+            from app.domains.billing.paid_access import reduce_paid_access
+
+            lock_user(db, read_customer(db, customer_id).user_id)
+            customer = lock_customer(db, customer_id)
+            operation = customer_operation(db, customer_id)
+            if (
+                operation
+                and operation.operation_state in {State.POSSIBLE_SEND, State.UNKNOWN}
+                and operation.unknown_recovery_deadline_at
+                and as_utc(operation.unknown_recovery_deadline_at) <= instant
+            ):
+                record_customer_review(db, operation, CUSTOMER_UNKNOWN_REVIEW)
+                reduce_paid_access(db, customer.user_id)
+                count += 1
+                db.commit()
+    return count

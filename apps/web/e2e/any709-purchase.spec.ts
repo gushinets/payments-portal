@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import type { PurchaseIntentResponse } from "../src/generated/api-contracts/types.gen";
 import ru from "../src/messages/ru.json";
 import { simulatedProduct } from "../tests/fixtures/catalog";
+import { emptyPaidState } from "../tests/fixtures/paid-access";
 import { purchaseReview, purchaseUser, savedPurchase, widgetResponse } from "../tests/fixtures/purchase";
 
 // Browser-only network/SDK substitutions. Every API route is intercepted; no LBX
@@ -49,6 +50,7 @@ async function syntheticBilling(page: Page, signedIn = true) {
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/auth/session") return route.fulfill({ json: { authenticated: true, user: purchaseUser } });
+    if (path === "/api/paid-access") return route.fulfill({ json: emptyPaidState() });
     if (path.startsWith("/api/catalog/products")) return route.fulfill(state.catalogUnavailable
       ? { status: 503, json: { detail: { code: "catalog_unavailable" } } }
       : { json: path === "/api/catalog/products" ? { products: [simulatedProduct] } : simulatedProduct });

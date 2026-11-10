@@ -32,6 +32,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
+# This liveness-only smoke has no migrated schema for background work.
 container_id=$(docker run --detach --publish 127.0.0.1::8000 \
   --env APP_ENV=test \
   --env APP_PUBLIC_BASE_URL=http://localhost:3000 \
@@ -45,6 +46,7 @@ container_id=$(docker run --detach --publish 127.0.0.1::8000 \
   --env POSTGRES_PORT=5432 \
   --env CORS_ALLOW_ORIGINS=http://localhost:3000 \
   --env SKIP_LEGAL_SEED=true \
+  --env BILLING_WORKER_ENABLED=false \
   --env OTEL_SDK_DISABLED=true \
   "$image_ref" \
   python -m uvicorn app.main:app --app-dir apps/api \

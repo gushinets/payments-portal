@@ -60,4 +60,4 @@ async def catalog_preview(
         except SelectedOfferRefused as error:
             availability = "OFFER_UNSUPPORTED" if error.kind == OfferRefusalKind.NOT_SELLABLE else "OFFER_INCOMPLETE"
             return (ProductPreview(product_id, manifest.provenance, availability, link, reason=error.code),)
-        return (ProductPreview(product_id, manifest.provenance, "CURRENT_OFFER", link, offer),)
+        return (ProductPreview(product_id, manifest.provenance, "CURRENT_OFFER", link, offer, manifest=manifest),)

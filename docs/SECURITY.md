@@ -22,8 +22,8 @@ or security purpose requires them, and never add them to metric labels.
 
 ## Telemetry correlation and emission
 
-Current identity/legal diagnostics emit only approved bounded local references.
-Future target billing runtime may emit local `purchase_intent_id`,
+Identity/legal and billing diagnostics emit only approved bounded local references.
+Billing runtime may emit local `purchase_intent_id`,
 `create_operation_id`, `delivery_id`, `work_item_id`, `subscription_id`,
 `observation_id`, or `review_case_id` when the owning flow provides a concrete
 incident lookup. They are diagnostic references only and must never become
@@ -115,10 +115,15 @@ above under its own integration scope.
 - Verify authenticity at every external billing or payment Integration before
   trusting external state. ANY-709 implements real source reads and an explicit
   account Widget bootstrap, accepted-purchase preparation and point-verified
-  payment presentation. Paid-access derivation remains deferred.
+  payment presentation. ANY-765 derives local paid access through the same
+  authoritative observation boundary; Kernel HTTP integration remains deferred.
 - Treat request IDs and external billing or payment metadata as untrusted input
   with length and character limits.
 - Store session tokens only as hashes.
+- Paid cabinet reads require an active verified-email session and derive
+  tenant/region/user from server-side identity; the caller cannot select another
+  user's scope. Responses use `no-store` and expose no provider credentials or
+  actual usage claims.
 - Store password-reset and email-verification tokens only as hashes, and keep
   fragment tokens out of browser persistence and query parameters.
 - Keep external integration secrets in environment or a secret manager, never

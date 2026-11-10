@@ -83,7 +83,7 @@ def setup_purchase(factory: sessionmaker[Session]) -> PurchaseTransport:
 
 async def accept(sources: SourceResources, factory: sessionmaker[Session], *, key: str = "one-request") -> Purchase:
     config = step1_settings()
-    link, offer, documents = await review_purchase(
+    link, offer, documents, _terms = await review_purchase(
         sources, config, factory=factory, token=TOKEN, product_id="proposal_ai"
     )
     meaning = PurchaseMeaning(
@@ -148,7 +148,7 @@ async def test_any709_step3_complete_preparation_and_historical_manage(
     with factory() as db:
         sub = db.scalar(select(ExternalSubscription))
         assert sub.financial_access_status.value == "blocked"
-        assert sub.projection_valid_until - sub.last_authoritative_read_at == timedelta(hours=6)
+        assert sub.projection_valid_until == sub.last_authoritative_read_at
         assert db.scalar(select(BillingProductAccessScope)).primary_subscription_id is None
         for model in (PaidAccessState, PurchasedAllowance):
             assert db.scalar(select(func.count()).select_from(model)) == 0
@@ -252,7 +252,7 @@ async def test_any709_step3_linked_widget_retries_after_failed_point_proof(
             assert db.scalar(select(func.count()).select_from(model)) == 0
         sub = db.scalar(select(ExternalSubscription))
         assert sub.financial_access_status.value == "blocked"
-        assert sub.projection_valid_until - sub.last_authoritative_read_at == timedelta(hours=6)
+        assert sub.projection_valid_until == sub.last_authoritative_read_at
 
 
 @pytest.mark.parametrize("lost_agreement_response", [False, True])
@@ -381,7 +381,7 @@ async def test_any709_step3_twenty_confirmations_one_scope_and_consent(
         kernel_transport=httpx.MockTransport(transport.kernel),
         lbx_transport=httpx.MockTransport(transport.respond),
     ) as sources:
-        link, offer, docs = await review_purchase(
+        link, offer, docs, _terms = await review_purchase(
             sources, config, factory=factory, token=TOKEN, product_id="proposal_ai"
         )
     meaning = PurchaseMeaning(
@@ -530,7 +530,7 @@ async def test_any709_step3_rechecks_local_changes_during_source_io(
         kernel_transport=httpx.MockTransport(transport.kernel),
         lbx_transport=httpx.MockTransport(transport.respond),
     ) as sources:
-        link, offer, docs = await review_purchase(
+        link, offer, docs, _terms = await review_purchase(
             sources, config, factory=factory, token=TOKEN, product_id="proposal_ai"
         )
         meaning = PurchaseMeaning(
@@ -722,7 +722,7 @@ async def test_any709_step3_price_changed_between_review_and_confirmation_has_no
         kernel_transport=httpx.MockTransport(transport.kernel),
         lbx_transport=httpx.MockTransport(transport.respond),
     ) as sources:
-        link, offer, docs = await review_purchase(
+        link, offer, docs, _terms = await review_purchase(
             sources, config, factory=factory, token=TOKEN, product_id="proposal_ai"
         )
         meaning = PurchaseMeaning(

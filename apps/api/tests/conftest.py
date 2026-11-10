@@ -4,6 +4,7 @@ import os
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from itertools import count
+from typing import TYPE_CHECKING
 
 import pytest
 from dotenv import load_dotenv
@@ -19,6 +20,9 @@ from .support.postgres import (
     validate_test_database_url,
 )
 from .support.settings import DEFAULT_API_TEST_ENV
+
+if TYPE_CHECKING:
+    from .factories.paid_access import AcceptedSubscription
 
 
 load_dotenv()
@@ -171,3 +175,78 @@ def mapping_clock(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(mapping_operator, "utc_now", now)
     monkeypatch.setattr(publication, "utc_now", now)
+
+
+@pytest.fixture
+async def paid_terms_scenario(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> AcceptedSubscription:
+    import time
+
+    import httpx
+    from sqlalchemy import event, select
+
+    from app.composition.purchases import advance_purchase, confirm_purchase, review_purchase
+    from app.composition.sources import source_resources
+    from app.domains.catalog.link_publication import publish_product_link
+    from app.models import ExternalSubscription, PurchaseIntent
+    from apps.api.tests.factories.paid_access import AcceptedSubscription
+    from apps.api.tests.factories.purchase_terms import reviewed_meaning
+    from apps.api.tests.support.any709_step1 import link_document, link_selection, step1_settings
+    from apps.api.tests.test_any709_step3_postgres import TOKEN, setup_purchase
+
+    monkeypatch.setattr("app.integrations.lbx.current_offer.utc_now", lambda: datetime(2026, 10, 27, 12, tzinfo=UTC))
+    factory = postgres_session_factory
+    transport = setup_purchase(factory)
+    mode = getattr(request, "param", "legacy")
+    product = "brief_decoder" if mode == "brief_decoder" else "proposal_ai"
+    config = step1_settings(purchase_test_terms_enabled=mode != "legacy")
+    if product == "brief_decoder":
+        for selection, previous in ((link_selection(tariff_id=702), 1), (link_selection(product_id=product), 0)):
+            publish_product_link(
+                factory,
+                evaluation=link_document(selection=selection),
+                expected_previous_revision=previous,
+                deadline=time.monotonic() + 5,
+                lock_timeout_seconds=1,
+                provider_origin=config.lbx_provider_origin,
+            )
+
+    def historical_insert(db: Session, flush_context: object, instances: object) -> None:
+        for row in db.new:
+            if isinstance(row, PurchaseIntent):
+                row.accepted_snapshot["schema_version"] = "accepted-purchase:v1"
+                row.accepted_snapshot.pop("technical_terms")
+                row.accepted_snapshot["meaning"].pop("expected_technical_terms_digest")
+                row.accepted_snapshot_schema_version = "accepted-purchase:v1"
+
+    if mode == "legacy":
+        event.listen(Session, "before_flush", historical_insert)
+    try:
+        async with source_resources(
+            config,
+            kernel_transport=httpx.MockTransport(transport.kernel),
+            lbx_transport=httpx.MockTransport(transport.respond),
+        ) as sources:
+            link, offer, documents, terms = await review_purchase(
+                sources, config, factory=factory, token=TOKEN, product_id=product
+            )
+            purchase = await confirm_purchase(
+                sources,
+                config,
+                factory=factory,
+                token=TOKEN,
+                key="allowance-test",
+                meaning=reviewed_meaning(product, link.mapping_revision_id, offer.fingerprint, documents, terms),
+            )
+            await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+    finally:
+        if mode == "legacy":
+            event.remove(Session, "before_flush", historical_insert)
+    with factory() as db:
+        subscription_id = db.scalar(select(ExternalSubscription.subscription_id))
+        assert subscription_id is not None
+    return AcceptedSubscription(subscription_id, purchase.user_id, purchase.accepted)

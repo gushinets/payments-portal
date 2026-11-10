@@ -72,7 +72,9 @@ def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: 
             *((str(sub.subscription_id),) if sub else ()),
         )
         work = queries.work(db, references)
-        reviews = queries.reviews(db, purchase.id, purchase.customer_id, sub.subscription_id if sub else None)
+        reviews = queries.reviews(
+            db, purchase.id, purchase.customer_id, sub.subscription_id if sub else None, include_paid_diagnostics=True
+        )
         now = as_utc(billing_reconciliation.database_now(db))
         return {
             "purchase_intent_id": str(purchase.id),

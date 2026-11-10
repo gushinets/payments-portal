@@ -14,6 +14,7 @@ from app.composition.billing import bootstrap_account
 from app.composition.billing_operator import resolve_review
 from app.composition.sources import SourceResources
 from app.domains.catalog.publication import SessionFactory
+from app.domains.billing.discovery import apply_inventory
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.purchases.contracts import Purchase
 from app.domains.purchases.inventory_contracts import InventoryResult
@@ -89,7 +90,7 @@ async def conflict_case(
     assert claim and claim.kind == recovery.INVENTORY
     result = await inventory(sources, factory, purchase, claim=claim)
     assert purchase.id in result.conflicts
-    recovery.apply_inventory(factory, claim, result, "inventory_conflict")
+    apply_inventory(factory, claim, result, "inventory_conflict")
     return inspect_evidence(factory, step1_settings(), purchase.user_id, purchase.id)
 
 
@@ -471,7 +472,7 @@ async def test_dedicated_agreement_competitor_is_scoped_independently_of_tariff(
             result.require_clear(purchase, original=True)
     else:
         result.require_clear(purchase, original=True)
-    recovery.apply_inventory(factory, claim, result, "inventory_conflict" if conflict else None)
+    apply_inventory(factory, claim, result, "inventory_conflict" if conflict else None)
     with factory() as db:
         reviews = list(db.scalars(select(ManualReviewCase)))
         if conflict:
@@ -669,7 +670,7 @@ async def test_known_sibling_cannot_hide_a_shared_dedicated_agreement(
     if case == "dedicated":
         assert result.complete and not result.conflicts
     reason = "inventory_conflict" if result.conflicts else "inventory_incomplete" if not result.complete else None
-    recovery.apply_inventory(factory, claim, result, reason)
+    apply_inventory(factory, claim, result, reason)
     if old is not None:
         from app.domains.billing.reconciliation import apply_reconciliation
 

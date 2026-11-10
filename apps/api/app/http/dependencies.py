@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal, get_db
+from app.composition.paid_reads import PaidReadResources
 from app.core.settings import settings
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.errors import InvalidAuthSessionError
@@ -16,6 +17,11 @@ from app.models import AuthSession, User
 def get_session_factory() -> SessionFactory:
     """Pass a factory, never a request Session, to resource-owning worker units."""
     return SessionLocal
+
+
+async def get_paid_read_resources(request: Request) -> PaidReadResources:
+    # An async dependency must not wait for the shared framework thread limiter.
+    return request.app.state.paid_reads
 
 
 def get_current_session(

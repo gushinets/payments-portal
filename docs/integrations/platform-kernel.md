@@ -1,14 +1,14 @@
 # Platform Kernel integration map
 
 Status: navigation and implementation snapshot; normative contracts are delegated below.
-Last observed: 2026-10-23.
+Last source inspection: 2026-11-09; pinned snapshots below, not a deployment check.
 
 ## Ownership and sources
 
 Portal owns identity, sessions, legal acceptance, public discovery and the
-cabinet. Its target owns approved commercial-to-technical mappings, paid
-grants/allowances, access revisions and delivery. External Billing owns
-commercial billing truth and lifecycle. The separate
+cabinet, approved commercial-to-technical mappings, local paid grants/allowances,
+access revisions and outbox production. Kernel delivery remains future work.
+External Billing owns commercial billing truth and lifecycle. The separate
 [Platform Kernel repository](https://github.com/gushinets/anytoolai-platform)
 owns execution, artifacts, technical product/metric vocabulary, actual usage
 and runtime quota enforcement.
@@ -31,60 +31,61 @@ plans do not override accepted sources.
 
 ## Observed implementation
 
-Evidence baselines: Portal `79dc3f4d204aec4ac9552e3d1da3481553cc8aef`;
-Platform `79a2ada5b790f959a40b3e08451ef9ed8d97da5b`.
-These identify inspected source snapshots, not a verified joint deployment.
+Inspected source snapshots: Portal `ac8743ff35c5cfaf0fdaf108fa89ad5e71bf49cd`
+plus its local review corrections; Kernel
+`72ff15bc0b77903c87aa39f7b10186dccc556d09` from the local `origin/main` ref.
+These are read-only source observations, not a fresh remote-ref, joint deployment
+or producer-conformance check. Dated runtime evidence remains separate.
 
 | Operation / request direction | Payload producer | Payload consumer / receiver | Verification status |
 | --- | --- | --- | --- |
-| `GET /internal/v1/capability-manifest`: Portal -> Kernel | Real Kernel endpoint not implemented; optional separate development HTTP mock exists in Portal | Portal typed HTTP client implemented | Local mock/client CI PASS; real producer deferred |
-| `GET /internal/v1/access-snapshots/{user_id}`: Kernel -> Portal | Portal paid-access producer not implemented | Kernel snapshot client/cache/revision floor not implemented | Target contract only |
-| `POST /internal/v1/access-invalidations`: Portal -> Kernel | Portal invalidation producer/delivery not implemented | Kernel receiver endpoint not implemented | Target contract only |
+| `GET /internal/v1/capability-manifest`: Portal -> Kernel | Service-authenticated Kernel endpoint implemented; separate Portal development mock remains optional | Portal typed HTTP client implemented | Source inspected; local fixture evidence does not establish current joint conformance |
+| `GET /internal/v1/access-snapshots/{user_id}`: Kernel -> Portal | Local paid projection and cabinet read implemented; internal snapshot HTTP producer remains ANY-766 | Kernel internal metering exists; snapshot HTTP client/cache integration remains ANY-766 | Target wire only; `/api/paid-access` is a separate customer contract |
+| `POST /internal/v1/access-invalidations`: Portal -> Kernel | Durable coalesced outbox implemented; HTTP delivery remains ANY-766 | Kernel HTTP invalidation receiver remains ANY-766 | Target wire only; no delivery PASS claimed |
 
 ANY-664 implemented restricted v1 publication and DB-only browsing. ANY-709
 Step 1 now implements direct versioned links, one current product pointer,
-enabled-product discovery and current selected LBX offers. Kernel wire semantics
-and the pinned peer observation above are unchanged; no fresh peer inspection
-or real producer conformance is claimed. Source projection slots remain inert.
+enabled-product discovery and current selected LBX offers. Source projection
+slots remain inert.
 ANY-709 implements purchase orchestration; ANY-715 implements subscription
-reconciliation and GET-only recovery without Kernel calls. Paid-access derivation
-and actual cabinet usage remain later work; stored approved terms do not promise
-current sellability. See the [billing operations guide](../engineering/billing-background-operations.md)
-for current Step 8 behavior and the Step 9/10 handoff; no Kernel wire contract
-or peer-verification status changes with this implementation.
+reconciliation and GET-only recovery without Kernel calls. ANY-765 implements
+local paid projection, stable allowances, revisions/outbox, deadlines and the
+authenticated cabinet read. Actual usage/remaining and paid HTTP execution remain
+ANY-766. See the [Step 10 handoff](../engineering/billing-background-operations.md#step-10-handoff--any-765)
+for producer semantics, B10 and current acceptance limits. This source refresh
+changes no wire contract or conformance status.
 
-Evidence: [publication](https://github.com/gushinets/payments-portal/blob/79dc3f4d204aec4ac9552e3d1da3481553cc8aef/apps/api/app/domains/catalog/publication.py),
-[typed client](https://github.com/gushinets/payments-portal/blob/79dc3f4d204aec4ac9552e3d1da3481553cc8aef/apps/api/app/integrations/kernel/client.py),
-[Kernel routes](https://github.com/gushinets/anytoolai-platform/blob/79a2ada5b790f959a40b3e08451ef9ed8d97da5b/apps/platform-api/src/anytoolai_platform_api/main.py)
-and [Step 8 handoff](../contracts/kernel-capability-manifest/v1/step-8-handoff.md).
-The handoff records `LOCAL_SPEC_CONFORMANCE=PASS` for historical CI and
-`REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED`. It does not claim a fresh
-run, completion of every manual procedure or real producer compatibility.
+Evidence: [Portal paid writer](https://github.com/gushinets/payments-portal/blob/ac8743ff35c5cfaf0fdaf108fa89ad5e71bf49cd/apps/api/app/domains/billing/paid_access.py),
+[typed client](https://github.com/gushinets/payments-portal/blob/ac8743ff35c5cfaf0fdaf108fa89ad5e71bf49cd/apps/api/app/integrations/kernel/client.py),
+[Kernel routes](https://github.com/gushinets/anytoolai-platform/blob/72ff15bc0b77903c87aa39f7b10186dccc556d09/apps/platform-api/src/anytoolai_platform_api/main.py)
+and [Manifest producer](https://github.com/gushinets/anytoolai-platform/blob/72ff15bc0b77903c87aa39f7b10186dccc556d09/apps/platform-api/src/anytoolai_platform_api/routers/capability_manifest.py).
+The retained [ANY-664 Step 8 handoff](../contracts/kernel-capability-manifest/v1/step-8-handoff.md)
+records historical `LOCAL_SPEC_CONFORMANCE=PASS` and
+`REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED`; the latter describes that
+earlier checkpoint, not today's endpoint availability.
 
 ## Dependencies before real integration
 
 - **Identity:** paid access uses Portal's authenticated UUID under
-  `(tenant_id, region, user_id)`. Kernel currently accepts an unverified
-  scenario `user_id` ([TD-013](https://github.com/gushinets/anytoolai-platform/blob/79a2ada5b790f959a40b3e08451ef9ed8d97da5b/docs/tech-debt-tracker.md)).
-  Guest quota is not a paid allowance or proof of Portal authentication.
-- **Scope:** [Kernel Settings](https://github.com/gushinets/anytoolai-platform/blob/79a2ada5b790f959a40b3e08451ef9ed8d97da5b/apps/platform-api/src/anytoolai_platform_api/settings.py)
-  and [region config](https://github.com/gushinets/anytoolai-platform/blob/79a2ada5b790f959a40b3e08451ef9ed8d97da5b/configs/kernel/regions.yaml)
-  use `anytoolai/default`; [Portal Settings](../../apps/api/app/core/settings.py)
-  permits `anytoolai/ru`, and its client rejects mismatched response scope.
-  Real deployment alignment is separate work. Locale and country do not select
-  authenticated scope; do not rename existing scopes as a documentation fix.
-- **Producer delivery:** Kernel API owners supply the actual endpoint,
-  producer-owned schema and fixtures, approved paid metrics/units/releases and
-  service-authenticated tenant/region deployment. Portal integration owners pin
-  and reconcile those artifacts and run real consumer-versus-producer checks.
-  Until then [provisional artifacts](../contracts/kernel-capability-manifest/v1/README.md)
-  retain their historical pins and SIMULATED status; no shared runtime SDK.
+  `(tenant_id, region, user_id)`. Browser identity delegation and authenticated
+  paid HTTP integration remain ANY-766. Guest quota or an internal metering test
+  is not proof of Portal authentication.
+- **Scope:** Portal uses its configured `anytoolai/ru` deployment scope and rejects
+  mismatched manifest responses. Kernel service principals and deployment must
+  authorize that exact scope. Real deployment alignment is separate work; locale
+  and country do not select authenticated scope.
+- **Producer conformance:** Kernel owns the implemented endpoint, schema,
+  fixtures and technical vocabulary. Portal integration owners must reconcile
+  endpoint/schema/hash/auth/scope and record actual consumer-versus-producer
+  checks and sales approval. [Provisional artifacts](../contracts/kernel-capability-manifest/v1/README.md)
+  retain historical pins and SIMULATED status; no shared runtime SDK or automatic
+  promotion of test quantities is introduced.
 - **Enablement:** ANY-709 Step 1 accepts ordinary configured HTTPS Kernel/LBX
   connections without a blanket production refusal. Explicit Kernel mock mode
   remains development/test-only and SIMULATED, including after URL changes.
   A non-mock endpoint is CONFIGURED_SOURCE, never proof of producer conformance
-  or production sales approval. Real producer delivery/conformance remains
-  ANY-711. Portal can start without Kernel config.
+  or production sales approval. Producer conformance and approved vocabulary
+  retain ANY-711 ownership. Portal can start without Kernel config.
 - **Usage and launch:** the three operations above do not define an actual
   usage/remaining API for the cabinet. That contract and authenticated cross-app
   launch remain separate work. Kernel product-to-product handoff is not Portal
@@ -112,6 +113,7 @@ local links stay inside this repository. No machine-specific paths are required.
 Run `npm run docs:check` and the repository-doc tests for this map. They check
 navigation, not semantic or API compatibility. The existing local manifest
 checker remains in Portal CI. The owner removed external source monitoring on
-2026-10-19; the [real producer gate](../contracts/kernel-capability-manifest/v1/step-8-handoff.md#real-producer-delivery-gate-separate-integration-activity)
-remains future work. Delivery: [ANY-728](https://linear.app/paveldik/issue/ANY-728),
-companion [ANY-727](https://linear.app/paveldik/issue/ANY-727).
+2026-10-19; no replacement monitor is introduced. The historical
+[real producer gate](../contracts/kernel-capability-manifest/v1/step-8-handoff.md#real-producer-delivery-gate-separate-integration-activity)
+separates producer delivery from consumer conformance. Producer code now exists;
+the current joint contract/enablement checks must still be recorded separately.

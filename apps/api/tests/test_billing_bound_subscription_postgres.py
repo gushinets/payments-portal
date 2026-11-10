@@ -27,7 +27,13 @@ from app.domains.purchases import financial
 from app.integrations.lbx.errors import LbxUnavailable
 from app.integrations.lbx.reconciliation import read_subscription_proof
 from app.jobs.billing import BillingWorker
-from app.models import BillingStateObservation, BillingWorkItem, ExternalSubscription, ManualReviewCase
+from app.models import (
+    BillingStateObservation,
+    BillingWorkItem,
+    ExternalSubscription,
+    ManualReviewCase,
+    PurchasedAllowance,
+)
 from apps.api.tests.factories.billing_operator import resolution_request
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.test_any709_step3_postgres import TOKEN
@@ -289,7 +295,7 @@ async def test_payment_refuses_unproven_or_terminal_but_keeps_committed_negative
 
 
 @pytest.mark.parametrize("established_trust", [False, True])
-async def test_payment_with_incomplete_paid_calendar_does_not_require_or_extend_paid_trust(
+async def test_payment_with_incomplete_paid_calendar_refreshes_only_product_trust(
     scenario: tuple,
     portal: httpx.AsyncClient,
     postgres_session_factory: sessionmaker[Session],
@@ -305,16 +311,22 @@ async def test_payment_with_incomplete_paid_calendar_does_not_require_or_extend_
     transport.subscriptions[0]["last_tariffication_period_end"] = None
     response = await payment(portal, purchase.id)
     assert response.status_code == 200 and response.json()["presentation"] == "payment"
-    assert snapshot(factory) == trusted
+    current = snapshot(factory)
+    assert current[0] == trusted[0]
+    assert current[1:4] == ("active", "allowed", "eligible")
+    assert current[4] > trusted[4] and current[5] - current[4] == timedelta(hours=6)
+    assert current[6] != trusted[6]
     with factory() as db:
         attempt = db.scalar(
             select(BillingStateObservation)
             .where(BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v1")
             .order_by(BillingStateObservation.observed_at.desc())
         )
-        assert attempt.completeness_classification == "incomplete"
+        assert attempt.completeness_classification == "complete"
+        assert attempt.evidence_document["calendar_complete"] is False
         assert "current_calendar_incomplete" in attempt.evidence_document["reasons"]
         assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
+        assert db.scalar(select(func.count()).select_from(PurchasedAllowance)) == 0
 
 
 @pytest.mark.parametrize("entrypoint", ["payment", "advance"])

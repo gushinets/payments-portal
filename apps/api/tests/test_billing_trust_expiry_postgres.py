@@ -84,12 +84,14 @@ async def test_trust_expiry_preserves_its_source_observation(
     elif reading == "negative":
         assert current[4:6] == original[4:6] and current[6] == second.observation_id
         assert current[2:4] == ("blocked", "eligible")
+    elif reading == "blocked":
+        assert second.result_classification == "COMPLETE_MATCH"
+        assert current[4:6] == original[4:6] and current[6] == second.observation_id
+        assert current[2:4] == ("blocked", "eligible")
     else:
         assert second.result_classification == "COMPLETE_MATCH"
         assert current[4] > original[4]
-        if reading == "blocked":
-            assert current[2] == "blocked"
-    renewed = reading in {"renewed", "blocked"}
+    renewed = reading == "renewed"
     expected = second.observation_id if renewed else first.observation_id
 
     with factory() as db:

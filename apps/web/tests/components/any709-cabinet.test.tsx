@@ -53,6 +53,7 @@ beforeEach(() => {
   fetcher.mockReset().mockImplementation(async (input, init) => {
     const url = new URL(String(input));
     if (url.pathname === "/api/purchase-intents") return list(url.searchParams.get("after"));
+    if (url.pathname === "/api/paid-access") return json({ access_revision: 0, grants: [], allowances: [], products: [], evidence_complete: true, committed_at: null, read_at: new Date().toISOString(), effective_until: null });
     if (url.pathname === "/api/billing/widget-bootstrap") return bootstrap(init);
     if (url.pathname.startsWith("/api/purchase-intents/")) return status();
     throw new Error("unexpected_request");

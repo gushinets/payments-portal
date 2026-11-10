@@ -395,6 +395,107 @@ export type LogoutResponse = {
 };
 
 /**
+ * PaidAccessAllowanceResponse
+ */
+export type PaidAccessAllowanceResponse = {
+    /**
+     * Allowance Id
+     */
+    allowance_id: string;
+    /**
+     * Metric Key
+     */
+    metric_key: string;
+    /**
+     * Product Id
+     */
+    product_id: string;
+    /**
+     * Provenance
+     */
+    provenance: 'SIMULATED';
+    /**
+     * Quantity
+     */
+    quantity: number;
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
+ * PaidAccessGrantResponse
+ */
+export type PaidAccessGrantResponse = {
+    /**
+     * Product Id
+     */
+    product_id: string;
+    /**
+     * Valid Until
+     */
+    valid_until: string | null;
+};
+
+/**
+ * PaidAccessProductResponse
+ */
+export type PaidAccessProductResponse = {
+    /**
+     * Effective Until
+     */
+    effective_until: string | null;
+    /**
+     * Observed At
+     */
+    observed_at: string | null;
+    /**
+     * Product Id
+     */
+    product_id: string;
+    status: ProductPaidStatus;
+};
+
+/**
+ * PaidAccessResponse
+ */
+export type PaidAccessResponse = {
+    /**
+     * Access Revision
+     */
+    access_revision: number;
+    /**
+     * Allowances
+     */
+    allowances: Array<PaidAccessAllowanceResponse>;
+    /**
+     * Committed At
+     */
+    committed_at: string | null;
+    /**
+     * Effective Until
+     */
+    effective_until: string | null;
+    /**
+     * Evidence Complete
+     */
+    evidence_complete: boolean;
+    /**
+     * Grants
+     */
+    grants: Array<PaidAccessGrantResponse>;
+    /**
+     * Products
+     */
+    products: Array<PaidAccessProductResponse>;
+    /**
+     * Read At
+     */
+    read_at: string;
+};
+
+/**
  * PasswordResetConfirmRequest
  */
 export type PasswordResetConfirmRequest = {
@@ -439,6 +540,11 @@ export type PasswordResetRequestResponse = {
 };
 
 /**
+ * ProductPaidStatus
+ */
+export type ProductPaidStatus = 'confirmed' | 'no_paid_access' | 'unavailable';
+
+/**
  * PurchaseConfirmRequest
  */
 export type PurchaseConfirmRequest = {
@@ -450,6 +556,10 @@ export type PurchaseConfirmRequest = {
      * Expected Fingerprint
      */
     expected_fingerprint: string;
+    /**
+     * Expected Technical Terms Digest
+     */
+    expected_technical_terms_digest?: string | null;
     /**
      * Product Id
      */
@@ -516,6 +626,10 @@ export type PurchaseReviewResponse = {
      */
     expected_fingerprint: string;
     /**
+     * Expected Technical Terms Digest
+     */
+    expected_technical_terms_digest?: string | null;
+    /**
      * Legal Status
      */
     legal_status?: 'draft';
@@ -527,7 +641,31 @@ export type PurchaseReviewResponse = {
      * Revision Id
      */
     revision_id: string;
+    technical_terms?: PurchaseTechnicalTermsResponse | null;
     terms: PurchaseTermsResponse;
+};
+
+/**
+ * PurchaseTechnicalTermsResponse
+ */
+export type PurchaseTechnicalTermsResponse = {
+    /**
+     * Digest
+     */
+    digest: string;
+    offer: TechnicalOffer;
+    /**
+     * Provenance
+     */
+    provenance: 'SIMULATED';
+    /**
+     * Source Digest
+     */
+    source_digest: string;
+    /**
+     * Source Version
+     */
+    source_version: string;
 };
 
 /**
@@ -782,6 +920,32 @@ export type SessionUserResponse = {
  * SourceProvenance
  */
 export type SourceProvenance = 'CONFIGURED_SOURCE' | 'SIMULATED';
+
+/**
+ * TechnicalOffer
+ */
+export type TechnicalOffer = {
+    /**
+     * Metric Key
+     */
+    metric_key: string;
+    /**
+     * Product Id
+     */
+    product_id: string;
+    /**
+     * Quantity
+     */
+    quantity: number;
+    /**
+     * Quantity Mode
+     */
+    quantity_mode: 'fixed_per_cycle';
+    /**
+     * Unit
+     */
+    unit: string;
+};
 
 /**
  * ValidationError
@@ -1298,6 +1462,37 @@ export type ListRequiredDocumentsApiLegalRequiredDocumentsGetResponses = {
 };
 
 export type ListRequiredDocumentsApiLegalRequiredDocumentsGetResponse = ListRequiredDocumentsApiLegalRequiredDocumentsGetResponses[keyof ListRequiredDocumentsApiLegalRequiredDocumentsGetResponses];
+
+export type PaidAccessApiPaidAccessGetData = {
+    body?: never;
+    headers?: {
+        /**
+         * Authorization
+         */
+        authorization?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/paid-access';
+};
+
+export type PaidAccessApiPaidAccessGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type PaidAccessApiPaidAccessGetError = PaidAccessApiPaidAccessGetErrors[keyof PaidAccessApiPaidAccessGetErrors];
+
+export type PaidAccessApiPaidAccessGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: PaidAccessResponse;
+};
+
+export type PaidAccessApiPaidAccessGetResponse = PaidAccessApiPaidAccessGetResponses[keyof PaidAccessApiPaidAccessGetResponses];
 
 export type AccountPurchasesApiPurchaseIntentsGetData = {
     body?: never;

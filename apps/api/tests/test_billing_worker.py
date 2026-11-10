@@ -16,6 +16,8 @@ from app.models import (
     ExternalBillingCustomer,
     ExternalCreateOperation,
     ExternalSubscription,
+    BillingProductAccessScope,
+    PurchasedAllowance,
 )
 
 import pytest
@@ -37,7 +39,6 @@ from app.domains.billing.work import spread_seconds
 from app.domains.billing.work_contracts import WorkLane
 from app.main import create_app
 from apps.api.tests.support.any709_step1 import step1_settings
-from apps.api.tests.support.lbx import lbx_settings
 from apps.api.tests.factories.reconciliation import subject_factory
 
 pytestmark = pytest.mark.anyio
@@ -87,6 +88,8 @@ def test_billing_worker_maximum_io_budget_keeps_refusal_retry_urgent(
             ExternalBillingCustomer,
             ExternalCreateOperation,
             ExternalSubscription,
+            BillingProductAccessScope,
+            PurchasedAllowance,
             BillingWorkItem,
         ):
             model.__table__.create(engine)
@@ -132,6 +135,10 @@ def test_billing_worker_settings_propagate_and_match_documentation() -> None:
     }
     for path in ("docker-compose.yml", "docker-compose.prod.yml", "docker-compose.agent.yml"):
         config = yaml.safe_load((ROOT / path).read_text())["services"]
+        assert config["api"]["environment"]["PAID_ACCESS_CLOCK_SKEW_SECONDS"] == "${PAID_ACCESS_CLOCK_SKEW_SECONDS:-}"
+        assert (
+            config["api"]["environment"]["PREFLIGHT_TOTAL_TIMEOUT_SECONDS"] == "${PREFLIGHT_TOTAL_TIMEOUT_SECONDS:-10}"
+        )
         for key, value in defaults.items():
             assert config["api"]["environment"][key] == f"${{{key}:-{value}}}"
     for path in (".env.example", ".env.production.example"):
@@ -143,13 +150,9 @@ def test_billing_worker_settings_propagate_and_match_documentation() -> None:
     assert "per-process" in text and "standalone" in text and "100" in text
 
 
-async def test_billing_worker_unconfigured_or_disabled_creates_no_resources() -> None:
-    for config in (
-        step1_settings(billing_worker_enabled=False),
-        lbx_settings(lbx_base_url="", lbx_server_username="", lbx_server_password="", billing_worker_enabled=True),
-    ):
-        async with billing_worker_resources(config) as worker:
-            assert worker is None
+async def test_billing_worker_disabled_creates_no_resources() -> None:
+    async with billing_worker_resources(step1_settings(billing_worker_enabled=False)) as worker:
+        assert worker is None
 
 
 async def test_billing_worker_health_named_schema_and_readiness(monkeypatch: pytest.MonkeyPatch) -> None:

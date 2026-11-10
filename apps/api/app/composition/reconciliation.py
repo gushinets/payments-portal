@@ -9,7 +9,7 @@ from uuid import UUID
 from starlette.concurrency import run_in_threadpool
 
 from app.composition.sources import SourceResources
-from app.core.settings import Settings
+from app.core.settings import AppEnv, Settings
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.reconciliation import apply_reconciliation, claim_reconciliation, read_source_time
 from app.domains.billing.reconciliation_contracts import (
@@ -97,7 +97,15 @@ async def reconcile_subscription(
                     # Keep canonical owner/fence/time checks before any negative write.
                     # A timely customer negative survives later I/O budget exhaustion,
                     # but cannot authorize or audit a successful operator resolution.
-                    await delegate(apply_reconciliation, factory, subject, proof, work_claim=work_claim)
+                    await delegate(
+                        apply_reconciliation,
+                        factory,
+                        subject,
+                        proof,
+                        work_claim=work_claim,
+                        clock_skew_seconds=configuration.paid_access_clock_skew_seconds,
+                        allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
+                    )
                     raise InventoryStale()
                 from app.composition.purchase_inventory import collect_inventory
                 from app.domains.purchases.inventory_contracts import InventoryCandidateProof
@@ -113,7 +121,9 @@ async def reconcile_subscription(
                     reuse=InventoryCandidateProof(subject.purchase, subject.provider_subscription_id, proof),
                     delegate=delegate,
                 )
-                inventory.require_clear(subject.purchase, original=True)
+                inventory.require_clear(
+                    subject.purchase, original=True, primary=resolution.request.resolution == "select-primary"
+                )
                 resolution = replace(resolution, inventory=inventory)
     except PreflightDeadlineExceeded:
         # Record a failed attempt, never apply facts returned after its budget.
@@ -131,7 +141,16 @@ async def reconcile_subscription(
             ("read_budget_exhausted",),
             (),
         )
-    return await delegate(apply_reconciliation, factory, subject, proof, work_claim=work_claim, resolution=resolution)
+    return await delegate(
+        apply_reconciliation,
+        factory,
+        subject,
+        proof,
+        work_claim=work_claim,
+        resolution=resolution,
+        clock_skew_seconds=configuration.paid_access_clock_skew_seconds,
+        allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
+    )
 
 
 async def reconcile_bound_purchase(
