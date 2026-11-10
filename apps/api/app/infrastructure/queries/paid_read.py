@@ -19,14 +19,17 @@ from app.models import (
 MAX_EVIDENCE_PRODUCTS = 100
 
 
-def lock_reader(db: Session, user_id: UUID, tenant: str, region: str) -> None:
+def lock_reader(db: Session, user_id: UUID, tenant: str, region: str) -> bool:
     # Writers acquire this row FOR UPDATE before business/state/queue locks.
     # Multiple readers can coexist; none can mix pre/post-commit metadata.
-    db.execute(
-        select(User.id)
-        .where(User.id == user_id, User.tenant_id == tenant, User.region == region)
-        .with_for_update(read=True)
-    ).one()
+    return (
+        db.scalar(
+            select(User.id)
+            .where(User.id == user_id, User.tenant_id == tenant, User.region == region)
+            .with_for_update(read=True)
+        )
+        is not None
+    )
 
 
 def state(db: Session, user_id: UUID, tenant: str, region: str) -> PaidAccessState | None:

@@ -52,3 +52,14 @@ def authorize_introspection(principal: Annotated[KernelPrincipal, Depends(authen
     if "kernel-session:introspect" not in principal.permissions:
         raise HTTPException(403, detail={"code": "kernel_session_forbidden"})
     return principal
+
+
+async def authorize_snapshot(request: Request) -> KernelPrincipal:
+    # Header-only authentication must not queue behind the shared sale threads
+    # before reaching the reserved local read capacity.
+    principal = authenticate_kernel(request)
+    if "access-snapshot:read" not in principal.permissions:
+        raise HTTPException(403, detail={"code": "access_snapshot_forbidden"})
+    if set(request.query_params) != {"tenant_id", "region"}:
+        raise HTTPException(422, detail={"code": "access_snapshot_scope_required"})
+    return principal

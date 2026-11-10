@@ -19,6 +19,9 @@ Buy/Continue/Manage with one shared payment-capable Widget. It remains
 pre-production. ANY-715 supplies embedded lifecycle polling and GET-only
 recovery/inventory. ANY-765 adds local paid grants/allowances, semantic revisions,
 an invalidation outbox, autonomous expiry and authenticated cabinet reads.
+ANY-766 Step 5 adds configured-source allowance derivation and the authenticated
+V2 committed-state snapshot producer. Its [serving and provenance rules](docs/engineering/billing-background-operations.md#any-766-step-5--production-allowances-and-snapshot-serving)
+reuse those mechanisms and do not enable sales.
 Kernel delivery/enforcement, actual usage and production enablement remain later
 work. Delivery and acceptance evidence are recorded in
 [ANY-709](https://linear.app/paveldik/issue/ANY-709) and the

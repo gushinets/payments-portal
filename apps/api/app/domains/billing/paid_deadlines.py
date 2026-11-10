@@ -9,6 +9,7 @@ from app.domains.billing.paid_contracts import EffectiveState
 from app.domains.identity.services.auth import as_utc
 from app.infrastructure.persistence.billing_work import coalesce
 from app.infrastructure.queries import billing_work
+from app.infrastructure.queries.paid_access import latest_paid_allowance_start
 from app.models import BillingProductAccessScope, ExternalSubscription
 
 
@@ -36,8 +37,40 @@ def trust_expiry_payload(db: Session, sub: ExternalSubscription) -> dict[str, st
     }
 
 
-def schedule_deadline(db: Session, sub: ExternalSubscription, scope: BillingProductAccessScope | None = None) -> None:
+def schedule_deadline(
+    db: Session,
+    sub: ExternalSubscription,
+    scope: BillingProductAccessScope | None = None,
+    *,
+    evaluated_at: datetime | None = None,
+) -> None:
     """Caller finishes business/state locks before touching queue rows."""
+    if scope and scope.primary_subscription_id == sub.subscription_id:
+        start = latest_paid_allowance_start(db, sub.subscription_id)
+        if start is not None:
+            from app.infrastructure.queries.billing_reconciliation import database_now
+
+            # Keep the paid evaluation's cutoff: a start excluded then still
+            # needs authoritative work if it passes before this queue write.
+            cutoff = as_utc(evaluated_at if evaluated_at is not None else database_now(db))
+            if as_utc(start) > cutoff:
+                # A claimed read leaves its next polling time dirty in the ORM.
+                # Flush it before the SQL upsert so a later semantic no-op or
+                # commit cannot overwrite the earlier start-boundary hint.
+                db.flush()
+                # This is authoritative reconciliation work, never a local
+                # positive time-boundary transition. Preserve earlier work.
+                coalesce(
+                    db,
+                    kind="subscription_reconciliation",
+                    key=f"{sub.external_billing_account_id}:{sub.subscription_id}",
+                    scope_kind="subscription",
+                    reference=str(sub.subscription_id),
+                    due=as_utc(start),
+                    priority=1,
+                    payload={},
+                    hint=True,
+                )
     deadlines = []
     if (
         sub.latest_observation_id is not None

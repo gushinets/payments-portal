@@ -6,8 +6,9 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
-from app.core.settings import AppEnv, Settings
+from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused
+from app.domains.billing.paid_policy import MeteringPolicy
 from app.domains.billing.customers import lock_user
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.work_contracts import WorkClaim, WorkLane
@@ -103,7 +104,7 @@ def repair_paid_deadlines(factory: SessionFactory, configuration: Settings) -> i
             configuration.instance_tenant_id,
             configuration.instance_region,
             configuration.billing_worker_scan_batch_size,
-            allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
+            permitted_provenances=MeteringPolicy.for_environment(configuration.app_env).provenances,
         )
     repaired = 0
     for identity in users:
@@ -115,7 +116,7 @@ def repair_paid_deadlines(factory: SessionFactory, configuration: Settings) -> i
                     user,
                     None,
                     as_utc(billing_reconciliation.database_now(db)),
-                    allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
+                    metering_policy=MeteringPolicy.for_environment(configuration.app_env),
                 )
                 db.commit()
                 repaired += 1

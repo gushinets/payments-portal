@@ -89,6 +89,62 @@ The worker uses shared reconciliation, inventory and the paid writer to produce
 source facts, primary decisions, grants/allowances and revision/outbox changes.
 Preparation or recovery binding alone still supplies no positive paid authority.
 
+## ANY-766 Step 5 — production allowances and snapshot serving
+
+The existing claimed source apply and sole whole-user paid writer now use an
+explicit provenance policy. Production permits only accepted
+`purchased-technical-terms:v2` with `CONFIGURED_SOURCE` provenance. Development
+and tests also permit the historical SIMULATED terms. Legacy purchases without
+technical terms can retain independently proven product access but receive no
+invented allowance. Original accepted quantities, units, cycle anchors and IDs
+remain immutable through republication, blocking/recovery and proven renewal.
+No sale flags, mappings or deployed settings are enabled by this implementation.
+
+`GET /internal/v1/access-snapshots/{user_id}?tenant_id=anytoolai&region=ru`
+serves the [selected V2 wire contract](../contracts/portal-kernel-paid/README.md#snapshot-v2-and-invalidation-v1).
+Configure the reverse-direction current/previous service credentials described
+in the [identity checkpoint](../contracts/portal-kernel-paid/README.md#step-4-server-implementation)
+and add the receiver-owned `access-snapshot:read` permission to
+`KERNEL_ACCESS_PERMISSIONS`. The default remains empty. The permission grants
+neither exchange nor introspection. Exactly one Bearer header and the matching
+tenant/region query are required. Origin, foreign/ambiguous scope, unknown input
+and malformed identity are refused; success/refusal responses are no-store.
+Unknown scoped users return `404`; known users without a transition return an
+implicit empty revision zero without inserting state or outbox rows.
+
+The snapshot and cabinet share the existing reserved two-connection/two-thread
+paid-read pool with at most eight queued operations. Snapshot header validation
+does not wait for shared sale threads. Cancellation retains ownership of the
+entire synchronous read until it closes its session; shutdown waits or reports
+pending cleanup before disposing the pool. Pool/lock/statement contention,
+storage unavailability and overload return safe `503` refusals. The customer
+`/api/paid-access` DTO remains separate and retains its verified-email session
+guard and provenance labels.
+
+Both boundaries read committed state under a shared scoped User lock. Snapshot
+GET performs no authentication bookkeeping, writes, source calls or peer calls.
+It refuses an overdue reduction or uncommitted provenance/start correction as
+a whole, preserving semantic contents at the saved revision. Time is sampled
+from the database after waiting reads. With configured local/staging B=5:
+`expires_at = min(T+300s, included effective source/grant/UTC deadlines)-B` and
+`refresh_after = min(T+60s, expires_at)`. An empty set uses only T+300s. Source
+trust stays at most six hours; a missing clock budget or no remaining lifetime
+returns `503`. The envelope subtracts the interservice budget once. The grant
+field keeps its already committed source-conservative UTC bound unchanged;
+the producer does not haircut it again or recompute it on every GET. LBX
+conservatism remains internal and separate from the snapshot envelope.
+
+Timestamp allowance starts/ends retain their frozen issuance conservatism.
+A future bucket can be issued into immutable history but is omitted from the
+effective set before its proven start. The existing reconciliation queue is
+scheduled no later than that boundary, preserving earlier work. Only another
+eligible authoritative source apply can expose it; local expiry/time progression
+never activates or refills a bucket. Date-only cycles acquire no invented UTC
+bound. Kernel receives no calendar or period fields, only the approved immutable
+allowance tuple. Local tests use real disposable PostgreSQL and intercepted
+sources; real two-service execution, deployed clock/TLS proof, sales and live
+positive acceptance remain later gates.
+
 ## Embedded worker settings and resource limits
 
 The initial deployment is one API process/replica with an embedded worker.

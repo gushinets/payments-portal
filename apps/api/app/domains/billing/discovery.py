@@ -15,7 +15,7 @@ from app.domains.billing.background_recovery import INVENTORY, INVENTORY_SECONDS
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.customers import lock_user
 from app.domains.billing.paid_access import apply_paid_source, resolve_access_end
-from app.domains.billing.paid_policy import CandidateConclusion, PrimaryCandidate, first_primary
+from app.domains.billing.paid_policy import MeteringPolicy, CandidateConclusion, PrimaryCandidate, first_primary
 from app.domains.billing.reconciliation_contracts import RECONCILIATION_SCHEMA, ReconciliationResult
 from app.domains.billing.work import verify_claim
 from app.domains.billing.work_contracts import WorkClaim
@@ -161,7 +161,7 @@ def select_primaries(
     now: datetime,
     *,
     clock_skew_seconds: int | None,
-    allow_simulated_metering: bool,
+    metering_policy: MeteringPolicy,
 ) -> tuple[BillingStateObservation, ...]:
     """Caller holds user/purchase locks. Reuse committed receipts, never reapply facts."""
     from app.domains.purchases.inventory_contracts import InventoryStale
@@ -283,7 +283,7 @@ def select_primaries(
                 now,
                 skew_seconds=clock_skew_seconds,
                 access_end_at=access_end_at,
-                allow_simulated_metering=allow_simulated_metering,
+                metering_policy=metering_policy,
             )
             causes.append(selected)
     return tuple(causes)
@@ -296,7 +296,7 @@ def apply_inventory(
     reason: str | None,
     *,
     clock_skew_seconds: int | None = None,
-    allow_simulated_metering: bool = True,
+    metering_policy: MeteringPolicy = MeteringPolicy.NONPRODUCTION,
 ) -> None:
     """Validate all original versions, then finish the customer job once."""
     from app.domains.purchases.inventory import invalidate_unsent, validate_inventory
@@ -333,7 +333,7 @@ def apply_inventory(
                     claim,
                     now,
                     clock_skew_seconds=clock_skew_seconds,
-                    allow_simulated_metering=allow_simulated_metering,
+                    metering_policy=metering_policy,
                 )
             )
             if result.discovery_ids
@@ -397,7 +397,7 @@ def apply_inventory(
                 causes[-1],
                 now,
                 related_causes=tuple(causes[:-1]),
-                allow_simulated_metering=allow_simulated_metering,
+                metering_policy=metering_policy,
             )
         queue = work.verify_claim(db, claim)  # Queue ownership last; stale completion rolls back every decision.
         if queue.coalescing_key != f"{customer.external_billing_account_id}:{customer.customer_id}":
