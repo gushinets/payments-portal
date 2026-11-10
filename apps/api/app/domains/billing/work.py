@@ -162,15 +162,17 @@ def claim_work(factory: SessionFactory, configuration: Settings, lane: WorkLane)
             db,
             (SWEEP, EXPIRY, "external_create_deadline")
             if lane == WorkLane.LOCAL
+            else ("access_invalidation",)
+            if lane == WorkLane.DELIVERY
             else (RECONCILIATION, "external_create_recovery", "customer_inventory"),
             now,
-            urgent=None if lane == WorkLane.LOCAL else lane == WorkLane.URGENT,
+            urgent=None if lane in (WorkLane.LOCAL, WorkLane.DELIVERY) else lane == WorkLane.URGENT,
             account=configuration.lbx_external_billing_account_id
-            if lane == WorkLane.LOCAL
+            if lane in (WorkLane.LOCAL, WorkLane.DELIVERY)
             else connection_account(db, configuration),
             sweep_key=configuration.lbx_external_billing_account_id,
             local_scope=(configuration.instance_tenant_id, configuration.instance_region)
-            if lane == WorkLane.LOCAL
+            if lane in (WorkLane.LOCAL, WorkLane.DELIVERY)
             else None,
             urgent_before=now + URGENT_TRUST_WINDOW,
             urgent_attempt_before=now - timedelta(seconds=URGENT_SECONDS),

@@ -1,7 +1,7 @@
 # Product Scope
 
 Status: authoritative
-Last updated: 2026-11-09
+Last updated: 2026-11-10
 
 AnyToolAI Portal combines public product discovery, direct account entry, and
 identity/legal-consent flows for AnyToolAI products, deployed as one contour
@@ -40,8 +40,10 @@ ANY-664 can append immutable mapping revisions. Purchase orchestration is
 implemented by ANY-709. ANY-715 implements polling-only embedded reconciliation,
 GET-only recovery/inventory and audited operator controls. The webhook receiver
 is removed and retained inbox history is not processed. ANY-765 implements local
-paid projection, allowances, revisions/outbox and autonomous expiry; Kernel
-delivery remains later work. See the
+paid projection, allowances, revisions/outbox and autonomous expiry. ANY-766
+implements session delegation, snapshot V2 and durable invalidation delivery;
+Kernel provides coherent paid admission and ownership. Browser launch and
+cabinet usage integration remain pending. See the
 [billing operations guide](engineering/billing-background-operations.md). The sole long-term
 production target is external-billing-managed.
 
@@ -67,7 +69,7 @@ UI/data-ownership matrix, implemented ANY-504 Steps 6–9 and remaining Step 10 
 External Billing owns commercial billing truth and lifecycle. The Portal owns
 current identity/legal, the billing anti-corruption, subscription
 observation/projection, reconciliation/recovery and local paid-access authority.
-Portal-to-Kernel delivery remains later work. Platform Kernel owns technical
+Portal delivers revisioned invalidations to Kernel. Platform Kernel owns technical
 product/metric identity,
 actual usage, and quota enforcement.
 The historically named “Payments Portal” component in the accepted ADR/design
@@ -113,8 +115,9 @@ only their source-read/admission strategy.
 - Versioned `ru` legal-document metadata and append-only acceptance evidence.
 - One clean PostgreSQL first-install schema with configured-contour and legal
   bootstrap.
-- Twenty-seven application tables: ten identity/session/legal, fifteen original
-  target billing tables, a current product-link pointer and a purchase hold.
+- Twenty-eight application tables: ten identity/session/legal, fifteen original
+  target billing tables, a current product-link pointer, a purchase hold and a
+  Kernel session-delegation table.
   Billing tables start empty; explicit publication/customer/purchase flows own
   their writes. Source-catalog projection slots are inert.
 - Static guards preventing restoration of the deleted direct-provider runtime,
@@ -141,10 +144,10 @@ trust boundary under ANY-541.
 - Remaining real-source acceptance and approved production sales/metering
   enablement. Step 9's current-version test-LBX checkpoint remains partial;
   historical positive QA does not establish live allowance delivery or launch.
-- ANY-766 Portal <-> Kernel snapshot/invalidation integration, authenticated paid
-  execution and actual usage/remaining under the reviewed contract. Workflow
-  execution, artifacts, actual usage, and quota enforcement remain in the
-  separate Platform Kernel repository.
+- Remaining ANY-766 browser launch/recovery, usage/exhaustion and cabinet
+  usage/remaining integration, paired local acceptance and build preparation.
+  Workflow execution, artifacts, actual usage and quota enforcement belong to
+  the separate Platform Kernel repository.
 - ANY-767 deployed billing journey, natural-renewal acceptance and production
   rollout.
 

@@ -561,7 +561,10 @@ async def test_billing_worker_embedded_lifespan_smoke_and_reserved_local_progres
     @asynccontextmanager
     async def resources(configuration: Settings) -> AsyncIterator[BillingWorker | None]:
         async with billing_worker_resources(
-            config, factory=factory, transport=httpx.MockTransport(transport.respond)
+            config,
+            factory=factory,
+            transport=httpx.MockTransport(transport.respond),
+            kernel_transport=httpx.MockTransport(lambda request: httpx.Response(204)),
         ) as worker:
             yield worker
 

@@ -15,6 +15,7 @@ from app.models import (
     ExternalBillingCustomer,
     ExternalCreateOperation,
     User,
+    AccessInvalidationOutbox,
 )
 
 
@@ -93,6 +94,12 @@ def claimable(
                 User.tenant_id == tenant,
                 User.region == region,
             ),
+            (BillingWorkItem.work_kind == "access_invalidation")
+            & exists().where(
+                func.cast(User.id, Text) == BillingWorkItem.scope_reference,
+                User.tenant_id == tenant,
+                User.region == region,
+            ),
         )
     due = BillingWorkItem.next_attempt_at <= now
     query = select(BillingWorkItem).where(
@@ -167,9 +174,29 @@ def missing_subscriptions(
     )
 
 
-def by_key(db: Session, kind: str, key: str) -> BillingWorkItem | None:
-    return db.scalar(
-        select(BillingWorkItem).where(BillingWorkItem.work_kind == kind, BillingWorkItem.coalescing_key == key)
+def by_key(db: Session, kind: str, key: str, *, lock: bool = False) -> BillingWorkItem | None:
+    query = select(BillingWorkItem).where(BillingWorkItem.work_kind == kind, BillingWorkItem.coalescing_key == key)
+    return db.scalar(query.with_for_update().execution_options(populate_existing=True) if lock else query)
+
+
+def missing_invalidations(db: Session, tenant: str, region: str, limit: int) -> list[UUID]:
+    enrolled = exists().where(
+        BillingWorkItem.work_kind == "access_invalidation",
+        BillingWorkItem.coalescing_key == func.cast(AccessInvalidationOutbox.user_id, Text),
+        BillingWorkItem.work_state.in_(("pending", "running", "invalid")),
+    )
+    return list(
+        db.scalars(
+            select(AccessInvalidationOutbox.user_id)
+            .where(
+                AccessInvalidationOutbox.tenant_id == tenant,
+                AccessInvalidationOutbox.region == region,
+                AccessInvalidationOutbox.pending_revision > AccessInvalidationOutbox.delivered_revision,
+                ~enrolled,
+            )
+            .order_by(AccessInvalidationOutbox.user_id)
+            .limit(limit)
+        )
     )
 
 
@@ -201,6 +228,7 @@ def backlog(
                     "external_create_recovery",
                     "external_create_deadline",
                     "customer_inventory",
+                    "access_invalidation",
                 )
             ),
             or_(
@@ -222,6 +250,12 @@ def backlog(
                     User.region == region,
                 ),
                 source_scope,
+                (BillingWorkItem.work_kind == "access_invalidation")
+                & exists().where(
+                    func.cast(User.id, Text) == BillingWorkItem.scope_reference,
+                    User.tenant_id == tenant,
+                    User.region == region,
+                ),
             ),
         )
         .group_by(BillingWorkItem.work_state)

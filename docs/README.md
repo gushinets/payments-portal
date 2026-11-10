@@ -73,11 +73,12 @@ Start with the smallest document that matches the task.
 - [ANY-766 paid integration target contracts](contracts/portal-kernel-paid/README.md)
   — reviewed target schemas, producer/consumer copies and offline fixtures for
   snapshot V2, identity, invalidation, usage/exhaustion and cabinet contracts;
-  runtime implementation remains pending.
+  implemented delegation, snapshot V2, coherent paid admission and invalidation
+  delivery; browser/usage integration and paired acceptance remain pending.
 - [Provisional Kernel Capability Manifest v1](contracts/kernel-capability-manifest/v1/README.md)
   — ANY-664 specification-derived schema, independent SIMULATED fixtures,
-  standalone development HTTP mock and human verification commands; actual
-  Kernel producer conformance remains a future enablement gate
+  standalone development HTTP mock and human verification commands; current
+  producer/consumer implementation and acceptance limits are in the integration map
 - [ANY-664 Step 8 local conformance handoff](contracts/kernel-capability-manifest/v1/step-8-handoff.md)
   — historical local CI PASS and 2026-10-19 real-API deferral; current producer
   availability is in the integration map, with joint conformance still unverified

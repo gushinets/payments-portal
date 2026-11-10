@@ -20,6 +20,7 @@ from app.core.errors import AppError
 from app.core.settings import Settings
 from app.domains.billing.operator_contracts import ResolutionRequest
 from app.domains.billing.operator_diagnostics import inspect_evidence, inspect_operation
+from app.domains.billing.access_invalidation import inspect_delivery
 from app.infrastructure.sentry import Operation, report_exception
 
 
@@ -28,6 +29,9 @@ def parser() -> argparse.ArgumentParser:
     commands = result.add_subparsers(dest="command", required=True)
     lookup = commands.add_parser("inspect-operation", help="Resolve a local Sentry operation reference without HTTP")
     lookup.add_argument("--operation-id", required=True, type=UUID)
+    for command in ("inspect-invalidation", "retry-invalidation"):
+        action = commands.add_parser(command, help="Inspect/retry parked local Kernel invalidation delivery")
+        action.add_argument("--user-id", required=True, type=UUID)
     for command in ("inspect", "recover", "reconcile", "resolve-review"):
         action = commands.add_parser(command)
         action.add_argument("--user-id", required=True, type=UUID)
@@ -54,6 +58,14 @@ def resolution_request(arguments: argparse.Namespace) -> ResolutionRequest:
 async def _run(arguments: argparse.Namespace, configuration: Settings, principal: str) -> dict:
     from app.core.database import SessionLocal
 
+    if arguments.command in ("inspect-invalidation", "retry-invalidation"):
+        return await run_in_threadpool(
+            inspect_delivery,
+            SessionLocal,
+            configuration,
+            arguments.user_id,
+            retry=arguments.command == "retry-invalidation",
+        )
     if arguments.command == "inspect-operation":
         return await run_in_threadpool(inspect_operation, SessionLocal, configuration, arguments.operation_id)
     if arguments.command == "inspect":

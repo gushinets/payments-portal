@@ -10,6 +10,7 @@ class WorkLane(StrEnum):
     URGENT = "urgent"
     NORMAL = "normal"
     LOCAL = "local"
+    DELIVERY = "delivery"
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,14 @@ class WorkClaim:
     generation: int
     started_at: datetime
     expires_at: datetime
+
+
+@dataclass(frozen=True)
+class InvalidationDelivery:
+    tenant_id: str
+    region: str
+    user_id: UUID
+    revision: int
 
 
 @dataclass(frozen=True)

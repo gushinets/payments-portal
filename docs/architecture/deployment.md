@@ -1,7 +1,7 @@
 # Deployment Architecture
 
 Status: authoritative current deployment plus target contour isolation
-Last source review: 2026-11-09; deployment acceptance remains separate.
+Last source review: 2026-11-10; deployment acceptance remains separate.
 
 ## Current `ru` deployment
 
@@ -48,8 +48,10 @@ The API implements configured External Billing source reads, purchase/Widget
 flows, embedded polling/recovery and local paid projection/cabinet reads. Its
 worker runs inside the API process; there is no separate worker service.
 Production source conformance, metered vocabulary and launch retain their
-acceptance gates. Kernel snapshot/invalidation delivery and actual usage remain
-ANY-766 work. Configuration and resource limits are in the
+acceptance gates. ANY-766 implements snapshot V2, scoped delegation and durable
+invalidation delivery; browser launch, usage integration and local paired
+acceptance remain pending. Remote installation/live acceptance belong to
+ANY-767. Configuration and resource limits are in the
 [billing runbook](../engineering/ANY-709-billing-runbook.md#connection-and-deployment)
 and [worker operations guide](../engineering/billing-background-operations.md#embedded-worker-settings-and-resource-limits).
 
@@ -103,6 +105,8 @@ currently supported `anytoolai` / `ru` contour and its RU country membership.
 It never silently substitutes RU data for a different configured scope or
 authorizes one production database to operate as two contours.
 
+<a id="one-time-step-4-recreate-and-bootstrap"></a>
+
 ## One-time Step-4 recreate and current bootstrap
 
 The Step-4 database is a destructive compatibility boundary. Pre-Step-4
@@ -140,11 +144,11 @@ to that harness database.
 The clean baseline migration owns schema creation and configured-contour/legal
 bootstrap; subsequent revisions apply through the same `upgrade head`. The
 [schema reference](payment-portal-data-model.md#physical-baseline) owns the
-current five-revision chain and table inventory. Do not create a separate
+current migration chain and table inventory. Do not create a separate
 bootstrap CLI. Before starting normal runtime on a fresh database, verify:
 
 - Alembic reports one head and the database is at that head;
-- the current head is `20261031_0006` and exactly 27 application tables exist;
+- the current head is `20261110_0008` and exactly 28 application tables exist;
 - every removed legacy catalog/order/payment/provider/subscription/
   entitlement/trial table is absent;
 - all seventeen billing/link/purchase tables are empty before explicit flows;
@@ -187,8 +191,12 @@ permitted in development Compose.
 ## Platform Kernel connection
 
 Platform Kernel is a separately deployed service and repository in the **same**
-contour. Portal already reads its configured Capability Manifest endpoint;
-paid snapshot/invalidation HTTP integration remains ANY-766 work. Follow the
+contour. Portal reads its configured Capability Manifest endpoint and serves
+authenticated snapshot V2. Its embedded worker sends invalidations through the
+same Portal → Kernel connection automatically when enabled; configure the
+Kernel receiver permission before starting the sender. See
+[delivery startup and recovery](../engineering/billing-background-operations.md#any-766-step-7--durable-kernel-invalidations).
+Paired local acceptance remains ANY-766 Step 11. Follow the
 [pinned implementation map](../integrations/platform-kernel.md) and the boundary
 defined by [ADR 0005](decisions/0005-external-billing-boundary.md) and the accepted
 [Portal <-> Kernel Access Contract Design](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).

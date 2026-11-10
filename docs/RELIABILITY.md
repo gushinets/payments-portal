@@ -1,7 +1,7 @@
 # Reliability Requirements
 
 Status: authoritative operational requirements; target external-billing semantics delegated
-Last updated: 2026-11-09
+Last updated: 2026-11-10
 
 ## Target external-billing authority
 
@@ -20,7 +20,8 @@ removed. ANY-709 implements live product links/offers, accepted purchase holds
 and request-driven financial preparation/recovery. ANY-715 implements embedded
 reconciliation and GET-only recovery/inventory with local deadlines. ANY-765
 adds local paid projection, atomic revision/outbox and provider-free access
-expiry. HTTP invalidation delivery remains ANY-766. Source-catalog
+expiry. ANY-766 Step 7 adds bounded, claimed HTTP invalidation delivery with
+exact sent-revision ACK, restart repair and privileged parked-work retry. Source-catalog
 projection tables remain inert. Dated delivery evidence belongs to
 [ANY-709](https://linear.app/paveldik/issue/ANY-709).
 
@@ -61,7 +62,8 @@ projection tables remain inert. Dated delivery evidence belongs to
 
 These are cross-cutting constraints. Purchase preparation, embedded polling,
 GET-only recovery, audited operations and local paid derivation are implemented;
-Kernel invalidation delivery remains later work. The MVP has no webhook receiver or
+Kernel invalidation delivery is locally tested with synthetic peer responses;
+paired HTTP/browser acceptance remains ANY-766 Step 11. The MVP has no webhook receiver or
 receipt processor. Retained inbox rows remain history. Durable queue generations,
 claims and bounded retries preserve polling progress independently of callbacks.
 See [polling-only operation](engineering/billing-background-operations.md#polling-only-operation).
@@ -80,9 +82,11 @@ Current transaction boundaries are documented in
 product-link publication, accepted purchases, fenced financial preparation,
 worker reconciliation, audited operator resolution and paid-state/deadline
 commits have current writers; webhook inbox rows are retained history.
-Paid GET is local and read-only after identity bookkeeping; an overdue boundary
-refuses until the ordinary worker commits its reduction. Kernel delivery remains
-later work.
+The customer paid GET is local and read-only after identity bookkeeping; the
+internal snapshot GET performs no bookkeeping or writes. An overdue boundary
+refuses until the ordinary worker commits its reduction. Invalidation HTTP runs
+outside SQL; capture/ACK use short User → outbox → queue transactions with live
+claim checks and exact sent-revision acknowledgement.
 
 Database retry decisions use these semantics:
 
@@ -132,8 +136,8 @@ correctness, idempotency, reconciliation, or replay store.
   within a revision. Runtime keeps absent state as implicit empty revision 0,
   compares the whole-user set and atomically coalesces pending invalidation.
   Outbox guards forbid revision regression, negative delivered values or an
-  acknowledgement beyond pending. HTTP delivery/captured-revision ACK remains
-  Step 10 work. See the [paid producer handoff](engineering/billing-background-operations.md#step-10-handoff--any-765).
+  acknowledgement beyond pending. ANY-766 Step 7 implements HTTP delivery and
+  captured-revision ACK. See [delivery operations](engineering/billing-background-operations.md#any-766-step-7--durable-kernel-invalidations).
 - Durable observations and manual-review evidence explain uncertainty/conflict;
   they cannot independently grant access.
 
@@ -184,8 +188,8 @@ Sentry
     -> persisted Payment Portal records
 ```
 
-Current identity/legal diagnostics may correlate only approved local IDs. Future
-billing runtime may add bounded identifiers such as `purchase_intent_id`,
+Identity/legal and billing diagnostics may correlate only approved local IDs,
+including bounded identifiers such as `purchase_intent_id`,
 `create_operation_id`, `delivery_id`, `work_item_id`, `subscription_id`,
 `observation_id`, or `review_case_id`; they must never be metric labels and
 must not expose external/provider identifiers.

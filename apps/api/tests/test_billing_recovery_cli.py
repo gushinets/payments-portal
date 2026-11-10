@@ -219,6 +219,7 @@ def test_billing_recovery_cli_runbook_parser_and_settings_contract() -> None:
         "billing_worker_enabled",
         "billing_worker_urgent_concurrency",
         "billing_worker_normal_concurrency",
+        "billing_worker_delivery_concurrency",
         "billing_worker_io_timeout_seconds",
         "billing_worker_scan_batch_size",
     ):

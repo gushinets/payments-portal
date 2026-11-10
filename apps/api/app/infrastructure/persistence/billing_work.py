@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models import BillingWorkItem
 
-RECURRING_INDEX = "work_kind IN ('subscription_reconciliation', 'subscription_trust_expiry', 'billing_enrollment_sweep', 'customer_inventory', 'external_create_deadline')"
+RECURRING_INDEX = "work_kind IN ('subscription_reconciliation', 'subscription_trust_expiry', 'billing_enrollment_sweep', 'customer_inventory', 'external_create_deadline', 'access_invalidation')"
 
 
 def coalesce(
