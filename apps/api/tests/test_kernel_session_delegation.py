@@ -15,6 +15,7 @@ from app.core.database import SessionLocal
 from app.core.settings import Settings, settings
 from app.domains.identity.services import kernel_delegation as delegation
 from app.domains.identity.services.auth import validate_session
+from app.http.kernel_session_policy import KernelErrorResponse
 from app.models import AuthSession, KernelSessionDelegation, User, UserStatus
 from apps.api.tests.support.api import client, register_test_user, reset_api_database
 from apps.api.tests.support.settings import override_settings
@@ -71,6 +72,33 @@ def introspect(token: str) -> httpx.Response:
     return client.post(
         INTERNAL + "introspect", json={"access_token": token}, headers={"Authorization": "Bearer " + SERVICE_TOKEN}
     )
+
+
+@pytest.mark.parametrize(
+    "method,path,headers,status",
+    [
+        ("POST", "/api/kernel-session-codes", {}, 401),
+        ("POST", INTERNAL + "exchange", {"Authorization": "Bearer " + SERVICE_TOKEN}, 422),
+        ("POST", INTERNAL + "introspect", {"Authorization": "Bearer " + SERVICE_TOKEN}, 422),
+        (
+            "GET",
+            "/internal/v1/access-snapshots/00000000-0000-4000-8000-000000000001",
+            {"Origin": "https://browser.example.test"},
+            403,
+        ),
+    ],
+)
+def test_kernel_refusals_match_their_documented_error_response(
+    method: str, path: str, headers: dict[str, str], status: int
+) -> None:
+    response = client.request(method, path, json={}, headers=headers)
+    assert response.status_code == status
+    assert KernelErrorResponse.model_validate(response.json()).model_dump() == response.json()
+    schema_path = "/internal/v1/access-snapshots/{user_id}" if method == "GET" else path
+    operation = client.app.openapi()["paths"][schema_path][method.lower()]
+    assert operation["responses"][str(status)]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/KernelErrorResponse"
+    }
 
 
 def test_hashes_ttls_pkce_single_use_and_read_only_identity() -> None:

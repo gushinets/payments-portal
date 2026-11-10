@@ -96,8 +96,9 @@ explicit provenance policy. Production permits only accepted
 `purchased-technical-terms:v2` with `CONFIGURED_SOURCE` provenance. Development
 and tests also permit the historical SIMULATED terms. Legacy purchases without
 technical terms can retain independently proven product access but receive no
-invented allowance. Original accepted quantities, units, cycle anchors and IDs
-remain immutable through republication, blocking/recovery and proven renewal.
+invented allowance. Accepted quantities, units and initial cycle anchors stay
+fixed through republication and renewal. Same-cycle block/recovery reuses allowance
+IDs; a proven new cycle issues new IDs without rewriting historical allowances.
 No sale flags, mappings or deployed settings are enabled by this implementation.
 
 `GET /internal/v1/access-snapshots/{user_id}?tenant_id=anytoolai&region=ru`

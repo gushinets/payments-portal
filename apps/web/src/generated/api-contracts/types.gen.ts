@@ -404,6 +404,23 @@ export type KernelCodeResponse = {
 };
 
 /**
+ * KernelErrorDetail
+ */
+export type KernelErrorDetail = {
+    /**
+     * Code
+     */
+    code: string;
+};
+
+/**
+ * KernelErrorResponse
+ */
+export type KernelErrorResponse = {
+    detail: KernelErrorDetail;
+};
+
+/**
  * KernelExchangeRequest
  */
 export type KernelExchangeRequest = {
@@ -1619,9 +1636,17 @@ export type CreateKernelCodeApiKernelSessionCodesPostData = {
 
 export type CreateKernelCodeApiKernelSessionCodesPostErrors = {
     /**
-     * Validation Error
+     * Unauthorized
      */
-    422: HTTPValidationError;
+    401: KernelErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: KernelErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: KernelErrorResponse;
 };
 
 export type CreateKernelCodeApiKernelSessionCodesPostError = CreateKernelCodeApiKernelSessionCodesPostErrors[keyof CreateKernelCodeApiKernelSessionCodesPostErrors];
@@ -1950,9 +1975,25 @@ export type AccessSnapshotInternalV1AccessSnapshotsUserIdGetData = {
 
 export type AccessSnapshotInternalV1AccessSnapshotsUserIdGetErrors = {
     /**
-     * Validation Error
+     * Unauthorized
      */
-    422: HTTPValidationError;
+    401: KernelErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: KernelErrorResponse;
+    /**
+     * Not Found
+     */
+    404: KernelErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: KernelErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: KernelErrorResponse;
 };
 
 export type AccessSnapshotInternalV1AccessSnapshotsUserIdGetError = AccessSnapshotInternalV1AccessSnapshotsUserIdGetErrors[keyof AccessSnapshotInternalV1AccessSnapshotsUserIdGetErrors];
@@ -1975,9 +2016,21 @@ export type ExchangeKernelCodeInternalV1KernelSessionsExchangePostData = {
 
 export type ExchangeKernelCodeInternalV1KernelSessionsExchangePostErrors = {
     /**
-     * Validation Error
+     * Unauthorized
      */
-    422: HTTPValidationError;
+    401: KernelErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: KernelErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: KernelErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: KernelErrorResponse;
 };
 
 export type ExchangeKernelCodeInternalV1KernelSessionsExchangePostError = ExchangeKernelCodeInternalV1KernelSessionsExchangePostErrors[keyof ExchangeKernelCodeInternalV1KernelSessionsExchangePostErrors];
@@ -2000,9 +2053,21 @@ export type IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostData = {
 
 export type IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostErrors = {
     /**
-     * Validation Error
+     * Unauthorized
      */
-    422: HTTPValidationError;
+    401: KernelErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: KernelErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: KernelErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: KernelErrorResponse;
 };
 
 export type IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostError = IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostErrors[keyof IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostErrors];

@@ -12,8 +12,13 @@ from app.core.settings import settings
 from app.domains.billing.contracts import BillingRefused
 from app.http.dependencies import get_paid_read_resources
 from app.http.kernel_auth import KernelPrincipal, authorize_snapshot
+from app.http.kernel_session_policy import KernelErrorResponse
 
-router = APIRouter(prefix="/internal/v1/access-snapshots", tags=["access-snapshot"])
+router = APIRouter(
+    prefix="/internal/v1/access-snapshots",
+    tags=["access-snapshot"],
+    responses={status: {"model": KernelErrorResponse} for status in (401, 403, 404, 422, 503)},
+)
 
 
 class AccessSnapshotGrant(BaseModel):

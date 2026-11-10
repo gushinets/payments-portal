@@ -5,11 +5,22 @@ from collections.abc import Awaitable, Callable
 from fastapi import Request
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, ConfigDict
 from starlette.responses import JSONResponse, Response
 
 INTERNAL_PREFIX = "/internal/v1/kernel-sessions/"
 CODE_PATH = "/api/kernel-session-codes"
 SNAPSHOT_PREFIX = "/internal/v1/access-snapshots/"
+
+
+class KernelErrorDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    code: str
+
+
+class KernelErrorResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    detail: KernelErrorDetail
 
 
 def is_kernel_session_path(path: str) -> bool:

@@ -154,6 +154,10 @@ def test_snapshot_openapi_has_required_scope_and_exact_v2_component_fields() -> 
     }
     response = operation["responses"]["200"]["content"]["application/json"]["schema"]
     assert response == {"$ref": "#/components/schemas/AccessSnapshotResponse"}
+    for status in (401, 403, 404, 422, 503):
+        assert operation["responses"][str(status)]["content"]["application/json"]["schema"] == {
+            "$ref": "#/components/schemas/KernelErrorResponse"
+        }
     for name in ("AccessSnapshotResponse", "AccessSnapshotGrant", "AccessSnapshotAllowance"):
         component = schema["components"]["schemas"][name]
         assert set(component["required"]) == set(component["properties"])

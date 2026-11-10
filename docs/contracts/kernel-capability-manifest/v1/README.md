@@ -6,10 +6,8 @@ Verification: historical local conformance CI PASS and
 `REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED` are recorded in the
 [2026-10-19 Step 8 handoff](step-8-handoff.md). The
 [current pinned implementation map](../../../integrations/platform-kernel.md#observed-implementation)
-records the subsequently implemented Kernel producer; joint conformance remains
-unverified at that historical checkpoint. ANY-766 Step 2 records fresh local
-Kernel/Portal HTTP inventory conformance in the
-[active plan](../../../exec-plans/active/ANY-766-implementation-plan.md#step-2--declare-production-metrics-and-scenario-bindings).
+records the subsequently implemented Kernel producer and current verification
+limits. Current inventory fixtures are listed below.
 These historical records do not certify every manual procedure below or a new
 verification run.
 
