@@ -14,6 +14,22 @@ class PaidDecision(StrEnum):
     KEEP = "keep"
 
 
+class MeteringPolicy(StrEnum):
+    CONFIGURED_ONLY = "configured_only"
+    NONPRODUCTION = "nonproduction"
+
+    @classmethod
+    def for_environment(cls, environment: str) -> "MeteringPolicy":
+        return cls.CONFIGURED_ONLY if environment == "production" else cls.NONPRODUCTION
+
+    def permits(self, provenance: str | None) -> bool:
+        return provenance in self.provenances
+
+    @property
+    def provenances(self) -> tuple[str, ...]:
+        return ("CONFIGURED_SOURCE", "SIMULATED") if self == self.NONPRODUCTION else ("CONFIGURED_SOURCE",)
+
+
 def paid_decision(proof: SubscriptionProof, *, review: bool = False) -> PaidDecision:
     if review or proof.identity == IdentityProof.CONFLICT:
         return PaidDecision.DENY

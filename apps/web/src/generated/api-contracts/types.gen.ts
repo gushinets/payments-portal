@@ -49,6 +49,88 @@ export type AcceptDocumentResponse = {
 };
 
 /**
+ * AccessSnapshotAllowance
+ */
+export type AccessSnapshotAllowance = {
+    /**
+     * Allowance Id
+     */
+    allowance_id: string;
+    /**
+     * Metric Key
+     */
+    metric_key: string;
+    /**
+     * Product Id
+     */
+    product_id: string;
+    /**
+     * Quantity
+     */
+    quantity: number;
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
+ * AccessSnapshotGrant
+ */
+export type AccessSnapshotGrant = {
+    /**
+     * Product Id
+     */
+    product_id: string;
+    /**
+     * Valid Until
+     */
+    valid_until: string | null;
+};
+
+/**
+ * AccessSnapshotResponse
+ */
+export type AccessSnapshotResponse = {
+    /**
+     * Access Revision
+     */
+    access_revision: number;
+    /**
+     * Allowances
+     */
+    allowances: Array<AccessSnapshotAllowance>;
+    /**
+     * Expires At
+     */
+    expires_at: string;
+    /**
+     * Grants
+     */
+    grants: Array<AccessSnapshotGrant>;
+    /**
+     * Refresh After
+     */
+    refresh_after: string;
+    /**
+     * Region
+     */
+    region: string;
+    /**
+     * Schema Version
+     */
+    schema_version: 2;
+    /**
+     * Tenant Id
+     */
+    tenant_id: string;
+    /**
+     * User Id
+     */
+    user_id: string;
+};
+
+/**
  * AccountPurchaseResponse
  */
 export type AccountPurchaseResponse = {
@@ -1844,6 +1926,45 @@ export type ReviewApiPurchasesReviewPostResponses = {
 };
 
 export type ReviewApiPurchasesReviewPostResponse = ReviewApiPurchasesReviewPostResponses[keyof ReviewApiPurchasesReviewPostResponses];
+
+export type AccessSnapshotInternalV1AccessSnapshotsUserIdGetData = {
+    body?: never;
+    path: {
+        /**
+         * User Id
+         */
+        user_id: string;
+    };
+    query: {
+        /**
+         * Tenant Id
+         */
+        tenant_id: string;
+        /**
+         * Region
+         */
+        region: string;
+    };
+    url: '/internal/v1/access-snapshots/{user_id}';
+};
+
+export type AccessSnapshotInternalV1AccessSnapshotsUserIdGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type AccessSnapshotInternalV1AccessSnapshotsUserIdGetError = AccessSnapshotInternalV1AccessSnapshotsUserIdGetErrors[keyof AccessSnapshotInternalV1AccessSnapshotsUserIdGetErrors];
+
+export type AccessSnapshotInternalV1AccessSnapshotsUserIdGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccessSnapshotResponse;
+};
+
+export type AccessSnapshotInternalV1AccessSnapshotsUserIdGetResponse = AccessSnapshotInternalV1AccessSnapshotsUserIdGetResponses[keyof AccessSnapshotInternalV1AccessSnapshotsUserIdGetResponses];
 
 export type ExchangeKernelCodeInternalV1KernelSessionsExchangePostData = {
     body: KernelExchangeRequest;

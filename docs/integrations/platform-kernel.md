@@ -40,7 +40,7 @@ or producer-conformance check. Dated runtime evidence remains separate.
 | Operation / request direction | Payload producer | Payload consumer / receiver | Verification status |
 | --- | --- | --- | --- |
 | `GET /internal/v1/capability-manifest`: Portal -> Kernel | Service-authenticated Kernel endpoint implemented; separate Portal development mock remains optional | Portal typed HTTP client implemented | Source inspected; local fixture evidence does not establish current joint conformance |
-| `GET /internal/v1/access-snapshots/{user_id}`: Kernel -> Portal | Local paid projection and cabinet read implemented; internal snapshot HTTP producer remains ANY-766 | Kernel internal metering exists; snapshot HTTP client/cache integration remains ANY-766 | Target wire only; `/api/paid-access` is a separate customer contract |
+| `GET /internal/v1/access-snapshots/{user_id}`: Kernel -> Portal | ANY-766 Step 5 implements the scoped, read-only V2 producer from committed paid state | Kernel internal metering exists; snapshot HTTP client/cache integration remains Step 6 | Local HTTP/PostgreSQL producer tests with synthetic sources; joint paid runtime remains unproven |
 | `POST /internal/v1/access-invalidations`: Portal -> Kernel | Durable coalesced outbox implemented; HTTP delivery remains ANY-766 | Kernel HTTP invalidation receiver remains ANY-766 | Target wire only; no delivery PASS claimed |
 
 ANY-664 implemented restricted v1 publication and DB-only browsing. ANY-709
@@ -97,6 +97,16 @@ paid runtime wiring and ownership enforcement remain Step 6. Existing guest
 routes are unchanged. Snapshot, usage and delivery retain their later gates.
 
 ## Dependencies before real integration
+
+ANY-766 Step 5 serves only snapshot V2 through the reverse-direction service
+credential with explicit `access-snapshot:read` permission. Scope is required in
+the query; known empty users retain revision zero without writes. The producer
+shares the reserved local paid-read resources, rejects overdue committed states,
+and performs no peer/source I/O or identity bookkeeping. Production metering
+requires accepted `CONFIGURED_SOURCE` terms; SIMULATED history stays labelled
+and can supply no production allowance. See the [as-built serving rules](../engineering/billing-background-operations.md#any-766-step-5--production-allowances-and-snapshot-serving).
+Install the compatible Step 6 consumer before enabling the V2 connection. This
+checkpoint changes no commercial flags or deployed configuration.
 
 - **Identity:** paid access uses Portal's authenticated UUID under
   `(tenant_id, region, user_id)`. Browser identity delegation and authenticated

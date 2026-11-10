@@ -1,19 +1,20 @@
 """Reserved local cabinet capacity, independent of sale/source DB and threads."""
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from functools import partial
+from uuid import UUID
 
 import anyio
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
 from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused
-from app.domains.billing.paid_read import PaidRead, read_paid_access
+from app.domains.billing.paid_read import PaidRead, SnapshotRead, read_access_snapshot, read_paid_access
 from app.domains.catalog.publication import SessionFactory
 from app.infrastructure.preflight import PreflightCleanupPending
 
@@ -27,20 +28,25 @@ class PaidReadResources:
         self.cleanup_timeout_seconds = cleanup_timeout_seconds
         self.engine = engine
         self.limiter = anyio.CapacityLimiter(PAID_READ_CONCURRENCY)
-        self.tasks: set[asyncio.Task[PaidRead]] = set()
+        self.tasks: set[asyncio.Task] = set()
         self.closed = False
 
     async def read(self, configuration: Settings, token: str) -> PaidRead:
+        return await self._run(partial(read_paid_access, self.factory, configuration, token))
+
+    async def snapshot(self, configuration: Settings, user_id: UUID) -> SnapshotRead:
+        try:
+            return await self._run(partial(read_access_snapshot, self.factory, configuration, user_id))
+        except SQLAlchemyError:
+            raise BillingRefused("paid_access_unavailable", 503) from None
+
+    async def _run[T](self, operation: Callable[[], T]) -> T:
         if self.closed or len(self.tasks) >= PAID_READ_CONCURRENCY + PAID_READ_MAX_WAITING:
             raise BillingRefused("paid_access_busy", 503)
-        task = asyncio.create_task(
-            anyio.to_thread.run_sync(
-                partial(read_paid_access, self.factory, configuration, token), limiter=self.limiter
-            )
-        )
+        task = asyncio.create_task(anyio.to_thread.run_sync(operation, limiter=self.limiter))
         self.tasks.add(task)
 
-        def completed(owner: asyncio.Task[PaidRead]) -> None:
+        def completed(owner: asyncio.Task[T]) -> None:
             self.tasks.discard(owner)
             if not owner.cancelled():
                 owner.exception()

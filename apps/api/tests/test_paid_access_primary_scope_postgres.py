@@ -7,9 +7,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.composition.billing_operator import resolve_review
+from app.composition.purchase_inventory import collect_inventory
 from app.core.errors import AppError
 from app.domains.billing.operator_diagnostics import inspect_evidence
 from app.domains.purchases import service
+from app.domains.purchases.contracts import PurchaseInventoryIncomplete
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.errors import LbxUnavailable
 from app.integrations.lbx.financial import Subscription
@@ -72,6 +74,19 @@ async def test_primary_resolution_requires_complete_relevant_product(
             )
         db.commit()
     await run_inventory(Scenario(factory, config, transport, sources, identity))
+    if unrelated_incomplete:
+        customer = service.customer_for_purchase(factory, config, second)
+        async with sources.billing.operation(bound_scope=False) as budget:
+            inventory = await collect_inventory(
+                sources.require_lbx(), sources.billing, config, factory=factory, customer=customer, budget=budget
+            )
+        assert not inventory.complete
+        inventory.require_clear(second, original=True, primary=True)
+        # A product-complete primary proof cannot authorize financial CREATE,
+        # restore-original or bind-original against incomplete customer proof.
+        for original in (False, True):
+            with pytest.raises(PurchaseInventoryIncomplete):
+                inventory.require_clear(second, original=original)
     if not retired:
         assert any(grant["product_id"] == "brief_decoder" for grant in effective(factory)[1]["grants"])
         return

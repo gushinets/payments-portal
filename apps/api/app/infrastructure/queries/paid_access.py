@@ -159,8 +159,25 @@ def latest_paid_allowance_end(subscription_id: UUID | SQLColumnExpression[UUID])
     )
 
 
+def latest_paid_allowance_start(db: Session, subscription_id: UUID) -> datetime | None:
+    return db.scalar(
+        select(PurchasedAllowance.period_start)
+        .where(
+            PurchasedAllowance.subscription_id == subscription_id,
+            PurchasedAllowance.cycle_schema_version == "timestamp:v1",
+        )
+        .order_by(PurchasedAllowance.created_at.desc(), PurchasedAllowance.allowance_id.desc())
+        .limit(1)
+    )
+
+
 def missing_deadline_users(
-    db: Session, tenant: str, region: str, limit: int, *, allow_simulated_metering: bool = True
+    db: Session,
+    tenant: str,
+    region: str,
+    limit: int,
+    *,
+    permitted_provenances: tuple[str, ...] = ("CONFIGURED_SOURCE", "SIMULATED"),
 ) -> list[UUID]:
     """Persisted scope/identity, independent of today's source account setting."""
     allowance_end = (
@@ -183,14 +200,16 @@ def missing_deadline_users(
         BillingWorkItem.next_attempt_at <= metering_deadline,
     )
     needs_repair = ~scheduled
-    if not allow_simulated_metering:
-        simulated = exists().where(
+    if "SIMULATED" not in permitted_provenances:
+        unpermitted = exists().where(
             ExternalSubscription.subscription_id == BillingProductAccessScope.primary_subscription_id,
             ExternalSubscription.purchase_intent_id == PurchaseIntent.purchase_intent_id,
-            PurchaseIntent.accepted_snapshot["technical_terms"]["provenance"].as_string() == "SIMULATED",
+            func.coalesce(PurchaseIntent.accepted_snapshot["technical_terms"]["provenance"].as_string(), "").not_in(
+                permitted_provenances
+            ),
         )
         needs_repair = or_(
-            needs_repair, simulated & (BillingProductAccessScope.effective_access_document["allowances"] != [])
+            needs_repair, unpermitted & (BillingProductAccessScope.effective_access_document["allowances"] != [])
         )
     return list(
         db.scalars(

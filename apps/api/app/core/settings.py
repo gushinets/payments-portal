@@ -20,7 +20,7 @@ from app.core.url_validation import (
 
 SUPPORTED_INSTANCE_TENANT_ID = "anytoolai"
 SUPPORTED_INSTANCE_REGION = "ru"
-KernelAccessPermission = Literal["kernel-session:exchange", "kernel-session:introspect"]
+KernelAccessPermission = Literal["kernel-session:exchange", "kernel-session:introspect", "access-snapshot:read"]
 
 
 def require_supported_instance_scope(*, tenant_id: str, region: str) -> None:

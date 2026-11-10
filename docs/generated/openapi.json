@@ -62,6 +62,141 @@
         "title": "AcceptDocumentResponse",
         "type": "object"
       },
+      "AccessSnapshotAllowance": {
+        "additionalProperties": false,
+        "properties": {
+          "allowance_id": {
+            "format": "uuid",
+            "title": "Allowance Id",
+            "type": "string"
+          },
+          "metric_key": {
+            "minLength": 1,
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "product_id": {
+            "minLength": 1,
+            "title": "Product Id",
+            "type": "string"
+          },
+          "quantity": {
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "unit": {
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "allowance_id",
+          "product_id",
+          "metric_key",
+          "unit",
+          "quantity"
+        ],
+        "title": "AccessSnapshotAllowance",
+        "type": "object"
+      },
+      "AccessSnapshotGrant": {
+        "additionalProperties": false,
+        "properties": {
+          "product_id": {
+            "minLength": 1,
+            "title": "Product Id",
+            "type": "string"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          }
+        },
+        "required": [
+          "product_id",
+          "valid_until"
+        ],
+        "title": "AccessSnapshotGrant",
+        "type": "object"
+      },
+      "AccessSnapshotResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "access_revision": {
+            "minimum": 0.0,
+            "title": "Access Revision",
+            "type": "integer"
+          },
+          "allowances": {
+            "items": {
+              "$ref": "#/components/schemas/AccessSnapshotAllowance"
+            },
+            "title": "Allowances",
+            "type": "array"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "grants": {
+            "items": {
+              "$ref": "#/components/schemas/AccessSnapshotGrant"
+            },
+            "title": "Grants",
+            "type": "array"
+          },
+          "refresh_after": {
+            "format": "date-time",
+            "title": "Refresh After",
+            "type": "string"
+          },
+          "region": {
+            "minLength": 1,
+            "title": "Region",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 2,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "tenant_id": {
+            "minLength": 1,
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "tenant_id",
+          "region",
+          "user_id",
+          "access_revision",
+          "refresh_after",
+          "expires_at",
+          "grants",
+          "allowances"
+        ],
+        "title": "AccessSnapshotResponse",
+        "type": "object"
+      },
       "AccountPurchaseResponse": {
         "properties": {
           "created_at": {
@@ -3028,6 +3163,69 @@
         "summary": "Review",
         "tags": [
           "purchases"
+        ]
+      }
+    },
+    "/internal/v1/access-snapshots/{user_id}": {
+      "get": {
+        "operationId": "access_snapshot_internal_v1_access_snapshots__user_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "region",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Region",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Access Snapshot",
+        "tags": [
+          "access-snapshot"
         ]
       }
     },
