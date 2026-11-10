@@ -1,14 +1,14 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-11-10 (ANY-765 accepted terms and paid-access schema; ANY-812 policy clarification)
+Last updated: 2026-11-10 (ANY-766 scoped session delegation; ANY-812 policy clarification)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 (head)
+20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
@@ -62,12 +62,13 @@ configuration. Kernel invalidation delivery remains ANY-766 work.
 
 ## Physical baseline
 
-A fresh database has exactly 27 application tables: ten retained
+A fresh database has exactly 28 application tables: ten retained
 identity/session/legal tables, fifteen original external-billing persistence
-tables, one current product-link pointer and one purchase mutex. Alembic has
-five revisions in one linear chain and one current head. Revision
+tables, one current product-link pointer, one purchase mutex and one session
+delegation table. Alembic has six revisions in one linear chain and one current head. Revision
 `20261029_0003` belongs to ANY-709, `20261028_0005` to ANY-715 and
-`20261031_0006` to ANY-765.
+`20261031_0006` to ANY-765 and `20261110_0007` to ANY-766. The new migration
+adds only `kernel_session_delegations`; it is not applied automatically by the API.
 
 There is no Portal-owned product, plan, order, payment, refund, subscription,
 entitlement, trial, provider-account, or direct-payment webhook table. There is
@@ -81,6 +82,7 @@ to a Portal-managed routing catalog.
 | `country_region_rules` | Identity/contour | Country membership, market enablement, strict mismatch, and legal document-set selection. |
 | `users` | Identity | Canonical contour-scoped Portal user. |
 | `auth_sessions` | Identity | Hashed, expiring and revocable authenticated sessions. |
+| `kernel_session_delegations` | Identity | Hash-only single-use PKCE codes and narrow Kernel tokens; parent-session deletion cascades. |
 | `magic_link_tokens` | Identity | Purpose-bound hash-only password-reset and email-verification capabilities, including decoy-safe nullable user binding for password reset. |
 | `password_reset_rate_limits` | Identity | Durable password-reset rate-limit windows. |
 | `legal_entities` | Legal | Contour operator metadata. |
@@ -473,3 +475,26 @@ outbound command success, or payment state alone never grant paid access.
 The discarded Alembic history has no upgrade bridge into this baseline. Reset,
 compatibility and recovery procedures are documented in
 [Deployment Architecture](deployment.md#one-time-step-4-recreate-and-bootstrap).
+
+## Kernel session delegation (ANY-766 Step 4)
+
+`kernel_session_delegations` references `auth_sessions.id` with `ON DELETE CASCADE`.
+It stores unique SHA-256 code/token hashes, the S256 challenge, fixed
+`platform-kernel` audience and separate code/exchange/token deadlines. A check
+constraint requires exchange time, token hash and token expiry to be either all
+absent or all present. Raw credentials and a second user directory are absent.
+
+Code issuance and atomic exchange acquire User → AuthSession → delegation locks
+(the last lock applies to exchange), then recheck active status and parent
+revocation/expiry. Codes last at most 60 seconds; tokens last at most 30 minutes
+and never outlive the parent. `UserStatus.INACTIVE` is an explicit non-active
+storage value; no deactivation endpoint is introduced. Existing password reset
+revokes the parent sessions and logout deletes its parent.
+
+Introspection uses one joined read of delegation/session/user, never updates
+`last_seen_at` and never commits. Its deadline subtracts the configured
+Portal–Kernel clock budget once. Internal reads share validation with existing
+Portal identity without adopting public last-seen bookkeeping. Scope comes from
+the existing user/session, and service permissions come from receiver settings.
+The [contract bundle](../contracts/portal-kernel-paid/README.md#step-4-server-implementation)
+records operation configuration, errors and remaining integration boundaries.

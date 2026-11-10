@@ -77,6 +77,25 @@ records historical `LOCAL_SPEC_CONFORMANCE=PASS` and
 `REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED`; the latter describes that
 earlier checkpoint, not today's endpoint availability.
 
+## ANY-766 Step 4 identity checkpoint — 2026-11-10
+
+Portal `4a34948eb02d034b46871d739bbf066ffc67d48a` and Kernel
+`89296ddce3c7b187881cb1730bf7fbacf3ffd302` were inspected locally, plus the
+paired uncommitted Step 4 change. Portal now issues hash-only one-use S256 codes
+and serves scoped exchange/introspection. Kernel exposes code exchange and a
+request-by-request identity dependency returning the existing Core
+`ExecutionOwner` for a canonical Portal UUID, without local identity matching.
+The original Portal bearer stays at Portal.
+
+The [server configuration and limits](../contracts/portal-kernel-paid/README.md#step-4-server-implementation)
+include independent directional credentials, explicit receiver permissions,
+rotation, fixed audience, parent revocation, finite deadlines, no-store and
+secret-safe refusals. Local PostgreSQL tests cover migration/cascade/single-use
+races; Kernel HTTP is intercepted in focused boundary tests. This is not real
+two-service HTTP or deployed acceptance. Browser launch/recovery remains Step 8;
+paid runtime wiring and ownership enforcement remain Step 6. Existing guest
+routes are unchanged. Snapshot, usage and delivery retain their later gates.
+
 ## Dependencies before real integration
 
 - **Identity:** paid access uses Portal's authenticated UUID under

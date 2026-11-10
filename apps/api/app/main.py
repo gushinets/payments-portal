@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
@@ -23,6 +24,8 @@ from app.domains.billing.router import router as billing_router
 from app.domains.catalog.router import router as catalog_router
 from app.domains.identity.password_reset import router as password_reset_router
 from app.domains.identity.router import router as auth_router
+from app.domains.identity.kernel_router import router as kernel_session_router
+from app.http.kernel_session_policy import kernel_session_policy, session_validation_error
 from app.domains.legal.router import router as legal_router
 from app.domains.purchases.router import router as purchases_router
 from app.http.errors import app_error_handler, unexpected_failure_middleware
@@ -93,6 +96,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    app.middleware("http")(kernel_session_policy)
+    app.add_exception_handler(RequestValidationError, session_validation_error)
+    app.include_router(kernel_session_router)
     app.include_router(billing_router)
     app.include_router(paid_access_router)
     app.include_router(purchases_router)

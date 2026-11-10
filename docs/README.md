@@ -94,7 +94,7 @@ Start with the smallest document that matches the task.
 - [Billing authority](architecture/billing-authority.md) — historical/superseded
   reference only; not current-state or target authority
 - [Payment Portal data model](architecture/payment-portal-data-model.md) —
-  authoritative current as-built 27-table schema reference
+  authoritative current as-built 28-table schema reference
 - [Platform Kernel contract boundary](architecture/platform-kernel-contract.md)
   — superseded planned contract; retained historical context
 

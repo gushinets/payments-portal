@@ -493,6 +493,166 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "KernelCodeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "code_challenge": {
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "title": "Code Challenge",
+            "type": "string"
+          },
+          "code_challenge_method": {
+            "const": "S256",
+            "title": "Code Challenge Method",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code_challenge",
+          "code_challenge_method"
+        ],
+        "title": "KernelCodeRequest",
+        "type": "object"
+      },
+      "KernelCodeResponse": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "expires_at"
+        ],
+        "title": "KernelCodeResponse",
+        "type": "object"
+      },
+      "KernelExchangeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "title": "Code",
+            "type": "string"
+          },
+          "code_verifier": {
+            "pattern": "^[A-Za-z0-9._~-]{43,128}$",
+            "title": "Code Verifier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "code_verifier"
+        ],
+        "title": "KernelExchangeRequest",
+        "type": "object"
+      },
+      "KernelExchangeResponse": {
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "token_type": {
+            "const": "Bearer",
+            "default": "Bearer",
+            "title": "Token Type",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "tenant_id",
+          "region",
+          "user_id",
+          "expires_at"
+        ],
+        "title": "KernelExchangeResponse",
+        "type": "object"
+      },
+      "KernelIntrospectionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "access_token": {
+            "maxLength": 512,
+            "minLength": 43,
+            "title": "Access Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token"
+        ],
+        "title": "KernelIntrospectionRequest",
+        "type": "object"
+      },
+      "KernelIntrospectionResponse": {
+        "properties": {
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "valid_until": {
+            "format": "date-time",
+            "title": "Valid Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "region",
+          "user_id",
+          "valid_until"
+        ],
+        "title": "KernelIntrospectionResponse",
+        "type": "object"
+      },
       "LegalEvidence": {
         "additionalProperties": false,
         "properties": {
@@ -2318,6 +2478,47 @@
         ]
       }
     },
+    "/api/kernel-session-codes": {
+      "post": {
+        "operationId": "create_kernel_code_api_kernel_session_codes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KernelCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KernelCodeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Kernel Code",
+        "tags": [
+          "kernel-session"
+        ]
+      }
+    },
     "/api/legal/acceptances": {
       "post": {
         "operationId": "accept_document_api_legal_acceptances_post",
@@ -2827,6 +3028,88 @@
         "summary": "Review",
         "tags": [
           "purchases"
+        ]
+      }
+    },
+    "/internal/v1/kernel-sessions/exchange": {
+      "post": {
+        "operationId": "exchange_kernel_code_internal_v1_kernel_sessions_exchange_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KernelExchangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KernelExchangeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Exchange Kernel Code",
+        "tags": [
+          "kernel-session"
+        ]
+      }
+    },
+    "/internal/v1/kernel-sessions/introspect": {
+      "post": {
+        "operationId": "introspect_kernel_token_internal_v1_kernel_sessions_introspect_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KernelIntrospectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KernelIntrospectionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Introspect Kernel Token",
+        "tags": [
+          "kernel-session"
         ]
       }
     }

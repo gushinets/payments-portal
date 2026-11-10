@@ -99,7 +99,7 @@ def _authentication_result(*, user: User, token: str) -> AuthenticationResult:
     )
 
 
-def authenticate_session(
+def validate_session(
     db: Session,
     *,
     token: str,
@@ -121,6 +121,17 @@ def authenticate_session(
     if user is None:
         raise InvalidAuthSessionError()
 
+    return user, auth_session
+
+
+def authenticate_session(
+    db: Session,
+    *,
+    token: str,
+    tenant_id: str,
+    region: str,
+) -> tuple[User, AuthSession]:
+    user, auth_session = validate_session(db, token=token, tenant_id=tenant_id, region=region)
     auth_session.last_seen_at = utc_now()
     db.add(auth_session)
     db.commit()

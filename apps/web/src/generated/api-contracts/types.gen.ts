@@ -294,6 +294,118 @@ export type HTTPValidationError = {
 };
 
 /**
+ * KernelCodeRequest
+ */
+export type KernelCodeRequest = {
+    /**
+     * Code Challenge
+     */
+    code_challenge: string;
+    /**
+     * Code Challenge Method
+     */
+    code_challenge_method: 'S256';
+};
+
+/**
+ * KernelCodeResponse
+ */
+export type KernelCodeResponse = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Expires At
+     */
+    expires_at: string;
+};
+
+/**
+ * KernelExchangeRequest
+ */
+export type KernelExchangeRequest = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Code Verifier
+     */
+    code_verifier: string;
+};
+
+/**
+ * KernelExchangeResponse
+ */
+export type KernelExchangeResponse = {
+    /**
+     * Access Token
+     */
+    access_token: string;
+    /**
+     * Expires At
+     */
+    expires_at: string;
+    /**
+     * Region
+     */
+    region: string;
+    /**
+     * Schema Version
+     */
+    schema_version?: 1;
+    /**
+     * Tenant Id
+     */
+    tenant_id: string;
+    /**
+     * Token Type
+     */
+    token_type?: 'Bearer';
+    /**
+     * User Id
+     */
+    user_id: string;
+};
+
+/**
+ * KernelIntrospectionRequest
+ */
+export type KernelIntrospectionRequest = {
+    /**
+     * Access Token
+     */
+    access_token: string;
+};
+
+/**
+ * KernelIntrospectionResponse
+ */
+export type KernelIntrospectionResponse = {
+    /**
+     * Region
+     */
+    region: string;
+    /**
+     * Schema Version
+     */
+    schema_version?: 1;
+    /**
+     * Tenant Id
+     */
+    tenant_id: string;
+    /**
+     * User Id
+     */
+    user_id: string;
+    /**
+     * Valid Until
+     */
+    valid_until: string;
+};
+
+/**
  * LegalEvidence
  */
 export type LegalEvidence = {
@@ -1416,6 +1528,31 @@ export type ReadinessApiHealthReadyGetResponses = {
 
 export type ReadinessApiHealthReadyGetResponse = ReadinessApiHealthReadyGetResponses[keyof ReadinessApiHealthReadyGetResponses];
 
+export type CreateKernelCodeApiKernelSessionCodesPostData = {
+    body: KernelCodeRequest;
+    path?: never;
+    query?: never;
+    url: '/api/kernel-session-codes';
+};
+
+export type CreateKernelCodeApiKernelSessionCodesPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type CreateKernelCodeApiKernelSessionCodesPostError = CreateKernelCodeApiKernelSessionCodesPostErrors[keyof CreateKernelCodeApiKernelSessionCodesPostErrors];
+
+export type CreateKernelCodeApiKernelSessionCodesPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: KernelCodeResponse;
+};
+
+export type CreateKernelCodeApiKernelSessionCodesPostResponse = CreateKernelCodeApiKernelSessionCodesPostResponses[keyof CreateKernelCodeApiKernelSessionCodesPostResponses];
+
 export type AcceptDocumentApiLegalAcceptancesPostData = {
     body: AcceptDocumentRequest;
     headers?: {
@@ -1707,3 +1844,53 @@ export type ReviewApiPurchasesReviewPostResponses = {
 };
 
 export type ReviewApiPurchasesReviewPostResponse = ReviewApiPurchasesReviewPostResponses[keyof ReviewApiPurchasesReviewPostResponses];
+
+export type ExchangeKernelCodeInternalV1KernelSessionsExchangePostData = {
+    body: KernelExchangeRequest;
+    path?: never;
+    query?: never;
+    url: '/internal/v1/kernel-sessions/exchange';
+};
+
+export type ExchangeKernelCodeInternalV1KernelSessionsExchangePostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type ExchangeKernelCodeInternalV1KernelSessionsExchangePostError = ExchangeKernelCodeInternalV1KernelSessionsExchangePostErrors[keyof ExchangeKernelCodeInternalV1KernelSessionsExchangePostErrors];
+
+export type ExchangeKernelCodeInternalV1KernelSessionsExchangePostResponses = {
+    /**
+     * Successful Response
+     */
+    200: KernelExchangeResponse;
+};
+
+export type ExchangeKernelCodeInternalV1KernelSessionsExchangePostResponse = ExchangeKernelCodeInternalV1KernelSessionsExchangePostResponses[keyof ExchangeKernelCodeInternalV1KernelSessionsExchangePostResponses];
+
+export type IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostData = {
+    body: KernelIntrospectionRequest;
+    path?: never;
+    query?: never;
+    url: '/internal/v1/kernel-sessions/introspect';
+};
+
+export type IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostError = IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostErrors[keyof IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostErrors];
+
+export type IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: KernelIntrospectionResponse;
+};
+
+export type IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostResponse = IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostResponses[keyof IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostResponses];

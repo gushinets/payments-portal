@@ -9,6 +9,7 @@ class RegionStatus(StrEnum):
 
 class UserStatus(StrEnum):
     ACTIVE = "active"
+    INACTIVE = "inactive"
 
 
 class MagicLinkPurpose(StrEnum):

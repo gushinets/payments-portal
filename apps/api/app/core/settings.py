@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -19,6 +20,7 @@ from app.core.url_validation import (
 
 SUPPORTED_INSTANCE_TENANT_ID = "anytoolai"
 SUPPORTED_INSTANCE_REGION = "ru"
+KernelAccessPermission = Literal["kernel-session:exchange", "kernel-session:introspect"]
 
 
 def require_supported_instance_scope(*, tenant_id: str, region: str) -> None:
@@ -85,6 +87,9 @@ class Settings(BaseSettings):
     sentry_release: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
     kernel_base_url: str = ""
     kernel_service_token: SecretStr = SecretStr("")
+    kernel_access_service_token: SecretStr | None = Field(default=None, repr=False)
+    kernel_access_service_token_previous: SecretStr | None = Field(default=None, repr=False)
+    kernel_access_permissions: Annotated[tuple[KernelAccessPermission, ...], NoDecode] = ()
     kernel_mock_enabled: bool = False
     purchase_test_terms_enabled: bool = False
     # Deployment supplies its supported clock guarantee; no guessed default.
@@ -123,6 +128,27 @@ class Settings(BaseSettings):
     # Required by dry-run/publish only; query and the HTTP API do not use it.
     mapping_operator_lock_file: Path | None = None
     mapping_lock_timeout_seconds: float = Field(default=2.0, gt=0, le=10, allow_inf_nan=False)
+
+    @field_validator("kernel_access_permissions", mode="before")
+    @classmethod
+    def parse_kernel_permissions(cls, value: object) -> object:
+        return _split_csv_value(value) if isinstance(value, str) else value
+
+    @field_validator("kernel_access_service_token", "kernel_access_service_token_previous")
+    @classmethod
+    def validate_kernel_access_token(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and not re.fullmatch(r"[A-Za-z0-9._~+/-]{32,256}={0,2}", value.get_secret_value()):
+            raise ValueError("Kernel access tokens require 32–256 Bearer-safe characters")
+        return value
+
+    @model_validator(mode="after")
+    def validate_kernel_access_rotation(self) -> Settings:
+        current, previous = self.kernel_access_service_token, self.kernel_access_service_token_previous
+        if previous is not None and (current is None or previous == current):
+            raise ValueError("Previous Kernel access token requires a distinct current token")
+        if any(token is not None and token == self.kernel_service_token for token in (current, previous)):
+            raise ValueError("Kernel directional service tokens must differ")
+        return self
 
     @field_validator("paid_access_clock_skew_seconds", mode="before")
     @classmethod
