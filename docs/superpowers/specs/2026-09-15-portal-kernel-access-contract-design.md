@@ -10,7 +10,10 @@ wire semantics, AccessSnapshot, AccessInvalidation and paid-access trust remain 
 
 ## ANY-766 selected contracts — 2026-11-09
 
-Status: **formalized target; runtime implementation is pending**. The accepted
+Status at Step 1 formalization: **formalized target; runtime implementation was pending**.
+Current implementation status and acceptance limits are recorded in the
+[active ANY-766 plan](../../exec-plans/active/ANY-766-implementation-plan.md).
+The accepted
 2026-11-03 strategy and 2026-11-09 scope clarification in
 [ANY-766](https://linear.app/paveldik/issue/ANY-766) are implemented by these
 concrete contracts. Their technical review belongs to Step 1; no additional

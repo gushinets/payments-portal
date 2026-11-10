@@ -100,9 +100,9 @@ triggers, operation-account backfill and purchase holds. Within the consolidated
 revision, upgrade preserves the old `0003` then `0004` operation order;
 downgrade reverses those operations.
 The consolidation preserved that baseline's schema, legal seed, historical
-consent and accepted-purchase meaning. The current chain continues through
-ANY-715 `20261028_0005` to ANY-765 `20261031_0006`; see the
-[current schema reference](../architecture/payment-portal-data-model.md#physical-baseline).
+consent and accepted-purchase meaning. The
+[current schema reference](../architecture/payment-portal-data-model.md#physical-baseline)
+owns the subsequent forward chain and its current head.
 The retained transitions below align old ANY-709 branch labels at `0003` before
 the normal forward upgrade; they do not make `0003` the current head.
 
@@ -110,8 +110,8 @@ the normal forward upgrade; they do not make `0003` the current head.
   command above. Conflicting old identities or held scopes abort the transaction;
   the migration never chooses, deletes or relabels those records.
 - A database at `20261029_0003`, with the nullable active recovery column and
-  its complete expected schema, runs normal `upgrade head` to apply `0005` and
-  `0006`. The paid migration refuses incompatible history without repairing it.
+  its complete expected schema, runs normal `upgrade head` to apply all subsequent
+  revisions. The paid migration refuses incompatible history without repairing it.
 - A **pre-consolidation** database at `20261027_0003` may lack
   `billing_work_items.active_recovery_deadline_at`. The new distinct revision ID
   makes `upgrade head` refuse this retired label instead of silently skipping
@@ -124,7 +124,7 @@ the normal forward upgrade; they do not make `0003` the current head.
   After an exact match, use a guarded transaction that requires the single old
   `0004` version row to change only `alembic_version` to `20261029_0003`.
   Preserve/fingerprint all application rows across that label-only transition,
-  then run normal `upgrade head` to apply `0005` and `0006`. Never replay the
+  then run normal `upgrade head` through the current head. Never replay the
   consolidated DDL on that database.
 - A fully upgraded database at retired `20261027_0006` has the pre-window schema, but
   its old label is not in the new graph. Verify that its columns, constraints,

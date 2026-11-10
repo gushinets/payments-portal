@@ -18,8 +18,12 @@ from app.domains.identity.services.kernel_delegation import (
     issue_code,
 )
 from app.http.kernel_auth import KernelPrincipal, authorize_exchange, authorize_introspection
+from app.http.kernel_session_policy import KernelErrorResponse
 
-router = APIRouter(tags=["kernel-session"])
+router = APIRouter(
+    tags=["kernel-session"],
+    responses={status: {"model": KernelErrorResponse} for status in (401, 422, 503)},
+)
 
 
 class KernelCodeRequest(BaseModel):
@@ -97,7 +101,7 @@ def create_kernel_code(
         raise HTTPException(503, detail={"code": "kernel_session_unavailable"}) from None
 
 
-@router.post("/internal/v1/kernel-sessions/exchange")
+@router.post("/internal/v1/kernel-sessions/exchange", responses={403: {"model": KernelErrorResponse}})
 def exchange_kernel_code(
     payload: KernelExchangeRequest,
     principal: Annotated[KernelPrincipal, Depends(authorize_exchange)],
@@ -124,7 +128,7 @@ def exchange_kernel_code(
         raise HTTPException(503, detail={"code": "kernel_session_unavailable"}) from None
 
 
-@router.post("/internal/v1/kernel-sessions/introspect")
+@router.post("/internal/v1/kernel-sessions/introspect", responses={403: {"model": KernelErrorResponse}})
 def introspect_kernel_token(
     payload: KernelIntrospectionRequest,
     principal: Annotated[KernelPrincipal, Depends(authorize_introspection)],

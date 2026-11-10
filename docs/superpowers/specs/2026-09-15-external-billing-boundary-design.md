@@ -11,7 +11,10 @@ AccessSnapshot, subscription reconciliation and trust deadlines are unchanged.
 
 ## ANY-766 boundary formalization — 2026-11-09
 
-Status: **selected target contracts; runtime work remains pending**. The accepted
+Status at Step 1 formalization: **selected target contracts; runtime work was pending**.
+Current implementation status and acceptance limits are recorded in the
+[active ANY-766 plan](../../exec-plans/active/ANY-766-implementation-plan.md).
+The accepted
 2026-11-03 strategy and [ANY-766's 2026-11-09 scope clarification](https://linear.app/paveldik/issue/ANY-766)
 assign the selected production vocabulary/scenario bindings and consuming Portal
 work to ANY-766. ANY-711 remains Done for its delivered manifest/TEST-ONLY
