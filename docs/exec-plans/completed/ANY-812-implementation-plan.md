@@ -1,9 +1,13 @@
 # ANY-812 — Canonical enum guard and internal-contract rules
 
-Status: active; Steps 1–2 implemented; rebased full check passed; human merge approval pending.
+Status: **DONE** — approved Steps 1–2 and local review follow-up completed.
+Archived: 2026-11-10 at the owner's explicit request.
 Created: 2026-11-03
 Owner: ANY-812 delivery agent
 Execution branch: `ANY-812`
+
+Planning and verification entries below retain their dated scope; archiving
+does not claim a new full canonical PASS or grant merge approval.
 
 ## 1. Objective, authority and verified baseline
 
@@ -546,6 +550,6 @@ The original implementation base was
 implementation SHA are recorded above. Steps 1–2 are implemented, with separate
 evidence. [PR #160](https://github.com/gushinets/payments-portal/pull/160)
 targets main and includes the ticket, template sections and current verification
-results. No further implementation step is planned within ANY-812. Remaining
-delivery work is CI disposition and human merge approval. The plan stays active
-until those delivery items are resolved. ANY-800 steps 3–8 remain unstarted here.
+results. No further implementation step is planned within ANY-812. This
+implementation plan is complete and archived; CI disposition and human merge
+approval are separate delivery concerns. ANY-800 steps 3–8 remain unstarted here.
