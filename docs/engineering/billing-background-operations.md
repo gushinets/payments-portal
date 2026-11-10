@@ -610,13 +610,14 @@ commit local paid access, stable allowances and revision/outbox changes. The
 existing local lane reduces expired access and repairs deadlines without source
 HTTP. The [producer handoff](#step-10-handoff--any-765) below defines the inherited
 seams. ANY-766 Steps 5–7 now implement snapshot V2, Kernel paid admission and
-invalidation delivery; its Step 11 owns local joint acceptance. ANY-767 owns
+invalidation delivery; its Step 16 owns local joint acceptance. ANY-767 owns
 the subsequent remote/live journey, remaining natural renewal and rollout.
 
 ## Step 10 handoff — ANY-765
 
-Here, Step 10 means parent ANY-504's ANY-766 stage, not the cabinet-only Step 10
-inside the ANY-766 implementation plan.
+Here, Step 10 means parent ANY-504's ANY-766 stage. Within the revised ANY-766
+implementation plan, Step 10 generalizes consumer authentication/delegation,
+Step 15 adds cabinet usage, and Step 16 owns assembled local acceptance.
 
 This is the implemented local producer baseline for
 [ANY-766](https://linear.app/paveldik/issue/ANY-766), not an internal HTTP wire.

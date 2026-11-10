@@ -190,7 +190,7 @@ names and ownership decisions.
 | Purchase/payment Widget entry | External Billing with Portal orchestration and generated contracts | ANY-709 implements Buy/Continue/Manage, review/consent and fresh verified payment presentation |
 | Subscription/billing state | Step 7 preparation/history plus ANY-715 authoritative normalized observations with finite source trust | Preparation is not payment verification; reconciliation facts are not paid grants; no new UI state contract is claimed |
 | Provider reconciliation/recovery | ANY-715 embedded polling, GET-only recovery/inventory and provider-free deadlines over authoritative External Billing reads | Step 8 implemented; polling-only; webhook receiver removed; verification scope/results are in the [completed ANY-715 plan](../exec-plans/completed/ANY-715-mvp-rebuild-plan.md#stage-6-verification-and-handoff--2026-11-06) |
-| Confirmed paid-access state and delivery | ANY-765 committed provider-neutral projection from shared authoritative observations | Local authenticated cabinet read, ANY-766 snapshot V2 and durable invalidation delivery implemented; paired acceptance remains ANY-766 Step 11 |
+| Confirmed paid-access state and delivery | ANY-765 committed provider-neutral projection from shared authoritative observations | Local authenticated cabinet read, ANY-766 snapshot V2 and durable invalidation delivery implemented; paired acceptance remains ANY-766 Step 16 |
 | Actual usage and remaining quota | Platform Kernel owns persisted usage; Portal has no usage API integration | Unavailable in the cabinet; integration deferred to ANY-504 Step 10 |
 
 The Portal owns identity/legal, the billing anti-corruption, observation/projection,

@@ -37,7 +37,7 @@ The [Platform Kernel integration map](docs/integrations/platform-kernel.md)
 records pinned peer implementation and the remaining enablement gates. Manifest
 HTTP reads are implemented, with an optional development mock. Snapshot and
 invalidation transport are implemented; assembled local acceptance remains
-ANY-766 Step 11, followed by remote/live acceptance in ANY-767.
+ANY-766 Step 16, followed by remote/live acceptance in ANY-767.
 
 ```mermaid
 flowchart LR

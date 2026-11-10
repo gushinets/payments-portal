@@ -63,7 +63,7 @@ projection tables remain inert. Dated delivery evidence belongs to
 These are cross-cutting constraints. Purchase preparation, embedded polling,
 GET-only recovery, audited operations and local paid derivation are implemented;
 Kernel invalidation delivery is locally tested with synthetic peer responses;
-paired HTTP/browser acceptance remains ANY-766 Step 11. The MVP has no webhook receiver or
+paired HTTP/browser acceptance remains ANY-766 Step 16. The MVP has no webhook receiver or
 receipt processor. Retained inbox rows remain history. Durable queue generations,
 claims and bounded retries preserve polling progress independently of callbacks.
 See [polling-only operation](engineering/billing-background-operations.md#polling-only-operation).

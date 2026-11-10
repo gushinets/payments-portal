@@ -70,9 +70,13 @@ Start with the smallest document that matches the task.
 - [ANY-664 completed implementation plan](exec-plans/completed/ANY-664-implementation-plan.md)
   — all eight Portal steps DONE; implementation-commit CI evidence, retained
   real-enablement gates and handoff to ANY-504 program Step 7
+- [Common product backend API target](contracts/product-backend-api/README.md)
+  — Step 9 consumer-neutral identity/access specification, safe examples, bounded
+  replacement/migration inventory and Step 12 working auth/access checkpoint.
 - [ANY-766 paid integration target contracts](contracts/portal-kernel-paid/README.md)
   — reviewed target schemas, producer/consumer copies and offline fixtures for
-  snapshot V2, identity, invalidation, usage/exhaustion and cabinet contracts;
+  retained snapshot V2/identity V1 plus target V3/generic identity V2,
+  invalidation, usage/exhaustion and cabinet contracts;
   implemented delegation, snapshot V2, coherent paid admission and invalidation
   delivery and recoverable paid browser launch; usage integration and paired
   acceptance remain pending.
@@ -120,7 +124,7 @@ Start with the smallest document that matches the task.
 - [Security](SECURITY.md)
 - [Quality score](QUALITY_SCORE.md)
 - [Execution plans](exec-plans/README.md)
-- [ANY-766 active implementation plan](exec-plans/active/ANY-766-implementation-plan.md) — authoritative Portal/backend API and Kernel integration plan; Steps 1–8 complete, consumer-neutral API work from ANY-833 planned in Steps 9–13, remaining local delivery in Steps 14–17.
+- [ANY-766 active implementation plan](exec-plans/active/ANY-766-implementation-plan.md) — authoritative Portal/backend API and Kernel integration plan; Steps 1–9 complete, consumer-neutral runtime work from ANY-833 planned in Steps 10–13, remaining local delivery in Steps 14–17.
 - [ANY-715 completed MVP rebuild plan](exec-plans/completed/ANY-715-mvp-rebuild-plan.md) — Stages 0–6 closed by owner decision; verification evidence, limitations and follow-ups under ANY-820 are retained.
 - [Background billing operations](engineering/billing-background-operations.md) — worker settings, scheduling, polling-only operation, retained inbox history, operator commands and diagnostics.
 
