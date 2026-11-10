@@ -14,7 +14,7 @@ RUN python -c 'from zoneinfo import ZoneInfo; ZoneInfo("Europe/Moscow")'
 
 WORKDIR /app
 
-FROM ghcr.io/astral-sh/uv:0.12.7@sha256:95f2aa1fe59274951cfe9b0cbc7972e879ff1004bc8945d130a32eb0dbd85945 AS uv-source
+FROM ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 AS uv-source
 
 FROM base AS dependency-builder
 
