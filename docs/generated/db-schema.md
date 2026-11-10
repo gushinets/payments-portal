@@ -490,6 +490,25 @@ Indexes and constraints:
 - `ix_external_subscriptions_valid_until`
 - `uq_external_subscriptions_purchase_intent`
 
+## `kernel_session_delegations`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `id` | `CHAR(32)` | no | PK |
+| `auth_session_id` | `CHAR(32)` | no | FK |
+| `audience` | `TEXT` | no |  |
+| `code_hash` | `TEXT` | no |  |
+| `code_challenge` | `TEXT` | no |  |
+| `code_expires_at` | `DATETIME` | no |  |
+| `exchanged_at` | `DATETIME` | yes |  |
+| `token_hash` | `TEXT` | yes |  |
+| `token_expires_at` | `DATETIME` | yes |  |
+
+Indexes and constraints:
+
+- `ck_kernel_delegation_exchange_shape`
+- `ix_kernel_session_delegations_auth_session_id`
+
 ## `legal_acceptance_events`
 
 | Column | Type | Nullable | Key |

@@ -16,6 +16,7 @@ from app.main import create_app
 from app.models import (
     AccessInvalidationOutbox,
     AuthSession,
+    KernelSessionDelegation,
     BillingProductAccessScope,
     BillingPurchaseScopeHold,
     BillingStateObservation,
@@ -982,6 +983,7 @@ def test_canonical_orm_contains_step_3_survivors_and_step_4_target_models() -> N
         CountryRegionRule,
         User,
         AuthSession,
+        KernelSessionDelegation,
         MagicLinkToken,
         PasswordResetRateLimit,
         LegalEntity,
@@ -1007,7 +1009,7 @@ def test_canonical_orm_contains_step_3_survivors_and_step_4_target_models() -> N
         AccessInvalidationOutbox,
     )
 
-    assert len(Base.metadata.tables) == 27
+    assert len(Base.metadata.tables) == 28
     assert set(Base.metadata.tables) == {model.__tablename__ for model in retained_models}
 
 
