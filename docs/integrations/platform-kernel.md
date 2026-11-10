@@ -41,8 +41,8 @@ Remote installation and live-service acceptance belong to ANY-767.
 | Operation / request direction | Payload producer | Payload consumer / receiver | Verification status |
 | --- | --- | --- | --- |
 | `GET /internal/v1/capability-manifest`: Portal -> Kernel | Service-authenticated Kernel endpoint implemented; separate Portal development mock remains optional | Portal typed HTTP client implemented | Source inspected; local fixture evidence does not establish current joint conformance |
-| `GET /internal/v1/access-snapshots/{user_id}`: Kernel -> Portal | Step 5 serves scoped read-only V2 from committed paid state | Step 6 implements the client, durable coherence and paid admission | Paired local acceptance remains Step 11 |
-| `POST /internal/v1/access-invalidations`: Portal -> Kernel | ANY-766 Step 7 implements bounded claimed delivery, exact-N ACK, restart repair and parked-work CLI | Kernel Step 6 implements the durable receiver; permission is disabled by default | Focused local PostgreSQL delivery tests with synthetic HTTP responses; paired HTTP acceptance remains Step 11 |
+| `GET /internal/v1/access-snapshots/{user_id}`: Kernel -> Portal | Step 5 serves scoped read-only V2 from committed paid state | Step 6 implements the client, durable coherence and paid admission | Paired local acceptance remains Step 16 |
+| `POST /internal/v1/access-invalidations`: Portal -> Kernel | ANY-766 Step 7 implements bounded claimed delivery, exact-N ACK, restart repair and parked-work CLI | Kernel Step 6 implements the durable receiver; permission is disabled by default | Focused local PostgreSQL delivery tests with synthetic HTTP responses; paired HTTP acceptance remains Step 16 |
 
 Portal's enabled embedded worker starts delivery automatically from the existing
 manifest URL/token. Configure the compatible Kernel receiver and its permission
@@ -50,6 +50,27 @@ first; the [delivery runbook](../engineering/billing-background-operations.md#an
 describes migration order, parking and local CLI retry. Step 8 implements browser
 custody/recovery; usage/exhaustion and cabinet usage remain pending. No deployed or live-provider
 acceptance is inferred from implemented transport.
+
+## ANY-766 Step 9 common backend specification — 2026-11-10
+
+Inspected local sources: Portal `119d3d86175f35006d2ef90259bb43e19a9ef82f`
+and Kernel `6697b9f5c271eb1c77f507e037661fd92a048b74`, plus the Step 9
+documentation/test-only diff. The
+[Portal-owned common guide](https://github.com/gushinets/payments-portal/blob/main/docs/contracts/product-backend-api/README.md)
+now specifies independent consumers, audience-bound V2 delegation, V3/P/R
+snapshots, immutable source/owner history and recipient/usage routing. The
+[paired bundle](../contracts/portal-kernel-paid/README.md) retains exact baseline
+schemas/fixture payloads and independently checked target additions.
+
+This checkpoint does not change runtime, migrations or generated OpenAPI.
+Current servers still implement Kernel identity V1/snapshot V2. The guide records
+actual owning modules, minimal replacements, populated-state forward migration
+requirements and focused acceptance cases; active Kernel code is not a purge
+target. Common identity is Step 10, technical-source ownership Step 11, working
+auth/access with documented generated Swagger Step 12 (2026-11-13 priority),
+recipient delivery Step 13, usage/cabinet Steps 14/15, assembled local acceptance
+Step 16 and build/install preparation Step 17. Real external backend adoption
+belongs to its owning team; remote/live acceptance remains ANY-767.
 
 ## Historical implementation observations
 
@@ -150,8 +171,8 @@ checkpoint changes no commercial flags or deployed configuration.
   usage/remaining API for the cabinet. The
   [ANY-766 target bundle](../contracts/portal-kernel-paid/README.md) now specifies
   usage/exhaustion and authenticated cross-app launch. Step 8 implements browser
-  launch; usage/exhaustion and cabinet usage remain Steps 9–10. Paired local
-  acceptance remains Step 11. Kernel product-to-product handoff is not Portal
+  launch; usage/exhaustion and cabinet usage remain Steps 14–15. Paired local
+  acceptance remains Step 16. Kernel product-to-product handoff is not Portal
   login handoff; common product IDs do not imply common origins or sessions.
 - **Commercial meaning:** Kernel product configs and guest quotas do not
   approve a paid registry. `proposal_ai.test_generations` is TEST-ONLY. Live
@@ -189,4 +210,4 @@ tab token custody, same-owner frozen-request replay and accepted-session/mode
 restoration. Identity generations guard runtime, events and handoff state. See
 [the browser implementation/configuration notes](../contracts/portal-kernel-paid/README.md#step-8-browser-implementation).
 This is local synthetic/component evidence; real paid interservice/browser
-acceptance remains Step 11. The historical observations above remain historical.
+acceptance remains Step 16. The historical observations above remain historical.

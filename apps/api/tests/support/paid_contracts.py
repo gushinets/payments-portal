@@ -120,6 +120,28 @@ class IntrospectionResponse(Owner):
     valid_until: UTCTimestamp
 
 
+class BackendSnapshot(Snapshot):
+    schema_version: Literal[3]
+    consumer_id: Identifier
+    consumer_policy_revision: Annotated[StrictInt, Field(ge=1)]
+
+
+class BackendCodeRequest(CodeRequest):
+    consumer_id: Identifier
+
+
+class BackendExchangeResponse(ExchangeResponse):
+    schema_version: Literal[2]
+    consumer_id: Identifier
+    consumer_policy_revision: Annotated[StrictInt, Field(ge=1)]
+
+
+class BackendIntrospectionResponse(IntrospectionResponse):
+    schema_version: Literal[2]
+    consumer_id: Identifier
+    consumer_policy_revision: Annotated[StrictInt, Field(ge=1)]
+
+
 class UsageQuery(Owner):
     allowance_ids: Annotated[list[CanonicalUUID], Field(min_length=1, max_length=100)]
 
@@ -198,6 +220,10 @@ class CabinetResponse(Owner):
 
 
 MODELS: dict[str, type[WireModel]] = {
+    "snapshot-v3": BackendSnapshot,
+    "code-request-v2": BackendCodeRequest,
+    "exchange-response-v2": BackendExchangeResponse,
+    "introspection-response-v2": BackendIntrospectionResponse,
     "snapshot-v2": Snapshot,
     "invalidation-v1": Invalidation,
     "code-request-v1": CodeRequest,

@@ -196,7 +196,7 @@ authenticated snapshot V2. Its embedded worker sends invalidations through the
 same Portal → Kernel connection automatically when enabled; configure the
 Kernel receiver permission before starting the sender. See
 [delivery startup and recovery](../engineering/billing-background-operations.md#any-766-step-7--durable-kernel-invalidations).
-Paired local acceptance remains ANY-766 Step 11. Follow the
+Paired local acceptance remains ANY-766 Step 16. Follow the
 [pinned implementation map](../integrations/platform-kernel.md) and the boundary
 defined by [ADR 0005](decisions/0005-external-billing-boundary.md) and the accepted
 [Portal <-> Kernel Access Contract Design](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).

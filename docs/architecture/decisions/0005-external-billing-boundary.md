@@ -165,6 +165,18 @@ stored digests remain unchanged and readable; live continuation recomputes both
 old and current offers under the new comparison. Historical approval/mapping
 formats are not rewritten. The accepted specification bodies stay intact.
 
+### ANY-766 consumer-neutral target — 2026-11-10
+
+The [dated amendments in the owning designs](../../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md#any-766-consumer-neutral-amendment--2026-11-10)
+generalize the technical vocabulary/usage/enforcement owner to the configured
+backend for each product. Kernel remains the first owner and retains its own
+execution/product behavior. Portal identity, immutable purchased authority and
+External Billing ownership stay unchanged. The
+[common backend guide](../../contracts/product-backend-api/README.md) records the
+Section 3.9 target and bounded migration inventory. Step 9 specifies it; runtime
+implementation is Steps 10–15. This is not evidence of a working generic API,
+third-party adoption or sales/deployment approval.
+
 ## Implementation status
 
 The former direct-provider runtime has been physically removed. ANY-709 adds
