@@ -15,8 +15,9 @@ request-driven preparation/recovery. Buy/Continue/Manage uses one shared cabinet
 Widget with fresh original-purchase proof. ANY-715 adds embedded subscription
 reconciliation, GET-only recovery and audited operations. ANY-765 adds committed
 paid-access reads and cabinet presentation. ANY-766 implements delegated
-identity, snapshot V2 and durable Kernel invalidations. Browser launch and
-actual usage/remaining quota in the cabinet remain pending; the
+identity, snapshot V2, durable Kernel invalidations and recoverable paid browser
+launch. Actual usage/remaining quota in the cabinet and paired local acceptance
+remain pending; the
 [active plan](../exec-plans/active/ANY-766-implementation-plan.md) records that scope.
 ANY-664's v1 publication/DB-only catalog is historical. Current listing discovers
 enabled Kernel products; details/review read selected live LBX offers.
@@ -206,8 +207,8 @@ Historical 4F changed no backend behavior, persistence, migrations, or
 contracts. ANY-664 adds the Step 6 producer for immutable mapping revisions;
 ANY-709 adds purchase UI/preparation; ANY-715 adds operating reconciliation/recovery;
 ANY-765 adds committed paid projection and cabinet reads. ANY-766 implements
-snapshot/invalidation transport and Kernel paid admission; browser launch and
-cabinet usage remain pending. See the
+snapshot/invalidation transport, Kernel paid admission and recoverable paid
+browser launch; cabinet usage and paired local acceptance remain pending. See the
 [purchase runbook](../engineering/ANY-709-billing-runbook.md) and
 [current billing operations guide](../engineering/billing-background-operations.md).
 
@@ -246,8 +247,9 @@ business facts. Their owning steps must supply authoritative data/actions:
    value may fill a missing source.
 
 Step 9 current-version live acceptance remains partial. Parent Step 10 (ANY-766)
-has implemented the server identity/access/delivery boundary; browser/usage,
-joint local acceptance and build preparation remain its pending work. Parent
+has implemented the server identity/access/delivery boundary and recoverable paid
+browser launch; usage, joint local acceptance and build preparation remain its
+pending work. Parent
 Step 11 (ANY-767) owns remote/live acceptance and production rollout.
 Step 7 acceptance and review status are recorded in ANY-709.
 Provider-dependent semantics and launch retain the Phase 0 gates. No step may

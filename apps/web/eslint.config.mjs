@@ -15,6 +15,8 @@ const sharedApiMachineLiteralAllowlist = new Set([
   "CurrentPurchaseResponse",
   "AccountPurchasesResponse",
   "PaidAccessResponse",
+  "KernelCodeResponse",
+  "S256",
   "EmailVerificationConfirmResponse",
   "EmailVerificationRequestResponse",
   "LoginResponse",

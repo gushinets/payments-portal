@@ -31,10 +31,11 @@ plans do not override accepted sources.
 
 ## Observed implementation
 
-Sources: Portal `e8362fdcf6ae25b2b688885aa76a2c1abe1be71f` plus the Step 7
-working-tree change; Kernel `9cfaba98a980a66ee2d26b2a6340260fd4d7a007`.
+Sources: Portal `f4f6fbf` and Kernel `729f0675`, plus the paired Step 8
+working-tree changes.
 The [active plan](../exec-plans/active/ANY-766-implementation-plan.md) records
-completed server work and pending browser/usage/local acceptance/build steps.
+completed server work and the Step 8 browser implementation; usage, assembled
+local acceptance and build preparation remain pending.
 Remote installation and live-service acceptance belong to ANY-767.
 
 | Operation / request direction | Payload producer | Payload consumer / receiver | Verification status |
@@ -46,8 +47,8 @@ Remote installation and live-service acceptance belong to ANY-767.
 Portal's enabled embedded worker starts delivery automatically from the existing
 manifest URL/token. Configure the compatible Kernel receiver and its permission
 first; the [delivery runbook](../engineering/billing-background-operations.md#any-766-step-7--durable-kernel-invalidations)
-describes migration order, parking and local CLI retry. Browser custody/recovery,
-usage/exhaustion and cabinet usage remain pending. No deployed or live-provider
+describes migration order, parking and local CLI retry. Step 8 implements browser
+custody/recovery; usage/exhaustion and cabinet usage remain pending. No deployed or live-provider
 acceptance is inferred from implemented transport.
 
 ## Historical implementation observations
@@ -123,7 +124,7 @@ checkpoint changes no commercial flags or deployed configuration.
 
 - **Identity:** paid access uses Portal's authenticated UUID under
   `(tenant_id, region, user_id)`, verified through Step 4 delegation/introspection
-  on protected Kernel requests. Browser launch/recovery remains Step 8. Guest
+  on protected Kernel requests. Step 8 implements browser launch/recovery. Guest
   quota or an internal metering test is not proof of Portal authentication.
 - **Scope:** Portal uses its configured `anytoolai/ru` deployment scope and rejects
   mismatched manifest responses. Kernel service principals and deployment must
@@ -148,8 +149,9 @@ checkpoint changes no commercial flags or deployed configuration.
 - **Usage and launch:** the three operations above do not define an actual
   usage/remaining API for the cabinet. The
   [ANY-766 target bundle](../contracts/portal-kernel-paid/README.md) now specifies
-  usage/exhaustion and authenticated cross-app launch; those runtime surfaces
-  remain pending in Steps 8–10. Kernel product-to-product handoff is not Portal
+  usage/exhaustion and authenticated cross-app launch. Step 8 implements browser
+  launch; usage/exhaustion and cabinet usage remain Steps 9–10. Paired local
+  acceptance remains Step 11. Kernel product-to-product handoff is not Portal
   login handoff; common product IDs do not imply common origins or sessions.
 - **Commercial meaning:** Kernel product configs and guest quotas do not
   approve a paid registry. `proposal_ai.test_generations` is TEST-ONLY. Live
@@ -178,3 +180,13 @@ checker remains in Portal CI. The owner removed external source monitoring on
 [real producer gate](../contracts/kernel-capability-manifest/v1/step-8-handoff.md#real-producer-delivery-gate-separate-integration-activity)
 separates producer delivery from consumer conformance. Producer code now exists;
 the current joint contract/enablement checks must still be recorded separately.
+
+
+## ANY-766 Step 8 browser checkpoint — 2026-11-10
+
+The paired frontend now implements fixed PKCE launch/authorization/callback,
+tab token custody, same-owner frozen-request replay and accepted-session/mode
+restoration. Identity generations guard runtime, events and handoff state. See
+[the browser implementation/configuration notes](../contracts/portal-kernel-paid/README.md#step-8-browser-implementation).
+This is local synthetic/component evidence; real paid interservice/browser
+acceptance remains Step 11. The historical observations above remain historical.

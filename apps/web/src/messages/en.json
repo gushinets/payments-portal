@@ -185,7 +185,9 @@
         "usageUnavailable": "Used and remaining quantities are unavailable.",
         "refresh": "Refresh paid access",
         "deadlinePending": "Access is being updated after a deadline. Try again shortly.",
-        "empty": "There is no paid access yet."
+        "empty": "There is no paid access yet.",
+        "openProduct": "Open product",
+        "launchUnavailable": "Product launch is not configured."
       }
     }
   },
@@ -495,5 +497,12 @@
     },
     "managedInAccount": "Payment and subscription management are available in your account.",
     "accessInAccount": "Confirmed paid access is shown in your account. Usage and remaining quota are not yet available."
+  },
+  "KernelSession": {
+    "title": "Continue to your product",
+    "description": "Your Portal session will authorize this Kernel tab.",
+    "continue": "Continue",
+    "loading": "Authorizing…",
+    "failed": "Could not authorize. Check your session and try again."
   }
 }

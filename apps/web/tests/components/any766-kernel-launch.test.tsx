@@ -1,0 +1,94 @@
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { KernelAuthorization } from "@/features/account/KernelAuthorization";
+import { PaidProductAccess } from "@/features/billing/PaidProductAccess";
+import type { usePaidAccess } from "@/features/billing/use-paid-access";
+import { kernelWebBaseUrl, parseKernelAuthorizationQuery } from "@/shared/config/kernel-web";
+import { sessionChangedEvent, sessionStorageKey } from "@/shared/api/auth";
+import ru from "@/messages/ru.json";
+import { renderWithIntl } from "../setup/render-with-intl";
+import { paidState } from "../fixtures/paid-access";
+
+const fetcher = vi.fn<typeof fetch>();
+const navigate = vi.fn();
+const challenge = "c".repeat(43);
+const state = "s".repeat(43);
+const code = "k".repeat(43);
+function renderAuthorization() {
+  return renderWithIntl(<KernelAuthorization navigate={navigate} />, { locale: "ru", messages: ru });
+}
+beforeEach(() => {
+  window.history.replaceState(null, "", `/ru/kernel/authorize?state=${state}&code_challenge=${challenge}&code_challenge_method=S256&callback=https://evil.invalid`);
+  window.localStorage.setItem(sessionStorageKey, "synthetic-portal-bearer");
+  vi.stubEnv("NEXT_PUBLIC_KERNEL_WEB_BASE_URL", "https://kernel.invalid/tools");
+  fetcher.mockReset().mockResolvedValue(Response.json({ code, expires_at: "2099-01-01T00:00:00Z" }));
+  navigate.mockReset();
+  vi.stubGlobal("fetch", fetcher);
+});
+afterEach(() => { cleanup(); window.localStorage.clear(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+
+it("uses the fixed callback with code/state only in the fragment", async () => {
+  renderAuthorization();
+  fireEvent.click(screen.getByRole("button", { name: ru.KernelSession.continue }));
+  await waitFor(() => expect(navigate).toHaveBeenCalledOnce());
+  const target = new URL(navigate.mock.calls[0][0]);
+  expect(target.origin + target.pathname).toBe("https://kernel.invalid/tools/portal-session/callback");
+  expect(target.search).toBe("");
+  expect(new URLSearchParams(target.hash.slice(1)).get("code")).toBe(code);
+  expect(new URLSearchParams(target.hash.slice(1)).get("state")).toBe(state);
+  expect(target.href).not.toContain("synthetic-portal-bearer");
+  const [url, init] = fetcher.mock.calls[0];
+  expect(String(url)).toMatch(/\/api\/kernel-session-codes$/);
+  expect(init?.headers).toMatchObject({ Authorization: "Bearer synthetic-portal-bearer" });
+  expect(JSON.parse(String(init?.body))).toEqual({ code_challenge: challenge, code_challenge_method: "S256" });
+});
+
+it.each(["", `state=${state}&state=${state}&code_challenge=${challenge}&code_challenge_method=S256`, `state=${state}&code_challenge=${challenge}&code_challenge_method=plain`])("refuses an invalid authorization query %s", (query) => {
+  window.history.replaceState(null, "", `/ru/kernel/authorize?${query}`);
+  renderAuthorization();
+  fireEvent.click(screen.getByRole("button", { name: ru.KernelSession.continue }));
+  expect(screen.getByRole("alert").textContent).toBe(ru.KernelSession.failed);
+  expect(fetcher).not.toHaveBeenCalled();
+  expect(navigate).not.toHaveBeenCalled();
+});
+
+it("ignores a code returned after an account change", async () => {
+  let resolve!: (response: Response) => void;
+  fetcher.mockReturnValue(new Promise<Response>((done) => { resolve = done; }));
+  renderAuthorization();
+  fireEvent.click(screen.getByRole("button", { name: ru.KernelSession.continue }));
+  act(() => {
+    window.localStorage.setItem(sessionStorageKey, "another-portal-bearer");
+    window.dispatchEvent(new Event(sessionChangedEvent));
+  });
+  await act(async () => { resolve(Response.json({ code, expires_at: "2099-01-01T00:00:00Z" })); });
+  expect(navigate).not.toHaveBeenCalled();
+});
+
+it("allows a new one-use code after a lost response", async () => {
+  fetcher.mockRejectedValueOnce(new TypeError("lost response"));
+  renderAuthorization();
+  fireEvent.click(screen.getByRole("button", { name: ru.KernelSession.continue }));
+  await screen.findByRole("alert");
+  fireEvent.click(screen.getByRole("button", { name: ru.KernelSession.continue }));
+  await waitFor(() => expect(navigate).toHaveBeenCalledOnce());
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+it("offers product launch only for a current grant", () => {
+  const data = paidState();
+  const paid: ReturnType<typeof usePaidAccess> = { state: { status: "ready", data, expiresAt: null }, refresh: vi.fn() };
+  const view = renderWithIntl(<PaidProductAccess productId="proposal_ai" paid={paid} />, { locale: "ru", messages: ru });
+  const link = screen.getByRole("link", { name: ru.Account.products.paid.openProduct });
+  expect(link.getAttribute("href")).toBe("https://kernel.invalid/tools/portal-session/launch?return_to=%2Fproducts%2Fproposal_ai");
+  view.unmount();
+  renderWithIntl(<PaidProductAccess productId="proposal_ai" paid={{ ...paid, state: { status: "ready", expiresAt: null, data: { ...data, grants: [] } } }} />, { locale: "ru", messages: ru });
+  expect(screen.queryByRole("link", { name: ru.Account.products.paid.openProduct })).toBeNull();
+});
+
+it("rejects unsafe web-host configuration and duplicate PKCE inputs", () => {
+  expect(kernelWebBaseUrl("https://user:secret@kernel.invalid")).toBeNull();
+  expect(kernelWebBaseUrl("http://kernel.invalid")).toBeNull();
+  expect(kernelWebBaseUrl("http://localhost:3001/tools")).toBe("http://localhost:3001/tools");
+  expect(parseKernelAuthorizationQuery(new URLSearchParams(`state=${state}&code_challenge=${challenge}&code_challenge=${challenge}&code_challenge_method=S256`))).toBeNull();
+});

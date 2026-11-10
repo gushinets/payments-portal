@@ -74,7 +74,8 @@ Start with the smallest document that matches the task.
   — reviewed target schemas, producer/consumer copies and offline fixtures for
   snapshot V2, identity, invalidation, usage/exhaustion and cabinet contracts;
   implemented delegation, snapshot V2, coherent paid admission and invalidation
-  delivery; browser/usage integration and paired acceptance remain pending.
+  delivery and recoverable paid browser launch; usage integration and paired
+  acceptance remain pending.
 - [Provisional Kernel Capability Manifest v1](contracts/kernel-capability-manifest/v1/README.md)
   — ANY-664 specification-derived schema, independent SIMULATED fixtures,
   standalone development HTTP mock and human verification commands; current

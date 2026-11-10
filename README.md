@@ -15,7 +15,8 @@ order, payment, subscription, entitlement, and trial architecture have been
 physically removed. Portal implements local paid-access projection and cabinet
 reads. ANY-766 implements scoped session delegation, snapshot V2 serving and
 durable invalidation delivery; Kernel implements coherent paid admission and
-ownership. Browser launch and cabinet usage integration remain pending.
+ownership. Step 8 implements recoverable paid browser launch; cabinet usage
+integration and paired local acceptance remain pending.
 Platform Kernel code is maintained in the separate
 [anytoolai-platform](https://github.com/gushinets/anytoolai-platform) repository.
 
@@ -29,7 +30,7 @@ durable embedded polling, GET-only recovery, shared scoped inventory and
 audited operator commands. ANY-765 adds committed paid grants/allowances,
 semantic revisions/outbox, local expiry and authenticated cabinet reads.
 The [ANY-766 plan](docs/exec-plans/active/ANY-766-implementation-plan.md) records
-the remaining browser, usage, local joint acceptance and build work. Remote
+the remaining usage, local joint acceptance and build work. Remote
 deployment and live-service acceptance belong to ANY-767. Commands, migration
 transitions and diagnostics are in the [billing runbook](docs/engineering/ANY-709-billing-runbook.md).
 Background operation and CLI commands are in the
