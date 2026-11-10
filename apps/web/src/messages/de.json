@@ -185,7 +185,9 @@
         "usageUnavailable": "Verbrauch und Restmenge sind nicht verfügbar.",
         "refresh": "Bezahlten Zugriff aktualisieren",
         "deadlinePending": "Der Zugriff wird nach einer Frist aktualisiert. Bitte später erneut versuchen.",
-        "empty": "Es besteht noch kein bezahlter Zugriff."
+        "empty": "Es besteht noch kein bezahlter Zugriff.",
+        "openProduct": "Produkt öffnen",
+        "launchUnavailable": "Der Produktstart ist nicht konfiguriert."
       }
     }
   },
@@ -495,5 +497,12 @@
     },
     "managedInAccount": "Zahlung und Abonnementverwaltung stehen in deinem Konto zur Verfügung.",
     "accessInAccount": "Bestätigter bezahlter Zugriff wird im Konto angezeigt. Verbrauch und Restkontingent sind noch nicht verfügbar."
+  },
+  "KernelSession": {
+    "title": "Weiter zu Ihrem Produkt",
+    "description": "Ihre Portal-Sitzung autorisiert diesen Kernel-Tab.",
+    "continue": "Weiter",
+    "loading": "Autorisierung…",
+    "failed": "Autorisierung fehlgeschlagen. Prüfen Sie Ihre Sitzung und versuchen Sie es erneut."
   }
 }

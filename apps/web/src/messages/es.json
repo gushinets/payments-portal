@@ -185,7 +185,9 @@
         "usageUnavailable": "Uso y cantidad restante no disponibles.",
         "refresh": "Actualizar acceso de pago",
         "deadlinePending": "El acceso se está actualizando tras un vencimiento. Inténtalo más tarde.",
-        "empty": "Aún no hay acceso de pago."
+        "empty": "Aún no hay acceso de pago.",
+        "openProduct": "Abrir producto",
+        "launchUnavailable": "El inicio del producto no está configurado."
       }
     }
   },
@@ -495,5 +497,12 @@
     },
     "managedInAccount": "El pago y la gestión de la suscripción están disponibles en tu cuenta.",
     "accessInAccount": "El acceso de pago confirmado se muestra en tu cuenta. El uso y la cuota restante aún no están disponibles."
+  },
+  "KernelSession": {
+    "title": "Continuar al producto",
+    "description": "Tu sesión del Portal autorizará esta pestaña de Kernel.",
+    "continue": "Continuar",
+    "loading": "Autorizando…",
+    "failed": "No se pudo autorizar. Revisa tu sesión e inténtalo de nuevo."
   }
 }

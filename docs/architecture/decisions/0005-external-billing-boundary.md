@@ -172,8 +172,9 @@ direct product links, live offers, account Widget and accepted-purchase
 preparation/recovery. ANY-715 adds polling-only reconciliation/recovery; ANY-765
 adds local paid projection, allowances, revisions/outbox, expiry and authenticated
 cabinet reads. ANY-766 adds delegated identity, snapshot V2, coherent Kernel paid
-admission and durable invalidation delivery. Browser/usage integration and paired
-local acceptance remain pending; ANY-767 owns remote/live acceptance and rollout.
+admission, durable invalidation delivery and recoverable paid browser launch.
+Usage integration and paired local acceptance remain pending; ANY-767 owns
+remote/live acceptance and rollout.
 Current boundaries are in [ARCHITECTURE](../../../ARCHITECTURE.md) and
 [billing operations](../../engineering/billing-background-operations.md).
 The original context above records transition history.

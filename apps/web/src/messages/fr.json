@@ -185,7 +185,9 @@
         "usageUnavailable": "Utilisation et solde indisponibles.",
         "refresh": "Actualiser l’accès payant",
         "deadlinePending": "L’accès est en cours de mise à jour après une échéance. Réessayez bientôt.",
-        "empty": "Aucun accès payant pour le moment."
+        "empty": "Aucun accès payant pour le moment.",
+        "openProduct": "Ouvrir le produit",
+        "launchUnavailable": "Le lancement du produit n’est pas configuré."
       }
     }
   },
@@ -495,5 +497,12 @@
     },
     "managedInAccount": "Le paiement et la gestion de l’abonnement sont disponibles dans votre compte.",
     "accessInAccount": "L’accès payant confirmé est affiché dans votre compte. L’utilisation et le quota restant sont encore indisponibles."
+  },
+  "KernelSession": {
+    "title": "Accéder à votre produit",
+    "description": "Votre session Portail autorisera cet onglet Kernel.",
+    "continue": "Continuer",
+    "loading": "Autorisation…",
+    "failed": "Autorisation impossible. Vérifiez votre session et réessayez."
   }
 }

@@ -42,8 +42,9 @@ GET-only recovery/inventory and audited operator controls. The webhook receiver
 is removed and retained inbox history is not processed. ANY-765 implements local
 paid projection, allowances, revisions/outbox and autonomous expiry. ANY-766
 implements session delegation, snapshot V2 and durable invalidation delivery;
-Kernel provides coherent paid admission and ownership. Browser launch and
-cabinet usage integration remain pending. See the
+Kernel provides coherent paid admission and ownership. Step 8 implements
+recoverable paid browser launch; cabinet usage integration and paired local
+acceptance remain pending. See the
 [billing operations guide](engineering/billing-background-operations.md). The sole long-term
 production target is external-billing-managed.
 
@@ -144,7 +145,7 @@ trust boundary under ANY-541.
 - Remaining real-source acceptance and approved production sales/metering
   enablement. Step 9's current-version test-LBX checkpoint remains partial;
   historical positive QA does not establish live allowance delivery or launch.
-- Remaining ANY-766 browser launch/recovery, usage/exhaustion and cabinet
+- Remaining ANY-766 usage/exhaustion and cabinet
   usage/remaining integration, paired local acceptance and build preparation.
   Workflow execution, artifacts, actual usage and quota enforcement belong to
   the separate Platform Kernel repository.

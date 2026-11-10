@@ -107,8 +107,12 @@ reads do not commit. No second identity directory is introduced.
 Keep delegated token/owner in tab sessionStorage, original Portal bearer only at
 Portal. Extend CE-kit's prepared start with a versioned, owner-bound descriptor
 containing original key/frozen request, persisted before a new send. Storage
-refusal blocks only that new send. Acceptance replaces it with a session reference
-and removes frozen input. Uncertain response/reload/normal token expiry retries
+refusal blocks only that new send. On an accepted response, replace it with a
+session reference and remove frozen input. If that post-acceptance storage update
+fails, preserve the accepted response; any retained pending descriptor remains
+owner-bound and replays the original request/key until replacement succeeds or
+private state is cleared. This failure never permits a new logical start.
+Uncertain response/reload/normal token expiry retries
 the same key/request after same-owner reauthorization. Different owner, logout or
 parent revocation clears private state and pending inputs; discard late identity
 generation responses. Rebuild the client on generation changes, preserve it
