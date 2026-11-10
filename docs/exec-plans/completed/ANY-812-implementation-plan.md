@@ -528,7 +528,7 @@ the ticket's Step 2; ANY-800 steps 3–8 remain outside scope.
   observability probes are not applicable to this documentation/review-input
   change and are not claimed as runtime validation.
 
-### Final verification — 2026-11-03
+### Final verification — 2026-11-03 (historical)
 
 - Rebased onto main `43943644d277244e8838a693f0d55348d202d7e5`; verified
   implementation head: `b420b32b2022297af17483be8c7c6a6f3daddbd7`.
@@ -539,9 +539,31 @@ the ticket's Step 2; ANY-800 steps 3–8 remain outside scope.
   architecture, Ruff and web lint.
 - Browser E2E was skipped without `RUN_E2E=true` and a running harness stack.
   Live provider journeys are not applicable to this tooling/documentation scope.
-- Subsequent changes only update this plan; final documentation and whitespace
-  checks passed. The test PostgreSQL server was stopped. Detailed local logs
-  remain in ignored `.harness/evidence/ANY-812-rebase/`.
+- This full PASS applies only to `b420b32`, before the later guard/test
+  corrections; it does not certify the current implementation. Final
+  documentation and whitespace checks for that checkpoint passed. The test
+  PostgreSQL server was stopped. Detailed local logs remain in ignored
+  `.harness/evidence/ANY-812-rebase/`.
+
+### Guard follow-up verification — 2026-11-10
+
+- The direct-import correction `e31a620` (rebased as `307c687`) and wildcard
+  correction `9774b75` changed the guard and its tests, not only this plan.
+- The latest full `npm run check` attempt covered `307c687` on base `0b4d150`.
+  Fast checks and production web build/TypeScript passed, but PostgreSQL was
+  interrupted after **253 of 995 tests**. This is partial evidence, not a full
+  PASS; the local log and revision metadata are in
+  `.harness/evidence/ANY-812-rebase-after765/`.
+- The wildcard correction was tested as `307c687` plus the source/test patch
+  subsequently committed as `9774b75`: both new regressions failed before the
+  fix, then all four focused modules passed (**361 tests**).
+- `npm run check:fast` passed for that same correction outside the sandbox:
+  **1871 API fast**, **38 web boundary**, **414 component tests**, documentation,
+  generated freshness, architecture, API lint/format and web lint. The sandbox
+  attempt hit `spawnSync npm EPERM`; direct web typechecking also passed.
+- Full `npm run check`, production web build, PostgreSQL and browser E2E were
+  not rerun after the wildcard correction. Later `d23514f` only archived this
+  plan. The historical full PASS above is not extended to these revisions.
 
 ### Final delivery evidence
 
@@ -549,7 +571,8 @@ The original implementation base was
 `366d902635a699c18b90e0a619f74bb6b0e680c2`; the current rebase base and verified
 implementation SHA are recorded above. Steps 1–2 are implemented, with separate
 evidence. [PR #160](https://github.com/gushinets/payments-portal/pull/160)
-targets main and includes the ticket, template sections and current verification
-results. No further implementation step is planned within ANY-812. This
-implementation plan is complete and archived; CI disposition and human merge
-approval are separate delivery concerns. ANY-800 steps 3–8 remain unstarted here.
+targets main; the evidence above distinguishes the original delivery from
+later local follow-up verification. No further implementation step is planned
+within ANY-812. This implementation plan is complete and archived; CI
+disposition and human merge approval are separate delivery concerns. ANY-800
+steps 3–8 remain unstarted here.
