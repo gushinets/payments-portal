@@ -482,9 +482,12 @@ the ticket's Step 2; ANY-800 steps 3–8 remain outside scope.
     exceptions, routine autonomy and focused owner escalation without
     speculative mechanisms or a new waiver system.
 - Root/API/web AGENTS link the detailed owner instead of duplicating it.
-  Architecture and data-model references name the three actual plain-string
-  state fields, related representation debt and the completed AST guard,
-  without importing ANY-715-only schema or claiming runtime narrowing.
+  At the original 2026-11-03 Step 2 snapshot, architecture and data-model
+  references named three plain-string state fields, related representation
+  debt and the completed AST guard, without importing ANY-715-only schema or
+  claiming runtime narrowing. Following the 2026-11-10 rebase, the current
+  target has two plain-string state fields; webhook processing uses
+  `WebhookDeliveryState`, as recorded in the revalidation above.
   Type-only frontend generation remains explicit debt.
 - Workflow now requires pre-edit coverage assessment, bug regression-first
   evidence and behavior-preserving characterization, links the correctness
