@@ -1,13 +1,13 @@
 # Platform Kernel integration map
 
 Status: navigation and implementation snapshot; normative contracts are delegated below.
-Last source inspection: 2026-11-09; pinned snapshots below, not a deployment check.
+Last source inspection: 2026-11-10; local source state, not a deployment check.
 
 ## Ownership and sources
 
 Portal owns identity, sessions, legal acceptance, public discovery and the
 cabinet, approved commercial-to-technical mappings, local paid grants/allowances,
-access revisions and outbox production. Kernel delivery remains future work.
+access revisions, outbox production and durable invalidation delivery.
 External Billing owns commercial billing truth and lifecycle. The separate
 [Platform Kernel repository](https://github.com/gushinets/anytoolai-platform)
 owns execution, artifacts, technical product/metric vocabulary, actual usage
@@ -31,17 +31,29 @@ plans do not override accepted sources.
 
 ## Observed implementation
 
-Inspected source snapshots: Portal `ac8743ff35c5cfaf0fdaf108fa89ad5e71bf49cd`
-plus its local review corrections; Kernel
-`72ff15bc0b77903c87aa39f7b10186dccc556d09` from the local `origin/main` ref.
-These are read-only source observations, not a fresh remote-ref, joint deployment
-or producer-conformance check. Dated runtime evidence remains separate.
+Sources: Portal `e8362fdcf6ae25b2b688885aa76a2c1abe1be71f` plus the Step 7
+working-tree change; Kernel `9cfaba98a980a66ee2d26b2a6340260fd4d7a007`.
+The [active plan](../exec-plans/active/ANY-766-implementation-plan.md) records
+completed server work and pending browser/usage/local acceptance/build steps.
+Remote installation and live-service acceptance belong to ANY-767.
 
 | Operation / request direction | Payload producer | Payload consumer / receiver | Verification status |
 | --- | --- | --- | --- |
 | `GET /internal/v1/capability-manifest`: Portal -> Kernel | Service-authenticated Kernel endpoint implemented; separate Portal development mock remains optional | Portal typed HTTP client implemented | Source inspected; local fixture evidence does not establish current joint conformance |
-| `GET /internal/v1/access-snapshots/{user_id}`: Kernel -> Portal | ANY-766 Step 5 implements the scoped, read-only V2 producer from committed paid state | Kernel internal metering exists; snapshot HTTP client/cache integration remains Step 6 | Local HTTP/PostgreSQL producer tests with synthetic sources; joint paid runtime remains unproven |
-| `POST /internal/v1/access-invalidations`: Portal -> Kernel | Durable coalesced outbox implemented; HTTP delivery remains ANY-766 | Kernel HTTP invalidation receiver remains ANY-766 | Target wire only; no delivery PASS claimed |
+| `GET /internal/v1/access-snapshots/{user_id}`: Kernel -> Portal | Step 5 serves scoped read-only V2 from committed paid state | Step 6 implements the client, durable coherence and paid admission | Paired local acceptance remains Step 11 |
+| `POST /internal/v1/access-invalidations`: Portal -> Kernel | ANY-766 Step 7 implements bounded claimed delivery, exact-N ACK, restart repair and parked-work CLI | Kernel Step 6 implements the durable receiver; permission is disabled by default | Focused local PostgreSQL delivery tests with synthetic HTTP responses; paired HTTP acceptance remains Step 11 |
+
+Portal's enabled embedded worker starts delivery automatically from the existing
+manifest URL/token. Configure the compatible Kernel receiver and its permission
+first; the [delivery runbook](../engineering/billing-background-operations.md#any-766-step-7--durable-kernel-invalidations)
+describes migration order, parking and local CLI retry. Browser custody/recovery,
+usage/exhaustion and cabinet usage remain pending. No deployed or live-provider
+acceptance is inferred from implemented transport.
+
+## Historical implementation observations
+
+The following observations retain their original source pins and scope. The
+current local state above supersedes their statements about remaining runtime work.
 
 ANY-664 implemented restricted v1 publication and DB-only browsing. ANY-709
 Step 1 now implements direct versioned links, one current product pointer,
@@ -92,9 +104,10 @@ include independent directional credentials, explicit receiver permissions,
 rotation, fixed audience, parent revocation, finite deadlines, no-store and
 secret-safe refusals. Local PostgreSQL tests cover migration/cascade/single-use
 races; Kernel HTTP is intercepted in focused boundary tests. This is not real
-two-service HTTP or deployed acceptance. Browser launch/recovery remains Step 8;
-paid runtime wiring and ownership enforcement remain Step 6. Existing guest
-routes are unchanged. Snapshot, usage and delivery retain their later gates.
+two-service HTTP or deployed acceptance. This checkpoint describes Step 4;
+the current local summary above records the subsequent snapshot/admission/delivery
+implementation. Browser launch/recovery remains Step 8. Existing guest routes
+are unchanged.
 
 ## Dependencies before real integration
 
@@ -109,9 +122,9 @@ Install the compatible Step 6 consumer before enabling the V2 connection. This
 checkpoint changes no commercial flags or deployed configuration.
 
 - **Identity:** paid access uses Portal's authenticated UUID under
-  `(tenant_id, region, user_id)`. Browser identity delegation and authenticated
-  paid HTTP integration remain ANY-766. Guest quota or an internal metering test
-  is not proof of Portal authentication.
+  `(tenant_id, region, user_id)`, verified through Step 4 delegation/introspection
+  on protected Kernel requests. Browser launch/recovery remains Step 8. Guest
+  quota or an internal metering test is not proof of Portal authentication.
 - **Scope:** Portal uses its configured `anytoolai/ru` deployment scope and rejects
   mismatched manifest responses. Kernel service principals and deployment must
   authorize that exact scope. Real deployment alignment is separate work; locale
@@ -135,8 +148,8 @@ checkpoint changes no commercial flags or deployed configuration.
 - **Usage and launch:** the three operations above do not define an actual
   usage/remaining API for the cabinet. The
   [ANY-766 target bundle](../contracts/portal-kernel-paid/README.md) now specifies
-  usage/exhaustion and authenticated cross-app launch; runtime delivery remains
-  later ANY-766 work. Kernel product-to-product handoff is not Portal
+  usage/exhaustion and authenticated cross-app launch; those runtime surfaces
+  remain pending in Steps 8–10. Kernel product-to-product handoff is not Portal
   login handoff; common product IDs do not imply common origins or sessions.
 - **Commercial meaning:** Kernel product configs and guest quotas do not
   approve a paid registry. `proposal_ai.test_generations` is TEST-ONLY. Live

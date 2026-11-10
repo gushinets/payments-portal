@@ -1,14 +1,14 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-11-10 (ANY-766 scoped session delegation; ANY-812 policy clarification)
+Last updated: 2026-11-10 (ANY-766 session delegation and invalidation delivery; ANY-812 policy clarification)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 (head)
+20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 -> 20261110_0008 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
@@ -58,17 +58,20 @@ and request-driven recovery. ANY-715 adds shared reconciliation, embedded durabl
 polling and audited operations. ANY-765 connects paid derivation to shared
 reconciliation and first-primary selection to complete relevant shared inventory.
 The existing local worker executes and repairs paid deadlines without source
-configuration. Kernel invalidation delivery remains ANY-766 work.
+configuration. ANY-766 Step 7 adds claimed Kernel delivery and restart repair
+through the existing work table; it stores no Portal usage ledger.
 
 ## Physical baseline
 
 A fresh database has exactly 28 application tables: ten retained
 identity/session/legal tables, fifteen original external-billing persistence
 tables, one current product-link pointer, one purchase mutex and one session
-delegation table. Alembic has six revisions in one linear chain and one current head. Revision
+delegation table. Alembic has seven revisions in one linear chain and one current head. Revision
 `20261029_0003` belongs to ANY-709, `20261028_0005` to ANY-715 and
-`20261031_0006` to ANY-765 and `20261110_0007` to ANY-766. The new migration
-adds only `kernel_session_delegations`; it is not applied automatically by the API.
+`20261031_0006` to ANY-765 and `20261110_0007`/`20261110_0008` to ANY-766.
+Revision `20261110_0007` adds only `kernel_session_delegations`; head
+`20261110_0008` extends recurring-work uniqueness to `access_invalidation`.
+Neither is applied automatically by the API.
 
 There is no Portal-owned product, plan, order, payment, refund, subscription,
 entitlement, trial, provider-account, or direct-payment webhook table. There is
@@ -105,7 +108,7 @@ to a Portal-managed routing catalog.
 | `billing_work_items` | Operations | Shared durable scheduling/lease substrate; not business authority. |
 | `manual_review_cases` | Operations | Durable conflict/uncertainty evidence and audited resolution slots. |
 | `paid_access_states` | Access | Provider-neutral whole-user paid-access document and semantic revision, written atomically with supporting source facts. |
-| `access_invalidation_outbox` | Access | Durable pending/delivered revision slots for later paid-access invalidation delivery. |
+| `access_invalidation_outbox` | Access | Durable coalesced pending/delivered revisions for claimed paid-access invalidation delivery. |
 
 The documentation checker requires every implemented SQLAlchemy metadata table
 to have a row in this inventory.
@@ -237,7 +240,8 @@ LBX commercial quantity retains its separate meaning. These versions require no
 new table or migration. Readers predating Step 3 cannot consume these documents;
 the reader compatibility floor must accompany the unchanged migration head.
 Existing accepted subscriptions keep their quantity across republished links
-and proven new cycles. Production derivation/HTTP delivery remains Step 5 work.
+and proven new cycles. Step 5 implements configured-source derivation and
+snapshot V2 serving; Step 7 implements invalidation delivery.
 
 `external_create_operations` records customer, agreement, or subscription
 create work. Customer creation has no purchase intent; agreement and
@@ -365,7 +369,12 @@ exceeding it. Migration `20261031_0006` also requires nonnegative delivered
 revisions and rejects identity changes, revision regression and deletion;
 these guards do not implement delivery. The caller-transaction paid writer
 canonicalizes the whole-user state, increments its revision and coalesces the
-pending outbox revision atomically with source facts. Delivery remains later work.
+pending outbox revision atomically with source facts. ANY-766 Step 7 schedules
+one recurring `access_invalidation` item per user in that transaction. Capture
+and ACK lock User → outbox → queue with HTTP outside SQL; a live-claim ACK
+advances only through the sent revision. Queue generations preserve newer hints,
+`invalid` parks permanent failures, and bounded local repair restores missing
+scheduling. The outbox retains revision/attempt/error bookkeeping, never usage.
 
 ## Durable operational tables
 
@@ -456,6 +465,8 @@ declarations without another inventory edit. Historical removed-enum
 prohibitions remain independent. The guard is not a runtime assignment checker
 or Python typechecker. This clarification does not implement enum narrowing,
 change physical constraints or migrate any stored value.
+
+<a id="persistence-readiness-for-external-billing"></a>
 
 ## Bootstrap and runtime boundary
 

@@ -483,6 +483,7 @@ def write_runtime(config: RuntimeConfig) -> None:
         "LBX_RETRY_DELAY_SECONDS", "LBX_MAX_RETRY_DELAY_SECONDS",
         "BILLING_WORKER_ENABLED", "BILLING_WORKER_URGENT_CONCURRENCY",
         "BILLING_WORKER_NORMAL_CONCURRENCY", "BILLING_WORKER_IO_TIMEOUT_SECONDS",
+        "BILLING_WORKER_DELIVERY_CONCURRENCY",
         "BILLING_WORKER_SCAN_BATCH_SIZE",
         "MAPPING_OPERATOR_LOCK_FILE",
     ):
@@ -3545,7 +3546,10 @@ def build_parser() -> argparse.ArgumentParser:
     purchase = sub.add_parser(
         "billing-purchase", help="Billing evidence, GET-only rechecks and audited resolutions"
     )
-    purchase.add_argument("action", choices=("inspect", "inspect-operation", "recover", "reconcile", "resolve-review"))
+    purchase.add_argument("action", choices=(
+        "inspect", "inspect-operation", "inspect-invalidation", "retry-invalidation",
+        "recover", "reconcile", "resolve-review",
+    ))
     # The application CLI owns required options for each subcommand.
     purchase.add_argument("--user-id", type=uuid.UUID)
     purchase.add_argument("--purchase-id", type=uuid.UUID)

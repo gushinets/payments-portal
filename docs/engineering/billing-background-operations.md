@@ -151,9 +151,14 @@ The initial deployment is one API process/replica with an embedded worker.
 There is no separate process to launch or standalone worker command/container.
 
 - `BILLING_WORKER_ENABLED=true`: enables local expiry/repair; source lanes start
-  only when LBX is configured. Disabling the worker stops both kinds of work.
+  only when LBX is configured. Kernel delivery starts when its connection is
+  configured, independently of LBX. Disabling the worker stops all lanes.
 - `BILLING_WORKER_URGENT_CONCURRENCY=2`: urgent source slots, range 1–16.
 - `BILLING_WORKER_NORMAL_CONCURRENCY=1`: normal source slots, range 1–16.
+- `BILLING_WORKER_DELIVERY_CONCURRENCY=1`: independent Kernel delivery slots,
+  range 1–16, with a dedicated HTTP pool and DB delegation limiter. The worker's
+  private DB pool fits urgent + normal + delivery slots plus one local slot;
+  overflow is disabled. The paid-read pool remains separate.
 - `BILLING_WORKER_IO_TIMEOUT_SECONDS=60`: total source/cleanup budget; greater
   than the cleanup reserve and at most 240 seconds. This leaves the 30-second
   claim/apply margin and refusal retry within the five-minute urgent cadence.
@@ -178,14 +183,69 @@ retains its occupied capacity through cleanup, including after cancellation.
 Limits are per-process, not provider-wide concurrency or requests-per-second
 quotas. Urgent, normal and provider-free local work have reserved capacity;
 worker resources are isolated from purchase/Widget/new-sale resources.
-Unconfigured or partially configured LBX reports `not_configured` without source
-execution; disabled execution reports `disabled`. Source outage alone does not
-withdraw identity readiness.
+Delivery slots/cleanup cannot occupy urgent, normal or local-deadline slots.
+Unconfigured or partially configured LBX disables its source lanes; local work
+and configured Kernel delivery remain available. Disabling the entire worker
+reports `disabled`. Source outage alone does not withdraw identity readiness.
 
 Increase capacity only from measured queue age/source latency and actual LBX
 limits. A future separate worker can reuse the durable jobs, but requires an
 explicit stop-claim/drain/replace procedure and aggregate capacity review before
 adding processes. Limits do not coordinate capacity across API replicas.
+
+## ANY-766 Step 7 — durable Kernel invalidations
+
+The sender uses the existing manifest connection: `KERNEL_BASE_URL` and
+`KERNEL_SERVICE_TOKEN` for Portal → Kernel. Whenever that connection and
+`BILLING_WORKER_ENABLED=true` are configured, the delivery lane starts
+automatically; there is no separate Portal sender-enable flag. The
+reverse-direction identity/snapshot credential remains independent.
+
+Before starting this Portal writer, install the compatible Kernel receiver
+with matching scope/current-or-previous Portal service token and explicitly set
+`ANYTOOLAI_PORTAL_ACCESS_INVALIDATION_ENABLED=true` there. Then apply Portal
+migration `20261110_0008` after `20261110_0007` and restart the Portal API.
+The migration extends the existing recurring-work index; it adds no table,
+scheduler or mandatory worker container. A disabled Kernel permission returns
+`403` and parks delivery; enabling it later also requires the CLI retry below.
+Production connections retain public HTTPS validation, verified TLS, no
+environment proxy, no redirects and no browser Origin. Configuration does not
+establish joint or deployed acceptance and does not enable sales.
+
+The whole-user paid commit coalesces `access_invalidation` work with its outbox.
+An overdue refresh preserves the causal reduction/restoration revisions while
+only the final phase touches the queue. Semantic no-ops preserve existing
+delivery backoff. A short capture transaction locks User → outbox → queue,
+checks the live claim, and captures the exact sent revision N before HTTP. HTTP
+runs outside SQL. On `204`, the same lock order and live-claim check allow only
+`delivered_revision=max(delivered_revision,N)`. Pending N+1 and newer queue
+generations survive. A lost response/ACK is safely redelivered after its lease;
+a superseded sender cannot acknowledge a successor's work.
+
+Transport failures, timeouts, `429` and `5xx` retry indefinitely with bounded
+exponential backoff (5 seconds to 15 minutes, deterministic 0–20% earlier
+jitter). Other statuses, including redirects and unexpected success codes, park
+the row as `invalid` with a safe diagnostic and an error log; Sentry reporting
+uses the existing optional configuration. Response
+bodies, tokens and authorization headers never enter diagnostics. The existing
+worker metrics include the `delivery` lane, retry/parked attempts and parked
+backlog. Monitor invalid backlog as well as due-work age.
+
+Local startup/sweeps repair missing or prematurely completed scheduling from
+unresolved outbox rows in bounded batches without LBX configuration or HTTP.
+They preserve live leases, existing retry schedules and parked rows. After
+repairing credentials, permission, scope or deployed schema, use the existing
+privileged OS-principal CLI from the repository root:
+
+```bash
+./.venv/bin/python scripts/repo.py billing-purchase inspect-invalidation --user-id <uuid>
+./.venv/bin/python scripts/repo.py billing-purchase retry-invalidation --user-id <uuid>
+```
+
+Inspection is local; retry only re-enqueues a parked row and sends no HTTP.
+Ordinary delivery resumes through the worker. Neither command grants access,
+changes an allowance nor issues a financial operation. Invalidation is a
+convergence hint; finite snapshot expiry remains the correctness backstop.
 
 ## Enrollment, cadence and recovery
 
@@ -348,6 +408,8 @@ cannot resolve review.
 Invoke `.venv/bin/python scripts/repo.py billing-purchase <action>` with
 `--user-id <portal-user-uuid>` and `--purchase-id <purchase-intent-uuid>`.
 The read-only `inspect-operation` lookup instead takes only `--operation-id`.
+`inspect-invalidation` and `retry-invalidation` instead take only `--user-id`;
+they inspect local delivery state or re-enqueue a parked invalidation after repair.
 Success JSON includes the operator principal. Exit 0 means the command completed,
 not that payment or positive source proof was established. Exit 1 returns only
 `detail.code`; invalid parser arguments exit 2.
@@ -545,12 +607,15 @@ subscription resumes; first binding alone does not establish positive trust.
 ANY-765 consumes authoritative observations and complete relevant inventory to
 commit local paid access, stable allowances and revision/outbox changes. The
 existing local lane reduces expired access and repairs deadlines without source
-HTTP. The [implemented handoff](#step-10-handoff--any-765) below defines these
-producer seams and the remaining Step 10 wire/B10 work. Step 9 retains its own
-test-LBX-to-cabinet checkpoint; Step 11 owns the broader deployed journey,
-natural renewal and launch acceptance.
+HTTP. The [producer handoff](#step-10-handoff--any-765) below defines the inherited
+seams. ANY-766 Steps 5–7 now implement snapshot V2, Kernel paid admission and
+invalidation delivery; its Step 11 owns local joint acceptance. ANY-767 owns
+the subsequent remote/live journey, remaining natural renewal and rollout.
 
 ## Step 10 handoff — ANY-765
+
+Here, Step 10 means parent ANY-504's ANY-766 stage, not the cabinet-only Step 10
+inside the ANY-766 implementation plan.
 
 This is the implemented local producer baseline for
 [ANY-766](https://linear.app/paveldik/issue/ANY-766), not an internal HTTP wire.
@@ -683,7 +748,7 @@ For supported calendar-month timestamp evidence, Integration normalizes activati
 to the first day at midnight in its explicit offset. Date-only evidence remains
 date-only; naive/mixed timestamps acquire no invented zone or UTC deadline.
 
-### Revision, outbox and remaining B10 work
+### Revision, outbox and current wire boundary
 
 Absent state is immutable empty revision 0 with no outbox row. The first material
 set is revision 1; later empty state retains its positive revision. Canonical
@@ -694,32 +759,21 @@ refreshes. Material changes increment exactly once with causal observation and
 survive concurrent product changes. A null observation `resulting_access_revision`
 means no material commit, not an implicit successful invalidation.
 
-Step 10 owns HTTP delivery and authenticated Kernel consumption. Capture
-`sent_revision=N` before sending; ACK N may advance delivered only to
-`max(delivered,N)`. Re-read current pending under the delivery transaction;
-pending N+1 remains work after ACK N. Never acknowledge the latest pending value
-merely because an older request succeeded. Full delivery/ACK races remain Step
-10 checks; this implementation produces durable coalesced work only.
-
-Coordinate B10 against the external-billing design's
-[Allowances and quota identity](../superpowers/specs/2026-09-15-external-billing-boundary-design.md#allowances-and-quota-identity)
-and [Subscription lifetime and allowance periods](../superpowers/specs/2026-09-15-external-billing-boundary-design.md#subscription-lifetime-and-allowance-periods),
-and the access design's [AccessSnapshot](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md#accesssnapshot)
-UTC tuple, clock-haircut/cache rules and
-[quota-ledger lifetime](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md#quota-ownership-and-allowance-ledger-lifetime).
-Their existing UTC `period_start/period_end` requirements do not turn LBX calendar
-dates into instants. Review/version both producer and consumer DTOs, validation,
-specs, fixtures/hashes and compatibility together; do not serialize the local
-calendar document as an alternate unreviewed wire. Preserve durable usage keyed
-by allowance identity, six-hour last-complete-read trust and the up-to-five-minute
-snapshot ceiling. An unobserved cycle rollover may retain the old cycle only
-within those finite bounds; no exact LBX-midnight cutoff or outage extension is
-claimed. Independently proven UTC deadlines still reduce access earlier.
+HTTP delivery follows [the durable invalidation lifecycle](#any-766-step-7--durable-kernel-invalidations).
+The selected wire is [snapshot V2](../contracts/portal-kernel-paid/README.md#snapshot-v2-and-invalidation-v1),
+implemented by [the current producer](#any-766-step-5--production-allowances-and-snapshot-serving).
+The dated [ANY-766 contract amendment](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md#any-766-selected-contracts--2026-11-09)
+supersedes the September period-bearing UTC wire tuple. V2 carries immutable
+allowance identity/product/metric/unit/quantity; calendar evidence and proven
+UTC bounds stay Portal-internal. Snapshot membership authorizes the bucket.
+Six-hour source trust, finite snapshot expiry and original-bucket usage history
+remain unchanged. Time alone cannot prove a new cycle or extend authority.
 
 ### Migration, configuration, recovery and evidence limits
 
-The consolidated chain is `20260924_0001 → 20261001_0002 → 20261029_0003 →
-20261028_0005 → 20261031_0006`; there is no `0004` dependency to recreate.
+The current chain is `20260924_0001 → 20261001_0002 → 20261029_0003 →
+20261028_0005 → 20261031_0006 → 20261110_0007 → 20261110_0008`;
+there is no `0004` dependency to recreate.
 `0006` preserves legacy UTC and v2 purchases, preflights incompatible history,
 enforces immutable allowance/logical identity and monotonic state/outbox guards,
 and refuses destructive downgrade. Running clean ANY-715/0005 code against a
@@ -732,7 +786,7 @@ budgets and incident recovery. `PURCHASE_TEST_TERMS_ENABLED` is development/test
 only and refused in production. Customer conflicts reduce all dependent products;
 product/metric conflicts remain scoped. Operators cannot supply paid flags or quota.
 
-Current local canonical/focused/browser evidence and the review corrections are
+Historical ANY-765 canonical/focused/browser evidence and the review corrections are
 recorded in the linked porting plan. The actual Widget → LBX → ordinary worker →
 revision/outbox → authenticated API/cabinet checkpoint passed on Portal
 `7a2a4d8cc13d9b007c550813d0f4c1bdff2b7fca` and Kernel
@@ -749,4 +803,5 @@ and ANY-767 the deployed journey/natural renewal/production enablement. No
 test-only limit or historical positive QA result waives those gates. Commercial
 quantities, exact LBX associations and sales enablement require separate owner
 approval. The [ANY-766 contract bundle](../contracts/portal-kernel-paid/README.md)
-records the formalized target, not implemented runtime delivery.
+records the selected wire contracts and implemented server attachment points;
+browser/usage integration and paired local acceptance remain pending.

@@ -143,6 +143,8 @@ def commit_paid_state(
     schedule_deadlines: bool = True,
 ) -> int:
     """Canonicalize under the user lock; a pre-refresh reduction defers queue writes."""
+    from app.domains.billing.access_invalidation import schedule_delivery
+
     states = []
     reductions = []
     deadlines = []
@@ -214,6 +216,8 @@ def commit_paid_state(
     outbox = queries.outbox(db, user.id)
     if (row.effective_state_document if row else EffectiveState().model_dump(mode="json")) == effective:
         if schedule_deadlines:
+            if outbox is not None and outbox.pending_revision > outbox.delivered_revision:
+                schedule_delivery(db, user.id, now, hint=False)
             for primary, scope in deadlines:
                 schedule_deadline(db, primary, scope, evaluated_at=now)
         return row.access_revision if row else 0
@@ -279,6 +283,7 @@ def commit_paid_state(
         outbox.pending_revision = max(outbox.pending_revision, revision)
     db.flush()
     if schedule_deadlines:
+        schedule_delivery(db, user.id, now)
         for primary, scope in deadlines:
             schedule_deadline(db, primary, scope, evaluated_at=now)
     return revision

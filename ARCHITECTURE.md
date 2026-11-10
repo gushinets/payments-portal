@@ -22,10 +22,12 @@ an invalidation outbox, autonomous expiry and authenticated cabinet reads.
 ANY-766 Step 5 adds configured-source allowance derivation and the authenticated
 V2 committed-state snapshot producer. Its [serving and provenance rules](docs/engineering/billing-background-operations.md#any-766-step-5--production-allowances-and-snapshot-serving)
 reuse those mechanisms and do not enable sales.
-Kernel delivery/enforcement, actual usage and production enablement remain later
-work. Delivery and acceptance evidence are recorded in
-[ANY-709](https://linear.app/paveldik/issue/ANY-709) and the
-[ANY-765 handoff](docs/engineering/billing-background-operations.md#step-10-handoff--any-765).
+ANY-766 Step 7 adds durable Kernel invalidation delivery with independent bounded
+resources, exact sent-revision ACK and restart repair. Actual paired acceptance,
+usage and production enablement remain later work. The
+[active plan](docs/exec-plans/active/ANY-766-implementation-plan.md) records the
+remaining scope and gates; the [billing operations guide](docs/engineering/billing-background-operations.md)
+defines current serving and delivery behavior.
 
 Each production deployment serves exactly one contour. Region Resolver is a
 separate planned service for contour selection; it is not implemented here.
@@ -33,9 +35,9 @@ See [contours](docs/architecture/contours.md) and the
 [Region Resolver contract](docs/architecture/region-resolver-contract.md).
 The [Platform Kernel integration map](docs/integrations/platform-kernel.md)
 records pinned peer implementation and the remaining enablement gates. Manifest
-HTTP reads are implemented, with an optional development mock. Dashed paid-access
-arrows below remain future integration; source inspection is not conformance or
-production acceptance.
+HTTP reads are implemented, with an optional development mock. Snapshot and
+invalidation transport are implemented; assembled local acceptance remains
+ANY-766 Step 11, followed by remote/live acceptance in ANY-767.
 
 ```mermaid
 flowchart LR
@@ -45,8 +47,8 @@ flowchart LR
   Web --> API["Portal backend · FastAPI"]
   API --> DB[("PostgreSQL")]
   API -->|"current GET capability-manifest"| Kernel["Platform Kernel"]
-  Kernel -. "future GET access-snapshots/{user_id}" .-> API
-  API -. "future POST access-invalidations" .-> Kernel
+  Kernel -->|"authenticated GET access-snapshots/{user_id}"| API
+  API -->|"claimed POST access-invalidations"| Kernel
   API -->|"optional dev/test Manifest source"| Mock["Optional Kernel Manifest mock"]
   API -->|"source/customer/preparation HTTP"| Billing["External Billing"]
 ```
@@ -61,9 +63,10 @@ explicit acceptance and bounded preparation;
 browser Buy/Continue/Manage uses the same owned purchase. Catalog details read
 current selected offers; catalog/preparation evidence alone grants no paid access.
 
-The current migrated schema contains 27 application tables: ten retained
+The current migrated schema contains 28 application tables: ten retained
 identity/session/legal tables, fifteen original target billing tables, a current
-product-link pointer and a purchase hold. The billing tables start empty. Direct
+product-link pointer, a purchase hold and a Kernel session-delegation table.
+The billing tables start empty. Direct
 link publication and explicit customer/purchase flows populate their owned
 records. Source-catalog projection slots have no runtime readers/writers.
 Shared authoritative subscription reconciliation uses
@@ -120,8 +123,8 @@ deadlines are unchanged.
 External Billing owns commercial billing truth and lifecycle. The AnyToolAI
 Portal owns implemented identity/legal acceptance and the external-billing
 anti-corruption, subscription observation/projection, reconciliation and recovery
-boundary and provider-neutral paid-access projection. Kernel delivery remains
-future work.
+boundary and provider-neutral paid-access projection. Kernel invalidation delivery
+uses the existing outbox/work queue and embedded worker with an independent lane.
 Platform Kernel owns technical product and metric vocabulary, durable actual
 usage, and quota enforcement.
 
@@ -189,7 +192,7 @@ See the [Step 3 runbook](docs/engineering/ANY-709-billing-runbook.md#purchase-ap
   implemented. ANY-715 adds embedded polling/reconciliation/recovery and audited operator
   resolutions. ANY-765 adds local paid projection, allowances, revisions/outbox,
   deadline reductions and `GET /api/paid-access`. Webhook inbox rows are retained
-  history without a runtime writer; Kernel delivery remains later work.
+  history without a runtime writer; ANY-766 Step 7 implements claimed Kernel delivery.
 - **Presentation** — locale-prefixed product-first home, catalog,
   product detail pages, pricing placeholder, direct account/auth entry,
   product-centric cabinet, recovery, verification, and
@@ -527,7 +530,8 @@ commercial behavior:
 - subscription and observation rows use shared ANY-715 reconciliation;
   ANY-765 derives immutable allowances from accepted terms and proven cycles;
 - the whole-user paid writer atomically commits semantic state/revision, causal
-  observations and coalesced invalidation work. HTTP delivery remains ANY-766.
+  observations and coalesced invalidation work. The embedded worker delivers
+  captured revisions through an independent lane and acknowledges only the sent N.
 
 `external_billing_account_id` is an opaque server-resolved connection scope,
 derived from normalized LBX origin within the existing tenant/region deployment,

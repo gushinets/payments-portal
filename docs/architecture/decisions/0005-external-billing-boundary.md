@@ -171,10 +171,11 @@ The former direct-provider runtime has been physically removed. ANY-709 adds
 direct product links, live offers, account Widget and accepted-purchase
 preparation/recovery. ANY-715 adds polling-only reconciliation/recovery; ANY-765
 adds local paid projection, allowances, revisions/outbox, expiry and authenticated
-cabinet reads. Kernel delivery remains ANY-766 work; current-version live
-acceptance and production enablement retain their gates. Current boundaries are
-in [ARCHITECTURE](../../../ARCHITECTURE.md); dated delivery evidence is in ANY-709
-and the [ANY-765 handoff](../../engineering/billing-background-operations.md#step-10-handoff--any-765).
+cabinet reads. ANY-766 adds delegated identity, snapshot V2, coherent Kernel paid
+admission and durable invalidation delivery. Browser/usage integration and paired
+local acceptance remain pending; ANY-767 owns remote/live acceptance and rollout.
+Current boundaries are in [ARCHITECTURE](../../../ARCHITECTURE.md) and
+[billing operations](../../engineering/billing-background-operations.md).
 The original context above records transition history.
 
 ## Consequences

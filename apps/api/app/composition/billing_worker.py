@@ -9,9 +9,11 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.settings import Settings
 from app.domains.catalog.publication import SessionFactory
+from app.domains.catalog.contracts import SourceProvenance
 from app.domains.billing.work_contracts import WorkLane
 from app.infrastructure.preflight import PreflightCleanupPending
 from app.integrations.lbx.client import LbxServerClient
+from app.integrations.kernel.client import PlatformKernelClient
 from app.jobs.billing import BillingWorker
 
 
@@ -21,6 +23,7 @@ async def billing_worker_resources(
     *,
     factory: SessionFactory | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
+    kernel_transport: httpx.AsyncBaseTransport | None = None,
 ) -> AsyncIterator[BillingWorker | None]:
     if not configuration.billing_worker_enabled:
         yield None
@@ -33,7 +36,7 @@ async def billing_worker_resources(
         options = {"pool_pre_ping": True}
         if configuration.database_url.startswith("postgresql"):
             options.update(
-                pool_size=source_concurrency + 1,
+                pool_size=source_concurrency + configuration.billing_worker_delivery_concurrency + 1,
                 max_overflow=0,
                 pool_timeout=2,
                 connect_args={"options": "-c statement_timeout=10000 -c lock_timeout=2000"},
@@ -47,7 +50,17 @@ async def billing_worker_resources(
         if configuration.lbx_configuration_error is None
         else None
     )
-    worker = BillingWorker(configuration, factory, client)
+    kernel_client = (
+        PlatformKernelClient(
+            configuration,
+            provenance=SourceProvenance.CONFIGURED_SOURCE,
+            transport=kernel_transport,
+            max_connections=configuration.billing_worker_delivery_concurrency,
+        )
+        if configuration.kernel_base_url
+        else None
+    )
+    worker = BillingWorker(configuration, factory, client, kernel_client=kernel_client)
     try:
         await worker.start()
         yield worker
@@ -59,6 +72,13 @@ async def billing_worker_resources(
             try:
                 async with asyncio.timeout(configuration.preflight_cleanup_timeout_seconds):
                     await client.aclose()
+            except TimeoutError:
+                worker.failed = True
+                raise PreflightCleanupPending() from None
+        if kernel_client is not None:
+            try:
+                async with asyncio.timeout(configuration.preflight_cleanup_timeout_seconds):
+                    await kernel_client.aclose()
             except TimeoutError:
                 worker.failed = True
                 raise PreflightCleanupPending() from None

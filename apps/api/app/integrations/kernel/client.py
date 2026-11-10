@@ -20,6 +20,7 @@ from app.domains.catalog.contracts import (
     SourceProvenance,
 )
 from app.infrastructure.preflight import PreflightBudget
+from app.domains.billing.work_contracts import InvalidationDelivery
 
 
 MANIFEST_PATH = "/internal/v1/capability-manifest"
@@ -64,6 +65,12 @@ class KernelUnavailable(KernelError):
 class KernelTimeout(KernelError):
     def __init__(self) -> None:
         super().__init__("kernel_timeout")
+
+
+class KernelInvalidationFailed(KernelError):
+    def __init__(self, code: str, *, permanent: bool) -> None:
+        super().__init__(code)
+        self.permanent = permanent
 
 
 class _WireModel(BaseModel):
@@ -192,6 +199,7 @@ class PlatformKernelClient:
         *,
         provenance: SourceProvenance,
         transport: httpx.AsyncBaseTransport | None = None,
+        max_connections: int | None = None,
     ) -> None:
         if not configuration.kernel_base_url:
             raise KernelNotConfigured()
@@ -208,11 +216,57 @@ class PlatformKernelClient:
             follow_redirects=False,
             trust_env=False,
             limits=httpx.Limits(
-                max_connections=configuration.preflight_max_active,
-                max_keepalive_connections=configuration.preflight_max_active,
+                max_connections=max_connections or configuration.preflight_max_active,
+                max_keepalive_connections=max_connections or configuration.preflight_max_active,
             ),
             transport=transport,
         )
+
+    async def send_invalidation(self, delivery: InvalidationDelivery, *, budget: PreflightBudget) -> None:
+        """One durable attempt. Queue owns retries; response content is never read/logged."""
+
+        async def send() -> None:
+            config = self._configuration
+            remaining = budget.remaining_seconds()
+            try:
+                async with self._http.stream(
+                    "POST",
+                    "/internal/v1/access-invalidations",
+                    json={
+                        "schema_version": 1,
+                        "tenant_id": delivery.tenant_id,
+                        "region": delivery.region,
+                        "user_id": str(delivery.user_id),
+                        "access_revision": delivery.revision,
+                    },
+                    timeout=httpx.Timeout(
+                        connect=min(remaining, config.kernel_connect_timeout_seconds),
+                        read=min(remaining, config.kernel_read_timeout_seconds),
+                        write=min(remaining, config.kernel_connect_timeout_seconds),
+                        pool=min(remaining, config.kernel_connect_timeout_seconds),
+                    ),
+                ) as response:
+                    response.stream = _CleanupProtectedStream(response.stream, budget)
+                    budget.check()
+                    status = response.status_code
+                    if status != 204:
+                        raise KernelInvalidationFailed(
+                            "kernel_invalidation_authentication_failed"
+                            if status == 401
+                            else "kernel_invalidation_scope_forbidden"
+                            if status == 403
+                            else "kernel_invalidation_unavailable"
+                            if status == 429 or 500 <= status <= 599
+                            else "kernel_invalidation_contract_invalid",
+                            permanent=not (status == 429 or 500 <= status <= 599),
+                        )
+                budget.check()
+            except httpx.TimeoutException:
+                raise KernelInvalidationFailed("kernel_invalidation_timeout", permanent=False) from None
+            except httpx.TransportError:
+                raise KernelInvalidationFailed("kernel_invalidation_unavailable", permanent=False) from None
+
+        await budget.run(send)
 
     async def fetch_manifest(self, *, budget: PreflightBudget) -> CapabilityManifest:
         config = self._configuration

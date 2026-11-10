@@ -202,7 +202,9 @@ mapping. Existing v1/v2 links and purchases, SIMULATED terms and exact historica
 v2 full-digest replay remain readable without rewriting stored documents.
 Legacy links without a published quantity cannot start a new production purchase;
 original accepted-operation replay/recovery remains independent of new-sale terms.
-Production allowance derivation and snapshot transport remain Step 5 work.
+ANY-766 Step 5 implements configured-source allowance derivation and snapshot V2
+serving; [billing operations](billing-background-operations.md#any-766-step-5--production-allowances-and-snapshot-serving)
+defines their provenance and serving rules.
 
 For the configured harness, use its shared lock and current host UID:
 
@@ -551,8 +553,8 @@ transitions. Reuse these owners when changing either path:
   subscription lease before point reads and apply through the same fenced
   transaction. Repeated opens do not rebind financial operations or append
   preparation observations. ANY-765 adds committed paid state and authenticated
-  cabinet reads. Kernel wire delivery/usage remain later work. Preparation grants
-  no paid access.
+  cabinet reads. ANY-766 now implements snapshot V2 and invalidation delivery;
+  cabinet usage remains pending. Preparation grants no paid access.
 - Payment presentation requires a committed complete identity/commercial match,
   supported nonterminal lifecycle and final local session/customer/purchase
   admission after Client readiness. Waiting/unpaid and financially blocked
