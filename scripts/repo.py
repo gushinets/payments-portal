@@ -2877,7 +2877,7 @@ def check_canonical_persisted_model_layer(root: Path = ROOT) -> list[str]:
             billing_enum_module = "app.domains.billing.enums"
             if billing_enum_module in imported_targets:
                 for alias in node.names:
-                    if alias.name == "enums":
+                    if alias.name in {"enums", "*"}:
                         errors.append(
                             f"{relative}:{node.lineno} imports {alias.name} through the removed "
                             "billing enum façade; import it from app.models"

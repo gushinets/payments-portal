@@ -245,6 +245,21 @@ def test_canonical_persisted_model_guard_rejects_direct_billing_enum_import(api_
     ]
 
 
+@pytest.mark.parametrize("module", ["app.domains.billing.enums", "..billing.enums"], ids=["absolute", "relative"])
+def test_canonical_persisted_model_guard_rejects_wildcard_billing_enum_import(api_root: Path, module: str) -> None:
+    _write_api_source(
+        api_root, "domains/billing/enums.py", "from app.models.enums import ExternalCreateOperationState\n"
+    )
+    _write_api_source(api_root, "domains/checkout/feature.py", f"from {module} import *\n")
+
+    errors = check_canonical_persisted_model_layer(api_root)
+
+    assert errors == [
+        "apps/api/app/domains/checkout/feature.py:1 imports * through the removed billing enum façade; "
+        "import it from app.models"
+    ]
+
+
 def test_canonical_persisted_model_guard_allows_canonical_definition(api_root: Path) -> None:
     assert check_canonical_persisted_model_layer(api_root) == []
 
