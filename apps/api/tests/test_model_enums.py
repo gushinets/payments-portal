@@ -37,7 +37,7 @@ def _values(enum_cls: type) -> set[str]:
 
 def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
     assert _values(RegionStatus) == {"active"}
-    assert _values(UserStatus) == {"active"}
+    assert _values(UserStatus) == {"active", "inactive"}
     assert _values(MagicLinkPurpose) == {"password_reset", "email_verification"}
     assert _values(LegalEntityStatus) == {"active"}
     assert _values(LegalEntityType) == {
@@ -137,7 +137,7 @@ def test_legacy_commercial_models_and_enums_are_not_public() -> None:
 
 
 def test_user_status_vocabulary_requires_explicit_auth_semantics() -> None:
-    assert _values(UserStatus) == {"active"}
+    assert _values(UserStatus) == {"active", "inactive"}
 
 
 def test_persisted_enum_type_validates_and_serializes_values() -> None:
