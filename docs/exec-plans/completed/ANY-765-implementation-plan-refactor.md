@@ -3,7 +3,7 @@
 Status: **DONE** — port implementation and local review follow-up completed.
 Archived: 2026-11-09 at the owner's explicit request.
 Current-version live acceptance remains partial; verification limits are retained below.
-Latest local result: [2026-11-09 review follow-up](#local-review-follow-up--2026-11-09).
+Latest local result: [2026-11-10 PR #164 review corrections](#pr-164-review-corrections--2026-11-10).
 The planning sequence and earlier verification entries below are historical
 records of their stated snapshots, not instructions to repeat the port or a
 claim that the current local diff has a complete canonical PASS.
@@ -323,3 +323,62 @@ Documentation consistency follow-up:
   The owner removed the accidentally included ANY-766 plan; its dangling index
   link was removed. The ANY-765 plan was marked DONE and moved to `completed`
   at the owner's request, with its evidence limits preserved.
+
+## PR #164 review corrections — 2026-11-10
+
+Issue: https://linear.app/paveldik/issue/ANY-765
+
+Baseline: `7f985031034f45fde0203f710eb64283cd086e86`. The owner authorized
+local fixes only, without staging, commits, publication or live billing changes.
+The preceding completed port and evidence remain historical records.
+
+- [x] Preserve a proven finite subscription end across less precise rereads,
+  block/recovery and restart using normalized, permanently scoped observation
+  history. Retain the exact supporting observation; allow explicit new proof
+  to establish a changed end. Keep source trust separate from that boundary.
+- [x] Commit overdue effective boundaries before replacing source support.
+  Reuse the single semantic writer under the existing user lock and transaction;
+  retain both causal revisions, unchanged same-cycle allowance identity and
+  final coalesced outbox/deadline scheduling.
+- [x] Isolate candidate-local inventory failures to affected products while
+  retaining customer-wide financial refusal, final discovery verification,
+  global failures and already committed negative facts.
+- [x] Normalize explicitly zoned calendar-month anchors at the LBX boundary,
+  preserving their offset and date-only/unresolved precision rules.
+- [x] Add focused regressions and controls, run the agreed necessary checks,
+  update the runbook and inspect the complete local diff. The owner requested
+  stopping the full PostgreSQL run after focused verification passed.
+
+Pre-fix validation reproduced all four findings: 12 diagnostic cases produced
+7 defect failures and 5 passing controls; 103 existing focused tests passed.
+These are deterministic local tests with synthetic external transports, not
+new LBX, Kernel or production acceptance.
+
+Local implementation evidence:
+
+- New checked-in pre-fix scenarios: **11 FAIL / 3 PASS** before the changes.
+- Focused policy/reconciliation/primary/inventory/recovery coverage: **142 PASS**.
+- Final new PostgreSQL regressions and controls: **26 PASS**. They cover finite
+  end precision loss, block/recovery and fresh connections; accepted versus
+  incomplete extension evidence; expiry-before-refresh and rollback; preservation
+  of another product; subscription/agreement point failures versus global
+  budget/auth failures; and primary selection with independent source history.
+- Runtime changes reuse the existing observation store, semantic writer,
+  transaction, inventory and queue. No schema migration, public HTTP contract,
+  purchase terms or already-issued allowance tuple changed.
+- Completed canonical phases: documentation, generated-contract freshness,
+  architecture, Ruff lint/format, web boundaries, **414 web component tests**,
+  web lint, **1,771 fast API tests** and the production web build all passed.
+- Full canonical PostgreSQL phase: **INTERRUPTED at the owner's request**, with
+  **550 PASS** and no reported failures before interruption. This is partial
+  evidence, not a full canonical PASS; the focused suites above are the agreed
+  verification for these corrections. No further full PostgreSQL run is planned.
+- Tests used a disposable native PostgreSQL **14.24** cluster under `/tmp`,
+  with synthetic external transports. Test-only `fsync=off` reduced filesystem
+  synchronization overhead; this run makes no physical crash-durability claim.
+  The private server was stopped after graceful test interruption. No application
+  database or shared PostgreSQL configuration was changed.
+- Browser/E2E and live LBX/Kernel acceptance were not run. No dependencies were
+  installed; nothing was staged, committed or pushed. Evidence is retained under
+  `/tmp/any765-pr164-validation-X5LIYY/` (`fixes-red.log`, `fixes-focused.xml`,
+  `fixes-additional.xml`, `fixes-check.log`).

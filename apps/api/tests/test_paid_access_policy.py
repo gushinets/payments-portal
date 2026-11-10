@@ -255,6 +255,50 @@ def test_paid_access_calendar_anchor_keeps_provider_meaning(
     assert normalized.anchor == expected
 
 
+@pytest.mark.parametrize("offset", ["+03:00", "-04:00"])
+def test_calendar_month_zoned_activation_normalizes_to_calendar_boundary(offset: str) -> None:
+    from apps.api.tests.factories.reconciliation import (
+        agreement_factory,
+        subscription_factory,
+        tariff_factory,
+        user_factory,
+    )
+    from app.integrations.lbx.reconciliation import normalize_subscription
+
+    subject = subject_factory()
+    monthly = period(anchor="calendar_month")
+    accepted = subject.purchase.accepted.model_copy(
+        update={"offer": replace(subject.purchase.accepted.offer, period=monthly)}
+    )
+    subject = replace(subject, purchase=replace(subject.purchase, accepted=accepted))
+    tariff = tariff_factory(subject)
+    proof = normalize_subscription(
+        subject,
+        step1_settings(),
+        user=user_factory(),
+        agreement=agreement_factory(),
+        tariff=replace(tariff, value=tariff.value.model_copy(update={"float_period": 0})),
+        subscription=subscription_factory().model_copy(
+            update={
+                "subscription_start_date": f"2026-10-15T12:34:56.123456{offset}",
+                "last_tariffication_period_start": f"2026-11-01T00:00:00{offset}",
+                "last_tariffication_period_end": f"2026-12-01T00:00:00{offset}",
+            }
+        ),
+    )
+    assert proof.complete and proof.financial == "allowed" and proof.calendar_complete
+    assert proof.cycle.anchor == f"2026-10-01T00:00:00{offset}"
+    assert classify_cycle(proof.cycle, monthly).kind == CycleKind.FIRST
+    assert classify_cycle(proof.cycle, monthly, first=proof.cycle, latest=proof.cycle).kind == CycleKind.SAME
+    following = proof.cycle.model_copy(
+        update={
+            "start": f"2026-12-01T00:00:00{offset}",
+            "end": f"2027-01-01T00:00:00{offset}",
+        }
+    )
+    assert classify_cycle(following, monthly, first=proof.cycle, latest=proof.cycle).kind == CycleKind.LATER
+
+
 def test_paid_access_proof_document_serializes_lossless_cycle_and_finite_end() -> None:
     import json
 

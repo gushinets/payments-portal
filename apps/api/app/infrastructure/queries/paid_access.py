@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import JSON, SQLColumnExpression, Select, case, exists, func, or_, select, Text, cast
+from sqlalchemy import JSON, SQLColumnExpression, Select, BigInteger, case, exists, func, or_, select, Text, cast
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -94,6 +94,31 @@ def outbox(db: Session, user_id: UUID) -> AccessInvalidationOutbox | None:
 
 def observation(db: Session, identity: UUID) -> BillingStateObservation | None:
     return db.get(BillingStateObservation, identity)
+
+
+def access_end_observation(db: Session, sub: ExternalSubscription) -> BillingStateObservation | None:
+    """Latest accepted finite end for this permanent source, including after revocation."""
+    evidence = BillingStateObservation.evidence_document
+    provenance = evidence["provenance"]
+    return db.scalar(
+        select(BillingStateObservation)
+        .where(
+            BillingStateObservation.subscription_id == sub.subscription_id,
+            BillingStateObservation.external_billing_account_id == sub.external_billing_account_id,
+            BillingStateObservation.user_id == sub.user_id,
+            BillingStateObservation.product_id == sub.product_id,
+            BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v1",
+            BillingStateObservation.completeness_classification == "complete",
+            BillingStateObservation.result_classification == "COMPLETE_MATCH",
+            evidence["access_end_at"].as_string().is_not(None),
+            provenance["purchase_intent_id"].as_string() == str(sub.purchase_intent_id),
+            provenance["mapping_revision_id"].as_string() == str(sub.mapping_revision_id),
+            provenance["provider_subscription_id"].as_string() == sub.external_subscription_id,
+            provenance["agreement_id"].as_string() == sub.external_agreement_id,
+        )
+        .order_by(BillingStateObservation.observed_at.desc(), provenance["fence"].as_string().cast(BigInteger).desc())
+        .limit(1)
+    )
 
 
 def dependencies(

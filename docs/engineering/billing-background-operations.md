@@ -526,6 +526,16 @@ the authoritative facts consumed below.
 | Retired primary with an older eligible candidate | No automatic replacement | Audited `select-primary` requires fresh complete relevant product proof and all original identity/version checks |
 | Clock budget absent | No new positive derivation | Existing local reductions remain enabled |
 
+A less precise subscription-end reread cannot remove a previously proven finite
+end. Reconciliation and primary selection retain the latest accepted normalized
+UTC end for the same permanent subscription/purchase/mapping/agreement provenance,
+including across block/recovery and restart. The new observation keeps its actual
+`access_end_at` and records `retained_access_end` with the supporting observation
+ID and raw end when history supplies the constraint. Apply the current clock
+budget once to that raw end; source-trust renewal remains a separate boundary.
+A new complete applicable end can shorten or extend it. Preparation, incomplete
+reads and conflicting provenance cannot establish that historical constraint.
+
 `accepted-purchase:v2` freezes technical metric/unit/fixed quantity and complete
 source provenance. New confirmation compares the selected technical meaning;
 `source_digest`, full `kernel_manifest_version` and technical `digest` retain the
@@ -550,6 +560,10 @@ is new-operation admission, not historical access revocation.
   Operator primary selection uses complete relevant product inventory; financial
   CREATE admission and other original-resolution checks retain their existing
   customer-wide inventory requirements.
+  Timely candidate point-read failures keep only their affected products
+  incomplete and do not skip final discovery verification. Shared budget,
+  authorization/scope and discovery failures remain global; any incomplete
+  candidate still prevents customer-wide financial CREATE admission.
 - [Paid writer](../../apps/api/app/domains/billing/paid_access.py)
   `commit_paid_state()` is the sole whole-user semantic writer. Callers acquire
   the canonical user lock first, then customer/original purchase/operations and
@@ -557,6 +571,12 @@ is new-operation admission, not historical access revocation.
   work ownership is checked last. The writer flushes but never commits itself.
   A stale owner or later failure rolls back facts, primary, allowance, causal
   observations, state/revision, outbox and scheduling in that transaction.
+  Before reconciliation replaces overdue effective support, this same writer
+  flushes the local reduction, then applies fresh proof. Expiry and restoration
+  have distinct causal revisions even if the final document matches the old
+  one; both transitions commit atomically and coalesce to the final outbox
+  revision. This early reduction defers queue scheduling to the final writer.
+  A refresh before expiry remains a semantic no-op when contents are unchanged.
 - [Deadlines](../../apps/api/app/domains/billing/paid_deadlines.py) reuse the
   existing durable local lane and startup/minute repair sweep. They select the
   earliest supported source/grant/UTC-allowance boundary and recheck current
@@ -603,6 +623,9 @@ cycle proof. Operators cannot supply dates, quota or arbitrary source IDs.
 bounds using the clock budget at issuance. A changed budget never rewrites
 those tuples. `legacy-utc:v1` remains historical UTC evidence; it cannot prove
 a calendar anchor or authorize an inferred replacement allowance.
+For supported calendar-month timestamp evidence, Integration normalizes activation
+to the first day at midnight in its explicit offset. Date-only evidence remains
+date-only; naive/mixed timestamps acquire no invented zone or UTC deadline.
 
 ### Revision, outbox and remaining B10 work
 

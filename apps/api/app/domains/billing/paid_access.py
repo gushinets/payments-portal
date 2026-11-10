@@ -32,6 +32,18 @@ from app.models import (
 )
 
 
+def resolve_access_end(
+    db: Session, subscription: ExternalSubscription, proof: SubscriptionProof
+) -> tuple[datetime | None, UUID | None]:
+    """A less precise read cannot erase a previously proven raw source boundary."""
+    if proof.access_end_at is not None:
+        return proof.access_end_at, None
+    basis = queries.access_end_observation(db, subscription)
+    if basis is None:
+        return None, None
+    return as_utc(datetime.fromisoformat(basis.evidence_document["access_end_at"])), basis.observation_id
+
+
 def apply_paid_source(
     db: Session,
     scope: BillingProductAccessScope,
@@ -42,6 +54,7 @@ def apply_paid_source(
     now: datetime,
     *,
     skew_seconds: int | None,
+    access_end_at: datetime | None,
     review: bool = False,
     allow_simulated_metering: bool = True,
 ) -> None:
@@ -61,8 +74,8 @@ def apply_paid_source(
     if decision == PaidDecision.GRANT and skew_seconds is not None:
         deadline = as_utc(subscription.projection_valid_until) - timedelta(seconds=skew_seconds)
         grant_end = None
-        if proof.access_end_at is not None:
-            grant_end = proof.access_end_at - timedelta(seconds=skew_seconds)
+        if access_end_at is not None:
+            grant_end = access_end_at - timedelta(seconds=skew_seconds)
             deadline = min(deadline, grant_end)
         if deadline <= now:
             scope.effective_access_document = None
@@ -122,8 +135,9 @@ def commit_paid_state(
     *,
     related_causes: tuple[BillingStateObservation, ...] = (),
     allow_simulated_metering: bool = True,
+    schedule_deadlines: bool = True,
 ) -> int:
-    """Canonicalize the complete set under the caller's user lock; never commit."""
+    """Canonicalize under the user lock; a pre-refresh reduction defers queue writes."""
     states = []
     reductions = []
     deadlines = []
@@ -192,8 +206,9 @@ def commit_paid_state(
     row = queries.state(db, user.id)
     outbox = queries.outbox(db, user.id)
     if (row.effective_state_document if row else EffectiveState().model_dump(mode="json")) == effective:
-        for primary, scope in deadlines:
-            schedule_deadline(db, primary, scope)
+        if schedule_deadlines:
+            for primary, scope in deadlines:
+                schedule_deadline(db, primary, scope)
         return row.access_revision if row else 0
     revision = row.access_revision + 1 if row else 1
     if row is None:
@@ -256,8 +271,9 @@ def commit_paid_state(
     else:
         outbox.pending_revision = max(outbox.pending_revision, revision)
     db.flush()
-    for primary, scope in deadlines:
-        schedule_deadline(db, primary, scope)
+    if schedule_deadlines:
+        for primary, scope in deadlines:
+            schedule_deadline(db, primary, scope)
     return revision
 
 

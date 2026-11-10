@@ -14,7 +14,7 @@ from app.domains.billing import work
 from app.domains.billing.background_recovery import INVENTORY, INVENTORY_SECONDS
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.customers import lock_user
-from app.domains.billing.paid_access import apply_paid_source
+from app.domains.billing.paid_access import apply_paid_source, resolve_access_end
 from app.domains.billing.paid_policy import CandidateConclusion, PrimaryCandidate, first_primary
 from app.domains.billing.reconciliation_contracts import RECONCILIATION_SCHEMA, ReconciliationResult
 from app.domains.billing.work import verify_claim
@@ -244,6 +244,17 @@ def select_primaries(
                 or as_utc(sub.projection_valid_until) <= now
             ):
                 continue
+            source = sources[sub.subscription_id]
+            access_end_at, end_basis = resolve_access_end(db, sub, source.proof)
+            selection_evidence: dict[str, object] = {
+                "source_observation_id": str(sub.latest_observation_id),
+                "fence": sub.reconciliation_fencing_token,
+            }
+            if end_basis is not None:
+                selection_evidence["retained_access_end"] = {
+                    "observation_id": str(end_basis),
+                    "access_end_at": access_end_at.isoformat(),
+                }
             selected = BillingStateObservation(
                 observation_kind=BillingStateObservationKind.PRIMARY_SELECTION,
                 external_billing_account_id=purchase.account_id,
@@ -255,17 +266,13 @@ def select_primaries(
                 work_item_id=claim.id,
                 observed_at=now,
                 evidence_schema_version="primary-selection:v1",
-                evidence_document={
-                    "source_observation_id": str(sub.latest_observation_id),
-                    "fence": sub.reconciliation_fencing_token,
-                },
+                evidence_document=selection_evidence,
                 completeness_classification="complete",
                 result_classification="primary_selected",
             )
             db.add(selected)
             db.flush()
             scope.primary_subscription_id = sub.subscription_id
-            source = sources[sub.subscription_id]
             apply_paid_source(
                 db,
                 scope,
@@ -275,6 +282,7 @@ def select_primaries(
                 selected,
                 now,
                 skew_seconds=clock_skew_seconds,
+                access_end_at=access_end_at,
                 allow_simulated_metering=allow_simulated_metering,
             )
             causes.append(selected)

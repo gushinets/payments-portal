@@ -5,7 +5,8 @@ from uuid import UUID, uuid4
 
 from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused, CustomerOpen
-from app.domains.billing.paid_access import apply_paid_source, commit_paid_state
+from app.domains.billing.paid_access import apply_paid_source, commit_paid_state, resolve_access_end
+from app.domains.billing.paid_deadlines import effective_deadline
 from app.domains.billing.paid_policy import PaidDecision, paid_decision
 from app.domains.billing.customers import lock_customer, lock_user, mark_customer_identity_conflict
 from app.domains.billing.customer_scope import connection_account
@@ -247,6 +248,19 @@ def apply_reconciliation(
         if latest is not None and as_utc(latest.observed_at) > proof.read_started_at:
             raise BillingRefused("subscription_reconciliation_stale", 409)
         service._verify_original_consent(db, row, purchase.accepted)
+        due = effective_deadline(scope)
+        if due is not None and due <= now:
+            # Preserve the expired revision before new proof can replace its
+            # support. Both semantic transitions share this transaction; the
+            # final writer schedules work from the resulting state.
+            commit_paid_state(
+                db,
+                user,
+                None,
+                now,
+                allow_simulated_metering=allow_simulated_metering,
+                schedule_deadlines=False,
+            )
         resolved_case = None
         if resolution is not None:
             from app.domains.billing.operator_review import authorize_resolution
@@ -296,7 +310,13 @@ def apply_reconciliation(
             conflict = "subscription_terminal_revival_conflict"
         elif proof.identity == IdentityProof.MATCH and proof.commercial == CommercialProof.MISMATCH:
             conflict = "subscription_commercial_mismatch"
+        access_end_at, end_basis = resolve_access_end(db, current, proof)
         document = proof.document()
+        if end_basis is not None:
+            document["retained_access_end"] = {
+                "observation_id": str(end_basis),
+                "access_end_at": access_end_at.isoformat(),
+            }
         if resolution is not None and resolution.request.resolution == "select-primary":
             document["primary_selection"] = {
                 "review_case_id": str(resolution.request.case_id),
@@ -384,6 +404,7 @@ def apply_reconciliation(
             observation,
             now,
             skew_seconds=clock_skew_seconds,
+            access_end_at=access_end_at,
             review=bool(conflict) or known_review or customer_conflict,
             allow_simulated_metering=allow_simulated_metering,
         )

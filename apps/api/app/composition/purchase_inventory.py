@@ -33,7 +33,15 @@ from app.infrastructure.preflight import (
     PreflightDeadlineExceeded,
 )
 from app.integrations.lbx.client import LbxServerClient
-from app.integrations.lbx.errors import LbxResponseInvalid, LbxScopeMismatch
+from app.integrations.lbx.errors import (
+    LbxResponseInvalid,
+    LbxScopeMismatch,
+    LbxUnavailable,
+    LbxTimeout,
+    LbxRateLimited,
+    LbxAttemptsExhausted,
+    LbxProviderRejected,
+)
 from app.integrations.lbx.financial import Subscription, agreement_is_closed, subscription_lifecycle
 from app.integrations.lbx.reconciliation import MAX_RELEVANT_SUBSCRIPTIONS, timely_point
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State
@@ -290,9 +298,12 @@ async def collect_inventory(
                         else:
                             complete = False
                         continue
-            point = await timely_point(
+            point = await _candidate_point(
                 lambda: client.get_subscription(subscription_id=int(provider_id), budget=budget), budget
             )
+            if point is None:
+                complete = False
+                continue
             if candidate is not None and (point.agreement_id, point.tariff_id) != (
                 candidate.agreement_id,
                 candidate.tariff_id,
@@ -303,9 +314,12 @@ async def collect_inventory(
             owner = agreements.get(str(point.agreement_id))
             if known is not None and (owner is None or owner.id == known.id):
                 continue
-            agreement = await timely_point(
+            agreement = await _candidate_point(
                 lambda: client.get_agreement(agreement_id=point.agreement_id, budget=budget), budget
             )
+            if agreement is None:
+                complete = False
+                continue
             if agreement.user_id != int(current.provider_id):
                 complete = False
                 continue
@@ -371,6 +385,18 @@ async def collect_inventory(
         products=products,
         sources=tuple(sources),
     )
+
+
+async def _candidate_point[T](read: Callable[[], Awaitable[T]], budget: PreflightBudget) -> T | None:
+    """A timely object-local failure preserves its INCOMPLETE candidates only.
+
+    Authentication/scope errors, stale ownership and shared budget/cleanup
+    failures retain the outer customer-wide failure boundary.
+    """
+    try:
+        return await timely_point(read, budget)
+    except (LbxResponseInvalid, LbxUnavailable, LbxTimeout, LbxRateLimited, LbxAttemptsExhausted, LbxProviderRejected):
+        return None
 
 
 def _identities(rows: tuple[Subscription, ...]) -> list[tuple[int, int, int]]:

@@ -27,9 +27,14 @@ def normalize_calendar(calendar: dict[str, str | None], anchor_kind: str) -> Cal
     if anchor_kind == "calendar_month":
         anchor = calendar.get("subscription_start_date")
         # Calendar-month periods are anchored to the calendar, not activation time.
-        if anchor and len(anchor) == 10:
+        if anchor not in EMPTY_CALENDAR:
             try:
-                anchor = date.fromisoformat(anchor).replace(day=1).isoformat()
+                if len(anchor) == 10:
+                    anchor = date.fromisoformat(anchor).replace(day=1).isoformat()
+                else:
+                    parsed = datetime.fromisoformat(anchor)
+                    if parsed.utcoffset() is not None:
+                        anchor = parsed.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
             except ValueError:
                 return None
     if start in EMPTY_CALENDAR or end in EMPTY_CALENDAR:
