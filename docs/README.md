@@ -1,7 +1,7 @@
 # Documentation Index
 
 Status: authoritative index
-Last updated: 2026-11-09
+Last updated: 2026-11-10
 
 Start with the smallest document that matches the task.
 
@@ -26,6 +26,9 @@ Start with the smallest document that matches the task.
 - `PRODUCT.md`, `SECURITY.md`, and `RELIABILITY.md` are authoritative for their
   respective dimensions.
 - `CODING_CONVENTIONS.md` is the ratchet for new and changed code.
+  Its internal-contract rules own concrete consumed structures, finite
+  vocabularies, boundary validation, compatibility and bounded exceptions;
+  architecture and data-model references distinguish existing debt from policy.
 - `AGENTS.md` files provide concise working instructions and navigation; their
   instruction precedence is defined by the root guide.
 - Ordinary Linear issue text and execution plans define implementation scope.
@@ -105,6 +108,8 @@ Start with the smallest document that matches the task.
 - [Testing](engineering/TESTING.md)
 - [Agent workflow](engineering/AGENT_WORKFLOW.md)
 - [Coding conventions](engineering/CODING_CONVENTIONS.md)
+- [Internal contracts and proportionate exceptions](engineering/CODING_CONVENTIONS.md#internal-contracts)
+- [Correctness review checklist](engineering/review-checklists/correctness.md) — always included by the AI-review configuration
 - [Reliability](RELIABILITY.md)
 - [Security](SECURITY.md)
 - [Quality score](QUALITY_SCORE.md)

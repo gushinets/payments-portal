@@ -105,6 +105,13 @@ cross-repository change workflow under the sources of truth above.
 - Legal pages are drafts; do not present them as legally approved.
 - Preserve Bundle 3 for frontend changes.
 - Add tests when behavior changes and use PostgreSQL tests for migration logic.
+- Apply the [internal-contract rules](docs/engineering/CODING_CONVENTIONS.md#internal-contracts)
+  to new/materially changed contracts and affected producers/consumers: concrete
+  consumed structures, one symbolic vocabulary owner and validation at actual
+  boundaries. Existing debt is not permission for new raw states or a reason
+  for unrelated migrations; keep changes proportionate.
+- Assess coverage before editing. For bugs, establish a failing regression
+  before the fix; for behavior-preserving work, record characterization evidence.
 - Engineering artifacts are English. Customer legal source lives under
   `docs/legal/<contour>/`. Customer-facing UI uses that contour's locale.
 - Do not hand-edit generated files; run `npm run generate`.
