@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Security
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -20,7 +20,7 @@ from app.domains.identity.services.backend_delegation import (
     issue_code,
     require_consumer_policy,
 )
-from app.http.backend_auth import BackendPrincipal, authorize_exchange, authorize_introspection
+from app.http.backend_auth import BackendPrincipal, authorize_exchange, authorize_introspection, portal_user_bearer
 from app.http.backend_session_policy import BackendErrorResponse
 
 router = APIRouter(
@@ -145,13 +145,6 @@ class BackendIntrospectionResponse(BaseModel):
     region: str
     user_id: UUID
     valid_until: datetime
-
-
-portal_user_bearer = HTTPBearer(
-    scheme_name="PortalUserBearer",
-    auto_error=False,
-    description="Primary Portal session bearer. Used only for code issuance; never forwarded to a backend.",
-)
 
 
 def require_portal_bearer(

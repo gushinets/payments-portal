@@ -188,6 +188,19 @@
         "empty": "Aún no hay acceso de pago.",
         "openProduct": "Abrir producto",
         "launchUnavailable": "El inicio del producto no está configurado."
+      },
+      "usage": {
+        "current": "Uso del límite actual",
+        "historical": "Uso del límite anterior",
+        "used": "Usado correctamente",
+        "reserved": "Reservado",
+        "remaining": "Restante",
+        "available": "Disponible ahora",
+        "readAt": "Lectura a las {time} UTC",
+        "unobserved": "El uso aún no se ha observado",
+        "loading": "Cargando uso…",
+        "busy": "Toda la capacidad restante está reservada temporalmente",
+        "exhausted": "Límite agotado"
       }
     }
   },

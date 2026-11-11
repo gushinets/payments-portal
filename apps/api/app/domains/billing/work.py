@@ -168,7 +168,7 @@ def claim_work(
         now = as_utc(billing_reconciliation.database_now(db))
         row = queries.claimable(
             db,
-            (SWEEP, EXPIRY, "external_create_deadline")
+            (SWEEP, EXPIRY, "external_create_deadline", BillingWorkKind.ALLOWANCE_EXHAUSTION)
             if lane == WorkLane.LOCAL
             else (BillingWorkKind.ACCESS_INVALIDATION,)
             if lane == WorkLane.DELIVERY

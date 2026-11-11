@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { BackendAuthorization } from "@/features/account/BackendAuthorization";
+import { PaidReadStatus } from "@/features/billing/use-paid-read";
 import { PaidProductAccess } from "@/features/billing/PaidProductAccess";
 import type { usePaidAccess } from "@/features/billing/use-paid-access";
 import { kernelWebBaseUrl } from "@/shared/config/kernel-web";
@@ -78,12 +79,12 @@ it("allows a new one-use code after a lost response", async () => {
 
 it("offers product launch only for a current grant", () => {
   const data = paidState();
-  const paid: ReturnType<typeof usePaidAccess> = { state: { status: "ready", data, expiresAt: null }, refresh: vi.fn() };
+  const paid: ReturnType<typeof usePaidAccess> = { state: { status: PaidReadStatus.Ready, data, expiresAt: null }, refresh: vi.fn() };
   const view = renderWithIntl(<PaidProductAccess productId="proposal_ai" paid={paid} />, { locale: "ru", messages: ru });
   const link = screen.getByRole("link", { name: ru.Account.products.paid.openProduct });
   expect(link.getAttribute("href")).toBe("https://kernel.invalid/tools/portal-session/launch?return_to=%2Fproducts%2Fproposal_ai");
   view.unmount();
-  renderWithIntl(<PaidProductAccess productId="proposal_ai" paid={{ ...paid, state: { status: "ready", expiresAt: null, data: { ...data, grants: [] } } }} />, { locale: "ru", messages: ru });
+  renderWithIntl(<PaidProductAccess productId="proposal_ai" paid={{ ...paid, state: { status: PaidReadStatus.Ready, expiresAt: null, data: { ...data, grants: [] } } }} />, { locale: "ru", messages: ru });
   expect(screen.queryByRole("link", { name: ru.Account.products.paid.openProduct })).toBeNull();
 });
 

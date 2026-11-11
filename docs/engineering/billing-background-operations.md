@@ -822,7 +822,7 @@ remain unchanged. Time alone cannot prove a new cycle or extend authority.
 ### Migration, configuration, recovery and evidence limits
 
 The current chain is `20260924_0001 → 20261001_0002 → 20261029_0003 →
-20261028_0005 → 20261031_0006 → 20261110_0007 → 20261110_0008 → 20261111_0009 → 20261111_0010`;
+20261028_0005 → 20261031_0006 → 20261110_0007 → 20261110_0008 → 20261111_0009 → 20261111_0010 → 20261111_0011`;
 there is no `0004` dependency to recreate.
 `0006` preserves legacy UTC and v2 purchases, preflights incompatible history,
 enforces immutable allowance/logical identity and monotonic state/outbox guards,
@@ -855,3 +855,48 @@ quantities, exact LBX associations and sales enablement require separate owner
 approval. The [ANY-766 contract bundle](../contracts/portal-kernel-paid/README.md)
 records the selected wire contracts and implemented server attachment points;
 browser/usage integration and paired local acceptance remain pending.
+
+
+### ANY-766 Step 14 — immutable exhaustion hints
+
+`POST /internal/v1/allowance-exhaustions` now requires the sender's configured
+`allowance-exhaustion:write` permission, product scope and saved source/backend
+owner. The full issued tuple is immutable. A `204` follows the hint commit;
+duplicate or historical deliveries ACK without changing the first payload or
+reviving completed work. Malformed requests are `422`, unknown/conflicting
+bindings `409`, foreign consumer/product authority `403`, and storage failures
+`503`; all responses are no-store and browser Origin is refused.
+
+The existing worker's local lane claims `allowance_exhaustion` work without
+requiring LBX configuration. It only schedules existing GET-only reconciliation
+for a still-current allowance; old-cycle hints complete with no effect on the
+new cycle. There are no financial commands or direct grant/subscription changes.
+Migration `20261111_0011` preserves existing queue history while extending unique
+work identity. Quiesce affected workers during migration; do not replace this
+insert with ordinary coalescing. Kernel migration `0021`, sender settings,
+lease/retry/parking behavior and the reverse usage contract are documented in the
+[common backend guide](../contracts/product-backend-api/README.md#implemented-step-14-usage-and-exhaustion).
+Step 15 implements cabinet usage composition; paired local acceptance remains Step 16.
+
+
+### ANY-766 Step 15 — independent cabinet usage reads
+
+The cabinet reads `/api/paid-usage` separately from local `/api/paid-access`.
+Both require the verified-email billing session. Usage has its own bounded
+admission, HTTP clients, DB pool and thread limiter; a slow backend or cancelled
+usage waiter cannot consume reserved local access capacity. Transactions end
+before HTTP; a fresh session/revision/selection check prevents mixed or revoked
+responses. No reconciliation, financial send or counter write occurs in a read.
+
+The [cabinet usage contract](../contracts/product-backend-api/README.md#implemented-step-15-cabinet-usage)
+records selection, status, limits and retry semantics. Retained configured-source
+history remains readable after blocking; legacy/SIMULATED or never-activated
+future rows produce no backend usage request. A tuple conflict is diagnosed
+without attributing foreign usage; a backend outage stays unavailable. Enable
+the matching backend usage permission before local integration acceptance.
+
+The independent pool does not bypass whole-user committed-state/deadline checks
+from Steps 5/12. Pending paid-state/deadline refusals wait for the existing
+worker/reconciliation commit; reads never repair authority. Missing saved-owner
+configuration must be repaired without redirecting history. The contract above
+lists the inherited `paid_access_*` and usage-specific `503` codes and recovery.

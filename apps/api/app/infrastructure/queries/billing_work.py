@@ -18,6 +18,7 @@ from app.models import (
     ExternalCreateOperation,
     User,
     AccessInvalidationOutbox,
+    PurchasedAllowance,
 )
 
 
@@ -100,6 +101,14 @@ def claimable(
             (BillingWorkItem.work_kind == BillingWorkKind.ACCESS_INVALIDATION)
             & exists().where(
                 func.cast(User.id, Text) == BillingWorkItem.scope_reference,
+                User.tenant_id == tenant,
+                User.region == region,
+            ),
+            (BillingWorkItem.work_kind == BillingWorkKind.ALLOWANCE_EXHAUSTION)
+            & exists().where(
+                func.cast(PurchasedAllowance.allowance_id, Text) == BillingWorkItem.scope_reference,
+                PurchasedAllowance.subscription_id == ExternalSubscription.subscription_id,
+                ExternalSubscription.user_id == User.id,
                 User.tenant_id == tenant,
                 User.region == region,
             ),
@@ -236,6 +245,7 @@ def backlog(
                     "external_create_deadline",
                     "customer_inventory",
                     BillingWorkKind.ACCESS_INVALIDATION,
+                    BillingWorkKind.ALLOWANCE_EXHAUSTION,
                 )
             ),
             or_(
@@ -257,6 +267,14 @@ def backlog(
                     User.region == region,
                 ),
                 source_scope,
+                (BillingWorkItem.work_kind == BillingWorkKind.ALLOWANCE_EXHAUSTION)
+                & exists().where(
+                    func.cast(PurchasedAllowance.allowance_id, Text) == BillingWorkItem.scope_reference,
+                    PurchasedAllowance.subscription_id == ExternalSubscription.subscription_id,
+                    ExternalSubscription.user_id == User.id,
+                    User.tenant_id == tenant,
+                    User.region == region,
+                ),
                 (BillingWorkItem.work_kind == BillingWorkKind.ACCESS_INVALIDATION)
                 & exists().where(
                     func.cast(User.id, Text) == BillingWorkItem.scope_reference,

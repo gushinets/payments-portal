@@ -1,14 +1,14 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-11-11 (ANY-766 consumer-bound delegation and policy guard)
+Last updated: 2026-11-11 (ANY-766 immutable exhaustion work)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 -> 20261110_0008 -> 20261111_0009 -> 20261111_0010 (head)
+20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 -> 20261110_0008 -> 20261111_0009 -> 20261111_0010 -> 20261111_0011 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
@@ -74,7 +74,7 @@ Revision `20261110_0007` adds only `kernel_session_delegations`; revision
 `20261110_0008` extends recurring-work uniqueness to `access_invalidation`.
 Revision `20261111_0009` renames that delegation table and its audience column,
 preserving all credentials/parent bindings, and adds the monotonic consumer
-policy guard. Head `20261111_0010` adds recipient-specific invalidation identity
+policy guard. `20261111_0010` adds recipient-specific invalidation identity
 and configured snapshot-recipient membership, preserving historical Kernel
 outbox revisions and retiring old running claims during the quiesced cutover.
 Migrations are not applied automatically by the API.
@@ -551,3 +551,15 @@ fail closed when a process's configured P/digest no longer matches the committed
 guard. Rotation/callbacks/operation permissions remain deployment settings and
 are not part of the digest. No paid revision, purchase document, outbox, allowance
 or backend usage is rewritten. See the [common guide](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).
+
+
+### ANY-766 Step 14 exhaustion hints
+
+Migration `20261111_0011` extends the existing recurring-work unique index with
+`allowance_exhaustion`; all prior work rows/leases/generations remain intact.
+The receiver inserts with conflict-do-nothing, preserving the first V1 payload
+and completed state. Its key binds tenant/region/user/allowance/event type;
+`scope_kind=allowance`, `scope_reference=allowance_id`, and `recipient_id` is null.
+The full issued tuple and retained backend/source owner are validated before
+commit. The local lane schedules existing reconciliation only for a current
+allowance. No usage ledger or additional table is introduced.

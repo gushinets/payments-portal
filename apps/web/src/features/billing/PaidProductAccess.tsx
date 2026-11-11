@@ -1,14 +1,15 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { PaidReadStatus } from "./use-paid-read";
 import type { usePaidAccess } from "./use-paid-access";
 import { kernelLaunchUrl } from "@/shared/config/kernel-web";
 
 export function PaidProductAccess({ productId, paid }: { productId: string; paid: ReturnType<typeof usePaidAccess> }) {
   const t = useTranslations("Account.products.paid");
   const { state } = paid;
-  if (state.status === "loading") return <p className="card-copy" role="status">{t("loading")}</p>;
-  const data = state.status === "ready" ? state.data : null;
+  if (state.status === PaidReadStatus.Loading) return <p className="card-copy" role="status">{t("loading")}</p>;
+  const data = state.status === PaidReadStatus.Ready ? state.data : null;
   const evidence = data?.products.find((item) => item.product_id === productId);
   const granted = data?.grants.some((item) => item.product_id === productId);
   const status = granted ? "confirmed" : evidence?.status ?? "unavailable";
@@ -25,6 +26,5 @@ export function PaidProductAccess({ productId, paid }: { productId: string; paid
       {!allowances.length && <p className="card-copy">{t("meteringUnavailable")}</p>}
       {launchUrl ? <a className="btn-primary" href={launchUrl} referrerPolicy="no-referrer">{t("openProduct")}</a> : <p className="card-copy">{t("launchUnavailable")}</p>}
     </>}
-    <p className="card-copy">{t("usageUnavailable")}</p>
   </div>;
 }

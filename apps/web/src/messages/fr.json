@@ -188,6 +188,19 @@
         "empty": "Aucun accès payant pour le moment.",
         "openProduct": "Ouvrir le produit",
         "launchUnavailable": "Le lancement du produit n’est pas configuré."
+      },
+      "usage": {
+        "current": "Utilisation du quota actuel",
+        "historical": "Utilisation du quota historique",
+        "used": "Utilisé avec succès",
+        "reserved": "Réservé",
+        "remaining": "Restant",
+        "available": "Disponible maintenant",
+        "readAt": "Relevé à {time} UTC",
+        "unobserved": "Utilisation pas encore observée",
+        "loading": "Chargement de l’utilisation…",
+        "busy": "Toute la capacité restante est temporairement réservée",
+        "exhausted": "Quota épuisé"
       }
     }
   },

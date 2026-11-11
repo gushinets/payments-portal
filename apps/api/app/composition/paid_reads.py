@@ -33,15 +33,15 @@ class PaidReadResources:
         self.closed = False
 
     async def read(self, configuration: Settings, token: str) -> PaidRead:
-        return await self._run(partial(read_paid_access, self.factory, configuration, token))
+        return await self.run(partial(read_paid_access, self.factory, configuration, token))
 
     async def snapshot(self, configuration: Settings, user_id: UUID, consumer: BackendConsumer) -> SnapshotRead:
         try:
-            return await self._run(partial(read_access_snapshot, self.factory, configuration, user_id, consumer))
+            return await self.run(partial(read_access_snapshot, self.factory, configuration, user_id, consumer))
         except SQLAlchemyError:
             raise BillingRefused("paid_access_unavailable", 503) from None
 
-    async def _run[T](self, operation: Callable[[], T]) -> T:
+    async def run[T](self, operation: Callable[[], T]) -> T:
         if self.closed or len(self.tasks) >= PAID_READ_CONCURRENCY + PAID_READ_MAX_WAITING:
             raise BillingRefused("paid_access_busy", 503)
         task = asyncio.create_task(anyio.to_thread.run_sync(operation, limiter=self.limiter))

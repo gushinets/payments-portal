@@ -1,12 +1,12 @@
 # Common product backend API
 
-Status: **AUTH/ACCESS IMPLEMENTED — ANY-766 Step 12, 2026-11-11.**
+Status: **AUTH/ACCESS, DELIVERY, USAGE/EXHAUSTION AND CABINET READBACK IMPLEMENTED — ANY-766 Steps 12–15, 2026-11-11.**
 Consumer-bound delegation V2, configured callbacks, the persisted policy guard,
 consumer-filtered AccessSnapshot V3 and Kernel's durable consumer/P/R coherence
 are implemented. Generated OpenAPI documents actual routes, security, schemas,
 examples and refusals. Technical source/owner routing preserves purchased history.
-Step 13 implements recipient-partitioned delivery; usage/exhaustion and cabinet
-usage remain Steps 14–15;
+Step 13 implements recipient-partitioned delivery. Step 14 implements Kernel usage
+V1 and durable backend exhaustion hints; cabinet usage is implemented in Step 15;
 assembled paid browser/execution acceptance remains Step 16, build/install Step 17.
 Remote/live acceptance belongs to ANY-767. Synthetic providers and the second
 consumer establish protocol behavior, not a real payment or third-party adoption.
@@ -118,7 +118,7 @@ equal this Portal instance.
 URL credentials, query/fragment and foreign callback origins are refused.
 HTTPS is required, with loopback HTTP only in development/test. Rotation and
 callback changes do not change the policy digest. `allowance-exhaustion:write`
-is a recognized configuration permission but its receiver remains Step 14.
+authorizes the implemented Step 14 exhaustion receiver.
 
 At API startup, `initialize_backend_consumers` atomically installs validated
 policies in `backend_consumer_policies`. Reused-P digest changes and rollback
@@ -252,8 +252,8 @@ transfer needs a separately authorized continuity procedure.
 Step 11 required no database migration or JSON rewrite: its heads were Portal
 `20261111_0009`, Kernel `0019` (Step 12 now advances Kernel to `0020`). New formats require the Step 11 reader; equal
 migration heads do not permit rollback to an older reader. Snapshot V3 and
-recipient-specific delivery are now implemented; generic usage/exhaustion and
-cabinet usage remain Steps 14–15. Do not enable
+recipient-specific delivery and generic usage/exhaustion are now implemented;
+cabinet usage is implemented in Step 15. Do not enable
 external-product sales before those dependent runtime steps and commercial gates.
 
 Step 11 reuses the Step 1/2 manifest contract and leaves Kernel scenario/metric
@@ -464,11 +464,10 @@ their original bucket. Guest behavior and observational client events remain.
 
 ## Reverse endpoints and usage responsibilities
 
-These are backend responsibilities, **not Portal reverse-endpoint routes**.
-Kernel manifest and invalidation receivers already work. Generic source routing
-is implemented in Step 11 and recipient fan-out in Step 13; usage/exhaustion
-routes and cabinet reads remain Steps 14/15. The descriptions below specify their target behavior.
-Kernel
+Manifest, invalidation and usage are reverse endpoints implemented by each backend.
+Exhaustion is received by Portal. Kernel implements all these V1 endpoints through
+Step 14; generic source/owner routing and recipient fan-out are implemented.
+Cabinet read composition is implemented in Step 15. Kernel
 owns the existing V1 manifest/usage/exhaustion wire schemas; other backends use
 the same meanings with their own products. See the
 [manifest V1 bundle](../kernel-capability-manifest/v1/README.md) and
@@ -512,7 +511,8 @@ requires proven CONFIGURED_SOURCE compatible terms; exclude SIMULATED, missing
 unit/terms and future allowances awaiting authoritative activation. Select
 latest eligible by created_at then allowance_id when no current item exists;
 no eligible row means no item. Unknown/unavailable omit counters. Portal has no
-usage ledger. Runtime usage/exhaustion/cabinet work remains Steps 14/15.
+usage ledger. This cabinet composition is implemented in Step 15; Step 14 supplies the
+owner resolver and bounded V1 client, without adding the cabinet endpoint.
 
 ## Errors, retries and browser custody
 
@@ -551,8 +551,10 @@ ignore old-generation responses and never fall back to a guest in paid mode.
 ## Bounded replacement and migration inventory
 
 This inventory records current owners and the remaining work. Items 1–2 were
-implemented in Step 10 and item 3 in Step 11; item 4 is implemented in Step 12; items 5–6 remain planned. Step 9
-itself changed only the specification. Existing Kernel execution/product behavior is preserved.
+implemented in Step 10, item 3 in Step 11, item 4 in Step 12 and item 5 in
+Step 13. Item 6's usage/exhaustion is implemented in Step 14; its cabinet
+composition is implemented in Step 15. Step 9 itself changed only the specification.
+Existing Kernel execution/product behavior is preserved.
 
 1. **Service config/principals — implemented Step 10, Portal composition.**
    `app/core/backend_consumers.py`, `app/core/settings.py`,
@@ -602,7 +604,7 @@ itself changed only the specification. Existing Kernel execution/product behavio
    Migration `0020` forward-binds old rows to platform-kernel/P1, retains R and
    clears incompatible V2 cache/digest metadata. Buckets, usage, active reservations,
    jobs, ownership and replay do not acquire consumer/P dimensions or reset.
-5. **Recipient outbox/work — Step 13, Portal paid writer/embedded worker.**
+5. **Recipient outbox/work — implemented Step 13, Portal paid writer/embedded worker.**
    `app/models/billing_access.py::AccessInvalidationOutbox`,
    `app/domains/billing/paid_access.py`, `access_invalidation.py`, `work.py`,
    `app/jobs/billing.py`, work queries/persistence and existing CLI own delivery.
@@ -610,15 +612,20 @@ itself changed only the specification. Existing Kernel execution/product behavio
    records behavior, migration and evidence. The
    [delivery runbook](../../engineering/billing-background-operations.md#any-766-step-7--durable-kernel-invalidations)
    owns cutover, resource bounds, diagnostics and recipient-specific CLI retry.
-6. **Usage/exhaustion — Steps 14/15, backend finalizer and Portal reads.**
-   Kernel Core `quotas/finalization.py`, `execution_service.py`, `readback.py`
-   and existing worker/work storage own result/debit/recovery. Attach V1
-   usage/exhaustion there; add no second debit or meter. Portal issued allowances
-   own source/backend routing and exhaustion tuple proof. Resolve historical
-   Kernel owner without changing stored terms. Test full-tuple rollback/replay,
-   unknown/foreign usage, authorized synthetic exhaustion versus foreign owner,
-   old-cycle hints and usage timeout/cancellation preserving local access.
-   Step 16 adds the synthetic backend and populated-state HTTP/browser acceptance.
+6. **Usage/exhaustion — implemented Step 14; cabinet composition is implemented in Step 15.**
+   Kernel API `routers/paid_usage.py` reads existing counters. Core
+   `quotas/exhaustion.py` and `workflows/runner.py` attach one immutable edge to
+   normal/recovery result/debit transactions; worker `exhaustion.py` owns leased
+   reverse delivery. Portal `domains/billing/allowance_exhaustion.py` validates
+   issued tuples and saves immutable hints in existing work storage.
+   `composition/allowance_usage.py` and the bounded V1 client route by saved
+   source/backend ownership, including historical Kernel terms without rewriting
+   them. No second debit or meter is added. Focused checks cover rollback/replay,
+   unknown/foreign usage, synthetic consumer isolation and old-cycle hints.
+   The [implemented usage/exhaustion checkpoint](#implemented-step-14-usage-and-exhaustion)
+   records settings, migration and evidence. Step 15 owns cabinet composition and
+   timeout/cancellation isolation from local access. Step 16 adds assembled
+   synthetic-backend and populated-state HTTP/browser acceptance.
 
 **Replacement inventory:** Step 10 replaced the Kernel-named Portal identity
 routes/modules/settings after moving their active callers to the common
@@ -630,9 +637,10 @@ models are retained schema history, not evidence authorizing a purge here.
 Kernel scenarios/products, guest paths and ANY-507 execution semantics stay owned
 by Kernel; a non-Kernel product requires no Kernel scenario registration.
 
-**Cutover:** Step 13 advances Portal to `20261111_0010`; Kernel remains at
-Step 12's `0020`. Later steps extend the resulting actual heads; never
-edit applied migrations. First test forward migrations against populated isolated
+**Current cutover:** Step 14 requires Portal `20261111_0011` and Kernel `0021`.
+The historical Step 13 heads were Portal `20261111_0010` and Kernel `0020`.
+Later steps extend the resulting actual heads; never edit applied migrations.
+First test forward migrations against populated isolated
 local databases. Quiesce both APIs/workers; migrate identity/policy, source-owner
 read compatibility, coherence and recipient scheduling in owning-step order;
 update Portal, Kernel and browser configuration together, then restart compatible
@@ -706,8 +714,8 @@ reader even though its migration head is unchanged. Old V2 readers are excluded;
 there is no concurrent translation route. Do not downgrade the consumer-scoped
 coherence schema; recover with a compatible retained backup and matching binaries.
 Step 13 now partitions the existing invalidation sender by recipient; the Kernel
-V1 receiver remains compatible. Generic usage/exhaustion and cabinet
-usage are still Steps 14/15 and are not implemented by this auth/access handoff.
+V1 receiver remains compatible. The later Step 14 checkpoint below adds
+generic usage/exhaustion; cabinet usage is implemented in Step 15.
 
 The focused local regression targets are Portal
 `test_access_snapshot_postgres.py`, `test_kernel_session_delegation.py`,
@@ -748,4 +756,147 @@ Use `--recipient-id <consumer-id>` with `inspect-invalidation` or
 records exact commands, resource bounds and safe classifications. Local tests
 use synthetic backend HTTP responses with independent service keys; they do not
 claim real external-backend adoption, live billing or assembled Step 16 acceptance.
-Generic usage/exhaustion and cabinet usage remain Steps 14/15.
+Generic usage/exhaustion is implemented in Step 14; cabinet usage is implemented in Step 15.
+
+## Implemented Step 14 usage and exhaustion
+
+Kernel serves `GET /internal/v1/usage/{user_id}` with PortalServiceBearer and
+receiver permission `usage:read`. Enable `ANYTOOLAI_PORTAL_USAGE_READ_ENABLED=true`
+at its API; the default is false. Scope query values are required exactly once;
+pass 1–100 distinct canonical UUID `allowance_id` values. Unknown and foreign IDs
+are indistinguishable `unobserved` items. The ordered response never invents a
+bucket or zero. Storage failure returns `503`. Kernel also serves delegated-user
+`GET /v1/products/{product_id}/paid-usage` with the same allowance query. It derives
+the owner through per-request introspection and restricts observed rows to that
+product; historical reads do not depend on current grants or sales enablement.
+Both routes and their refusals are no-store and are in Kernel's generated OpenAPI.
+
+Portal's V1 client validates the response scope, requested IDs/order, closed item
+shape and counter arithmetic. `composition/allowance_usage.py:allowance_backend`
+selects the configured origin/key by the issued allowance's retained technical
+source/backend owner, checking its full saved offer. Compatible old terms resolve
+to Kernel without changing stored bytes. A missing or changed owner fails closed;
+policy scope does not transfer purchased history. Step 15 now composes the
+separate cabinet usage read described below.
+
+Safe synthetic request (use the owner's configured origin and directional key):
+
+```bash
+curl --fail-with-body \
+  -H 'Authorization: Bearer <portal-to-owner-service-secret>' \
+  'https://kernel.example.test/internal/v1/usage/00000000-0000-4000-8000-000000000001?tenant_id=anytoolai&region=ru&allowance_id=00000000-0000-4000-8000-000000000002'
+```
+
+On the successful finalization edge, Kernel writes the original full tuple and
+UTC `occurred_at` to `platform.allowance_exhaustion_outbox` in the same transaction
+as result publication and debit. Both normal and rollback-recovery success paths
+attach the write. Guest work, reservations alone, failed results and repeated
+finalization create no paid exhaustion edge. The unique identity is scoped
+user/allowance/event type; it has no consumer or new replay dimension.
+
+Enable `ANYTOOLAI_PORTAL_EXHAUSTION_DELIVERY_ENABLED=true` at the Kernel worker
+with `ANYTOOLAI_PORTAL_BASE_URL`, `ANYTOOLAI_PORTAL_ACCESS_SERVICE_TOKEN` and matching
+`ANYTOOLAI_TENANT_ID`/`ANYTOOLAI_REGION`. The reverse token belongs to the configured
+Kernel consumer and needs `allowance-exhaustion:write`. Delivery defaults off;
+events remain durable while disabled. Non-development origins require HTTPS.
+One dedicated bounded connection/task runs independently of workflow duration.
+It claims a 30-second lease, sends outside SQL with a two-second transport timeout,
+then ACKs only the live claim after locking and sampling database time. Crashes
+before local ACK redeliver the identical event. Transport, 429 and 5xx retry with
+5–300 second backoff; all other non-204 responses park with a safe diagnostic.
+Inspect `state`, `attempt_count`, `next_attempt_at` and `last_error` in the outbox;
+repair configuration before an explicitly authorized retry of parked rows.
+No successful delivery can clear another claim or alter its immutable event.
+
+Portal `POST /internal/v1/allowance-exhaustions` uses BackendServiceBearer with
+`allowance-exhaustion:write`. Its generated OpenAPI documents the actual request
+and `204/401/403/409/422/503` responses. It checks authenticated consumer/product,
+retained source/owner and the full issued tuple before committing one
+`allowance_exhaustion` work item. A failed/unknown commit never returns `204`.
+A valid duplicate, including after completion, preserves the first payload and
+never revives work. Browser Origin is refused and every response is no-store.
+The embedded local worker only schedules existing GET-only reconciliation for a
+still-current allowance; historical hints complete without affecting a new cycle.
+There are no Portal usage counters, financial sends, direct revocation or refill.
+
+Step 14 adds Portal migration `20261111_0011` (work uniqueness) and Kernel `0021`
+(outbox), extending `20261111_0010`/`0020`. Stop affected APIs/workers for migration;
+keep the Step 11 purchased-document reader floor. Forward checks retain populated
+work and usage; no purchase, digest, allowance, reservation or replay is rewritten.
+Local PostgreSQL, authenticated synthetic-consumer and synthetic reverse-HTTP
+checks establish this checkpoint. Actual paired browser/HTTP acceptance remains
+Step 16; live LBX/provider, remote deployment and third-party adoption are not
+claimed. V1 schema/fixture bytes and checksums remain unchanged.
+
+
+## Implemented Step 15 cabinet usage
+
+`GET /api/paid-usage` requires the existing active, verified-email Portal billing
+session (`PortalUserBearer`); tenant, region, user and requested allowance IDs
+come from the server. Success and refusal responses are `Cache-Control: no-store`.
+No usage counters or backend buckets are stored or created by this read.
+
+The unversioned response contains only `access_revision` and `items` at the top
+level. Portal's `PaidUsageResponse` in
+`apps/api/app/domains/billing/usage_contracts.py` owns this HTTP contract through
+the named OpenAPI component and generated TypeScript DTOs. Scope/user come from
+the authenticated session; the response has no `schema_version`, `tenant_id`,
+`region` or `user_id` envelope. The retained `cabinet-usage-v1` schema, fixtures,
+test oracle and corresponding `TARGET_ONLY` contract-index entries describe the
+historical Step 1 target, whose versioned owner envelope is superseded here.
+They do not validate the implemented cabinet response. Their exact bytes and
+the backend usage/exhaustion V1 contracts remain unchanged.
+
+Each item carries the saved
+`allowance_id`, `product_id`, `metric_key`, `unit`, `quantity` and
+`classification: current | historical`. Only `status: observed` includes
+`successful_used`, `reserved`, `remaining`, `available` and the backend's UTC
+`read_at`. An `unobserved` item has no counters/time. An observed tuple that does
+not match the saved identity/terms becomes `unavailable` without counters; a safe
+diagnostic records the conflict. Invalid response scope/IDs or dependency failure
+returns `503 paid_usage_unavailable`, never zero.
+
+Selection uses current configured-source allowances. For each product without a
+current allowance, it selects the latest compatible configured-source history
+by `created_at`, then `allowance_id` (both descending). Legacy rows without proven
+unit/terms and SIMULATED evidence are excluded without rewriting them. A saved
+timestamp allowance issued before its start needs retained committed
+authoritative cycle/primary-selection evidence of activation; elapsed wall time
+alone cannot turn it into history. No eligible allowance means no item, including
+`items: []` for an empty result. Compatible old terms retain their Kernel owner.
+
+`composition/paid_usage.py` owns an independent DB pool/thread limiter and HTTP
+pools. The usage lane admits two active requests and four waiters per process;
+each owner's HTTP pool has two connections. It reuses existing finite source
+I/O/cleanup settings and V1 batches of at most 100 IDs. Selection transactions
+finish before remote I/O. After I/O the application reauthenticates and rechecks
+the committed revision/selection; changes return retryable
+`503 paid_usage_state_changed`. The reserved local `/api/paid-access` engine,
+threads and cancellation ownership are independent of usage outage/pressure.
+
+Resource isolation does not bypass the shared whole-user paid-state authority
+from Steps 5/12. Both local selection passes require a current committed state:
+
+- `503 paid_access_deadline_pending` means a deadline reduction still needs the
+  existing worker/reconciliation commit; `503 paid_access_state_pending` means
+  committed provenance/start-boundary state is not currently usable. Wait for
+  that authority to become current; a usage GET never repairs or filters an old
+  revision, even when selection would contain only historical usage.
+- `503 paid_access_busy` is bounded local read contention; retry later.
+- `503 paid_usage_owner_unavailable` means the saved source/backend owner or
+  product permission is not configured. Repair configuration without assigning
+  the historical allowance to another owner.
+- `503 paid_usage_state_changed` requires a fresh read after the concurrent
+  change. `503 paid_usage_unavailable` covers backend/transport, usage admission
+  or storage failure; repair the dependency when needed and retry. None of these
+  refusals carries usage counters.
+
+The cabinet consumes generated DTOs through the shared transport and shares the
+existing session-operation/visibility refresh guard with paid-access. Access and
+usage refresh independently every 30 seconds while visible, on return to the tab,
+on explicit refresh and after Widget close. Late responses from a replaced,
+revoked or unmounted session are not adopted. The panel labels current/historical
+and unobserved/unavailable states, shows actual counters and read time, and
+separates temporary reservation pressure from final exhaustion. It invents no
+reset date. Local PostgreSQL, synthetic owner HTTP and desktop/mobile component
+accessibility evidence do not establish the assembled Step 16 or live acceptance.

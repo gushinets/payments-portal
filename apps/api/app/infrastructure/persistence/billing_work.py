@@ -13,7 +13,7 @@ from app.models import BillingWorkItem, BillingWorkKind
 RECURRING_INDEX = (
     "work_kind IN ('subscription_reconciliation', 'subscription_trust_expiry', "
     "'billing_enrollment_sweep', 'customer_inventory', 'external_create_deadline', "
-    f"'{BillingWorkKind.ACCESS_INVALIDATION.value}')"
+    f"'{BillingWorkKind.ACCESS_INVALIDATION.value}', '{BillingWorkKind.ALLOWANCE_EXHAUSTION.value}')"
 )
 
 
