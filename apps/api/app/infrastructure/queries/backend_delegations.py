@@ -4,7 +4,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.models import AuthSession, KernelSessionDelegation, User
+from app.models import AuthSession, BackendSessionDelegation, User
 
 
 def read_delegation(
@@ -12,11 +12,11 @@ def read_delegation(
     *,
     credential_hash: str,
     by_code: bool,
-) -> tuple[KernelSessionDelegation, AuthSession, User] | None:
-    field = KernelSessionDelegation.code_hash if by_code else KernelSessionDelegation.token_hash
+) -> tuple[BackendSessionDelegation, AuthSession, User] | None:
+    field = BackendSessionDelegation.code_hash if by_code else BackendSessionDelegation.token_hash
     row = (
-        db.query(KernelSessionDelegation, AuthSession, User)
-        .join(AuthSession, AuthSession.id == KernelSessionDelegation.auth_session_id)
+        db.query(BackendSessionDelegation, AuthSession, User)
+        .join(AuthSession, AuthSession.id == BackendSessionDelegation.auth_session_id)
         .join(
             User,
             (User.id == AuthSession.user_id)
@@ -34,10 +34,10 @@ def lock_parent_session(db: Session, session_id: UUID) -> AuthSession | None:
     return db.query(AuthSession).filter(AuthSession.id == session_id).populate_existing().with_for_update().first()
 
 
-def lock_delegation(db: Session, delegation_id: UUID) -> KernelSessionDelegation | None:
+def lock_delegation(db: Session, delegation_id: UUID) -> BackendSessionDelegation | None:
     return (
-        db.query(KernelSessionDelegation)
-        .filter(KernelSessionDelegation.id == delegation_id)
+        db.query(BackendSessionDelegation)
+        .filter(BackendSessionDelegation.id == delegation_id)
         .populate_existing()
         .with_for_update()
         .first()

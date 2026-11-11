@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -13,6 +12,7 @@ from dotenv import load_dotenv
 from pydantic import Field, SecretStr, StringConstraints, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from app.core.backend_consumers import BackendConsumer
 from app.core.url_validation import (
     validate_production_cors_origin,
     validate_production_public_url,
@@ -20,12 +20,6 @@ from app.core.url_validation import (
 
 SUPPORTED_INSTANCE_TENANT_ID = "anytoolai"
 SUPPORTED_INSTANCE_REGION = "ru"
-
-
-class KernelAccessPermission(StrEnum):
-    EXCHANGE = "kernel-session:exchange"
-    INTROSPECT = "kernel-session:introspect"
-    READ_SNAPSHOT = "access-snapshot:read"
 
 
 def require_supported_instance_scope(*, tenant_id: str, region: str) -> None:
@@ -92,9 +86,7 @@ class Settings(BaseSettings):
     sentry_release: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
     kernel_base_url: str = ""
     kernel_service_token: SecretStr = SecretStr("")
-    kernel_access_service_token: SecretStr | None = Field(default=None, repr=False)
-    kernel_access_service_token_previous: SecretStr | None = Field(default=None, repr=False)
-    kernel_access_permissions: Annotated[tuple[KernelAccessPermission, ...], NoDecode] = ()
+    backend_consumers: tuple[BackendConsumer, ...] = Field(default=(), max_length=16, repr=False)
     kernel_mock_enabled: bool = False
     purchase_test_terms_enabled: bool = False
     # Deployment supplies its supported clock guarantee; no guessed default.
@@ -135,25 +127,41 @@ class Settings(BaseSettings):
     mapping_operator_lock_file: Path | None = None
     mapping_lock_timeout_seconds: float = Field(default=2.0, gt=0, le=10, allow_inf_nan=False)
 
-    @field_validator("kernel_access_permissions", mode="before")
-    @classmethod
-    def parse_kernel_permissions(cls, value: object) -> object:
-        return _split_csv_value(value) if isinstance(value, str) else value
-
-    @field_validator("kernel_access_service_token", "kernel_access_service_token_previous")
-    @classmethod
-    def validate_kernel_access_token(cls, value: SecretStr | None) -> SecretStr | None:
-        if value is not None and not re.fullmatch(r"[A-Za-z0-9._~+/-]{32,256}={0,2}", value.get_secret_value()):
-            raise ValueError("Kernel access tokens require 32–256 Bearer-safe characters")
-        return value
-
     @model_validator(mode="after")
-    def validate_kernel_access_rotation(self) -> Settings:
-        current, previous = self.kernel_access_service_token, self.kernel_access_service_token_previous
-        if previous is not None and (current is None or previous == current):
-            raise ValueError("Previous Kernel access token requires a distinct current token")
-        if any(token is not None and token == self.kernel_service_token for token in (current, previous)):
-            raise ValueError("Kernel directional service tokens must differ")
+    def validate_backend_consumers(self) -> Settings:
+        consumers, products, secrets = set(), set(), set()
+        for consumer in self.backend_consumers:
+            if consumer.consumer_id in consumers:
+                raise ValueError("Backend consumer IDs must be unique")
+            consumers.add(consumer.consumer_id)
+            if (consumer.tenant_id, consumer.region) != (self.instance_tenant_id, self.instance_region):
+                raise ValueError("Backend consumer must belong to the instance scope")
+            if products & consumer.allowed_products:
+                raise ValueError("Each product must have one backend owner")
+            products.update(consumer.allowed_products)
+            if any(
+                secret is not None and secret == self.kernel_service_token
+                for secret in (
+                    consumer.backend_to_portal_current_secret,
+                    consumer.backend_to_portal_previous_secret,
+                )
+            ):
+                raise ValueError("Backend incoming credentials must differ from the active Kernel outgoing key")
+            for secret in (
+                consumer.backend_to_portal_current_secret,
+                consumer.backend_to_portal_previous_secret,
+                consumer.portal_to_backend_current_secret,
+                consumer.portal_to_backend_previous_secret,
+            ):
+                if secret is None:
+                    continue
+                raw = secret.get_secret_value()
+                if raw in secrets:
+                    raise ValueError("Backend consumer credentials must not overlap")
+                secrets.add(raw)
+            if self.app_env == AppEnv.PRODUCTION:
+                validate_production_public_url(consumer.callback_url, "Backend callback")
+                validate_production_public_url(consumer.backend_base_url, "Backend origin")
         return self
 
     @field_validator("paid_access_clock_skew_seconds", mode="before")

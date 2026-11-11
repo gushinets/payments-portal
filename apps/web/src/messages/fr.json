@@ -498,9 +498,9 @@
     "managedInAccount": "Le paiement et la gestion de l’abonnement sont disponibles dans votre compte.",
     "accessInAccount": "L’accès payant confirmé est affiché dans votre compte. L’utilisation et le quota restant sont encore indisponibles."
   },
-  "KernelSession": {
+  "BackendSession": {
     "title": "Accéder à votre produit",
-    "description": "Votre session Portail autorisera cet onglet Kernel.",
+    "description": "Votre session Portail autorisera cet onglet du produit.",
     "continue": "Continuer",
     "loading": "Autorisation…",
     "failed": "Autorisation impossible. Vérifiez votre session et réessayez."

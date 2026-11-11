@@ -255,6 +255,281 @@
         "title": "AccountPurchasesResponse",
         "type": "object"
       },
+      "BackendCodeRequest": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "code_challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+            "code_challenge_method": "S256",
+            "consumer_id": "platform-kernel"
+          }
+        ],
+        "properties": {
+          "code_challenge": {
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "title": "Code Challenge",
+            "type": "string"
+          },
+          "code_challenge_method": {
+            "const": "S256",
+            "examples": [
+              "S256"
+            ],
+            "title": "Code Challenge Method",
+            "type": "string"
+          },
+          "consumer_id": {
+            "examples": [
+              "platform-kernel"
+            ],
+            "pattern": "^[a-z][a-z0-9-]{0,63}$",
+            "title": "Consumer Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "consumer_id",
+          "code_challenge",
+          "code_challenge_method"
+        ],
+        "title": "BackendCodeRequest",
+        "type": "object"
+      },
+      "BackendCodeResponse": {
+        "examples": [
+          {
+            "code": "ccccccccccccccccccccccccccccccccccccccccccc",
+            "expires_at": "2026-11-09T04:01:00Z"
+          }
+        ],
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "expires_at"
+        ],
+        "title": "BackendCodeResponse",
+        "type": "object"
+      },
+      "BackendErrorDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "BackendErrorDetail",
+        "type": "object"
+      },
+      "BackendErrorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/BackendErrorDetail"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "BackendErrorResponse",
+        "type": "object"
+      },
+      "BackendExchangeRequest": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "code": "ccccccccccccccccccccccccccccccccccccccccccc",
+            "code_verifier": "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+          }
+        ],
+        "properties": {
+          "code": {
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "title": "Code",
+            "type": "string"
+          },
+          "code_verifier": {
+            "pattern": "^[A-Za-z0-9._~-]{43,128}$",
+            "title": "Code Verifier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "code_verifier"
+        ],
+        "title": "BackendExchangeRequest",
+        "type": "object"
+      },
+      "BackendExchangeResponse": {
+        "examples": [
+          {
+            "access_token": "ttttttttttttttttttttttttttttttttttttttttttt",
+            "consumer_id": "platform-kernel",
+            "consumer_policy_revision": 1,
+            "expires_at": "2026-11-09T04:30:00Z",
+            "region": "ru",
+            "schema_version": 2,
+            "tenant_id": "anytoolai",
+            "token_type": "Bearer",
+            "user_id": "00000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "consumer_id": {
+            "title": "Consumer Id",
+            "type": "string"
+          },
+          "consumer_policy_revision": {
+            "maximum": 9007199254740991.0,
+            "minimum": 1.0,
+            "title": "Consumer Policy Revision",
+            "type": "integer"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "token_type": {
+            "const": "Bearer",
+            "default": "Bearer",
+            "title": "Token Type",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "consumer_id",
+          "consumer_policy_revision",
+          "tenant_id",
+          "region",
+          "user_id",
+          "expires_at"
+        ],
+        "title": "BackendExchangeResponse",
+        "type": "object"
+      },
+      "BackendIntrospectionRequest": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "access_token": "ttttttttttttttttttttttttttttttttttttttttttt"
+          }
+        ],
+        "properties": {
+          "access_token": {
+            "description": "Secret delegated user bearer for this consumer. Service bearer stays in Authorization.",
+            "examples": [
+              "synthetic-delegation-ttttttttttttttttttttttttttttttttttttttttttt"
+            ],
+            "maxLength": 512,
+            "minLength": 43,
+            "title": "Access Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token"
+        ],
+        "title": "BackendIntrospectionRequest",
+        "type": "object"
+      },
+      "BackendIntrospectionResponse": {
+        "examples": [
+          {
+            "consumer_id": "platform-kernel",
+            "consumer_policy_revision": 1,
+            "region": "ru",
+            "schema_version": 2,
+            "tenant_id": "anytoolai",
+            "user_id": "00000000-0000-4000-8000-000000000001",
+            "valid_until": "2026-11-09T04:29:55Z"
+          }
+        ],
+        "properties": {
+          "consumer_id": {
+            "title": "Consumer Id",
+            "type": "string"
+          },
+          "consumer_policy_revision": {
+            "maximum": 9007199254740991.0,
+            "minimum": 1.0,
+            "title": "Consumer Policy Revision",
+            "type": "integer"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "valid_until": {
+            "format": "date-time",
+            "title": "Valid Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "consumer_id",
+          "consumer_policy_revision",
+          "tenant_id",
+          "region",
+          "user_id",
+          "valid_until"
+        ],
+        "title": "BackendIntrospectionResponse",
+        "type": "object"
+      },
       "BillingHealthResponse": {
         "properties": {
           "active_slots": {
@@ -626,193 +901,6 @@
           }
         },
         "title": "HTTPValidationError",
-        "type": "object"
-      },
-      "KernelCodeRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "code_challenge": {
-            "pattern": "^[A-Za-z0-9_-]{43}$",
-            "title": "Code Challenge",
-            "type": "string"
-          },
-          "code_challenge_method": {
-            "const": "S256",
-            "title": "Code Challenge Method",
-            "type": "string"
-          }
-        },
-        "required": [
-          "code_challenge",
-          "code_challenge_method"
-        ],
-        "title": "KernelCodeRequest",
-        "type": "object"
-      },
-      "KernelCodeResponse": {
-        "properties": {
-          "code": {
-            "title": "Code",
-            "type": "string"
-          },
-          "expires_at": {
-            "format": "date-time",
-            "title": "Expires At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "code",
-          "expires_at"
-        ],
-        "title": "KernelCodeResponse",
-        "type": "object"
-      },
-      "KernelErrorDetail": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "title": "Code",
-            "type": "string"
-          }
-        },
-        "required": [
-          "code"
-        ],
-        "title": "KernelErrorDetail",
-        "type": "object"
-      },
-      "KernelErrorResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "detail": {
-            "$ref": "#/components/schemas/KernelErrorDetail"
-          }
-        },
-        "required": [
-          "detail"
-        ],
-        "title": "KernelErrorResponse",
-        "type": "object"
-      },
-      "KernelExchangeRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "pattern": "^[A-Za-z0-9_-]{43}$",
-            "title": "Code",
-            "type": "string"
-          },
-          "code_verifier": {
-            "pattern": "^[A-Za-z0-9._~-]{43,128}$",
-            "title": "Code Verifier",
-            "type": "string"
-          }
-        },
-        "required": [
-          "code",
-          "code_verifier"
-        ],
-        "title": "KernelExchangeRequest",
-        "type": "object"
-      },
-      "KernelExchangeResponse": {
-        "properties": {
-          "access_token": {
-            "title": "Access Token",
-            "type": "string"
-          },
-          "expires_at": {
-            "format": "date-time",
-            "title": "Expires At",
-            "type": "string"
-          },
-          "region": {
-            "title": "Region",
-            "type": "string"
-          },
-          "schema_version": {
-            "const": 1,
-            "default": 1,
-            "title": "Schema Version",
-            "type": "integer"
-          },
-          "tenant_id": {
-            "title": "Tenant Id",
-            "type": "string"
-          },
-          "token_type": {
-            "const": "Bearer",
-            "default": "Bearer",
-            "title": "Token Type",
-            "type": "string"
-          },
-          "user_id": {
-            "format": "uuid",
-            "title": "User Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "access_token",
-          "tenant_id",
-          "region",
-          "user_id",
-          "expires_at"
-        ],
-        "title": "KernelExchangeResponse",
-        "type": "object"
-      },
-      "KernelIntrospectionRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "access_token": {
-            "maxLength": 512,
-            "minLength": 43,
-            "title": "Access Token",
-            "type": "string"
-          }
-        },
-        "required": [
-          "access_token"
-        ],
-        "title": "KernelIntrospectionRequest",
-        "type": "object"
-      },
-      "KernelIntrospectionResponse": {
-        "properties": {
-          "region": {
-            "title": "Region",
-            "type": "string"
-          },
-          "schema_version": {
-            "const": 1,
-            "default": 1,
-            "title": "Schema Version",
-            "type": "integer"
-          },
-          "tenant_id": {
-            "title": "Tenant Id",
-            "type": "string"
-          },
-          "user_id": {
-            "format": "uuid",
-            "title": "User Id",
-            "type": "string"
-          },
-          "valid_until": {
-            "format": "date-time",
-            "title": "Valid Until",
-            "type": "string"
-          }
-        },
-        "required": [
-          "tenant_id",
-          "region",
-          "user_id",
-          "valid_until"
-        ],
-        "title": "KernelIntrospectionResponse",
         "type": "object"
       },
       "LegalEvidence": {
@@ -2047,6 +2135,18 @@
         "title": "WidgetPaymentTarget",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "BackendServiceBearer": {
+        "description": "Backend-to-Portal service credential. Never the delegated user token or primary Portal bearer.",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "PortalUserBearer": {
+        "description": "Primary Portal session bearer. Used only for code issuance; never forwarded to a backend.",
+        "scheme": "bearer",
+        "type": "http"
+      }
     }
   },
   "info": {
@@ -2435,6 +2535,83 @@
         ]
       }
     },
+    "/api/backend-session-codes": {
+      "post": {
+        "description": "Requires PortalUserBearer. A hash-only, single-use code expires within 60 seconds and remains bound to the parent session and configured consumer. The registered callback is deployment-owned; callback/redirect body fields are refused. All responses use Cache-Control: no-store. 401: invalid parent session; 403: unknown consumer; 422: invalid PKCE/body; 503: policy/storage unavailable.",
+        "operationId": "create_backend_code_api_backend_session_codes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackendCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendCodeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "PortalUserBearer": []
+          }
+        ],
+        "summary": "Issue a consumer-bound S256 authorization code",
+        "tags": [
+          "backend-session"
+        ]
+      }
+    },
     "/api/billing/widget-bootstrap": {
       "post": {
         "operationId": "widget_bootstrap_api_billing_widget_bootstrap_post",
@@ -2627,67 +2804,6 @@
         "summary": "Readiness",
         "tags": [
           "health"
-        ]
-      }
-    },
-    "/api/kernel-session-codes": {
-      "post": {
-        "operationId": "create_kernel_code_api_kernel_session_codes_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/KernelCodeRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/KernelCodeResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/KernelErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/KernelErrorResponse"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/KernelErrorResponse"
-                }
-              }
-            },
-            "description": "Service Unavailable"
-          }
-        },
-        "summary": "Create Kernel Code",
-        "tags": [
-          "kernel-session"
         ]
       }
     },
@@ -3253,7 +3369,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/KernelErrorResponse"
+                  "$ref": "#/components/schemas/BackendErrorResponse"
                 }
               }
             },
@@ -3263,7 +3379,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/KernelErrorResponse"
+                  "$ref": "#/components/schemas/BackendErrorResponse"
                 }
               }
             },
@@ -3273,7 +3389,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/KernelErrorResponse"
+                  "$ref": "#/components/schemas/BackendErrorResponse"
                 }
               }
             },
@@ -3283,7 +3399,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/KernelErrorResponse"
+                  "$ref": "#/components/schemas/BackendErrorResponse"
                 }
               }
             },
@@ -3293,27 +3409,33 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/KernelErrorResponse"
+                  "$ref": "#/components/schemas/BackendErrorResponse"
                 }
               }
             },
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "BackendServiceBearer": []
+          }
+        ],
         "summary": "Access Snapshot",
         "tags": [
           "access-snapshot"
         ]
       }
     },
-    "/internal/v1/kernel-sessions/exchange": {
+    "/internal/v1/backend-sessions/exchange": {
       "post": {
-        "operationId": "exchange_kernel_code_internal_v1_kernel_sessions_exchange_post",
+        "description": "Requires BackendServiceBearer with backend-session:exchange. Consumer identity comes from the service credential; the body contains only the code and S256 verifier. Returns a V2 delegated user bearer, canonical UUID/scope, consumer and current policy revision. Lifetime is at most 30 minutes and parent expiry. No refresh token. All responses are no-store. 401: invalid/used/expired/foreign code or parent; 403: scope/permission; 422: invalid body; 503: policy/storage unavailable. Origin-bearing browser requests are refused.",
+        "operationId": "exchange_backend_code_internal_v1_backend_sessions_exchange_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/KernelExchangeRequest"
+                "$ref": "#/components/schemas/BackendExchangeRequest"
               }
             }
           },
@@ -3324,7 +3446,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/KernelExchangeResponse"
+                  "$ref": "#/components/schemas/BackendExchangeResponse"
                 }
               }
             },
@@ -3334,7 +3456,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/KernelErrorResponse"
+                  "$ref": "#/components/schemas/BackendErrorResponse"
                 }
               }
             },
@@ -3344,7 +3466,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/KernelErrorResponse"
+                  "$ref": "#/components/schemas/BackendErrorResponse"
                 }
               }
             },
@@ -3354,7 +3476,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/KernelErrorResponse"
+                  "$ref": "#/components/schemas/BackendErrorResponse"
                 }
               }
             },
@@ -3364,27 +3486,33 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/KernelErrorResponse"
+                  "$ref": "#/components/schemas/BackendErrorResponse"
                 }
               }
             },
             "description": "Service Unavailable"
           }
         },
-        "summary": "Exchange Kernel Code",
+        "security": [
+          {
+            "BackendServiceBearer": []
+          }
+        ],
+        "summary": "Redeem this backend's code once",
         "tags": [
-          "kernel-session"
+          "backend-session"
         ]
       }
     },
-    "/internal/v1/kernel-sessions/introspect": {
+    "/internal/v1/backend-sessions/introspect": {
       "post": {
-        "operationId": "introspect_kernel_token_internal_v1_kernel_sessions_introspect_post",
+        "description": "Requires BackendServiceBearer with backend-session:introspect in Authorization. The secret access_token body field contains the delegated USER bearer, not the service credential. Validates consumer audience, active user, parent revocation/expiry and current policy. Read-only; no refresh or PII. valid_until includes the configured conservative clock budget. All responses are no-store. 401: backend_delegation_expired or backend_parent_authority_invalid; 403: scope/permission/browser; 422: invalid secret body; 503: policy/storage unavailable.",
+        "operationId": "introspect_backend_token_internal_v1_backend_sessions_introspect_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/KernelIntrospectionRequest"
+                "$ref": "#/components/schemas/BackendIntrospectionRequest"
               }
             }
           },
@@ -3395,7 +3523,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/KernelIntrospectionResponse"
+                  "$ref": "#/components/schemas/BackendIntrospectionResponse"
                 }
               }
             },
@@ -3405,7 +3533,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/KernelErrorResponse"
+                  "$ref": "#/components/schemas/BackendErrorResponse"
                 }
               }
             },
@@ -3415,7 +3543,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/KernelErrorResponse"
+                  "$ref": "#/components/schemas/BackendErrorResponse"
                 }
               }
             },
@@ -3425,7 +3553,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/KernelErrorResponse"
+                  "$ref": "#/components/schemas/BackendErrorResponse"
                 }
               }
             },
@@ -3435,16 +3563,21 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/KernelErrorResponse"
+                  "$ref": "#/components/schemas/BackendErrorResponse"
                 }
               }
             },
             "description": "Service Unavailable"
           }
         },
-        "summary": "Introspect Kernel Token",
+        "security": [
+          {
+            "BackendServiceBearer": []
+          }
+        ],
+        "summary": "Validate this backend's delegated user on every protected request",
         "tags": [
-          "kernel-session"
+          "backend-session"
         ]
       }
     }

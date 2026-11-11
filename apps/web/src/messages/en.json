@@ -498,9 +498,9 @@
     "managedInAccount": "Payment and subscription management are available in your account.",
     "accessInAccount": "Confirmed paid access is shown in your account. Usage and remaining quota are not yet available."
   },
-  "KernelSession": {
+  "BackendSession": {
     "title": "Continue to your product",
-    "description": "Your Portal session will authorize this Kernel tab.",
+    "description": "Your Portal session will authorize this product tab.",
     "continue": "Continue",
     "loading": "Authorizing…",
     "failed": "Could not authorize. Check your session and try again."

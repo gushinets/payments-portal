@@ -51,6 +51,39 @@ Indexes and constraints:
 - `ix_auth_sessions_token_hash`
 - `ix_auth_sessions_user_id`
 
+## `backend_consumer_policies`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `consumer_id` | `TEXT` | no | PK |
+| `tenant_id` | `TEXT` | no | PK |
+| `region` | `TEXT` | no | PK |
+| `consumer_policy_revision` | `BIGINT` | no |  |
+| `policy_digest` | `TEXT` | no |  |
+
+Indexes and constraints:
+
+- `ck_backend_policy_positive`
+
+## `backend_session_delegations`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `id` | `CHAR(32)` | no | PK |
+| `auth_session_id` | `CHAR(32)` | no | FK |
+| `consumer_id` | `TEXT` | no |  |
+| `code_hash` | `TEXT` | no |  |
+| `code_challenge` | `TEXT` | no |  |
+| `code_expires_at` | `DATETIME` | no |  |
+| `exchanged_at` | `DATETIME` | yes |  |
+| `token_hash` | `TEXT` | yes |  |
+| `token_expires_at` | `DATETIME` | yes |  |
+
+Indexes and constraints:
+
+- `ck_backend_delegation_exchange_shape`
+- `ix_backend_session_delegations_auth_session_id`
+
 ## `billing_product_access_scopes`
 
 | Column | Type | Nullable | Key |
@@ -489,25 +522,6 @@ Indexes and constraints:
 - `ix_external_subscriptions_user_product_status`
 - `ix_external_subscriptions_valid_until`
 - `uq_external_subscriptions_purchase_intent`
-
-## `kernel_session_delegations`
-
-| Column | Type | Nullable | Key |
-|---|---|---:|---|
-| `id` | `CHAR(32)` | no | PK |
-| `auth_session_id` | `CHAR(32)` | no | FK |
-| `audience` | `TEXT` | no |  |
-| `code_hash` | `TEXT` | no |  |
-| `code_challenge` | `TEXT` | no |  |
-| `code_expires_at` | `DATETIME` | no |  |
-| `exchanged_at` | `DATETIME` | yes |  |
-| `token_hash` | `TEXT` | yes |  |
-| `token_expires_at` | `DATETIME` | yes |  |
-
-Indexes and constraints:
-
-- `ck_kernel_delegation_exchange_shape`
-- `ix_kernel_session_delegations_auth_session_id`
 
 ## `legal_acceptance_events`
 

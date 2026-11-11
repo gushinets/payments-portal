@@ -11,13 +11,13 @@ from app.composition.paid_reads import PaidReadResources
 from app.core.settings import settings
 from app.domains.billing.contracts import BillingRefused
 from app.http.dependencies import get_paid_read_resources
-from app.http.kernel_auth import KernelPrincipal, authorize_snapshot
-from app.http.kernel_session_policy import KernelErrorResponse
+from app.http.backend_auth import BackendPrincipal, authorize_snapshot
+from app.http.backend_session_policy import BackendErrorResponse
 
 router = APIRouter(
     prefix="/internal/v1/access-snapshots",
     tags=["access-snapshot"],
-    responses={status: {"model": KernelErrorResponse} for status in (401, 403, 404, 422, 503)},
+    responses={status: {"model": BackendErrorResponse} for status in (401, 403, 404, 422, 503)},
 )
 
 
@@ -52,7 +52,7 @@ class AccessSnapshotResponse(BaseModel):
 @router.get("/{user_id}")
 async def access_snapshot(
     user_id: UUID,
-    principal: Annotated[KernelPrincipal, Depends(authorize_snapshot)],
+    principal: Annotated[BackendPrincipal, Depends(authorize_snapshot)],
     reads: Annotated[PaidReadResources, Depends(get_paid_read_resources)],
     tenant_id: Annotated[str, Query(min_length=1)],
     region: Annotated[str, Query(min_length=1)],

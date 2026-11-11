@@ -10,7 +10,12 @@ wire semantics, AccessSnapshot, AccessInvalidation and paid-access trust remain 
 
 ## ANY-766 consumer-neutral amendment — 2026-11-10
 
-Status: **target formalized in Step 9; runtime remains the Steps 1–8 baseline**.
+Status: **Step 10 identity implemented (2026-11-11); remaining consumer-neutral
+runtime work is planned.** Common delegation V2, configured callbacks, the
+persisted policy guard and generated identity security are implemented. Snapshot
+remains Kernel-only V2; filtering/P/R coherence is Step 12, sources Step 11 and
+recipient routing Step 13. The implementation status is recorded in the guide
+and active plan; historical baseline sections below do not restore old routes.
 The [common product backend API guide](../../contracts/product-backend-api/README.md)
 and [paired schemas/fixtures](../../contracts/portal-kernel-paid/README.md)
 are the normative consumer-neutral target. The guide records complete safe

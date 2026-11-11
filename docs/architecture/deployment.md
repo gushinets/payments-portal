@@ -148,13 +148,18 @@ current migration chain and table inventory. Do not create a separate
 bootstrap CLI. Before starting normal runtime on a fresh database, verify:
 
 - Alembic reports one head and the database is at that head;
-- the current head is `20261110_0008` and exactly 28 application tables exist;
+- the current head is `20261111_0009` and exactly 29 application tables exist;
 - every removed legacy catalog/order/payment/provider/subscription/
   entitlement/trial table is absent;
 - all seventeen billing/link/purchase tables are empty before explicit flows;
 - only the configured contour/country state is present;
 - the expected legal entity and six current legal document rows match the
   canonical legal source.
+
+The [Step 10 consumer cutover](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover)
+requires the updated Portal/Kernel/browser together. Migration 0009 preserves
+retained delegation credentials; API startup installs the configured P/digest
+guard. Old Kernel-only identity binaries are not a supported rollback.
 
 After verification succeeds, start only the matching application stack:
 

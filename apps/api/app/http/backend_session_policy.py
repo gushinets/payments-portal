@@ -8,36 +8,36 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ConfigDict
 from starlette.responses import JSONResponse, Response
 
-INTERNAL_PREFIX = "/internal/v1/kernel-sessions/"
-CODE_PATH = "/api/kernel-session-codes"
+INTERNAL_PREFIX = "/internal/v1/backend-sessions/"
+CODE_PATH = "/api/backend-session-codes"
 SNAPSHOT_PREFIX = "/internal/v1/access-snapshots/"
 
 
-class KernelErrorDetail(BaseModel):
+class BackendErrorDetail(BaseModel):
     model_config = ConfigDict(extra="forbid")
     code: str
 
 
-class KernelErrorResponse(BaseModel):
+class BackendErrorResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    detail: KernelErrorDetail
+    detail: BackendErrorDetail
 
 
-def is_kernel_session_path(path: str) -> bool:
+def is_backend_session_path(path: str) -> bool:
     return path.startswith((INTERNAL_PREFIX, SNAPSHOT_PREFIX)) or path == CODE_PATH
 
 
 async def session_validation_error(request: Request, error: RequestValidationError) -> Response:
-    if is_kernel_session_path(request.url.path):
+    if is_backend_session_path(request.url.path):
         return JSONResponse(
             status_code=422,
-            content={"detail": {"code": "kernel_session_request_invalid"}},
+            content={"detail": {"code": "backend_session_request_invalid"}},
             headers={"Cache-Control": "no-store"},
         )
     return await request_validation_exception_handler(request, error)
 
 
-async def kernel_session_policy(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+async def backend_session_policy(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
     if request.url.path.startswith((INTERNAL_PREFIX, SNAPSHOT_PREFIX)) and "origin" in request.headers:
         return JSONResponse(
             status_code=403,
@@ -45,6 +45,6 @@ async def kernel_session_policy(request: Request, call_next: Callable[[Request],
             headers={"Cache-Control": "no-store"},
         )
     response = await call_next(request)
-    if is_kernel_session_path(request.url.path):
+    if is_backend_session_path(request.url.path):
         response.headers["Cache-Control"] = "no-store"
     return response

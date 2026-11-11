@@ -498,9 +498,9 @@
     "managedInAccount": "Zahlung und Abonnementverwaltung stehen in deinem Konto zur Verfügung.",
     "accessInAccount": "Bestätigter bezahlter Zugriff wird im Konto angezeigt. Verbrauch und Restkontingent sind noch nicht verfügbar."
   },
-  "KernelSession": {
+  "BackendSession": {
     "title": "Weiter zu Ihrem Produkt",
-    "description": "Ihre Portal-Sitzung autorisiert diesen Kernel-Tab.",
+    "description": "Ihre Portal-Sitzung autorisiert diesen Produkt-Tab.",
     "continue": "Weiter",
     "loading": "Autorisierung…",
     "failed": "Autorisierung fehlgeschlagen. Prüfen Sie Ihre Sitzung und versuchen Sie es erneut."

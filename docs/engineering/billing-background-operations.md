@@ -103,10 +103,12 @@ No sale flags, mappings or deployed settings are enabled by this implementation.
 
 `GET /internal/v1/access-snapshots/{user_id}?tenant_id=anytoolai&region=ru`
 serves the [selected V2 wire contract](../contracts/portal-kernel-paid/README.md#snapshot-v2-and-invalidation-v1).
-Configure the reverse-direction current/previous service credentials described
-in the [identity checkpoint](../contracts/portal-kernel-paid/README.md#step-4-server-implementation)
-and add the receiver-owned `access-snapshot:read` permission to
-`KERNEL_ACCESS_PERMISSIONS`. The default remains empty. The permission grants
+Configure the reverse-direction current/previous credentials in the
+platform-kernel entry of `BACKEND_CONSUMERS`, with explicit
+`access-snapshot:read` permission, as described by the
+[current identity configuration](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).
+No permission is granted by default. Snapshot remains Kernel-only V2 until
+Step 12. The permission grants
 neither exchange nor introspection. Exactly one Bearer header and the matching
 tenant/region query are required. Origin, foreign/ambiguous scope, unknown input
 and malformed identity are refused; success/refusal responses are no-store.
@@ -205,7 +207,10 @@ reverse-direction identity/snapshot credential remains independent.
 Before starting this Portal writer, install the compatible Kernel receiver
 with matching scope/current-or-previous Portal service token and explicitly set
 `ANYTOOLAI_PORTAL_ACCESS_INVALIDATION_ENABLED=true` there. Then apply Portal
-migration `20261110_0008` after `20261110_0007` and restart the Portal API.
+migration `20261110_0008` after `20261110_0007`. With completed Step 10, also
+apply `20261111_0009` and use the synchronized
+[consumer identity cutover](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover)
+before restarting the compatible Portal/Kernel pair.
 The migration extends the existing recurring-work index; it adds no table,
 scheduler or mandatory worker container. A disabled Kernel permission returns
 `403` and parks delivery; enabling it later also requires the CLI retry below.
@@ -774,7 +779,7 @@ remain unchanged. Time alone cannot prove a new cycle or extend authority.
 ### Migration, configuration, recovery and evidence limits
 
 The current chain is `20260924_0001 → 20261001_0002 → 20261029_0003 →
-20261028_0005 → 20261031_0006 → 20261110_0007 → 20261110_0008`;
+20261028_0005 → 20261031_0006 → 20261110_0007 → 20261110_0008 → 20261111_0009`;
 there is no `0004` dependency to recreate.
 `0006` preserves legacy UTC and v2 purchases, preflights incompatible history,
 enforces immutable allowance/logical identity and monotonic state/outbox guards,

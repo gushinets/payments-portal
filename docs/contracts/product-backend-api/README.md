@@ -1,14 +1,15 @@
 # Common product backend API
 
-Status: **TARGET SPECIFICATION — ANY-766 Step 9, 2026-11-10.**
-The consumer-neutral endpoints, policy guard and migrations described here are
-not implemented yet. Kernel-only delegation V1, snapshot V2, paid admission,
-invalidation delivery and browser recovery are the implemented Steps 1–8
-baseline. Offline fixtures prove contract consistency, not runtime isolation,
-durability, TCP interoperability or a payment. The working auth/access handoff
-is Step 12, prioritized for **2026-11-13**; delivery/usage follow in Steps 13–15,
-assembled local acceptance in Step 16 and build/install preparation in Step 17.
-Remote publication, installation and live acceptance belong to ANY-767.
+Status: **IDENTITY IMPLEMENTED — ANY-766 Step 10, 2026-11-11.**
+Consumer-bound code issuance, exchange/introspection V2, configured callbacks and
+the persisted policy guard are implemented. Generated OpenAPI documents the
+actual common identity routes and named Bearer schemes. Snapshot remains the
+Kernel-only V2 baseline; consumer-filtered V3 and the complete auth/access handoff
+remain Step 12, prioritized for **2026-11-13**. Technical sources, recipient
+routing, usage/cabinet and assembled local acceptance remain Steps 11–16;
+build/install preparation remains Step 17. Remote/live acceptance belongs to
+ANY-767. Local synthetic evidence does not establish third-party adoption or a
+payment.
 
 Authority: [ADR 0005](../../architecture/decisions/0005-external-billing-boundary.md),
 [external billing design](../../superpowers/specs/2026-09-15-external-billing-boundary-design.md),
@@ -26,12 +27,14 @@ source and one execution/usage backend owner within the contour. Kernel is the
 first backend, `consumer_id=platform-kernel`; it has no special wire privilege.
 The second fixture consumer, `synthetic-summary`, owns only `synthetic_summary`.
 It is an isolated protocol example, not the real Document Summary product or
-approval to register, contact or implement another team's service.
+approval to register, contact or implement another team's service. Step 10
+validates configured product ownership and guards its policy digest; technical
+source routing remains Step 11 and product-filtered snapshot authority Step 12.
 
 Operator configuration defines a small explicit consumer set. The following is
-a **logical target configuration**, not an accepted environment variable/file
-format today. Step 10 wires it into existing settings/composition and protected
-operator tooling. Secret references below are labels, never actual credentials.
+a **logical configuration**. The implemented server environment format is
+specified below. Secret references in this overview are labels, never actual
+credentials; they are not accepted field names in the runtime registry.
 
 ```json
 {
@@ -68,10 +71,110 @@ operator tooling. Secret references below are labels, never actual credentials.
 }
 ```
 
+### Implemented Step 10 settings and cutover
+
+`BACKEND_CONSUMERS` is a JSON array (at most 16 entries), parsed by Portal
+`app/core/backend_consumers.py` and `Settings`. Each entry requires the identity,
+scope, P, products, permissions, callback, backend origin and technical source
+fields in the overview, plus actual server-only SecretStr fields
+`backend_to_portal_current_secret` and `portal_to_backend_current_secret`.
+Optional distinct previous slots are `backend_to_portal_previous_secret` and
+`portal_to_backend_previous_secret`. The logical `*_secret_ref` fields above
+must be resolved before supplying settings; no secret-manager framework is added.
+Empty `[]` disables backend authentication. There are no default permissions.
+
+For managed local startup, set `BACKEND_CONSUMERS` to a single-line JSON array
+in the repository-root `.env`; a process environment value takes precedence.
+`repo:up` forwards it through private `.harness/runtime.env` to the API and web
+server environments. The registry stays out of runtime metadata and public
+`NEXT_PUBLIC_*` configuration.
+
+Safe synthetic example (one entry; add the independent second identity in tests):
+
+```json
+[{
+  "consumer_id": "platform-kernel",
+  "tenant_id": "anytoolai",
+  "region": "ru",
+  "consumer_policy_revision": 1,
+  "allowed_products": ["kernel_demo", "proposal_ai", "client_update_writer", "brief_decoder", "acceptance_builder"],
+  "permissions": ["backend-session:exchange", "backend-session:introspect", "access-snapshot:read"],
+  "callback_url": "https://kernel.example.test/portal-session/callback",
+  "backend_base_url": "https://kernel.example.test",
+  "technical_source_id": "platform-kernel",
+  "backend_to_portal_current_secret": "synthetic-incoming-not-a-real-key-1111111111",
+  "portal_to_backend_current_secret": "synthetic-outgoing-not-a-real-key-2222222222"
+}]
+```
+
+Real entries must include the full intended Kernel product scope. Configure
+P=1 for the initial migrated Kernel policy. The registry accepts an empty product
+scope at a higher P and retains the guard's monotonic history. Product filtering
+and P-based admission enforcement remain Step 12; changing allowed_products/P
+alone does not withdraw products from the current unfiltered Kernel V2 snapshot.
+IDs, per-product owners and all credential slots must be unambiguous; scope must
+equal this Portal instance.
+URL credentials, query/fragment and foreign callback origins are refused.
+HTTPS is required, with loopback HTTP only in development/test. Rotation and
+callback changes do not change the policy digest. `allowance-exhaustion:write`
+is a recognized configuration permission but its receiver remains Step 14.
+
+At API startup, `initialize_backend_consumers` atomically installs validated
+policies in `backend_consumer_policies`. Reused-P digest changes and rollback
+abort startup. Identity requests read the guard and refuse stale installations
+with safe `503`; introspection performs no policy writes or session bookkeeping.
+The persisted key is consumer/tenant/region; rows store only P and digest.
+This step does not add policy to Core owners, replay partitions or usage buckets.
+Introspection also requires `PAID_ACCESS_CLOCK_SKEW_SECONDS`; configure 5 for the
+selected local clock budget. Missing configuration returns `503`; deployed
+support for that budget remains an operator requirement.
+
+Portal web uses the same **server-only** `BACKEND_CONSUMERS` registry and projects
+only consumer_id/callback_url into the authorization component. A service-specific
+web environment may supply just those two public fields. Never rename the
+registry to a NEXT_PUBLIC variable. The page is `/[locale]/backend/authorize`;
+its query requires exactly consumer_id/state/code_challenge/code_challenge_method.
+Callback/redirect query fields, duplicate fields and unknown consumers are refused
+before code issuance. Selection always uses a configured callback, with code/state
+only in the fragment. `NEXT_PUBLIC_KERNEL_WEB_BASE_URL` remains the cabinet's
+Kernel launch host; it no longer owns authorization callback selection.
+
+Kernel continues to use `ANYTOOLAI_PORTAL_BASE_URL` plus
+`ANYTOOLAI_PORTAL_ACCESS_SERVICE_TOKEN`; set `ANYTOOLAI_PORTAL_CONSUMER_ID` to
+`platform-kernel` (the default). Configure its web
+`NEXT_PUBLIC_PORTAL_AUTHORIZE_URL` as the localized `/backend/authorize` URL.
+The host sends `consumer_id=platform-kernel` and accepts only its own V2 response.
+Its local `/v1/portal-session/exchange` and `/portal-session/*` paths remain.
+
+Stop old local APIs/workers before the synchronized cutover. Apply forward Portal
+migration `20261111_0009` after `20261110_0008`, then start the updated pair/browser.
+The migration renames kernel_session_delegations to backend_session_delegations
+and audience to consumer_id, retaining the existing platform-kernel value and
+all parent links, hashes, challenges, deadlines and single-use state. A historical
+row with an audience other than platform-kernel refuses migration before changes;
+no foreign credential is automatically adopted. Configure and initialize the
+policy guard before serving identity. No Kernel schema change
+is needed in Step 10. Old binaries are incompatible and excluded.
+
+The stable tab key `anytoolai.portal_session.v1` now contains a version-2 envelope
+with consumer/P. Version-1 envelopes fail closed and require authorization; the
+separate owner/custody and pending prepared-start records remain readable. Same-owner
+V2 authorization preserves the exact original request and idempotency key;
+different-owner authorization clears private recovery. No guest fallback is added.
+
+Until Steps 11/13, manifest and invalidation transport retain their existing
+Kernel URL/outgoing settings; keep them aligned with the Kernel registry entry.
+Until Step 12, the common service principal can access snapshot V2 only as
+platform-kernel with explicit access-snapshot:read. A synthetic second consumer
+is refused there, so it cannot receive the unfiltered baseline snapshot.
+This intentional intermediate state is not the completed auth/access handoff.
+
 This minimal example does not replace Kernel's full configured product set.
 The migrated Kernel policy must include every intended existing product.
-Technical source entries select an origin/client and provenance through the
-existing manifest V1 validation seam. Validate unique consumer IDs, nonoverlapping
+Step 11 will connect technical-source metadata to origin/client selection and
+provenance through the existing manifest V1 validation seam. Step 10 only stores
+that metadata in deployment configuration; existing Kernel source composition
+still owns manifest calls. Validate unique consumer IDs, nonoverlapping
 service secrets and a single source/backend owner for each product. Allowed
 products must agree with that ownership. No shared Kernel key, dynamic
 registration/admin API, source mirror or automatic owner transfer is added.
@@ -96,6 +199,10 @@ permissions grant no other operation. Do not use service keys in external
 Swagger browsers or log bodies, codes, tokens, headers, fragments or PII.
 
 ## Identity and complete auth/access example
+
+Identity calls 1–4 below are implemented in Step 10. Call 5 shows the Step 12
+V3 target; today's Kernel-only endpoint still returns V2, with no consumer/P
+fields or configured-product filtering. It refuses the second consumer.
 
 All values below are synthetic. The examples form one Kernel flow at
 `2026-11-09T04:00:00Z`; they are documentation, not commands to a running server.
@@ -190,7 +297,7 @@ Permission: `backend-session:introspect`. Check consumer audience, parent sessio
 active user, expiry and current policy on every request. Introspection reads do
 not commit session bookkeeping. Responses have canonical scope/UUID and no PII.
 
-5. Fetch the authorized purchased limits under `access-snapshot:read`:
+5. **Planned — Step 12:** fetch consumer-scoped purchased limits under `access-snapshot:read`:
 
 ```http
 GET /internal/v1/access-snapshots/11111111-1111-4111-8111-111111111111?tenant_id=anytoolai&region=ru
@@ -221,6 +328,11 @@ Q=1 is an isolated test value, not approved commercial terms.
 
 ## Policy, snapshots and durable backend enforcement
 
+Portal's P/digest installation guard and introspection of current P are
+implemented in Step 10. V3 filtering, consumer/P cache identity, independent
+policy floors and P-based admission checks below remain the Step 12 target.
+Kernel currently retains its existing V2/R coherence and ANY-507 enforcement.
+
 `access_revision` R remains the whole-user paid-state revision. P is a strictly
 positive consumer policy version, initially 1 for migrated Kernel. Semantic
 identity is `consumer/tenant/region/user/P/R`. Identical identity freezes grants
@@ -230,7 +342,7 @@ valid_until and every tuple field, exclude only envelope refresh_after/expires_a
 A same-P/R content conflict refuses installation; it is not an empty entitlement.
 
 Persist P/digest in a small consumer-scoped configuration guard owned by Portal
-settings/composition (no such guard exists in Step 8). Policy digest is
+settings/composition (implemented in Step 10; absent in Step 8). Policy digest is
 `sha256:<lowercase hex>` of UTF-8 JSON with sorted keys, compact separators and
 ASCII escaping over `consumer_id`, `tenant_id`, `region`, `allowed_products`;
 the last is a sorted distinct list. Product/snapshot-scope changes require a
@@ -280,7 +392,11 @@ their original bucket. Guest behavior and observational client events remain.
 
 ## Reverse endpoints and usage responsibilities
 
-These are backend responsibilities, **not implemented Portal routes**. Kernel
+These are backend responsibilities, **not Portal reverse-endpoint routes**.
+Kernel manifest and invalidation receivers already work. Generic source routing
+and recipient fan-out remain Steps 11/13; usage/exhaustion routes and cabinet
+reads remain Steps 14/15. The descriptions below specify their target behavior.
+Kernel
 owns the existing V1 manifest/usage/exhaustion wire schemas; other backends use
 the same meanings with their own products. See the
 [manifest V1 bundle](../kernel-capability-manifest/v1/README.md) and
@@ -328,11 +444,16 @@ usage ledger. Runtime usage/exhaustion/cabinet work remains Steps 14/15.
 
 ## Errors, retries and browser custody
 
-All refusals are no-store and use safe `detail: {"code":"..."}`. `401` includes
-WWW-Authenticate: Bearer. Target identity codes are `backend_session_code_invalid`,
+Portal identity refusals are no-store and use safe `detail: {"code":"..."}`.
+Its `401` includes WWW-Authenticate: Bearer. Implemented Portal identity codes
+are `backend_session_code_invalid`,
 `backend_delegation_expired`, `backend_parent_authority_invalid`,
 `backend_session_forbidden`, `backend_session_request_invalid` and
-`backend_session_unavailable`; Step 10 updates both peers and browser together.
+`backend_session_unavailable`. Invalid service credentials use `service_unauthorized`.
+Kernel's local API retains its `error.code` envelope: allowlisted identity `401`
+codes are relayed, while upstream service-auth/permission, transport or malformed
+response failures become `503 portal_identity_unavailable`. An unsupported Portal
+response version also becomes that safe dependency failure, not a user `422`.
 Invalid/used code, wrong audience or PKCE is `401`; expired token and invalid
 parent are distinct `401` meanings. Authenticated scope/permission refusal is
 `403`; invalid shape/unsupported version is `422`; unknown scoped snapshot user
@@ -357,34 +478,33 @@ ignore old-generation responses and never fall back to a guest in paid mode.
 
 ## Bounded replacement and migration inventory
 
-Paths below name current owners, not a mandate to delete Kernel behavior.
-Each item names its minimal replacement, preserved state and local check.
-No runtime or migration is changed by Step 9.
+This inventory records current owners and the remaining work. Items 1–2 were
+implemented in Step 10; items 3–6 remain planned. Step 9 itself changed only the
+specification. Existing Kernel execution/product behavior is preserved.
 
-1. **Service config/principals — Step 10, Portal composition.**
-   `app/core/settings.py`, `app/http/kernel_auth.py`,
-   `app/composition/sources.py` and Kernel API settings/service authentication
-   currently own independent directional credentials and scope. Replace the
-   single Kernel receiver principal with configured consumer/scope/products/
-   operation permissions; persist the P/digest guard. Preserve current/previous
-   rotation and reserved read admission. Check two identities, no permission
-   implication, key-slot/scope isolation and version reuse/rollback refusal.
-2. **Delegation/audience/callback — Step 10, Portal identity and both browsers.**
-   `app/domains/identity/kernel_router.py`,
-   `app/domains/identity/services/kernel_delegation.py`,
-   `app/models/kernel_delegation.py`, query/persistence helpers and
-   `app/http/kernel_session_policy.py` own current Kernel routes/hashes/audience.
-   Portal web `app/[locale]/kernel/authorize/page.tsx`, Kernel API
-   `portal_session.py`/router and CE-kit `identity/portalSession.ts` own transport
-   and custody. Replace Portal paths with common paths, generalize the existing
-   stored audience to the configured consumer and use V2 responses and configured
-   callback. Forward-bind existing rows to platform-kernel, retaining parent FK,
-   hashes, PKCE, expiry, exchanged_at and
-   single-use state. Require new delegation for incompatible browser tokens;
-   retain same-owner frozen request/key, ExecutionOwner and accepted replay.
-   Extend existing session API/unit/PostgreSQL/component tests for cross-consumer
-   exchange/introspection, single-use race, parent revocation, tampering and
-   uncertain-start reauthorization. Do not delete the active Kernel adapters.
+1. **Service config/principals — implemented Step 10, Portal composition.**
+   `app/core/backend_consumers.py`, `app/core/settings.py`,
+   `app/http/backend_auth.py`, `app/composition/backend_consumers.py` and
+   `app/infrastructure/queries/backend_policies.py` own the configured registry,
+   trusted principal and transactional P/digest guard. Kernel API settings and
+   `portal_session.py` own expected consumer/scope and V2 validation. Focused
+   checks cover two identities, explicit permissions, key-slot/scope isolation,
+   version reuse/rollback and stale installations. Source/destination composition
+   remains with existing Kernel mechanisms until Steps 11/13.
+2. **Delegation/audience/callback — implemented Step 10, Portal identity and both browsers.**
+   `app/domains/identity/backend_router.py`,
+   `app/domains/identity/services/backend_delegation.py`,
+   `app/models/backend_delegation.py`, query/persistence helpers and
+   `app/http/backend_session_policy.py` own common routes, hashes and consumer
+   binding. Portal web `app/[locale]/backend/authorize/page.tsx`, Kernel API
+   `portal_session.py`/router and CE-kit `identity/portalSession.ts` implement
+   configured callback selection and V2 transport/custody. Forward migration
+   preserves platform-kernel, parent FK, hashes, PKCE, expiry, exchanged_at and
+   single-use state. Incompatible browser envelopes require fresh authorization;
+   same-owner frozen request/key, ExecutionOwner and accepted replay survive.
+   Focused API/PostgreSQL/component/browser checks cover consumer isolation,
+   single-use races, parent revocation, callback tampering and uncertain-start
+   recovery. The active Kernel adapters remain in place.
 3. **Source/owner serialization — Step 11, Portal catalog/purchases.**
    `app/composition/sources.py::require_kernel`, catalog, mapping_operator and
    purchase_offer compose current live source reads. ProductLinkDocument,
@@ -442,15 +562,17 @@ No runtime or migration is changed by Step 9.
    old-cycle hints and usage timeout/cancellation preserving local access.
    Step 16 adds the synthetic backend and populated-state HTTP/browser acceptance.
 
-**Deletion inventory:** no runtime deletion is proven or proposed by this step.
-The active Kernel auth/source/coherence/client code above must be generalized in
-its owning step. Replaced Portal routes/settings may be removed only after all
-active callers move in the synchronized cutover. Existing inert source-projection
+**Replacement inventory:** Step 10 replaced the Kernel-named Portal identity
+routes/modules/settings after moving their active callers to the common
+contract. Old identity routes/settings are no longer supported. Active Kernel
+adapters remain; source/coherence/delivery changes belong to their owning later
+steps. No unrelated runtime purge is authorized. Existing inert source-projection
 models are retained schema history, not evidence authorizing a purge here.
 Kernel scenarios/products, guest paths and ANY-507 execution semantics stay owned
 by Kernel; a non-Kernel product requires no Kernel scenario registration.
 
-**Cutover:** extend actual heads Portal `20261110_0008` and Kernel `0019`, never
+**Cutover:** Step 10 extends Portal `20261110_0008` to `20261111_0009`; Kernel
+remains `0019`. Later steps extend the resulting actual heads; never
 edit applied migrations. First test forward migrations against populated isolated
 local databases. Quiesce both APIs/workers; migrate identity/policy, source-owner
 read compatibility, coherence and recipient scheduling in owning-step order;
@@ -468,18 +590,13 @@ The actual [generated Portal schema](../../generated/openapi.json) comes from
 FastAPI/Pydantic via the existing generation pipeline, with Swagger at
 `<PORTAL_ORIGIN>/docs` and live schema at `<PORTAL_ORIGIN>/openapi.json` when
 those standard FastAPI routes are enabled. These are locations, not a claim of
-an available external server. Step 9 preserves generated artifacts: they still
-describe Kernel-named V1 identity and V2 snapshot, without named security schemes,
-per-operation security or useful auth/access descriptions. The target guide
-cannot be used as proof those replacement routes work today.
-
-Step 10 adds named PortalUserBearer/BackendServiceBearer schemes, correct
-operation security, schemas, safe examples/errors/no-store descriptions for
-implemented identity routes and regenerates artifacts. Step 12 does the same
-for implemented V3 access routes and completes the common handoff. Introspection
-must describe the body token separately from service Authorization. Swagger
-retains internal browser restrictions; reverse backend endpoints are documented
-here/by their owning bundles, not invented Portal OpenAPI operations.
+an available external server. Step 10 regenerated the schema with common V2
+identity routes, PortalUserBearer/BackendServiceBearer and identity operation
+security/descriptions/examples/errors. Introspection documents the secret user
+body token separately from the service Authorization header. Snapshot remains
+V2; Step 12 implements/documents V3 and completes the working auth/access handoff.
+Swagger retains internal browser restrictions. Reverse backend endpoints remain
+owned/documented by their backends, not invented Portal OpenAPI operations.
 
 The six requirements have explicit producers/consumers and local acceptance:
 service identity and delegation (Portal → backend principal, Step 10 two-consumer

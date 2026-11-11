@@ -7,16 +7,18 @@ import pytest
 import httpx
 from collections.abc import Iterator
 from typing import Any
-from pydantic import SecretStr, ValidationError
+from pydantic import ValidationError
 from sqlalchemy import event
 from sqlalchemy.exc import OperationalError
 
 from app.core.database import SessionLocal
-from app.core.settings import KernelAccessPermission, Settings, settings
-from app.domains.identity.services import kernel_delegation as delegation
+from app.composition.backend_consumers import initialize_backend_consumers
+from apps.api.tests.support.backend_consumers import backend_consumer, second_consumer
+from app.core.settings import Settings, settings
+from app.domains.identity.services import backend_delegation as delegation
 from app.domains.identity.services.auth import validate_session
-from app.http.kernel_session_policy import KernelErrorResponse
-from app.models import AuthSession, KernelSessionDelegation, User, UserStatus
+from app.http.backend_session_policy import BackendErrorResponse
+from app.models import AuthSession, BackendSessionDelegation, User, UserStatus
 from apps.api.tests.support.api import client, register_test_user, reset_api_database
 from apps.api.tests.support.settings import override_settings
 from apps.api.tests.support.paid_contracts import validate_contract
@@ -24,7 +26,7 @@ from apps.api.tests.support.paid_contracts import validate_contract
 VERIFIER = "synthetic-pkce-verifier-" + "v" * 32
 SERVICE_TOKEN = "synthetic-kernel-service-" + "s" * 32
 PREVIOUS_TOKEN = "synthetic-old-service-" + "p" * 32
-INTERNAL = "/internal/v1/kernel-sessions/"
+INTERNAL = "/internal/v1/backend-sessions/"
 
 
 @pytest.fixture(autouse=True)
@@ -32,23 +34,23 @@ def isolated_delegation_settings() -> Iterator[None]:
     reset_api_database()
     with override_settings(
         settings,
-        kernel_access_service_token=SecretStr(SERVICE_TOKEN),
-        kernel_access_service_token_previous=SecretStr(PREVIOUS_TOKEN),
-        kernel_access_permissions=(KernelAccessPermission.EXCHANGE, KernelAccessPermission.INTROSPECT),
+        backend_consumers=(backend_consumer(), second_consumer()),
         paid_access_clock_skew_seconds=5,
     ):
+        initialize_backend_consumers(settings, SessionLocal)
         yield
 
 
-def issue() -> tuple[dict[str, Any], str]:
-    token = register_test_user(email="delegation@example.com")
+def issue(consumer_id: str = "platform-kernel") -> tuple[dict[str, Any], str]:
+    token = register_test_user(email=consumer_id + "@example.com")
     auth = {
         "token": token,
         "user": client.get("/api/auth/session", headers={"Authorization": "Bearer " + token}).json()["user"],
     }
     response = client.post(
-        "/api/kernel-session-codes",
+        "/api/backend-session-codes",
         json={
+            "consumer_id": consumer_id,
             "code_challenge": delegation.pkce_challenge(VERIFIER),
             "code_challenge_method": "S256",
         },
@@ -77,7 +79,7 @@ def introspect(token: str) -> httpx.Response:
 @pytest.mark.parametrize(
     "method,path,headers,status",
     [
-        ("POST", "/api/kernel-session-codes", {}, 401),
+        ("POST", "/api/backend-session-codes", {}, 401),
         ("POST", INTERNAL + "exchange", {"Authorization": "Bearer " + SERVICE_TOKEN}, 422),
         ("POST", INTERNAL + "introspect", {"Authorization": "Bearer " + SERVICE_TOKEN}, 422),
         (
@@ -93,11 +95,11 @@ def test_kernel_refusals_match_their_documented_error_response(
 ) -> None:
     response = client.request(method, path, json={}, headers=headers)
     assert response.status_code == status
-    assert KernelErrorResponse.model_validate(response.json()).model_dump() == response.json()
+    assert BackendErrorResponse.model_validate(response.json()).model_dump() == response.json()
     schema_path = "/internal/v1/access-snapshots/{user_id}" if method == "GET" else path
     operation = client.app.openapi()["paths"][schema_path][method.lower()]
     assert operation["responses"][str(status)]["content"]["application/json"]["schema"] == {
-        "$ref": "#/components/schemas/KernelErrorResponse"
+        "$ref": "#/components/schemas/BackendErrorResponse"
     }
 
 
@@ -105,17 +107,19 @@ def test_hashes_ttls_pkce_single_use_and_read_only_identity() -> None:
     auth, code = issue()
     assert len(code) == 43
     with SessionLocal() as db:
-        row = db.query(KernelSessionDelegation).one()
+        row = db.query(BackendSessionDelegation).one()
         assert row.code_hash == delegation.credential_hash(code)
         assert row.code_hash != code
         assert 0 < (delegation.as_utc(row.code_expires_at) - datetime.now(UTC)).total_seconds() <= 60
     assert exchange(code, "w" * 43).status_code == 401
     response = exchange(code)
     assert response.status_code == 200
-    validate_contract("exchange-response-v1", response.text)
+    validate_contract("exchange-response-v2", response.text)
     payload = response.json()
     assert set(payload) == {
         "schema_version",
+        "consumer_id",
+        "consumer_policy_revision",
         "token_type",
         "access_token",
         "user_id",
@@ -130,15 +134,23 @@ def test_hashes_ttls_pkce_single_use_and_read_only_identity() -> None:
     try:
         read = introspect(payload["access_token"])
         assert read.status_code == 200
-        validate_contract("introspection-response-v1", read.text)
-        assert set(read.json()) == {"schema_version", "user_id", "tenant_id", "region", "valid_until"}
+        validate_contract("introspection-response-v2", read.text)
+        assert set(read.json()) == {
+            "schema_version",
+            "consumer_id",
+            "consumer_policy_revision",
+            "user_id",
+            "tenant_id",
+            "region",
+            "valid_until",
+        }
         assert datetime.fromisoformat(read.json()["valid_until"]) == datetime.fromisoformat(
             payload["expires_at"]
         ) - timedelta(seconds=5)
         assert 0 < (datetime.fromisoformat(payload["expires_at"]) - datetime.now(UTC)).total_seconds() <= 1800
         with SessionLocal() as db:
             user, parent = validate_session(db, token=auth["token"], tenant_id="anytoolai", region="ru")
-            row = db.query(KernelSessionDelegation).one()
+            row = db.query(BackendSessionDelegation).one()
             assert row.token_hash == delegation.credential_hash(payload["access_token"])
             assert parent.id == row.auth_session_id
             assert user.id == parent.user_id
@@ -183,7 +195,7 @@ def test_parent_authority_and_distinct_expiry(change: str) -> None:
             )
     else:
         with SessionLocal() as db:
-            row = db.query(KernelSessionDelegation).one()
+            row = db.query(BackendSessionDelegation).one()
             parent = db.query(AuthSession).one()
             if change == "deactivated":
                 db.query(User).one().status = UserStatus.INACTIVE
@@ -194,12 +206,12 @@ def test_parent_authority_and_distinct_expiry(change: str) -> None:
             elif change == "token_expired":
                 row.token_expires_at = datetime.now(UTC)
             else:
-                row.audience = "foreign-audience"
+                row.consumer_id = "foreign-audience"
             db.commit()
     response = introspect(token)
     assert response.status_code == 401
     assert response.json()["detail"]["code"] == (
-        "kernel_delegation_expired" if change == "token_expired" else "kernel_parent_authority_invalid"
+        "backend_delegation_expired" if change == "token_expired" else "backend_parent_authority_invalid"
     )
 
 
@@ -207,11 +219,11 @@ def test_parent_authority_and_distinct_expiry(change: str) -> None:
 def test_exchange_rechecks_code_and_parent(change: str) -> None:
     _, code = issue()
     with SessionLocal() as db:
-        row = db.query(KernelSessionDelegation).one()
+        row = db.query(BackendSessionDelegation).one()
         if change == "expired":
             row.code_expires_at = datetime.now(UTC)
         elif change == "audience":
-            row.audience = "foreign-audience"
+            row.consumer_id = "foreign-audience"
         elif change == "scope":
             db.query(User).one().status = UserStatus.INACTIVE
         else:
@@ -262,9 +274,9 @@ def test_service_rotation_scope_permission_and_browser_refusal(operation: str) -
             client.post(path + query, json=payload, headers={"Authorization": "Bearer " + SERVICE_TOKEN}).status_code
             == 403
         )
-    with override_settings(settings, kernel_access_permissions=()):
+    with override_settings(settings, backend_consumers=(backend_consumer(permissions=[]),)):
         assert client.post(path, json=payload, headers={"Authorization": "Bearer " + SERVICE_TOKEN}).status_code == 403
-    with override_settings(settings, kernel_access_service_token_previous=None):
+    with override_settings(settings, backend_consumers=(backend_consumer(backend_to_portal_previous_secret=None),)):
         assert (
             client.post(path, json=payload, headers={"Authorization": "Bearer " + PREVIOUS_TOKEN}).json()["detail"][
                 "code"
@@ -280,17 +292,17 @@ def test_dependency_errors_and_secret_canaries(
     secret = exchange(code).json()["access_token"]
     with override_settings(settings, paid_access_clock_skew_seconds=None):
         assert introspect(secret).status_code == 503
-    with override_settings(settings, kernel_access_service_token=None):
+    with override_settings(settings, backend_consumers=()):
         assert introspect(secret).status_code == 503
     monkeypatch.setattr(
-        "app.domains.identity.services.kernel_delegation.read_delegation",
+        "app.domains.identity.services.backend_delegation.read_delegation",
         Mock(side_effect=OperationalError("SELECT " + secret, {}, Exception(secret))),
     )
     assert introspect(secret).status_code == 503
     for path, body in (
         (INTERNAL + "exchange", {"code": code, "code_verifier": secret + "!"}),
         (INTERNAL + "introspect", {"access_token": secret, "extra": secret}),
-        ("/api/kernel-session-codes", {"code_challenge": secret, "code_challenge_method": "plain"}),
+        ("/api/backend-session-codes", {"code_challenge": secret, "code_challenge_method": "plain"}),
     ):
         response = client.post(path, json=body, headers={"Authorization": "Bearer " + SERVICE_TOKEN})
         assert response.status_code == 422
@@ -301,15 +313,165 @@ def test_dependency_errors_and_secret_canaries(
 @pytest.mark.parametrize(
     "overrides",
     [
-        {"kernel_access_service_token": "short"},
-        {"kernel_access_service_token_previous": PREVIOUS_TOKEN, "kernel_access_service_token": None},
-        {"kernel_access_service_token_previous": SERVICE_TOKEN, "kernel_access_service_token": SERVICE_TOKEN},
-        {"kernel_service_token": SERVICE_TOKEN, "kernel_access_service_token": SERVICE_TOKEN},
-        {"kernel_access_permissions": ("unknown:permission",)},
+        {"backend_to_portal_current_secret": "short"},
+        {"backend_to_portal_previous_secret": SERVICE_TOKEN},
+        {"portal_to_backend_current_secret": SERVICE_TOKEN},
+        {"permissions": ["unknown:permission"]},
+        {"consumer_policy_revision": True},
+        {"consumer_policy_revision": 0},
+        {"callback_url": "https://evil.invalid/callback"},
     ],
 )
 def test_invalid_receiver_configuration(overrides: dict[str, object]) -> None:
-    values = settings.model_dump()
-    values.update(overrides)
     with pytest.raises(ValidationError):
-        Settings.model_validate(values)
+        backend_consumer(**overrides)
+
+
+@pytest.mark.parametrize("consumer_factory", [backend_consumer, second_consumer])
+def test_independent_consumer_and_rotation_cannot_redeem_or_introspect_foreign_authority(consumer_factory) -> None:
+    consumer = consumer_factory()
+    foreign = second_consumer() if consumer.consumer_id == "platform-kernel" else backend_consumer()
+    auth, code = issue(consumer.consumer_id)
+    body = {"code": code, "code_verifier": VERIFIER}
+    for secret in (foreign.backend_to_portal_current_secret, foreign.backend_to_portal_previous_secret):
+        response = client.post(
+            INTERNAL + "exchange", json=body, headers={"Authorization": "Bearer " + secret.get_secret_value()}
+        )
+        assert response.status_code == 401
+    response = client.post(
+        INTERNAL + "exchange",
+        json=body,
+        headers={
+            "Authorization": "Bearer " + consumer.backend_to_portal_previous_secret.get_secret_value(),
+        },
+    )
+    assert response.status_code == 200
+    result = response.json()
+    assert result["consumer_id"] == consumer.consumer_id
+    assert result["consumer_policy_revision"] == 1
+    assert result["user_id"] == auth["user"]["user_id"]
+    for other in (consumer, foreign):
+        for secret in (other.backend_to_portal_current_secret, other.backend_to_portal_previous_secret):
+            read = client.post(
+                INTERNAL + "introspect",
+                json={"access_token": result["access_token"]},
+                headers={
+                    "Authorization": "Bearer " + secret.get_secret_value(),
+                },
+            )
+            assert read.status_code == (200 if other == consumer else 401)
+            assert read.headers["cache-control"] == "no-store"
+
+
+def test_policy_guard_rejects_reused_digest_and_rollback_and_stale_process() -> None:
+    from app.infrastructure.queries.backend_policies import BackendPolicyConflict
+    from app.models import BackendConsumerPolicy
+
+    _, code = issue()
+    token = exchange(code).json()["access_token"]
+    original = settings.backend_consumers
+    changed = backend_consumer(allowed_products=["proposal_ai"])
+    for invalid in (changed, backend_consumer(consumer_policy_revision=1, allowed_products=["brief_decoder"])):
+        with override_settings(settings, backend_consumers=(invalid, second_consumer())):
+            with pytest.raises(BackendPolicyConflict):
+                initialize_backend_consumers(settings, SessionLocal)
+            assert introspect(token).status_code == 503
+    newer = backend_consumer(consumer_policy_revision=2, allowed_products=["proposal_ai"])
+    with override_settings(settings, backend_consumers=(newer, second_consumer())):
+        initialize_backend_consumers(settings, SessionLocal)
+        assert introspect(token).json()["consumer_policy_revision"] == 2
+    # The old process still holds P1 settings, but cannot serve authority after P2 committed.
+    assert settings.backend_consumers == original
+    assert introspect(token).status_code == 503
+    with pytest.raises(BackendPolicyConflict):
+        initialize_backend_consumers(settings, SessionLocal)
+    with SessionLocal() as db:
+        row = db.get(BackendConsumerPolicy, ("platform-kernel", "anytoolai", "ru"))
+        assert (row.consumer_policy_revision, row.policy_digest) == (2, newer.policy_digest)
+
+
+def test_rotation_and_callback_changes_preserve_policy_digest_and_paid_revision() -> None:
+    original = backend_consumer()
+    rotated = backend_consumer(
+        backend_to_portal_current_secret="rotated-synthetic-" + "r" * 32,
+        callback_url="https://kernel.example.test/new-callback",
+    )
+    assert original.policy_digest == rotated.policy_digest
+    with override_settings(settings, backend_consumers=(rotated, second_consumer())):
+        initialize_backend_consumers(settings, SessionLocal)
+    from app.models import PaidAccessState
+
+    with SessionLocal() as db:
+        assert db.query(PaidAccessState).count() == 0
+
+
+@pytest.mark.parametrize("change", ["duplicate_id", "duplicate_product", "shared_secret", "foreign_scope"])
+def test_consumer_registry_rejects_ambiguous_authority(change: str) -> None:
+    first, second = backend_consumer(), second_consumer()
+    if change == "duplicate_id":
+        second = second.model_copy(update={"consumer_id": first.consumer_id})
+    elif change == "duplicate_product":
+        second = second.model_copy(update={"allowed_products": first.allowed_products})
+    elif change == "shared_secret":
+        second = second.model_copy(update={"backend_to_portal_previous_secret": first.backend_to_portal_current_secret})
+    else:
+        second = second.model_copy(update={"region": "eu"})
+    with pytest.raises(ValidationError):
+        Settings.model_validate({**settings.model_dump(), "backend_consumers": (first, second)})
+
+
+def test_callback_body_tampering_and_unknown_consumer_are_refused() -> None:
+    auth, _ = issue()
+    payload = {
+        "consumer_id": "platform-kernel",
+        "code_challenge": delegation.pkce_challenge(VERIFIER),
+        "code_challenge_method": "S256",
+    }
+    for extra in ("callback", "callback_url", "redirect_uri"):
+        response = client.post(
+            "/api/backend-session-codes",
+            json={**payload, extra: "https://evil.invalid"},
+            headers={"Authorization": "Bearer " + auth["token"]},
+        )
+        assert response.status_code == 422
+    response = client.post(
+        "/api/backend-session-codes",
+        json={**payload, "consumer_id": "unknown"},
+        headers={"Authorization": "Bearer " + auth["token"]},
+    )
+    assert response.status_code == 403
+    assert client.post("/api/kernel-session-codes", json=payload).status_code == 404
+
+
+def test_openapi_documents_distinct_bearers_secret_body_and_real_identity_routes() -> None:
+    schema = client.app.openapi()
+    schemes = schema["components"]["securitySchemes"]
+    assert {"PortalUserBearer", "BackendServiceBearer"} <= schemes.keys()
+    for path, scheme in (
+        ("/api/backend-session-codes", "PortalUserBearer"),
+        (INTERNAL + "exchange", "BackendServiceBearer"),
+        (INTERNAL + "introspect", "BackendServiceBearer"),
+    ):
+        operation = schema["paths"][path]["post"]
+        assert operation["security"] == [{scheme: []}]
+        assert "no-store" in operation["description"]
+        assert operation["summary"]
+        request_schema = operation["requestBody"]["content"]["application/json"]["schema"]["$ref"].rsplit("/", 1)[1]
+        response_schema = operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].rsplit("/", 1)[
+            1
+        ]
+        assert schema["components"]["schemas"][request_schema]["examples"]
+        assert schema["components"]["schemas"][response_schema]["examples"]
+    operation = schema["paths"][INTERNAL + "introspect"]["post"]
+    assert "access_token body" in operation["description"]
+    assert schema["components"]["schemas"]["BackendIntrospectionRequest"]["required"] == ["access_token"]
+    assert "/internal/v1/kernel-sessions/exchange" not in schema["paths"]
+
+
+def test_second_consumer_cannot_read_unfiltered_snapshot_v2_before_step12() -> None:
+    response = client.get(
+        "/internal/v1/access-snapshots/00000000-0000-4000-8000-000000000001?tenant_id=anytoolai&region=ru",
+        headers={"Authorization": "Bearer " + second_consumer().backend_to_portal_current_secret.get_secret_value()},
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "access_snapshot_forbidden"

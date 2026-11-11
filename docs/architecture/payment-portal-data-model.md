@@ -1,14 +1,14 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-11-10 (ANY-766 session delegation and invalidation delivery; ANY-812 policy clarification)
+Last updated: 2026-11-11 (ANY-766 consumer-bound delegation and policy guard)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 -> 20261110_0008 (head)
+20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 -> 20261110_0008 -> 20261111_0009 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
@@ -63,15 +63,18 @@ through the existing work table; it stores no Portal usage ledger.
 
 ## Physical baseline
 
-A fresh database has exactly 28 application tables: ten retained
+A fresh database has exactly 29 application tables: ten retained
 identity/session/legal tables, fifteen original external-billing persistence
-tables, one current product-link pointer, one purchase mutex and one session
-delegation table. Alembic has seven revisions in one linear chain and one current head. Revision
+tables, one current product-link pointer, one purchase mutex, one session
+delegation table and one backend policy guard. Alembic has eight revisions in
+one linear chain and one current head. Revision
 `20261029_0003` belongs to ANY-709, `20261028_0005` to ANY-715 and
-`20261031_0006` to ANY-765 and `20261110_0007`/`20261110_0008` to ANY-766.
-Revision `20261110_0007` adds only `kernel_session_delegations`; head
+`20261031_0006` to ANY-765 and `20261110_0007`/`20261110_0008`/`20261111_0009` to ANY-766.
+Revision `20261110_0007` adds only `kernel_session_delegations`; revision
 `20261110_0008` extends recurring-work uniqueness to `access_invalidation`.
-Neither is applied automatically by the API.
+Head `20261111_0009` renames that delegation table and its audience column,
+preserving all credentials/parent bindings, and adds the monotonic consumer
+policy guard. Migrations are not applied automatically by the API.
 
 There is no Portal-owned product, plan, order, payment, refund, subscription,
 entitlement, trial, provider-account, or direct-payment webhook table. There is
@@ -85,7 +88,8 @@ to a Portal-managed routing catalog.
 | `country_region_rules` | Identity/contour | Country membership, market enablement, strict mismatch, and legal document-set selection. |
 | `users` | Identity | Canonical contour-scoped Portal user. |
 | `auth_sessions` | Identity | Hashed, expiring and revocable authenticated sessions. |
-| `kernel_session_delegations` | Identity | Hash-only single-use PKCE codes and narrow Kernel tokens; parent-session deletion cascades. |
+| `backend_session_delegations` | Identity | Hash-only single-use PKCE codes/tokens bound to a configured consumer; parent-session deletion cascades. |
+| `backend_consumer_policies` | Integration configuration | Monotonic consumer/tenant/region policy revision and digest; no secrets or user usage. |
 | `magic_link_tokens` | Identity | Purpose-bound hash-only password-reset and email-verification capabilities, including decoy-safe nullable user binding for password reset. |
 | `password_reset_rate_limits` | Identity | Durable password-reset rate-limit windows. |
 | `legal_entities` | Legal | Contour operator metadata. |
@@ -487,11 +491,12 @@ The discarded Alembic history has no upgrade bridge into this baseline. Reset,
 compatibility and recovery procedures are documented in
 [Deployment Architecture](deployment.md#one-time-step-4-recreate-and-bootstrap).
 
-## Kernel session delegation (ANY-766 Step 4)
+## Backend session delegation (ANY-766 Steps 4/10)
 
-`kernel_session_delegations` references `auth_sessions.id` with `ON DELETE CASCADE`.
-It stores unique SHA-256 code/token hashes, the S256 challenge, fixed
-`platform-kernel` audience and separate code/exchange/token deadlines. A check
+`backend_session_delegations` references `auth_sessions.id` with `ON DELETE CASCADE`.
+It stores unique SHA-256 code/token hashes, the S256 challenge, a configured
+consumer identity fixed for that delegation (historical rows retain
+`platform-kernel`) and separate code/exchange/token deadlines. A check
 constraint requires exchange time, token hash and token expiry to be either all
 absent or all present. Raw credentials and a second user directory are absent.
 
@@ -502,10 +507,23 @@ and never outlive the parent. `UserStatus.INACTIVE` is an explicit non-active
 storage value; no deactivation endpoint is introduced. Existing password reset
 revokes the parent sessions and logout deletes its parent.
 
-Introspection uses one joined read of delegation/session/user, never updates
+Introspection checks the current persisted consumer policy and uses a joined read
+of delegation/session/user; it never updates
 `last_seen_at` and never commits. Its deadline subtracts the configured
 Portal–Kernel clock budget once. Internal reads share validation with existing
 Portal identity without adopting public last-seen bookkeeping. Scope comes from
 the existing user/session, and service permissions come from receiver settings.
-The [contract bundle](../contracts/portal-kernel-paid/README.md#step-4-server-implementation)
-records operation configuration, errors and remaining integration boundaries.
+The [current backend identity guide](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover)
+records configuration, errors and remaining integration boundaries.
+
+
+## Backend consumer policy guard (ANY-766 Step 10)
+
+`backend_consumer_policies` uses `(consumer_id, tenant_id, region)` as its key.
+It stores strict positive `consumer_policy_revision` and the canonical product
+scope digest. Startup installs configured policies under row locks in one
+transaction; changed meaning at reused P and rollback are refused. Identity reads
+fail closed when a process's configured P/digest no longer matches the committed
+guard. Rotation/callbacks/operation permissions remain deployment settings and
+are not part of the digest. No paid revision, purchase document, outbox, allowance
+or backend usage is rewritten. See the [common guide](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).

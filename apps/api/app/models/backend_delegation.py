@@ -4,6 +4,7 @@ from sqlalchemy import CheckConstraint
 
 from app.models._shared import (
     Base,
+    BigInteger,
     DateTime,
     ForeignKey,
     Mapped,
@@ -15,13 +16,13 @@ from app.models._shared import (
 )
 
 
-class KernelSessionDelegation(Base):
-    __tablename__ = "kernel_session_delegations"
+class BackendSessionDelegation(Base):
+    __tablename__ = "backend_session_delegations"
     __table_args__ = (
         CheckConstraint(
             "(exchanged_at IS NULL AND token_hash IS NULL AND token_expires_at IS NULL) OR "
             "(exchanged_at IS NOT NULL AND token_hash IS NOT NULL AND token_expires_at IS NOT NULL)",
-            name="ck_kernel_delegation_exchange_shape",
+            name="ck_backend_delegation_exchange_shape",
         ),
     )
 
@@ -31,10 +32,23 @@ class KernelSessionDelegation(Base):
         nullable=False,
         index=True,
     )
-    audience: Mapped[str] = mapped_column(Text, nullable=False)
+    consumer_id: Mapped[str] = mapped_column(Text, nullable=False)
     code_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     code_challenge: Mapped[str] = mapped_column(Text, nullable=False)
     code_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     exchanged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     token_hash: Mapped[str | None] = mapped_column(Text, unique=True)
     token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class BackendConsumerPolicy(Base):
+    """Monotonic installation guard; secrets and callbacks are never persisted."""
+
+    __tablename__ = "backend_consumer_policies"
+    __table_args__ = (CheckConstraint("consumer_policy_revision > 0", name="ck_backend_policy_positive"),)
+
+    consumer_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    region: Mapped[str] = mapped_column(Text, primary_key=True)
+    consumer_policy_revision: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    policy_digest: Mapped[str] = mapped_column(Text, nullable=False)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import json
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,58 @@ import pytest
 from app.core.settings import Settings
 from app.integrations.lbx.customer import sign_widget_jwt
 from scripts import repo
+
+from .support.backend_consumers import backend_consumer
+
+
+@pytest.mark.parametrize("override", [False, True])
+def test_real_dotenv_forwards_backend_consumers_privately(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    override: bool,
+) -> None:
+    harness = tmp_path / ".harness"
+    monkeypatch.setattr(repo, "ROOT", tmp_path)
+    monkeypatch.setattr(repo, "HARNESS_DIR", harness)
+    monkeypatch.setattr(repo, "RUNTIME_ENV", harness / "runtime.env")
+    monkeypatch.setattr(repo, "RUNTIME_JSON", harness / "runtime.json")
+    reader = repo.read_dotenv
+    monkeypatch.setattr(repo, "read_dotenv", lambda: reader(tmp_path / ".env"))
+    monkeypatch.delenv("BACKEND_CONSUMERS", raising=False)
+    monkeypatch.setenv("KERNEL_MOCK_ENABLED", "0")
+    incoming = "synthetic-incoming-" + "i" * 32
+    outgoing = "synthetic-outgoing-" + "o" * 32
+    consumer = backend_consumer(
+        backend_to_portal_current_secret=incoming,
+        backend_to_portal_previous_secret=None,
+        portal_to_backend_current_secret=outgoing,
+    ).model_dump(mode="json")
+    consumer["backend_to_portal_current_secret"] = incoming
+    consumer["portal_to_backend_current_secret"] = outgoing
+    registry = json.dumps([consumer])
+    (tmp_path / ".env").write_text(f"BACKEND_CONSUMERS='{registry}'\n", encoding="utf-8")
+    if override:
+        consumer["consumer_policy_revision"] = 2
+        registry = json.dumps([consumer])
+        monkeypatch.setenv("BACKEND_CONSUMERS", registry)
+
+    repo.write_runtime(repo.runtime_config(root=tmp_path))
+    forwarded = repo.read_runtime_env()
+    assert json.loads(forwarded.get("BACKEND_CONSUMERS", "[]")) == [consumer]
+    for name, value in forwarded.items():
+        monkeypatch.setenv(name, value)
+    settings = Settings(_env_file=None)
+    assert len(settings.backend_consumers) == 1
+    configured = settings.backend_consumers[0]
+    assert configured.consumer_policy_revision == (2 if override else 1)
+    assert configured.backend_to_portal_current_secret.get_secret_value() == incoming
+    assert configured.portal_to_backend_current_secret.get_secret_value() == outgoing
+    assert repo.RUNTIME_ENV.stat().st_mode & 0o077 == 0
+    public_values = [repo.RUNTIME_JSON.read_text(), capsys.readouterr().out]
+    public_values.extend(value for name, value in forwarded.items() if name.startswith("NEXT_PUBLIC_"))
+    for public in public_values:
+        assert incoming not in public and outgoing not in public
 
 
 @pytest.mark.parametrize(

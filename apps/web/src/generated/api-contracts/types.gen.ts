@@ -164,6 +164,157 @@ export type AccountPurchasesResponse = {
 };
 
 /**
+ * BackendCodeRequest
+ */
+export type BackendCodeRequest = {
+    /**
+     * Code Challenge
+     */
+    code_challenge: string;
+    /**
+     * Code Challenge Method
+     */
+    code_challenge_method: 'S256';
+    /**
+     * Consumer Id
+     */
+    consumer_id: string;
+};
+
+/**
+ * BackendCodeResponse
+ */
+export type BackendCodeResponse = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Expires At
+     */
+    expires_at: string;
+};
+
+/**
+ * BackendErrorDetail
+ */
+export type BackendErrorDetail = {
+    /**
+     * Code
+     */
+    code: string;
+};
+
+/**
+ * BackendErrorResponse
+ */
+export type BackendErrorResponse = {
+    detail: BackendErrorDetail;
+};
+
+/**
+ * BackendExchangeRequest
+ */
+export type BackendExchangeRequest = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Code Verifier
+     */
+    code_verifier: string;
+};
+
+/**
+ * BackendExchangeResponse
+ */
+export type BackendExchangeResponse = {
+    /**
+     * Access Token
+     */
+    access_token: string;
+    /**
+     * Consumer Id
+     */
+    consumer_id: string;
+    /**
+     * Consumer Policy Revision
+     */
+    consumer_policy_revision: number;
+    /**
+     * Expires At
+     */
+    expires_at: string;
+    /**
+     * Region
+     */
+    region: string;
+    /**
+     * Schema Version
+     */
+    schema_version?: 2;
+    /**
+     * Tenant Id
+     */
+    tenant_id: string;
+    /**
+     * Token Type
+     */
+    token_type?: 'Bearer';
+    /**
+     * User Id
+     */
+    user_id: string;
+};
+
+/**
+ * BackendIntrospectionRequest
+ */
+export type BackendIntrospectionRequest = {
+    /**
+     * Access Token
+     *
+     * Secret delegated user bearer for this consumer. Service bearer stays in Authorization.
+     */
+    access_token: string;
+};
+
+/**
+ * BackendIntrospectionResponse
+ */
+export type BackendIntrospectionResponse = {
+    /**
+     * Consumer Id
+     */
+    consumer_id: string;
+    /**
+     * Consumer Policy Revision
+     */
+    consumer_policy_revision: number;
+    /**
+     * Region
+     */
+    region: string;
+    /**
+     * Schema Version
+     */
+    schema_version?: 2;
+    /**
+     * Tenant Id
+     */
+    tenant_id: string;
+    /**
+     * User Id
+     */
+    user_id: string;
+    /**
+     * Valid Until
+     */
+    valid_until: string;
+};
+
+/**
  * BillingHealthResponse
  */
 export type BillingHealthResponse = {
@@ -373,135 +524,6 @@ export type HTTPValidationError = {
      * Detail
      */
     detail?: Array<ValidationError>;
-};
-
-/**
- * KernelCodeRequest
- */
-export type KernelCodeRequest = {
-    /**
-     * Code Challenge
-     */
-    code_challenge: string;
-    /**
-     * Code Challenge Method
-     */
-    code_challenge_method: 'S256';
-};
-
-/**
- * KernelCodeResponse
- */
-export type KernelCodeResponse = {
-    /**
-     * Code
-     */
-    code: string;
-    /**
-     * Expires At
-     */
-    expires_at: string;
-};
-
-/**
- * KernelErrorDetail
- */
-export type KernelErrorDetail = {
-    /**
-     * Code
-     */
-    code: string;
-};
-
-/**
- * KernelErrorResponse
- */
-export type KernelErrorResponse = {
-    detail: KernelErrorDetail;
-};
-
-/**
- * KernelExchangeRequest
- */
-export type KernelExchangeRequest = {
-    /**
-     * Code
-     */
-    code: string;
-    /**
-     * Code Verifier
-     */
-    code_verifier: string;
-};
-
-/**
- * KernelExchangeResponse
- */
-export type KernelExchangeResponse = {
-    /**
-     * Access Token
-     */
-    access_token: string;
-    /**
-     * Expires At
-     */
-    expires_at: string;
-    /**
-     * Region
-     */
-    region: string;
-    /**
-     * Schema Version
-     */
-    schema_version?: 1;
-    /**
-     * Tenant Id
-     */
-    tenant_id: string;
-    /**
-     * Token Type
-     */
-    token_type?: 'Bearer';
-    /**
-     * User Id
-     */
-    user_id: string;
-};
-
-/**
- * KernelIntrospectionRequest
- */
-export type KernelIntrospectionRequest = {
-    /**
-     * Access Token
-     */
-    access_token: string;
-};
-
-/**
- * KernelIntrospectionResponse
- */
-export type KernelIntrospectionResponse = {
-    /**
-     * Region
-     */
-    region: string;
-    /**
-     * Schema Version
-     */
-    schema_version?: 1;
-    /**
-     * Tenant Id
-     */
-    tenant_id: string;
-    /**
-     * User Id
-     */
-    user_id: string;
-    /**
-     * Valid Until
-     */
-    valid_until: string;
 };
 
 /**
@@ -1487,6 +1509,43 @@ export type GetSessionApiAuthSessionGetResponses = {
 
 export type GetSessionApiAuthSessionGetResponse = GetSessionApiAuthSessionGetResponses[keyof GetSessionApiAuthSessionGetResponses];
 
+export type CreateBackendCodeApiBackendSessionCodesPostData = {
+    body: BackendCodeRequest;
+    path?: never;
+    query?: never;
+    url: '/api/backend-session-codes';
+};
+
+export type CreateBackendCodeApiBackendSessionCodesPostErrors = {
+    /**
+     * Unauthorized
+     */
+    401: BackendErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: BackendErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: BackendErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: BackendErrorResponse;
+};
+
+export type CreateBackendCodeApiBackendSessionCodesPostError = CreateBackendCodeApiBackendSessionCodesPostErrors[keyof CreateBackendCodeApiBackendSessionCodesPostErrors];
+
+export type CreateBackendCodeApiBackendSessionCodesPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: BackendCodeResponse;
+};
+
+export type CreateBackendCodeApiBackendSessionCodesPostResponse = CreateBackendCodeApiBackendSessionCodesPostResponses[keyof CreateBackendCodeApiBackendSessionCodesPostResponses];
+
 export type WidgetBootstrapApiBillingWidgetBootstrapPostData = {
     body: WidgetBootstrapRequest;
     headers?: {
@@ -1620,39 +1679,6 @@ export type ReadinessApiHealthReadyGetResponses = {
 };
 
 export type ReadinessApiHealthReadyGetResponse = ReadinessApiHealthReadyGetResponses[keyof ReadinessApiHealthReadyGetResponses];
-
-export type CreateKernelCodeApiKernelSessionCodesPostData = {
-    body: KernelCodeRequest;
-    path?: never;
-    query?: never;
-    url: '/api/kernel-session-codes';
-};
-
-export type CreateKernelCodeApiKernelSessionCodesPostErrors = {
-    /**
-     * Unauthorized
-     */
-    401: KernelErrorResponse;
-    /**
-     * Unprocessable Entity
-     */
-    422: KernelErrorResponse;
-    /**
-     * Service Unavailable
-     */
-    503: KernelErrorResponse;
-};
-
-export type CreateKernelCodeApiKernelSessionCodesPostError = CreateKernelCodeApiKernelSessionCodesPostErrors[keyof CreateKernelCodeApiKernelSessionCodesPostErrors];
-
-export type CreateKernelCodeApiKernelSessionCodesPostResponses = {
-    /**
-     * Successful Response
-     */
-    200: KernelCodeResponse;
-};
-
-export type CreateKernelCodeApiKernelSessionCodesPostResponse = CreateKernelCodeApiKernelSessionCodesPostResponses[keyof CreateKernelCodeApiKernelSessionCodesPostResponses];
 
 export type AcceptDocumentApiLegalAcceptancesPostData = {
     body: AcceptDocumentRequest;
@@ -1971,23 +1997,23 @@ export type AccessSnapshotInternalV1AccessSnapshotsUserIdGetErrors = {
     /**
      * Unauthorized
      */
-    401: KernelErrorResponse;
+    401: BackendErrorResponse;
     /**
      * Forbidden
      */
-    403: KernelErrorResponse;
+    403: BackendErrorResponse;
     /**
      * Not Found
      */
-    404: KernelErrorResponse;
+    404: BackendErrorResponse;
     /**
      * Unprocessable Entity
      */
-    422: KernelErrorResponse;
+    422: BackendErrorResponse;
     /**
      * Service Unavailable
      */
-    503: KernelErrorResponse;
+    503: BackendErrorResponse;
 };
 
 export type AccessSnapshotInternalV1AccessSnapshotsUserIdGetError = AccessSnapshotInternalV1AccessSnapshotsUserIdGetErrors[keyof AccessSnapshotInternalV1AccessSnapshotsUserIdGetErrors];
@@ -2001,76 +2027,76 @@ export type AccessSnapshotInternalV1AccessSnapshotsUserIdGetResponses = {
 
 export type AccessSnapshotInternalV1AccessSnapshotsUserIdGetResponse = AccessSnapshotInternalV1AccessSnapshotsUserIdGetResponses[keyof AccessSnapshotInternalV1AccessSnapshotsUserIdGetResponses];
 
-export type ExchangeKernelCodeInternalV1KernelSessionsExchangePostData = {
-    body: KernelExchangeRequest;
+export type ExchangeBackendCodeInternalV1BackendSessionsExchangePostData = {
+    body: BackendExchangeRequest;
     path?: never;
     query?: never;
-    url: '/internal/v1/kernel-sessions/exchange';
+    url: '/internal/v1/backend-sessions/exchange';
 };
 
-export type ExchangeKernelCodeInternalV1KernelSessionsExchangePostErrors = {
+export type ExchangeBackendCodeInternalV1BackendSessionsExchangePostErrors = {
     /**
      * Unauthorized
      */
-    401: KernelErrorResponse;
+    401: BackendErrorResponse;
     /**
      * Forbidden
      */
-    403: KernelErrorResponse;
+    403: BackendErrorResponse;
     /**
      * Unprocessable Entity
      */
-    422: KernelErrorResponse;
+    422: BackendErrorResponse;
     /**
      * Service Unavailable
      */
-    503: KernelErrorResponse;
+    503: BackendErrorResponse;
 };
 
-export type ExchangeKernelCodeInternalV1KernelSessionsExchangePostError = ExchangeKernelCodeInternalV1KernelSessionsExchangePostErrors[keyof ExchangeKernelCodeInternalV1KernelSessionsExchangePostErrors];
+export type ExchangeBackendCodeInternalV1BackendSessionsExchangePostError = ExchangeBackendCodeInternalV1BackendSessionsExchangePostErrors[keyof ExchangeBackendCodeInternalV1BackendSessionsExchangePostErrors];
 
-export type ExchangeKernelCodeInternalV1KernelSessionsExchangePostResponses = {
+export type ExchangeBackendCodeInternalV1BackendSessionsExchangePostResponses = {
     /**
      * Successful Response
      */
-    200: KernelExchangeResponse;
+    200: BackendExchangeResponse;
 };
 
-export type ExchangeKernelCodeInternalV1KernelSessionsExchangePostResponse = ExchangeKernelCodeInternalV1KernelSessionsExchangePostResponses[keyof ExchangeKernelCodeInternalV1KernelSessionsExchangePostResponses];
+export type ExchangeBackendCodeInternalV1BackendSessionsExchangePostResponse = ExchangeBackendCodeInternalV1BackendSessionsExchangePostResponses[keyof ExchangeBackendCodeInternalV1BackendSessionsExchangePostResponses];
 
-export type IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostData = {
-    body: KernelIntrospectionRequest;
+export type IntrospectBackendTokenInternalV1BackendSessionsIntrospectPostData = {
+    body: BackendIntrospectionRequest;
     path?: never;
     query?: never;
-    url: '/internal/v1/kernel-sessions/introspect';
+    url: '/internal/v1/backend-sessions/introspect';
 };
 
-export type IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostErrors = {
+export type IntrospectBackendTokenInternalV1BackendSessionsIntrospectPostErrors = {
     /**
      * Unauthorized
      */
-    401: KernelErrorResponse;
+    401: BackendErrorResponse;
     /**
      * Forbidden
      */
-    403: KernelErrorResponse;
+    403: BackendErrorResponse;
     /**
      * Unprocessable Entity
      */
-    422: KernelErrorResponse;
+    422: BackendErrorResponse;
     /**
      * Service Unavailable
      */
-    503: KernelErrorResponse;
+    503: BackendErrorResponse;
 };
 
-export type IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostError = IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostErrors[keyof IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostErrors];
+export type IntrospectBackendTokenInternalV1BackendSessionsIntrospectPostError = IntrospectBackendTokenInternalV1BackendSessionsIntrospectPostErrors[keyof IntrospectBackendTokenInternalV1BackendSessionsIntrospectPostErrors];
 
-export type IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostResponses = {
+export type IntrospectBackendTokenInternalV1BackendSessionsIntrospectPostResponses = {
     /**
      * Successful Response
      */
-    200: KernelIntrospectionResponse;
+    200: BackendIntrospectionResponse;
 };
 
-export type IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostResponse = IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostResponses[keyof IntrospectKernelTokenInternalV1KernelSessionsIntrospectPostResponses];
+export type IntrospectBackendTokenInternalV1BackendSessionsIntrospectPostResponse = IntrospectBackendTokenInternalV1BackendSessionsIntrospectPostResponses[keyof IntrospectBackendTokenInternalV1BackendSessionsIntrospectPostResponses];
