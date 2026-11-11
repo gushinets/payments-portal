@@ -498,9 +498,9 @@
     "managedInAccount": "El pago y la gestión de la suscripción están disponibles en tu cuenta.",
     "accessInAccount": "El acceso de pago confirmado se muestra en tu cuenta. El uso y la cuota restante aún no están disponibles."
   },
-  "KernelSession": {
+  "BackendSession": {
     "title": "Continuar al producto",
-    "description": "Tu sesión del Portal autorizará esta pestaña de Kernel.",
+    "description": "Tu sesión del Portal autorizará esta pestaña del producto.",
     "continue": "Continuar",
     "loading": "Autorizando…",
     "failed": "No se pudo autorizar. Revisa tu sesión e inténtalo de nuevo."

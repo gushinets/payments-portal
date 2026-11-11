@@ -288,7 +288,14 @@ def test_common_guide_examples_match_reviewed_target_fixtures() -> None:
     examples = [json.loads(value) for value in re.findall(r"```json\n(.*?)\n```", guide, flags=re.DOTALL)]
     contracts = ["code-response-v1", "exchange-response-v2", "introspection-response-v2", "snapshot-v3"]
     fixtures = {row["name"]: row["payload"] for row in VALID}
-    for contract, example in zip(contracts, examples[1:], strict=True):
+    from app.core.backend_consumers import BackendConsumer
+
+    configurations = [example for example in examples if isinstance(example, list)]
+    assert len(configurations) == 1
+    for consumer in configurations[0]:
+        BackendConsumer.model_validate(consumer)
+    responses = [example for example in examples if isinstance(example, dict) and "consumers" not in example]
+    for contract, example in zip(contracts, responses, strict=True):
         validate_contract(contract, json.dumps(example))
         expected = fixtures["code-response" if contract == "code-response-v1" else f"platform-kernel-{contract}"]
         assert example == expected

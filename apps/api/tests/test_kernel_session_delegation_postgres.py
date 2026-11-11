@@ -14,11 +14,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.domains.identity.services import kernel_delegation as delegation
+from app.domains.identity.services import backend_delegation as delegation
 from app.domains.identity.services import password_reset
 from app.domains.identity.errors import InvalidOrExpiredResetTokenError
 from app.domains.identity.passwords import hash_password, verify_password
-from app.models import AuthSession, KernelSessionDelegation, MagicLinkPurpose, MagicLinkToken, User, UserStatus
+from app.models import AuthSession, BackendSessionDelegation, MagicLinkPurpose, MagicLinkToken, User, UserStatus
 from apps.api.tests.support.postgres import alembic_test_config
 
 VERIFIER = "synthetic-verifier-" + "v" * 32
@@ -56,6 +56,7 @@ def delegated_parent(migrated_database: Engine, postgres_session_factory: sessio
             tenant_id="anytoolai",
             region="ru",
             code_challenge=delegation.pkce_challenge(VERIFIER),
+            consumer_id="platform-kernel",
         ).code
     return postgres_session_factory, parent_id, user_id, code
 
@@ -67,7 +68,7 @@ def test_migrated_shape_and_single_use_race(delegated_parent: DelegatedParent, m
 
     def read_together(
         db: Session, *, credential_hash: str, by_code: bool
-    ) -> tuple[KernelSessionDelegation, AuthSession, User] | None:
+    ) -> tuple[BackendSessionDelegation, AuthSession, User] | None:
         result = original(db, credential_hash=credential_hash, by_code=by_code)
         barrier.wait(timeout=10)
         return result
@@ -77,18 +78,20 @@ def test_migrated_shape_and_single_use_race(delegated_parent: DelegatedParent, m
     def exchange_once() -> delegation.DelegationToken | str:
         with factory() as db:
             try:
-                return delegation.exchange_code(db, code=code, verifier=VERIFIER, tenant_id="anytoolai", region="ru")
+                return delegation.exchange_code(
+                    db, code=code, verifier=VERIFIER, tenant_id="anytoolai", region="ru", consumer_id="platform-kernel"
+                )
             except delegation.InvalidDelegationError as error:
                 return error.code
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(lambda _: exchange_once(), range(2)))
     assert sum(isinstance(item, delegation.DelegationToken) for item in results) == 1
-    assert results.count("kernel_session_code_invalid") == 1
+    assert results.count("backend_session_code_invalid") == 1
     with factory() as db:
-        row = db.query(KernelSessionDelegation).one()
+        row = db.query(BackendSessionDelegation).one()
         assert row.token_hash and row.exchanged_at and row.token_expires_at
-        constraints = inspect(db.bind).get_foreign_keys("kernel_session_delegations")
+        constraints = inspect(db.bind).get_foreign_keys("backend_session_delegations")
         assert constraints[0]["options"]["ondelete"] == "CASCADE"
 
 
@@ -96,13 +99,15 @@ def test_parent_deletion_cascades_and_old_token_is_refused(delegated_parent: Del
     factory, parent_id, _, code = delegated_parent
     with factory() as db:
         token = delegation.exchange_code(
-            db, code=code, verifier=VERIFIER, tenant_id="anytoolai", region="ru"
+            db, code=code, verifier=VERIFIER, tenant_id="anytoolai", region="ru", consumer_id="platform-kernel"
         ).access_token
         db.delete(db.get(AuthSession, parent_id))
         db.commit()
-        assert db.query(KernelSessionDelegation).count() == 0
-        with pytest.raises(delegation.InvalidDelegationError, match="kernel_parent_authority_invalid"):
-            delegation.introspect_token(db, token=token, tenant_id="anytoolai", region="ru", clock_skew_seconds=5)
+        assert db.query(BackendSessionDelegation).count() == 0
+        with pytest.raises(delegation.InvalidDelegationError, match="backend_parent_authority_invalid"):
+            delegation.introspect_token(
+                db, token=token, tenant_id="anytoolai", region="ru", clock_skew_seconds=5, consumer_id="platform-kernel"
+            )
 
 
 @pytest.mark.parametrize("change", ["revoke", "expire", "deactivate", "delete"])
@@ -122,7 +127,9 @@ def test_parent_change_while_exchange_waits_cannot_mint_authority(
     def exchange_waiting() -> str:
         with factory() as db:
             try:
-                delegation.exchange_code(db, code=code, verifier=VERIFIER, tenant_id="anytoolai", region="ru")
+                delegation.exchange_code(
+                    db, code=code, verifier=VERIFIER, tenant_id="anytoolai", region="ru", consumer_id="platform-kernel"
+                )
             except delegation.InvalidDelegationError as error:
                 return error.code
         return "unexpected-success"
@@ -141,19 +148,25 @@ def test_parent_change_while_exchange_waits_cannot_mint_authority(
         else:
             writer.delete(parent)
         writer.commit()
-        assert future.result(timeout=10) == "kernel_parent_authority_invalid"
+        assert future.result(timeout=10) == "backend_parent_authority_invalid"
 
 
 def test_foreign_scope_and_verifier_do_not_consume_code(delegated_parent: DelegatedParent) -> None:
     factory, _, user_id, code = delegated_parent
     with factory() as db:
         with pytest.raises(delegation.InvalidDelegationError):
-            delegation.exchange_code(db, code=code, verifier=VERIFIER, tenant_id="foreign", region="ru")
+            delegation.exchange_code(
+                db, code=code, verifier=VERIFIER, tenant_id="foreign", region="ru", consumer_id="platform-kernel"
+            )
         db.rollback()
-        with pytest.raises(delegation.InvalidDelegationError, match="kernel_session_code_invalid"):
-            delegation.exchange_code(db, code=code, verifier="x" * 43, tenant_id="anytoolai", region="ru")
+        with pytest.raises(delegation.InvalidDelegationError, match="backend_session_code_invalid"):
+            delegation.exchange_code(
+                db, code=code, verifier="x" * 43, tenant_id="anytoolai", region="ru", consumer_id="platform-kernel"
+            )
         db.rollback()
-        result = delegation.exchange_code(db, code=code, verifier=VERIFIER, tenant_id="anytoolai", region="ru")
+        result = delegation.exchange_code(
+            db, code=code, verifier=VERIFIER, tenant_id="anytoolai", region="ru", consumer_id="platform-kernel"
+        )
         assert result.identity.user_id == user_id
 
 
@@ -166,14 +179,14 @@ def test_migration_round_trip_preserves_parent_and_rejects_partial_exchange(
         before = db.execute(
             text("SELECT to_jsonb(s) FROM auth_sessions s WHERE id = :id"), {"id": parent_id}
         ).scalar_one()
-        db.query(KernelSessionDelegation).one().token_hash = "partial-exchange-hash"
+        db.query(BackendSessionDelegation).one().token_hash = "partial-exchange-hash"
         with pytest.raises(IntegrityError):
             db.commit()
         db.rollback()
     with alembic_test_config(database_test_url) as config:
         command.downgrade(config, "20261031_0006")
         with factory() as db:
-            assert "kernel_session_delegations" not in inspect(db.bind).get_table_names()
+            assert "backend_session_delegations" not in inspect(db.bind).get_table_names()
             assert (
                 db.execute(
                     text("SELECT to_jsonb(s) FROM auth_sessions s WHERE id = :id"), {"id": parent_id}
@@ -182,7 +195,7 @@ def test_migration_round_trip_preserves_parent_and_rejects_partial_exchange(
             )
         command.upgrade(config, "head")
     with factory() as db:
-        assert db.query(KernelSessionDelegation).count() == 0
+        assert db.query(BackendSessionDelegation).count() == 0
         assert (
             db.execute(text("SELECT to_jsonb(s) FROM auth_sessions s WHERE id = :id"), {"id": parent_id}).scalar_one()
             == before
@@ -270,7 +283,9 @@ def test_password_reset_and_exchange_share_user_first_lock_order(
             db.connection(execution_options={"rev3_role": "exchange"})
             db.execute(text("SET LOCAL lock_timeout = '5s'"))
             try:
-                return delegation.exchange_code(db, code=code, verifier=VERIFIER, tenant_id="anytoolai", region="ru")
+                return delegation.exchange_code(
+                    db, code=code, verifier=VERIFIER, tenant_id="anytoolai", region="ru", consumer_id="platform-kernel"
+                )
             except delegation.InvalidDelegationError as error:
                 return error.code
 
@@ -312,13 +327,18 @@ def test_password_reset_and_exchange_share_user_first_lock_order(
         assert all(row.used_at is not None for row in db.query(MagicLinkToken).all())
         if first == "exchange":
             assert isinstance(result, delegation.DelegationToken)
-            with pytest.raises(delegation.InvalidDelegationError, match="kernel_parent_authority_invalid"):
+            with pytest.raises(delegation.InvalidDelegationError, match="backend_parent_authority_invalid"):
                 delegation.introspect_token(
-                    db, token=result.access_token, tenant_id="anytoolai", region="ru", clock_skew_seconds=5
+                    db,
+                    token=result.access_token,
+                    tenant_id="anytoolai",
+                    region="ru",
+                    clock_skew_seconds=5,
+                    consumer_id="platform-kernel",
                 )
         else:
-            assert result == "kernel_parent_authority_invalid"
-            assert db.query(KernelSessionDelegation).one().exchanged_at is None
+            assert result == "backend_parent_authority_invalid"
+            assert db.query(BackendSessionDelegation).one().exchanged_at is None
 
 
 def test_concurrent_distinct_password_reset_tokens_have_one_winner(
@@ -397,3 +417,98 @@ def test_password_reset_rechecks_token_expiry_after_user_lock_wait(
         assert verify_password("Original-password-123!", db.get(User, user_id).password_hash)
         assert db.get(AuthSession, parent_id).revoked_at is None
         assert all(row.used_at is None for row in db.query(MagicLinkToken).all())
+
+
+def test_populated_step8_forward_migration_preserves_delegations_and_parent_state(
+    delegated_parent: DelegatedParent,
+    database_test_url: URL,
+) -> None:
+    factory, _, _, code = delegated_parent
+    with factory() as db:
+        delegation.exchange_code(
+            db, code=code, verifier=VERIFIER, tenant_id="anytoolai", region="ru", consumer_id="platform-kernel"
+        )
+        delegation.issue_code(
+            db,
+            token=PARENT_TOKEN,
+            tenant_id="anytoolai",
+            region="ru",
+            code_challenge=delegation.pkce_challenge(VERIFIER),
+            consumer_id="platform-kernel",
+        )
+    with alembic_test_config(database_test_url) as config:
+        command.downgrade(config, "20261110_0008")
+        with factory() as db:
+            before = (
+                db.execute(text("SELECT to_jsonb(d) FROM kernel_session_delegations d ORDER BY code_hash"))
+                .scalars()
+                .all()
+            )
+            parents = db.execute(text("SELECT to_jsonb(s) FROM auth_sessions s ORDER BY id")).scalars().all()
+            assert len(before) == 2 and sum(row["exchanged_at"] is not None for row in before) == 1
+        command.upgrade(config, "head")
+    with factory() as db:
+        after = (
+            db.execute(text("SELECT to_jsonb(d) FROM backend_session_delegations d ORDER BY code_hash")).scalars().all()
+        )
+        assert after == [
+            {**{key: value for key, value in row.items() if key != "audience"}, "consumer_id": row["audience"]}
+            for row in before
+        ]
+        assert {row["consumer_id"] for row in after} == {"platform-kernel"}
+        assert db.execute(text("SELECT to_jsonb(s) FROM auth_sessions s ORDER BY id")).scalars().all() == parents
+        exchanged = next(row for row in after if row["exchanged_at"] is not None)
+        assert exchanged["token_hash"] and exchanged["auth_session_id"]
+
+
+def test_concurrent_stale_installation_cannot_restore_old_consumer_policy(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    from app.infrastructure.queries.backend_policies import BackendPolicyConflict, install_policy
+    from app.models import BackendConsumerPolicy
+    from apps.api.tests.support.backend_consumers import backend_consumer
+
+    old = backend_consumer()
+    newer = backend_consumer(consumer_policy_revision=2, allowed_products=["proposal_ai"])
+    factory = postgres_session_factory
+    with factory.begin() as db:
+        install_policy(db, old)
+    started = Event()
+
+    def stale_installation() -> str:
+        with factory.begin() as db:
+            started.set()
+            try:
+                install_policy(db, old)
+            except BackendPolicyConflict:
+                return "refused"
+        return "unexpected-success"
+
+    with factory.begin() as writer, ThreadPoolExecutor(max_workers=1) as pool:
+        install_policy(writer, newer)
+        future = pool.submit(stale_installation)
+        assert started.wait(10)
+        writer.commit()
+        assert future.result(timeout=10) == "refused"
+    with factory() as db:
+        saved = db.get(BackendConsumerPolicy, (old.consumer_id, old.tenant_id, old.region))
+        assert (saved.consumer_policy_revision, saved.policy_digest) == (2, newer.policy_digest)
+
+
+def test_forward_migration_refuses_to_adopt_foreign_historical_audience(
+    delegated_parent: DelegatedParent,
+    database_test_url: URL,
+) -> None:
+    factory, _, _, _ = delegated_parent
+    with alembic_test_config(database_test_url) as config:
+        command.downgrade(config, "20261110_0008")
+        with factory.begin() as db:
+            db.execute(text("UPDATE kernel_session_delegations SET audience = 'synthetic-summary'"))
+        with pytest.raises(RuntimeError, match="Unexpected historical delegation audience"):
+            command.upgrade(config, "head")
+        with factory() as db:
+            assert (
+                db.execute(text("SELECT audience FROM kernel_session_delegations")).scalar_one() == "synthetic-summary"
+            )
+            assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20261110_0008"

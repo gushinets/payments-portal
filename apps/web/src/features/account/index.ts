@@ -1,2 +1,3 @@
 export { AccountClient } from "./AccountClient";
-export { KernelAuthorization } from "./KernelAuthorization";
+export { BackendAuthorization } from "./BackendAuthorization";
+export { parseBackendCallbacks } from "@/shared/config/backend-authorization";

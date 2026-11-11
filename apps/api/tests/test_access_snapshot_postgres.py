@@ -13,7 +13,6 @@ from uuid import UUID, uuid4
 import httpx
 import anyio
 import pytest
-from pydantic import SecretStr
 from sqlalchemy import event, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
@@ -22,14 +21,15 @@ from app.composition import paid_reads, purchases
 from app.composition.reconciliation import reconcile_subscription
 from app.composition.sources import source_resources
 from app.core.observability import request_id_context
-from app.core.settings import KernelAccessPermission
+from app.core.backend_consumers import BackendPermission
+from apps.api.tests.support.backend_consumers import backend_consumer
 from app.domains.billing import paid_access, paid_read, snapshot_router, work
 from app.domains.billing.customers import lock_user
 from app.domains.billing.paid_access import commit_paid_state
 from app.domains.billing.paid_contracts import EffectiveAllowance
 from app.domains.billing.work_contracts import WorkLane
 from app.domains.identity.services.auth import as_utc
-from app.http import kernel_auth
+from app.http import backend_auth
 from app.infrastructure.preflight import PreflightCleanupPending
 from app.infrastructure.queries import billing_reconciliation
 from app.main import create_app
@@ -127,13 +127,17 @@ async def snapshot_client(
     config = step1_settings(paid_access_clock_skew_seconds=5).model_copy(
         update={
             "app_env": "production",
-            "kernel_access_service_token": SecretStr(SERVICE),
-            "kernel_access_service_token_previous": SecretStr(PREVIOUS),
-            "kernel_access_permissions": (KernelAccessPermission.READ_SNAPSHOT,),
+            "backend_consumers": (
+                backend_consumer(
+                    backend_to_portal_current_secret=SERVICE,
+                    backend_to_portal_previous_secret=PREVIOUS,
+                    permissions=[BackendPermission.READ_SNAPSHOT],
+                ),
+            ),
         }
     )
     monkeypatch.setattr(snapshot_router, "settings", config)
-    monkeypatch.setattr(kernel_auth, "settings", config)
+    monkeypatch.setattr(backend_auth, "settings", config)
     app = create_app()
     # No source/worker dependency is installed in this HTTP application.
     async with (
@@ -164,7 +168,7 @@ def test_snapshot_openapi_has_required_scope_and_exact_v2_component_fields() -> 
     assert response == {"$ref": "#/components/schemas/AccessSnapshotResponse"}
     for status in (401, 403, 404, 422, 503):
         assert operation["responses"][str(status)]["content"]["application/json"]["schema"] == {
-            "$ref": "#/components/schemas/KernelErrorResponse"
+            "$ref": "#/components/schemas/BackendErrorResponse"
         }
     for name in ("AccessSnapshotResponse", "AccessSnapshotGrant", "AccessSnapshotAllowance"):
         component = schema["components"]["schemas"][name]
@@ -224,7 +228,13 @@ async def test_snapshot_known_zero_auth_scope_rotation_and_read_only(
             assert result.status_code == expected, result.text
             assert result.headers["cache-control"] == "no-store"
         monkeypatch.setattr(
-            kernel_auth, "settings", kernel_auth.settings.model_copy(update={"kernel_access_permissions": ()})
+            backend_auth,
+            "settings",
+            backend_auth.settings.model_copy(
+                update={
+                    "backend_consumers": (backend_consumer(backend_to_portal_current_secret=SERVICE, permissions=[]),)
+                }
+            ),
         )
         assert (await snapshot_client.get(path(user_id), headers=headers())).status_code == 403
         assert not writes
@@ -721,11 +731,14 @@ async def test_snapshot_overload_and_cancellation_keep_resource_ownership(
     monkeypatch.setattr(snapshot_router, "settings", config)
     service_config = config.model_copy(
         update={
-            "kernel_access_service_token": SecretStr(SERVICE),
-            "kernel_access_permissions": (KernelAccessPermission.READ_SNAPSHOT,),
+            "backend_consumers": (
+                backend_consumer(
+                    backend_to_portal_current_secret=SERVICE, permissions=[BackendPermission.READ_SNAPSHOT]
+                ),
+            ),
         }
     )
-    monkeypatch.setattr(kernel_auth, "settings", service_config)
+    monkeypatch.setattr(backend_auth, "settings", service_config)
     app = create_app()
     tasks = []
     async with (

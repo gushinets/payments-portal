@@ -1,7 +1,7 @@
 # Platform Kernel integration map
 
 Status: navigation and implementation snapshot; normative contracts are delegated below.
-Last source inspection: 2026-11-10; local source state, not a deployment check.
+Last source inspection: 2026-11-11; local source state, not a deployment check.
 
 ## Ownership and sources
 
@@ -31,11 +31,14 @@ plans do not override accepted sources.
 
 ## Observed implementation
 
-Sources: Portal `f4f6fbf` and Kernel `729f0675`, plus the paired Step 8
-working-tree changes.
+Sources: Portal `f6c5e2543a7c281bf3a0e26a0ad9af64372f651b` and Kernel
+`5aaa0a5fc9f0fdce977dd671727cd5957c13fb39`, plus the paired Step 10 working diff.
 The [active plan](../exec-plans/active/ANY-766-implementation-plan.md) records
-completed server work and the Step 8 browser implementation; usage, assembled
-local acceptance and build preparation remain pending.
+completed Steps 1–10: common identity V2, configured consumer callbacks and the
+policy guard, plus V2/R paid admission and invalidation. Consumer-filtered V3
+access, generic sources/recipients, usage, assembled local acceptance and build
+preparation remain pending. Current identity configuration is in the
+[common guide](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).
 Remote installation and live-service acceptance belong to ANY-767.
 
 | Operation / request direction | Payload producer | Payload consumer / receiver | Verification status |
@@ -62,8 +65,9 @@ snapshots, immutable source/owner history and recipient/usage routing. The
 [paired bundle](../contracts/portal-kernel-paid/README.md) retains exact baseline
 schemas/fixture payloads and independently checked target additions.
 
-This checkpoint does not change runtime, migrations or generated OpenAPI.
-Current servers still implement Kernel identity V1/snapshot V2. The guide records
+At this historical Step 9 checkpoint, runtime, migrations and generated OpenAPI
+were unchanged (Kernel identity V1/snapshot V2). Step 10 now implements common
+identity V2 and its generated security; snapshot remains Kernel-only V2. The guide records
 actual owning modules, minimal replacements, populated-state forward migration
 requirements and focused acceptance cases; active Kernel code is not a purge
 target. Common identity is Step 10, technical-source ownership Step 11, working
@@ -121,8 +125,8 @@ request-by-request identity dependency returning the existing Core
 `ExecutionOwner` for a canonical Portal UUID, without local identity matching.
 The original Portal bearer stays at Portal.
 
-The [server configuration and limits](../contracts/portal-kernel-paid/README.md#step-4-server-implementation)
-include independent directional credentials, explicit receiver permissions,
+The [historical Step 4 configuration and limits](../contracts/portal-kernel-paid/README.md#step-4-server-implementation)
+included independent directional credentials, explicit receiver permissions,
 rotation, fixed audience, parent revocation, finite deadlines, no-store and
 secret-safe refusals. Local PostgreSQL tests cover migration/cascade/single-use
 races; Kernel HTTP is intercepted in focused boundary tests. This is not real
@@ -144,8 +148,9 @@ Install the compatible Step 6 consumer before enabling the V2 connection. This
 checkpoint changes no commercial flags or deployed configuration.
 
 - **Identity:** paid access uses Portal's authenticated UUID under
-  `(tenant_id, region, user_id)`, verified through Step 4 delegation/introspection
-  on protected Kernel requests. Step 8 implements browser launch/recovery. Guest
+  `(tenant_id, region, user_id)`, verified through Step 10 common delegation V2
+  and per-request introspection. Step 8 browser recovery remains, with Step 10
+  configured callbacks and token-envelope migration. Guest
   quota or an internal metering test is not proof of Portal authentication.
 - **Scope:** Portal uses its configured `anytoolai/ru` deployment scope and rejects
   mismatched manifest responses. Kernel service principals and deployment must
@@ -211,3 +216,25 @@ restoration. Identity generations guard runtime, events and handoff state. See
 [the browser implementation/configuration notes](../contracts/portal-kernel-paid/README.md#step-8-browser-implementation).
 This is local synthetic/component evidence; real paid interservice/browser
 acceptance remains Step 16. The historical observations above remain historical.
+
+
+## ANY-766 Step 10 consumer identity checkpoint — 2026-11-11
+
+Inspected peer: Kernel `5aaa0a5fc9f0fdce977dd671727cd5957c13fb39`, plus this paired Step 10 working-tree change.
+Portal now serves common backend-session code/exchange/introspection endpoints
+with consumer-bound V2 identity, independent credentials/permissions, monotonic
+persisted policy guard and generated named Bearer security. Kernel validates
+consumer/P and keeps per-request introspection and the original Core owner/replay
+partition. The localized authorization page resolves configured fixed callbacks.
+Version-1 browser token envelopes require authorization while separate same-owner
+pending requests retain their exact request/key. See the
+[common configuration/cutover guide](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).
+
+Portal migration 20261111_0009 preserves populated delegation parent links,
+hashes, TTLs and single-use state while binding historical audience to Kernel.
+Step 10 needs no Kernel migration or usage reset. Snapshot remains Kernel-only
+V2; another consumer cannot read that unfiltered baseline. V3/filtering/coherence
+remain Step 12, sources Step 11 and recipient delivery Step 13. Existing outgoing
+Kernel manifest/invalidation settings stay active until their owning steps.
+Local synthetic/API/component and disposable PostgreSQL checks are distinct from
+Step 16's assembled real HTTP acceptance and ANY-767 remote/live acceptance.

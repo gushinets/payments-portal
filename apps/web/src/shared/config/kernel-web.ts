@@ -16,11 +16,3 @@ export function kernelLaunchUrl(productId: string): string | null {
   return base && launchProducts.has(productId)
     ? `${base}/portal-session/launch?return_to=${encodeURIComponent(`/products/${productId}`)}` : null;
 }
-
-export function parseKernelAuthorizationQuery(query: URLSearchParams): { state: string; challenge: string } | null {
-  if (query.getAll("state").length !== 1 || query.getAll("code_challenge").length !== 1 ||
-    query.getAll("code_challenge_method").length !== 1 || query.get("code_challenge_method") !== "S256" ||
-    !/^[A-Za-z0-9_-]{43}$/.test(query.get("state") ?? "") ||
-    !/^[A-Za-z0-9_-]{43}$/.test(query.get("code_challenge") ?? "")) return null;
-  return { state: query.get("state")!, challenge: query.get("code_challenge")! };
-}

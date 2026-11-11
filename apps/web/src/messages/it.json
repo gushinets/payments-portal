@@ -498,9 +498,9 @@
     "managedInAccount": "Il pagamento e la gestione dell’abbonamento sono disponibili nel tuo account.",
     "accessInAccount": "L’accesso a pagamento confermato è visibile nell’account. Utilizzo e quota residua non sono ancora disponibili."
   },
-  "KernelSession": {
+  "BackendSession": {
     "title": "Vai al tuo prodotto",
-    "description": "La sessione del Portale autorizzerà questa scheda Kernel.",
+    "description": "La sessione del Portale autorizzerà questa scheda del prodotto.",
     "continue": "Continua",
     "loading": "Autorizzazione…",
     "failed": "Autorizzazione non riuscita. Controlla la sessione e riprova."

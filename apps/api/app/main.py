@@ -9,6 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
+from app.composition.backend_consumers import initialize_backend_consumers
 from app.composition.sources import source_resources
 from app.composition.billing_worker import billing_worker_resources
 from app.composition.paid_reads import paid_read_resources
@@ -25,8 +26,8 @@ from app.domains.billing.router import router as billing_router
 from app.domains.catalog.router import router as catalog_router
 from app.domains.identity.password_reset import router as password_reset_router
 from app.domains.identity.router import router as auth_router
-from app.domains.identity.kernel_router import router as kernel_session_router
-from app.http.kernel_session_policy import kernel_session_policy, session_validation_error
+from app.domains.identity.backend_router import router as backend_session_router
+from app.http.backend_session_policy import backend_session_policy, session_validation_error
 from app.domains.legal.router import router as legal_router
 from app.domains.purchases.router import router as purchases_router
 from app.http.errors import app_error_handler, unexpected_failure_middleware
@@ -47,6 +48,7 @@ def _seed_legal_documents_sync() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    await run_in_threadpool(initialize_backend_consumers, settings, SessionLocal)
     if os.getenv("SKIP_LEGAL_SEED") != "true":
         await run_in_threadpool(_seed_legal_documents_sync)
 
@@ -97,9 +99,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.middleware("http")(kernel_session_policy)
+    app.middleware("http")(backend_session_policy)
     app.add_exception_handler(RequestValidationError, session_validation_error)
-    app.include_router(kernel_session_router)
+    app.include_router(backend_session_router)
     app.include_router(billing_router)
     app.include_router(paid_access_router)
     app.include_router(access_snapshot_router)
