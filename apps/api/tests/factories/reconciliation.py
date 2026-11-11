@@ -89,13 +89,14 @@ def agreement_factory() -> Agreement:
 
 
 def tariff_factory(subject: ReconciliationSubject | SubscriptionCandidateSubject) -> LbxRead[LbxTariff]:
+    tariff_id = subject.purchase.accepted.selection.tariff_id
     return LbxRead(
         subject.purchase.account_id,
-        701,
+        tariff_id,
         None,
         datetime.now(UTC),
         LbxTariff(
-            tariff_id=701,
+            tariff_id=tariff_id,
             currency_id=1,
             balance_blocks=1,
             payment_type=0,

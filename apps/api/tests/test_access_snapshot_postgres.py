@@ -216,6 +216,7 @@ async def test_consumer_filtering_precedes_deadlines_and_policy_change_keeps_pai
     original_offer = deepcopy(transport.offer)
     transport.offer.tariff_id = 702
     transport.offer.bodies = {name: body.replace(b"701", b"702") for name, body in transport.offer.bodies.items()}
+    transport.offers[702] = transport.offer
 
     def respond(request: httpx.Request) -> httpx.Response:
         if request.url.path.startswith("/api/rest/v1/tariffs/701"):

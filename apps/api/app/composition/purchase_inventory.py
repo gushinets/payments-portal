@@ -95,6 +95,16 @@ async def collect_inventory(
         for operation in purchase.operations
         if operation.kind == Kind.AGREEMENT and operation.bound_id is not None
     }
+
+    def implicated_products(provider_id: str, agreement_id: str | None, tariff_id: int | None) -> set[str]:
+        bound = bindings.get(provider_id)
+        owner = agreements.get(agreement_id)
+        products = {
+            item.accepted.selection.product_id for item in initial if item.accepted.selection.tariff_id == tariff_id
+        }
+        products.update(item.accepted.selection.product_id for item in (bound, owner) if item is not None)
+        return products
+
     if len(bindings) > MAX_RELEVANT_SUBSCRIPTIONS:
         return InventoryResult(current, initial, (), (), False)
     # Canonical reads belong to their existing lease, including when absent from
@@ -126,7 +136,9 @@ async def collect_inventory(
                 proof = result.proof
             except AppError:
                 complete = False
-                product_complete[product] = False
+                agreement_id = next(op.bound_id for op in purchase.operations if op.kind == Kind.AGREEMENT)
+                for affected in implicated_products(provider_id, agreement_id, purchase.accepted.selection.tariff_id):
+                    product_complete[affected] = False
                 candidates[product].append(
                     DiscoveredCandidate(
                         identity=provider_id,
@@ -144,7 +156,10 @@ async def collect_inventory(
             conclusion = Conclusion.ELIGIBLE if paid_decision(proof) == PaidDecision.GRANT else Conclusion.INELIGIBLE
         elif proof.identity == IdentityProof.MATCH and proof.lifecycle == Lifecycle.ENDED:
             conclusion = Conclusion.INELIGIBLE
-        product_complete[product] &= conclusion != Conclusion.INCOMPLETE
+        if conclusion == Conclusion.INCOMPLETE:
+            agreement_id = next(op.bound_id for op in purchase.operations if op.kind == Kind.AGREEMENT)
+            for affected in implicated_products(provider_id, agreement_id, purchase.accepted.selection.tariff_id):
+                product_complete[affected] = False
         candidates[product].append(
             DiscoveredCandidate(
                 identity=provider_id,
@@ -181,11 +196,10 @@ async def collect_inventory(
         rows = await timely_point(
             lambda: client.discover_subscriptions(user_id=int(current.provider_id), budget=budget), budget
         )
-        tariffs = {purchase.accepted.selection.tariff_id for purchase in initial}
         relevant: dict[str, Subscription | None] = {
             str(row.subscription_id): row
             for row in rows
-            if (row.tariff_id in tariffs or str(row.subscription_id) in bindings or str(row.agreement_id) in agreements)
+            if implicated_products(str(row.subscription_id), str(row.agreement_id), row.tariff_id)
         }
         # Canonical contradictions need point checks even when discovery omits
         # the known ID. Do not invent listing fields or treat it as UNKNOWN.
@@ -203,25 +217,47 @@ async def collect_inventory(
                 and provider_id not in conflicting_bindings
                 and (owner is None or owner.id == known.id)
             ):
-                continue
-            affected = (
-                {owner.accepted.selection.product_id}
-                if owner is not None
-                else {
-                    item.accepted.selection.product_id
-                    for item in initial
-                    if candidate is not None and item.accepted.selection.tariff_id == candidate.tariff_id
-                }
-            )
-            for product in affected:
-                candidates[product].append(
-                    DiscoveredCandidate(
-                        identity=provider_id,
-                        agreement_id=str(candidate.agreement_id),
-                        purchase_id=owner.id if owner else None,
-                        conclusion=Conclusion.INCOMPLETE,
-                    )
+                canonical = next(
+                    item for item in candidates[known.accepted.selection.product_id] if item.identity == provider_id
                 )
+                agreement_id = next(op.bound_id for op in known.operations if op.kind == Kind.AGREEMENT)
+                disagreement = candidate is not None and (str(candidate.agreement_id), candidate.tariff_id) != (
+                    agreement_id,
+                    known.accepted.selection.tariff_id,
+                )
+                if disagreement:
+                    complete = False
+                if disagreement or canonical.conclusion == Conclusion.INCOMPLETE:
+                    affected = implicated_products(provider_id, agreement_id, known.accepted.selection.tariff_id)
+                    if candidate is not None:
+                        affected.update(
+                            implicated_products(provider_id, str(candidate.agreement_id), candidate.tariff_id)
+                        )
+                    for product in affected:
+                        product_complete[product] = False
+                continue
+            affected: set[str] = set()
+
+            def include_candidate(agreement_id: str, tariff_id: int | None) -> None:
+                owner = agreements.get(agreement_id)
+                products = implicated_products(provider_id, agreement_id, tariff_id)
+                for product in products - affected:
+                    candidates[product].append(
+                        DiscoveredCandidate(
+                            identity=provider_id,
+                            agreement_id=agreement_id,
+                            purchase_id=owner.id if owner else None,
+                            conclusion=Conclusion.INCOMPLETE,
+                        )
+                    )
+                affected.update(products)
+
+            include_candidate(
+                str(candidate.agreement_id)
+                if candidate is not None
+                else next(op.bound_id for op in known.operations if op.kind == Kind.AGREEMENT),
+                candidate.tariff_id if candidate is not None else None,
+            )
             # A permanently bound sibling can never be this purchase's original
             # UNKNOWN candidate, even when LBX now places it on this agreement.
             if candidate is not None and known is None and owner is not None:
@@ -289,14 +325,30 @@ async def collect_inventory(
                             and proof.commercial == CommercialProof.MATCH
                             and proof.lifecycle is not None
                         ):
+                            # Matching original proof establishes these point
+                            # relationships even when discovery disagrees.
+                            agreement_id = next(op.bound_id for op in owner.operations if op.kind == Kind.AGREEMENT)
+                            include_candidate(agreement_id, owner.accepted.selection.tariff_id)
+                            if (str(candidate.agreement_id), candidate.tariff_id) != (
+                                agreement_id,
+                                owner.accepted.selection.tariff_id,
+                            ):
+                                complete = False
                             # Stage 3 alone may bind this original. Its existence is
                             # never a foreign product, nor authority for another POST.
                             pending.add(owner.id)
-                        elif proof.identity == IdentityProof.CONFLICT or proof.commercial == CommercialProof.MISMATCH:
-                            conflicts.add(owner.id)
-                            complete = False
                         else:
+                            if proof.identity == IdentityProof.CONFLICT or proof.commercial == CommercialProof.MISMATCH:
+                                conflicts.add(owner.id)
                             complete = False
+                            # An unresolved original proof cannot establish its
+                            # point relationships. Keep all newly observed sides
+                            # incomplete without adopting or binding the object.
+                            point = await _candidate_point(
+                                lambda: client.get_subscription(subscription_id=int(provider_id), budget=budget), budget
+                            )
+                            if point is not None:
+                                include_candidate(str(point.agreement_id), point.tariff_id)
                         continue
             point = await _candidate_point(
                 lambda: client.get_subscription(subscription_id=int(provider_id), budget=budget), budget
@@ -304,11 +356,14 @@ async def collect_inventory(
             if point is None:
                 complete = False
                 continue
+            include_candidate(str(point.agreement_id), point.tariff_id)
             if candidate is not None and (point.agreement_id, point.tariff_id) != (
                 candidate.agreement_id,
                 candidate.tariff_id,
             ):
                 complete = False
+                for product in affected:
+                    product_complete[product] = False
                 if known is None:
                     continue
             owner = agreements.get(str(point.agreement_id))
@@ -344,13 +399,7 @@ async def collect_inventory(
         for product in candidates:
 
             def relevant_to_product(row: Subscription) -> bool:
-                bound = bindings.get(str(row.subscription_id)) or agreements.get(str(row.agreement_id))
-                if bound is not None:
-                    return bound.accepted.selection.product_id == product
-                return any(
-                    item.accepted.selection.product_id == product and item.accepted.selection.tariff_id == row.tariff_id
-                    for item in initial
-                )
+                return product in implicated_products(str(row.subscription_id), str(row.agreement_id), row.tariff_id)
 
             product_complete[product] &= _identities(tuple(filter(relevant_to_product, rows))) == _identities(
                 tuple(filter(relevant_to_product, again))

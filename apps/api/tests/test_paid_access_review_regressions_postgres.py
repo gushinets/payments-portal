@@ -209,17 +209,19 @@ async def test_failure_after_overdue_reduction_rolls_back_both_phases(
 
 @pytest.mark.parametrize("failure", ["none", "subscription", "agreement", "budget", "auth"])
 @pytest.mark.parametrize("mode", ["first_primary", "operator"])
+@pytest.mark.parametrize("matching_tariff", [False, True], ids=["unrelated", "implicated"])
 async def test_candidate_point_failure_is_scoped_to_its_product(
     background_scenario: tuple,
     postgres_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
     failure: str,
     mode: str,
+    matching_tariff: bool,
 ) -> None:
     transport, sources, purchase = background_scenario
     factory = postgres_session_factory
     first = synthetic_prepare(factory, transport, purchase, uncertain=False)
-    historical_link(factory, first, transport, "brief_decoder", 1)
+    historical_link(factory, first, transport, "brief_decoder", 1, tariff_id=702)
     for point in transport.subscriptions:
         point.update(state=2, last_tariffication_period_start="2026-10-01", last_tariffication_period_end="2026-10-31")
     config = step1_settings(paid_access_clock_skew_seconds=10)
@@ -237,10 +239,12 @@ async def test_candidate_point_failure_is_scoped_to_its_product(
     scenario = Scenario(factory, config, transport, sources, identity)
     if mode == "operator":
         await run_inventory(scenario)
-    # The permanently bound Brief Decoder agreement establishes product scope,
-    # even though these historical test purchases share an accepted tariff.
+    # An agreement owner and every accepted tariff match are implicated. A
+    # different tariff leaves Proposal AI genuinely unrelated to this candidate.
     extra = copy.deepcopy(transport.subscriptions[1])
-    extra.update(subscription_id=9999, state=3, outer_id="synthetic-extra-brief")
+    extra.update(
+        subscription_id=9999, tariff_id=701 if matching_tariff else 999, state=3, outer_id="synthetic-extra-brief"
+    )
     transport.subscriptions.append(extra)
     client, final_lists = sources.require_lbx(), []
     read, discover, agreement = client.get_subscription, client.discover_subscriptions, client.get_agreement
@@ -270,13 +274,17 @@ async def test_candidate_point_failure_is_scoped_to_its_product(
     monkeypatch.setattr(client, "get_subscription", read_candidate)
     monkeypatch.setattr(client, "get_agreement", read_agreement)
     monkeypatch.setattr(client, "discover_subscriptions", record_listing)
+    blocked = failure in {"budget", "auth"} or (matching_tariff and failure in {"subscription", "agreement"})
     if mode == "operator":
         saved = service.read_purchase(factory, first.user_id, first.id)
         evidence = inspect_evidence(factory, config, first.user_id, first.id)
         request = resolution_request(saved, evidence).model_copy(update={"resolution": "select-primary"})
-        if failure in {"budget", "auth"}:
+        if blocked:
             with pytest.raises(AppError, match="purchase_inventory_incomplete"):
                 await resolve_review(sources, config, factory=factory, request=request, principal="os-euid:1000")
+            with factory() as db:
+                case = db.get(ManualReviewCase, request.case_id)
+                assert case.case_state == "open" and case.resolution_document is None
         else:
             result = await resolve_review(sources, config, factory=factory, request=request, principal="os-euid:1000")
             assert result["outcome"] == "resolved"
@@ -287,7 +295,12 @@ async def test_candidate_point_failure_is_scoped_to_its_product(
         await run_inventory(scenario)
     assert len(final_lists) == (1 if failure in {"budget", "auth"} else 2)
     granted = {grant["product_id"] for grant in effective(factory)[1]["grants"]}
-    assert ("proposal_ai" in granted) is (failure not in {"budget", "auth"})
+    assert ("proposal_ai" in granted) is not blocked
+    with factory() as db:
+        scope = db.scalar(
+            select(BillingProductAccessScope).where(BillingProductAccessScope.product_id == "proposal_ai")
+        )
+        assert (scope.primary_subscription_id is not None) is not blocked
 
 
 async def test_less_precise_proof_cannot_restore_past_finite_end(
