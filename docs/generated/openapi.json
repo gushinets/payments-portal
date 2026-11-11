@@ -132,6 +132,21 @@
       },
       "AccessSnapshotResponse": {
         "additionalProperties": false,
+        "examples": [
+          {
+            "access_revision": 0,
+            "allowances": [],
+            "consumer_id": "platform-kernel",
+            "consumer_policy_revision": 1,
+            "expires_at": "2026-11-11T04:04:55Z",
+            "grants": [],
+            "refresh_after": "2026-11-11T04:01:00Z",
+            "region": "ru",
+            "schema_version": 3,
+            "tenant_id": "anytoolai",
+            "user_id": "00000000-0000-4000-8000-000000000001"
+          }
+        ],
         "properties": {
           "access_revision": {
             "minimum": 0.0,
@@ -144,6 +159,17 @@
             },
             "title": "Allowances",
             "type": "array"
+          },
+          "consumer_id": {
+            "pattern": "^[a-z][a-z0-9-]{0,63}$",
+            "title": "Consumer Id",
+            "type": "string"
+          },
+          "consumer_policy_revision": {
+            "maximum": 9007199254740991.0,
+            "minimum": 1.0,
+            "title": "Consumer Policy Revision",
+            "type": "integer"
           },
           "expires_at": {
             "format": "date-time",
@@ -168,7 +194,7 @@
             "type": "string"
           },
           "schema_version": {
-            "const": 2,
+            "const": 3,
             "title": "Schema Version",
             "type": "integer"
           },
@@ -185,6 +211,8 @@
         },
         "required": [
           "schema_version",
+          "consumer_id",
+          "consumer_policy_revision",
           "tenant_id",
           "region",
           "user_id",
@@ -3321,6 +3349,7 @@
     },
     "/internal/v1/access-snapshots/{user_id}": {
       "get": {
+        "description": "Requires BackendServiceBearer with access-snapshot:read. The credential selects consumer, products and current policy P; tenant_id/region can only narrow its scope. R is the whole-user paid revision. Included allowances must retain this consumer's technical source and backend ownership; policy changes cannot transfer existing allowances or usage. Only included products and their supporting facts bound completeness and expiry. Read-only local GET: no backend/LBX calls or usage writes. Known empty users return R0. All responses are no-store; browser Origin is refused. 401: service credential; 403: scope/permission/browser; 404: unknown scoped user; 422: malformed or missing scope; 503: retained allowance owner conflict, overdue included facts, stale policy, storage/capacity/clock unavailable. Quantity is the purchased ceiling. Backends must bind consumer/scope/P/R, preserve durable floors, and atomically reserve/finalize/release in their own usage storage; this read alone cannot admit execution.",
         "operationId": "access_snapshot_internal_v1_access_snapshots__user_id__get",
         "parameters": [
           {
@@ -3421,7 +3450,7 @@
             "BackendServiceBearer": []
           }
         ],
-        "summary": "Access Snapshot",
+        "summary": "Read this consumer's committed paid authority (V3)",
         "tags": [
           "access-snapshot"
         ]

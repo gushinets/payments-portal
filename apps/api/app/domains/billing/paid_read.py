@@ -7,6 +7,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.backend_consumers import BackendConsumer
 from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.customers import authenticate
@@ -17,9 +18,11 @@ from app.domains.billing.reconciliation_contracts import RECONCILIATION_SCHEMA, 
 from app.domains.billing.reconciliation import SOURCE_TRUST
 from app.domains.catalog.publication import SessionFactory
 from app.domains.catalog.contracts import SourceProvenance
+from app.domains.catalog.technical_source import TechnicalOwnership
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases.technical_terms import AcceptedTechnicalTerms
 from app.infrastructure.queries import paid_read as queries
+from app.infrastructure.queries.backend_policies import BackendPolicyConflict, require_current_policy
 from app.infrastructure.queries.billing_reconciliation import database_now
 from app.models import (
     BillingStateObservation,
@@ -89,30 +92,55 @@ class CommittedPaidState:
             raise BillingRefused("paid_access_state_pending", 503)
 
 
-def read_committed_state(db: Session, user_id: UUID, tenant: str, region: str) -> CommittedPaidState:
+def read_committed_state(
+    db: Session, user_id: UUID, tenant: str, region: str, *, consumer: BackendConsumer | None = None
+) -> CommittedPaidState:
     if not queries.lock_reader(db, user_id, tenant, region):
         raise BillingRefused("paid_access_user_not_found", 404)
     row = queries.state(db, user_id, tenant, region)
     document = EffectiveState.model_validate(row.effective_state_document) if row else EffectiveState()
-    provenance = {
-        str(item.allowance_id): AcceptedTechnicalTerms.model_validate(item.terms_document["technical_terms"]).provenance
-        for item in queries.allowances(db, [UUID(item.allowance_id) for item in document.allowances])
-    }
+    # Select relevance before provenance validation or deadline/completeness checks.
+    # The cabinet and writer retain the whole-user view (consumer=None).
+    products = consumer.allowed_products if consumer is not None else None
+    if products is not None:
+        document = EffectiveState(
+            grants=tuple(item for item in document.grants if item.product_id in products),
+            allowances=tuple(item for item in document.allowances if item.product_id in products),
+        )
+    ownership = TechnicalOwnership(consumer.technical_source_id, consumer.consumer_id) if consumer is not None else None
+    provenance: dict[str, SourceProvenance] = {}
+    for item in queries.allowances(db, [UUID(item.allowance_id) for item in document.allowances]):
+        terms = AcceptedTechnicalTerms.model_validate(item.terms_document["technical_terms"])
+        # Policy scope cannot transfer an issued allowance away from its usage owner.
+        if ownership is not None and terms.ownership != ownership:
+            raise BillingRefused("paid_access_owner_conflict", 503)
+        provenance[str(item.allowance_id)] = terms.provenance
     return CommittedPaidState(
         row.access_revision if row else 0,
         document,
         provenance,
         as_utc(row.committed_at) if row else None,
-        {scope.product_id: scope for scope in queries.scopes(db, user_id)},
+        {
+            scope.product_id: scope for scope in queries.scopes(db, user_id)
+            if products is None or scope.product_id in products
+        },
     )
 
 
-def read_access_snapshot(factory: SessionFactory, configuration: Settings, user_id: UUID) -> SnapshotRead:
+def read_access_snapshot(
+    factory: SessionFactory, configuration: Settings, user_id: UUID, consumer: BackendConsumer
+) -> SnapshotRead:
     budget = configuration.paid_access_clock_skew_seconds
     if budget is None:
         raise BillingRefused("paid_access_clock_unavailable", 503)
     with factory() as db:
-        state = read_committed_state(db, user_id, configuration.instance_tenant_id, configuration.instance_region)
+        try:
+            require_current_policy(db, consumer)
+        except BackendPolicyConflict:
+            raise BillingRefused("paid_access_policy_unavailable", 503) from None
+        state = read_committed_state(
+            db, user_id, consumer.tenant_id, consumer.region, consumer=consumer
+        )
         # Wall time is sampled after every possibly waiting read under the
         # shared user lock. No last_seen bookkeeping or commit occurs here.
         now = as_utc(database_now(db))

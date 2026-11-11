@@ -21,12 +21,14 @@ Buy/Continue/Manage with one shared payment-capable Widget. It remains
 pre-production. ANY-715 supplies embedded lifecycle polling and GET-only
 recovery/inventory. ANY-765 adds local paid grants/allowances, semantic revisions,
 an invalidation outbox, autonomous expiry and authenticated cabinet reads.
-ANY-766 Step 5 adds configured-source allowance derivation and the authenticated
-V2 committed-state snapshot producer. Its [serving and provenance rules](docs/engineering/billing-background-operations.md#any-766-step-5--production-allowances-and-snapshot-serving)
-reuse those mechanisms and do not enable sales.
+ANY-766 Step 5 adds configured-source allowance derivation. Step 12 now serves
+authenticated consumer-filtered V3 snapshots and enforces independent policy/access
+floors in Kernel. Its [serving and provenance rules](docs/engineering/billing-background-operations.md#any-766-step-5--production-allowances-and-snapshot-serving)
+reuse the existing paid writer and do not enable sales.
 ANY-766 Step 7 adds durable Kernel invalidation delivery with independent bounded
-resources, exact sent-revision ACK and restart repair. Actual paired acceptance,
-usage and production enablement remain later work. The
+resources, exact sent-revision ACK and restart repair. Step 12 supplies local TCP
+auth/access evidence; assembled paid browser/execution acceptance, usage and
+production enablement remain later work. The
 [active plan](docs/exec-plans/active/ANY-766-implementation-plan.md) records the
 remaining scope and gates; the [billing operations guide](docs/engineering/billing-background-operations.md)
 defines current serving and delivery behavior.

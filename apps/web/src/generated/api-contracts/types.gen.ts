@@ -101,6 +101,14 @@ export type AccessSnapshotResponse = {
      */
     allowances: Array<AccessSnapshotAllowance>;
     /**
+     * Consumer Id
+     */
+    consumer_id: string;
+    /**
+     * Consumer Policy Revision
+     */
+    consumer_policy_revision: number;
+    /**
      * Expires At
      */
     expires_at: string;
@@ -119,7 +127,7 @@ export type AccessSnapshotResponse = {
     /**
      * Schema Version
      */
-    schema_version: 2;
+    schema_version: 3;
     /**
      * Tenant Id
      */

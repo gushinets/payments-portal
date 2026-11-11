@@ -11,20 +11,19 @@ AccessSnapshot, subscription reconciliation and trust deadlines are unchanged.
 
 ## ANY-766 consumer-neutral amendment — 2026-11-10
 
-Status: **Steps 10/11 identity and technical sources implemented (2026-11-11); remaining consumer-neutral
-runtime work is planned.** Common delegation V2, configured callbacks, the
-persisted policy guard and generated identity security are implemented. Snapshot
-remains Kernel-only V2; Step 11 implements source/owner routing and historical
-serialization compatibility. Filtering/P/R coherence is Step 12 and
-recipient routing Step 13. The implementation status is recorded in the guide
-and active plan; historical baseline sections below do not restore old routes.
+Status: **Steps 10–12 auth/access and technical sources implemented (2026-11-11).**
+Common delegation V2, configured callbacks, the persisted policy guard,
+consumer-filtered V3 snapshots, durable P/R coherence and documented generated
+security are implemented. Technical-source routing preserves historical
+serialization. Recipient delivery and usage remain Steps 13–15. Current local
+status is recorded in the guide and plan; historical baselines below do not
+restore old routes or the V2 wire contract.
 The [common product backend API guide](../../contracts/product-backend-api/README.md)
 and [paired schemas/fixtures](../../contracts/portal-kernel-paid/README.md)
 are the normative consumer-neutral target. The guide records complete safe
 identity/access examples, operation permissions, source/owner versioning,
-bounded replacement/migration owners and local acceptance cases. The working
-identity/access/OpenAPI handoff is Step 12 (2026-11-13 priority), not this
-specification checkpoint. Delivery/usage remain Steps 13–15; assembled local
+bounded replacement/migration owners and local acceptance cases. The working identity/access/OpenAPI handoff is implemented in Step 12; its
+local TCP checkpoint is distinct from the later assembled acceptance. Delivery/usage remain Steps 13–15; assembled local
 acceptance is Step 16, build/install preparation Step 17 and remote/live work
 ANY-767. Document Summary adoption belongs to its own team.
 
@@ -83,7 +82,7 @@ and admission match current introspected P and preserve monotonic R, including
 post-wait checks. Old-P responses cannot restore old policy. Eviction retains
 both floors. Do not add consumer/P/R to usage buckets, jobs or accepted replay.
 Quantity is purchased ceiling, never remaining or atomic execution permission;
-backends own durable reserve/finalize/release/recovery. Step 12 implements V3.
+backends own durable reserve/finalize/release/recovery. Step 12 now implements V3 with Kernel migration `0020`.
 
 ### Technical ownership, delivery and migration target
 

@@ -468,10 +468,12 @@ def test_openapi_documents_distinct_bearers_secret_body_and_real_identity_routes
     assert "/internal/v1/kernel-sessions/exchange" not in schema["paths"]
 
 
-def test_second_consumer_cannot_read_unfiltered_snapshot_v2_before_step12() -> None:
-    response = client.get(
-        "/internal/v1/access-snapshots/00000000-0000-4000-8000-000000000001?tenant_id=anytoolai&region=ru",
-        headers={"Authorization": "Bearer " + second_consumer().backend_to_portal_current_secret.get_secret_value()},
-    )
+def test_second_consumer_cannot_read_snapshot_without_explicit_permission() -> None:
+    consumer = second_consumer(permissions=["backend-session:exchange", "backend-session:introspect"])
+    with override_settings(settings, backend_consumers=(backend_consumer(), consumer)):
+        response = client.get(
+            "/internal/v1/access-snapshots/00000000-0000-4000-8000-000000000001?tenant_id=anytoolai&region=ru",
+            headers={"Authorization": "Bearer " + consumer.backend_to_portal_current_secret.get_secret_value()},
+        )
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "access_snapshot_forbidden"

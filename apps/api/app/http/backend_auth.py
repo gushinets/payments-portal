@@ -75,12 +75,8 @@ async def authorize_snapshot(
     request: Request,
     _credentials: Annotated[HTTPAuthorizationCredentials | None, Security(backend_service_bearer)],
 ) -> BackendPrincipal:
-    # Keep the reserved local read lane. Consumer-filtered V3 serving belongs to Step 12.
     principal = authenticate_backend(request, _credentials)
-    if (
-        principal.consumer.consumer_id != "platform-kernel"
-        or BackendPermission.READ_SNAPSHOT not in principal.consumer.permissions
-    ):
+    if BackendPermission.READ_SNAPSHOT not in principal.consumer.permissions:
         raise HTTPException(403, detail={"code": "access_snapshot_forbidden"})
     if set(request.query_params) != {"tenant_id", "region"}:
         raise HTTPException(422, detail={"code": "access_snapshot_scope_required"})

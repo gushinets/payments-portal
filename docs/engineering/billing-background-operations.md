@@ -107,15 +107,16 @@ old `terms_document` representation used by this writer. Its
 do not add another meter or change execution/usage ownership.
 
 `GET /internal/v1/access-snapshots/{user_id}?tenant_id=anytoolai&region=ru`
-serves the [selected V2 wire contract](../contracts/portal-kernel-paid/README.md#snapshot-v2-and-invalidation-v1).
-Configure the reverse-direction current/previous credentials in the
-platform-kernel entry of `BACKEND_CONSUMERS`, with explicit
+now serves [consumer-scoped V3](../contracts/product-backend-api/README.md#policy-snapshots-and-durable-backend-enforcement),
+superseding Step 5's V2 wire in Step 12. Configure reverse-direction
+current/previous credentials in each consumer's `BACKEND_CONSUMERS` entry, with explicit
 `access-snapshot:read` permission, as described by the
 [current identity configuration](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).
-No permission is granted by default. Snapshot remains Kernel-only V2 until
-Step 12 and returns the whole-user paid set without product/owner filtering;
-Step 11 source routing does not change this serving boundary. The permission grants
-neither exchange nor introspection. Exactly one Bearer header and the matching
+No permission is granted by default. Service authentication selects the consumer,
+its authorized products and current policy P; R remains the whole-user paid-state
+revision. The persisted P/digest guard refuses stale configuration. V3 includes
+`consumer_id` and `consumer_policy_revision` and exposes only authorized products.
+The permission grants neither exchange nor introspection. Exactly one Bearer header and the matching
 tenant/region query are required. Origin, foreign/ambiguous scope, unknown input
 and malformed identity are refused; success/refusal responses are no-store.
 Unknown scoped users return `404`; known users without a transition return an
@@ -132,8 +133,15 @@ guard and provenance labels.
 
 Both boundaries read committed state under a shared scoped User lock. Snapshot
 GET performs no authentication bookkeeping, writes, source calls or peer calls.
-It refuses an overdue reduction or uncommitted provenance/start correction as
-a whole, preserving semantic contents at the saved revision. Time is sampled
+Snapshot serving selects authorized products and their supporting provenance/deadlines
+before checking completeness and expiry. An unrelated overdue product cannot
+deny this consumer's view; an included overdue reduction or uncommitted
+provenance/start correction refuses that view rather than omitting tuples at the
+same P/R. Included allowances must retain the authenticated consumer's technical
+source and backend owner. A mismatch returns `503 paid_access_owner_conflict`
+without rewriting terms, allowance IDs or R; higher P cannot transfer old
+authority or usage. Owner transfer requires a separate explicit continuity
+procedure. The cabinet retains whole-user checks. Time is sampled
 from the database after waiting reads. With configured local/staging B=5:
 `expires_at = min(T+300s, included effective source/grant/UTC deadlines)-B` and
 `refresh_after = min(T+60s, expires_at)`. An empty set uses only T+300s. Source
@@ -622,8 +630,10 @@ ANY-765 consumes authoritative observations and complete relevant inventory to
 commit local paid access, stable allowances and revision/outbox changes. The
 existing local lane reduces expired access and repairs deadlines without source
 HTTP. The [producer handoff](#step-10-handoff--any-765) below defines the inherited
-seams. ANY-766 Steps 5–7 now implement snapshot V2, Kernel paid admission and
-invalidation delivery; its Step 16 owns local joint acceptance. ANY-767 owns
+seams. ANY-766 Step 12 now serves consumer-scoped V3 and extends Kernel paid
+admission with independent durable P/R floors; Step 7's Kernel invalidation
+delivery remains in place until recipient partitioning in Step 13. Step 12 proves
+local TCP auth/access; Step 16 owns assembled paid browser/execution acceptance. ANY-767 owns
 the subsequent remote/live journey, remaining natural renewal and rollout.
 
 ## Step 10 handoff — ANY-765
@@ -775,12 +785,14 @@ survive concurrent product changes. A null observation `resulting_access_revisio
 means no material commit, not an implicit successful invalidation.
 
 HTTP delivery follows [the durable invalidation lifecycle](#any-766-step-7--durable-kernel-invalidations).
-The selected wire is [snapshot V2](../contracts/portal-kernel-paid/README.md#snapshot-v2-and-invalidation-v1),
+The current wire is [snapshot V3](../contracts/product-backend-api/README.md#policy-snapshots-and-durable-backend-enforcement),
 implemented by [the current producer](#any-766-step-5--production-allowances-and-snapshot-serving).
-The dated [ANY-766 contract amendment](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md#any-766-selected-contracts--2026-11-09)
-supersedes the September period-bearing UTC wire tuple. V2 carries immutable
-allowance identity/product/metric/unit/quantity; calendar evidence and proven
-UTC bounds stay Portal-internal. Snapshot membership authorizes the bucket.
+The [consumer-neutral amendment](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md#snapshot-v3-and-independent-pr-target)
+supersedes the V2 consumer/semantic identity with consumer/P/R. V3 retains
+immutable allowance identity/product/metric/unit/quantity; calendar evidence and
+proven UTC bounds stay Portal-internal. Consumer-filtered membership and retained
+owner validation authorize the bucket; Kernel's synchronized cutover requires
+migration `0020` and a V3 reader.
 Six-hour source trust, finite snapshot expiry and original-bucket usage history
 remain unchanged. Time alone cannot prove a new cycle or extend authority.
 

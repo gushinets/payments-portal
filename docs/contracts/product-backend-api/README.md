@@ -1,16 +1,14 @@
 # Common product backend API
 
-Status: **IDENTITY AND TECHNICAL SOURCES IMPLEMENTED — ANY-766 Steps 10/11, 2026-11-11.**
-Consumer-bound code issuance, exchange/introspection V2, configured callbacks and
-the persisted policy guard are implemented. Generated OpenAPI documents the
-actual common identity routes and named Bearer schemes. Snapshot remains the
-Kernel-only V2 baseline; consumer-filtered V3 and the complete auth/access handoff
-remain Step 12, prioritized for **2026-11-13**. Step 11 implements source/owner
-routing and immutable history compatibility. Recipient routing, usage/cabinet
-and assembled local acceptance remain Steps 13–16;
-build/install preparation remains Step 17. Remote/live acceptance belongs to
-ANY-767. Local synthetic evidence does not establish third-party adoption or a
-payment.
+Status: **AUTH/ACCESS IMPLEMENTED — ANY-766 Step 12, 2026-11-11.**
+Consumer-bound delegation V2, configured callbacks, the persisted policy guard,
+consumer-filtered AccessSnapshot V3 and Kernel's durable consumer/P/R coherence
+are implemented. Generated OpenAPI documents actual routes, security, schemas,
+examples and refusals. Technical source/owner routing preserves purchased history.
+Recipient partitioning, usage/exhaustion and cabinet usage remain Steps 13–15;
+assembled paid browser/execution acceptance remains Step 16, build/install Step 17.
+Remote/live acceptance belongs to ANY-767. Synthetic providers and the second
+consumer establish protocol behavior, not a real payment or third-party adoption.
 
 Authority: [ADR 0005](../../architecture/decisions/0005-external-billing-boundary.md),
 [external billing design](../../superpowers/specs/2026-09-15-external-billing-boundary-design.md),
@@ -30,8 +28,8 @@ The second fixture consumer, `synthetic-summary`, owns only `synthetic_summary`.
 It is an isolated protocol example, not the real Document Summary product or
 approval to register, contact or implement another team's service. Step 10
 validates configured product ownership and guards its policy digest; Step 11
-routes technical reads by that ownership. Product-filtered snapshot authority
-remains Step 12.
+routes technical reads by that ownership. Step 12 filters snapshot authority by
+the configured product scope and verifies each included allowance's retained owner.
 
 Operator configuration defines a small explicit consumer set. The following is
 a **logical configuration**. The implemented server environment format is
@@ -111,9 +109,9 @@ Safe synthetic example (one entry; add the independent second identity in tests)
 
 Real entries must include the full intended Kernel product scope. Configure
 P=1 for the initial migrated Kernel policy. The registry accepts an empty product
-scope at a higher P and retains the guard's monotonic history. Product filtering
-and P-based admission enforcement remain Step 12; changing allowed_products/P
-alone does not withdraw products from the current unfiltered Kernel V2 snapshot.
+scope at a higher P and retains the guard's monotonic history. Step 12 filters
+products in V3 and fences cached authority/admission against every request's
+current introspected P; a policy reduction does not require changing paid R.
 IDs, per-product owners and all credential slots must be unambiguous; scope must
 equal this Portal instance.
 URL credentials, query/fragment and foreign callback origins are refused.
@@ -168,10 +166,9 @@ Step 11 selects manifest origins and outbound keys from `BACKEND_CONSUMERS`.
 The Step 7 invalidation sender still uses `KERNEL_BASE_URL` and
 `KERNEL_SERVICE_TOKEN` until Step 13; keep those settings aligned with the Kernel
 registry entry. Configuring only the registry does not start that delivery lane.
-Until Step 12, the common service principal can access snapshot V2 only as
-platform-kernel with explicit access-snapshot:read. A synthetic second consumer
-is refused there, so it cannot receive the unfiltered baseline snapshot.
-This intentional intermediate state is not the completed auth/access handoff.
+Step 12 replaces the interim Kernel-only V2 endpoint with consumer-filtered V3.
+Every consumer requires explicit access-snapshot:read; the credential selects
+consumer identity and products. No V2 wire translation or legacy route remains.
 
 This minimal example does not replace Kernel's full configured product set.
 The migrated Kernel policy must include every intended existing product.
@@ -249,26 +246,25 @@ remain excluded from production metering and v1 purchases gain no quantity.
 Publication refuses a changed source/owner for a retained product head; owner
 transfer needs a separately authorized continuity procedure.
 
-No database migration or JSON rewrite is required: Portal head remains
-`20261111_0009`, Kernel `0019`. New formats require the Step 11 reader; equal
-migration heads do not permit rollback to an older reader. Snapshot V3,
-recipient-specific delivery and generic usage remain Steps 12–15. Do not enable
+Step 11 required no database migration or JSON rewrite: its heads were Portal
+`20261111_0009`, Kernel `0019` (Step 12 now advances Kernel to `0020`). New formats require the Step 11 reader; equal
+migration heads do not permit rollback to an older reader. Snapshot V3 is now implemented; recipient-specific delivery and generic usage
+remain Steps 13–15. Do not enable
 external-product sales before those dependent runtime steps and commercial gates.
 
 Step 11 reuses the Step 1/2 manifest contract and leaves Kernel scenario/metric
 declarations unchanged. Step 3 consent replay and Step 5 allowance issuance keep
 their original identities; Steps 6/8 execution ownership, pending starts and
 usage buckets do not acquire a consumer/source dimension. Step 10 delegation,
-callback selection and policy guards are unchanged. The current Step 5 V2
-snapshot still exposes the whole-user paid set to Kernel without filtering by
-product or allowance owner; storing source metadata does not implement Step 12.
+callback selection and policy guards are unchanged. At the Step 11 checkpoint the Step 5 V2 snapshot still exposed the whole-user
+paid set; Step 12 supersedes it with the scoped V3 behavior below.
 Step 7 still has one Kernel recipient and is not generalized by the new registry.
 
 ## Identity and complete auth/access example
 
-Identity calls 1–4 below are implemented in Step 10. Call 5 shows the Step 12
-V3 target; today's Kernel-only endpoint still returns V2, with no consumer/P
-fields or configured-product filtering. It refuses the second consumer.
+Calls 1–5 below are implemented: identity V2 and consumer-filtered snapshot V3.
+The same flow applies to any configured consumer with its own credentials,
+callback, products and policy. The synthetic second identity has no Kernel privileges.
 
 All values below are synthetic. The examples form one Kernel flow at
 `2026-11-09T04:00:00Z`; they are documentation, not commands to a running server.
@@ -363,7 +359,7 @@ Permission: `backend-session:introspect`. Check consumer audience, parent sessio
 active user, expiry and current policy on every request. Introspection reads do
 not commit session bookkeeping. Responses have canonical scope/UUID and no PII.
 
-5. **Planned — Step 12:** fetch consumer-scoped purchased limits under `access-snapshot:read`:
+5. Fetch consumer-scoped purchased limits under `access-snapshot:read`:
 
 ```http
 GET /internal/v1/access-snapshots/11111111-1111-4111-8111-111111111111?tenant_id=anytoolai&region=ru
@@ -395,9 +391,9 @@ Q=1 is an isolated test value, not approved commercial terms.
 ## Policy, snapshots and durable backend enforcement
 
 Portal's P/digest installation guard and introspection of current P are
-implemented in Step 10. V3 filtering, consumer/P cache identity, independent
-policy floors and P-based admission checks below remain the Step 12 target.
-Kernel currently retains its existing V2/R coherence and ANY-507 enforcement.
+implemented in Step 10. Step 12 implements V3 filtering, consumer/P cache
+identity, independent durable policy/access floors and matching-P admission.
+ANY-507 enforcement, execution ownership and accepted replay retain their meaning.
 
 `access_revision` R remains the whole-user paid-state revision. P is a strictly
 positive consumer policy version, initially 1 for migrated Kernel. Semantic
@@ -428,6 +424,12 @@ cannot restore old authority. Eviction deletes only the cached document.
 Filter authorized products **and supporting provenance/deadlines before**
 completeness/expiry checks. An unrelated overdue product cannot deny this consumer;
 an included overdue fact returns `503` until the existing writer commits reduction.
+Each included allowance's saved technical source and backend owner must match the
+authenticated consumer. Historical terms use the compatible Kernel ownership view;
+their stored documents remain unchanged. A conflict refuses the entire snapshot
+with `503 paid_access_owner_conflict`, preserving the allowance, R and usage history.
+Raising P or moving a product into another scope cannot transfer old authority;
+an owner transfer requires a separate explicit continuity procedure.
 Do not run whole-user require_current first or silently omit an overdue tuple at
 unchanged P/R. Preserve whole-user writer and cabinet semantics. Snapshot GET is
 local/read-only, with no peer/LBX I/O or rows created for a known empty R0 user.
@@ -545,7 +547,7 @@ ignore old-generation responses and never fall back to a guest in paid mode.
 ## Bounded replacement and migration inventory
 
 This inventory records current owners and the remaining work. Items 1–2 were
-implemented in Step 10 and item 3 in Step 11; items 4–6 remain planned. Step 9
+implemented in Step 10 and item 3 in Step 11; item 4 is implemented in Step 12; items 5–6 remain planned. Step 9
 itself changed only the specification. Existing Kernel execution/product behavior is preserved.
 
 1. **Service config/principals — implemented Step 10, Portal composition.**
@@ -582,20 +584,20 @@ itself changed only the specification. Existing Kernel execution/product behavio
    Focused tests cover independent configured sources, selected capability/unit,
    both old v2 consent variants, populated old terms/allowances, original IDs,
    renewal quantities and owner-transfer refusal.
-4. **Snapshot/filtering/P/R — Step 12, Portal paid reads and Kernel coherence.**
-   Portal `app/domains/billing/paid_read.py::CommittedPaidState` currently checks
-   whole-user effective_until/require_current; `snapshot_router.py` and
-   `app/composition/paid_reads.py` own V2/reserved resources. Add consumer-scoped
-   relevance/completeness before deadline evaluation and serve V3. Keep sole
-   whole-user writer and local cabinet guarantees. Kernel API `paid_access.py`
-   and Core `quotas/access_coherence.py` own current snapshot/floor/lock; extend
-   that row's key with consumer and add independent P observation/floor.
-   Forward-migrate Kernel rows to platform-kernel/P1, retain R floor, discard
-   incompatible cached snapshot/digest metadata only. Never reset ANY-507
-   buckets, reservations, jobs or owners. Extend snapshot/PostgreSQL races for
-   unrelated/included expiry, policy change without R, stale P/R installs,
-   same-identity conflicts, eviction/restart and post-lock expiry. Step 12 adds
-   actual local Portal–Kernel TCP auth/access proof and accurate Swagger.
+4. **Snapshot/filtering/P/R — implemented Step 12, Portal paid reads and Kernel coherence.**
+   Portal `paid_read.py::read_committed_state` selects authorized products before
+   supporting provenance/deadline checks. The whole-user cabinet and writer keep
+   their existing rules. The reserved read lane checks the persisted P/digest
+   without policy writes or peer calls and serves V3, including known empty R0.
+   Kernel `paid_access.py` validates consumer/scope/P/R; Core
+   `quotas/access_coherence.py` owns one lock per consumer/scoped user and independent
+   durable P/R floors. A new introspected P is committed before HTTP, evicts only
+   cached authority and never lowers R. Installs/admission require matching P;
+   stale P/R cannot replace newer authority. Same-P/R semantics remain immutable
+   across eviction. Post-wait expiry/floor checks remain in both acceptance paths.
+   Migration `0020` forward-binds old rows to platform-kernel/P1, retains R and
+   clears incompatible V2 cache/digest metadata. Buckets, usage, active reservations,
+   jobs, ownership and replay do not acquire consumer/P dimensions or reset.
 5. **Recipient outbox/work — Step 13, Portal paid writer/embedded worker.**
    `app/models/billing_access.py::AccessInvalidationOutbox`,
    `app/domains/billing/paid_access.py`, `access_invalidation.py`, `work.py`,
@@ -620,14 +622,15 @@ itself changed only the specification. Existing Kernel execution/product behavio
 **Replacement inventory:** Step 10 replaced the Kernel-named Portal identity
 routes/modules/settings after moving their active callers to the common
 contract. Old identity routes/settings are no longer supported. Active Kernel
-adapters remain; source/coherence/delivery changes belong to their owning later
-steps. No unrelated runtime purge is authorized. Existing inert source-projection
+adapters remain; source routing was generalized in Step 11 and consumer/P/R
+coherence in Step 12. Recipient delivery remains Step 13. No unrelated runtime
+purge is authorized. Existing inert source-projection
 models are retained schema history, not evidence authorizing a purge here.
 Kernel scenarios/products, guest paths and ANY-507 execution semantics stay owned
 by Kernel; a non-Kernel product requires no Kernel scenario registration.
 
-**Cutover:** Step 10 extends Portal `20261110_0008` to `20261111_0009`; Kernel
-remains `0019`. Later steps extend the resulting actual heads; never
+**Cutover:** Portal remains `20261111_0009`; Step 12 advances Kernel from
+`0019` to `0020`. Later steps extend the resulting actual heads; never
 edit applied migrations. First test forward migrations against populated isolated
 local databases. Quiesce both APIs/workers; migrate identity/policy, source-owner
 read compatibility, coherence and recipient scheduling in owning-step order;
@@ -648,8 +651,8 @@ those standard FastAPI routes are enabled. These are locations, not a claim of
 an available external server. Step 10 regenerated the schema with common V2
 identity routes, PortalUserBearer/BackendServiceBearer and identity operation
 security/descriptions/examples/errors. Introspection documents the secret user
-body token separately from the service Authorization header. Snapshot remains
-V2; Step 12 implements/documents V3 and completes the working auth/access handoff.
+body token separately from the service Authorization header. Step 12 regenerates the consumer-filtered V3 snapshot schema with its named
+BackendServiceBearer security, example, finite authority and enforcement duties.
 Swagger retains internal browser restrictions. Reverse backend endpoints remain
 owned/documented by their backends, not invented Portal OpenAPI operations.
 
@@ -670,3 +673,50 @@ identities. Label delivery/usage runtime status honestly. Missing external serve
 real purchase, registry or third-party acceptance does not block that checkpoint.
 Missing local identity/access behavior does. Remaining full-check/install,
 commercial and operational gates stay in the plan.
+
+
+## Step 12 local auth/access checkpoint
+
+The wire versions are delegation **2**, access snapshot **3**, manifest **1** and
+invalidation **1**. Portal migration head is `20261111_0009`; Kernel is `0020`.
+Use the paired [schema/fixture checksums](../portal-kernel-paid/SHA256SUMS).
+Swagger is `<PORTAL_ORIGIN>/docs`, live OpenAPI is
+`<PORTAL_ORIGIN>/openapi.json`, and the checked-in generated schema is linked above.
+Internal operations reject browser Origin even when the Swagger page is visible;
+perform service calls from a backend, never paste real service keys into a browser.
+
+Snapshot `503` codes include `paid_access_deadline_pending` for an included overdue
+fact, `paid_access_state_pending` for incompatible provenance/start state,
+`paid_access_owner_conflict` for a retained source/backend owner mismatch,
+`paid_access_policy_unavailable` for a stale/missing configured policy,
+`paid_access_clock_unavailable`, `paid_access_busy` and `paid_access_unavailable`.
+An unrelated product's deadline/provenance/owner does not affect this consumer's complete
+view. Changes to P may change contents at the same R; matching consumer/scope/P/R
+freezes semantic contents. Rotation alone changes neither. Quantity remains the
+purchased ceiling, not available capacity. A backend must atomically reserve,
+finalize or release under its durable execution/replay rules, preserve both floors
+on eviction/restart and reject expired or mismatching authority after lock waits.
+
+For synchronized local cutover, stop both APIs/workers, retain backups, migrate
+Kernel to `0020`, configure the matching consumer registry/service credentials and
+start only the paired V3-capable binaries. Portal needs the Step 11 purchased-term
+reader even though its migration head is unchanged. Old V2 readers are excluded;
+there is no concurrent translation route. Do not downgrade the consumer-scoped
+coherence schema; recover with a compatible retained backup and matching binaries.
+The existing Kernel invalidation sender/receiver remains operational; generic
+per-recipient delivery is still Step 13. Generic usage/exhaustion and cabinet
+usage are still Steps 14/15 and are not implemented by this auth/access handoff.
+
+The focused local regression targets are Portal
+`test_access_snapshot_postgres.py`, `test_kernel_session_delegation.py`,
+`test_kernel_session_delegation_postgres.py`, `test_any766_contracts.py` and
+`test_any766_auth_access_http_postgres.py`, and Kernel
+`test_paid_access_admission_postgresql.py`, `test_access_snapshot_client.py`,
+`test_portal_session_api.py` and `test_paid_contract_fixtures.py`.
+The TCP case runs real Portal and Kernel exchange endpoints, Portal introspection
+and V3 snapshot clients, plus durable P/R installation in separate disposable
+PostgreSQL databases. It uses a confirmed persisted test purchase derived through
+application paths with synthetic LBX/manifest responses and a second configured
+synthetic identity. No transport or trusted identity is replaced between services.
+It does not claim the Step 16 full paid-execution/browser journey, live LBX/AI,
+third-party adoption or deployed acceptance.
