@@ -1,0 +1,14 @@
+# Explicit opt-in over docker-compose.prod.yml. Pull reviewed images separately.
+services:
+  migrate:
+    build: !reset null
+    image: ${PORTAL_API_IMAGE:?select the reviewed Portal API image}
+    pull_policy: never
+  api:
+    build: !reset null
+    image: ${PORTAL_API_IMAGE:?select the reviewed Portal API image}
+    pull_policy: never
+  web:
+    build: !reset null
+    image: ${PORTAL_WEB_IMAGE:?select the reviewed Portal web image}
+    pull_policy: never

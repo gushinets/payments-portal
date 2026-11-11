@@ -3495,6 +3495,17 @@ def cmd_observe(args: argparse.Namespace) -> None:
     print(json.dumps(fetch_json(url), ensure_ascii=True, indent=2))
 
 
+def cmd_image_up(args: argparse.Namespace) -> None:
+    # Importable both through the CLI and repository tests.
+    sys.path.insert(0, str(ROOT))
+    from scripts.image_deploy import deploy
+
+    try:
+        deploy(args)
+    except ValueError as exc:
+        raise HarnessError(str(exc)) from exc
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -3567,6 +3578,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("check-api-lock").set_defaults(func=cmd_check_api_lock)
     sub.add_parser("migrate-api").set_defaults(func=cmd_migrate_api)
     sub.add_parser("validate-production-env").set_defaults(func=cmd_validate_production_env)
+    image_up = sub.add_parser("image-up")
+    image_up.add_argument("--env-file", type=Path, required=True)
+    image_up.add_argument("--project", required=True)
+    image_up.add_argument("--lock-file", type=Path, required=True)
+    image_up.add_argument("--frontend-only", action="store_true")
+    image_up.set_defaults(func=cmd_image_up)
     metadata = sub.add_parser("pr-metadata")
     metadata.add_argument("--title", default=os.environ.get("PR_TITLE", ""))
     metadata.add_argument("--body", default=os.environ.get("PR_BODY", ""))
