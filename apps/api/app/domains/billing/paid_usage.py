@@ -55,7 +55,10 @@ def _compatible_terms(row: PurchasedAllowance) -> AcceptedTechnicalTerms | None:
         return None
     offer = terms.offer
     if terms.provenance != SourceProvenance.CONFIGURED_SOURCE or (
-        offer.product_id, offer.metric_key, offer.unit, offer.quantity
+        offer.product_id,
+        offer.metric_key,
+        offer.unit,
+        offer.quantity,
     ) != (row.product_id, row.metric_key, row.unit, row.quantity):
         return None
     return terms
@@ -71,7 +74,9 @@ def select_paid_usage(factory: SessionFactory, configuration: Settings, token: s
         selected: list[UsageAllowance] = []
         historical_products: set[str] = set()
         for row in queries.allowances(db, user.id):
-            classification = UsageClassification.CURRENT if str(row.allowance_id) in current else UsageClassification.HISTORICAL
+            classification = (
+                UsageClassification.CURRENT if str(row.allowance_id) in current else UsageClassification.HISTORICAL
+            )
             if classification == UsageClassification.HISTORICAL and (
                 row.product_id in current_products or row.product_id in historical_products
             ):
@@ -83,14 +88,25 @@ def select_paid_usage(factory: SessionFactory, configuration: Settings, token: s
             # retained authoritative cycle evidence, never the current clock.
             if classification == UsageClassification.HISTORICAL and row.period_start is not None:
                 if not queries.activated(
-                    db, row, schema=RECONCILIATION_SCHEMA, selection_schema="primary-selection:v1",
-                    identity=IdentityProof.MATCH, commercial=CommercialProof.MATCH,
+                    db,
+                    row,
+                    schema=RECONCILIATION_SCHEMA,
+                    selection_schema="primary-selection:v1",
+                    identity=IdentityProof.MATCH,
+                    commercial=CommercialProof.MATCH,
                 ):
                     continue
-            selected.append(UsageAllowance(
-                row.allowance_id, row.product_id, row.metric_key, row.unit,
-                row.quantity, terms.ownership, classification,
-            ))
+            selected.append(
+                UsageAllowance(
+                    row.allowance_id,
+                    row.product_id,
+                    row.metric_key,
+                    row.unit,
+                    row.quantity,
+                    terms.ownership,
+                    classification,
+                )
+            )
             if classification == UsageClassification.HISTORICAL:
                 historical_products.add(row.product_id)
         return UsageSelection(user.id, state.revision, tuple(selected))

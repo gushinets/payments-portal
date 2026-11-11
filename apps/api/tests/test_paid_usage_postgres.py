@@ -63,22 +63,39 @@ class UsageBackend:
             if self.unobserved:
                 items.append({"allowance_id": identity, "status": "unobserved"})
             else:
-                items.append(dict(
-                    allowance_id=identity, status="observed", product_id=row.product_id,
-                    metric_key="foreign.metric" if self.mismatch or self.bad_product == row.product_id else row.metric_key,
-                    unit=row.unit, quantity=row.quantity, successful_used=2, reserved=1,
-                    remaining=max(row.quantity - 2, 0), available=max(row.quantity - 3, 0),
-                    read_at=datetime.now(UTC).isoformat(),
-                ))
-        return httpx.Response(self.status, json=dict(
-            schema_version=1, tenant_id="foreign" if self.scope_mismatch else "anytoolai", region="ru",
-            user_id=request.url.path.rsplit("/", 1)[1], items=items,
-        ))
+                items.append(
+                    dict(
+                        allowance_id=identity,
+                        status="observed",
+                        product_id=row.product_id,
+                        metric_key="foreign.metric"
+                        if self.mismatch or self.bad_product == row.product_id
+                        else row.metric_key,
+                        unit=row.unit,
+                        quantity=row.quantity,
+                        successful_used=2,
+                        reserved=1,
+                        remaining=max(row.quantity - 2, 0),
+                        available=max(row.quantity - 3, 0),
+                        read_at=datetime.now(UTC).isoformat(),
+                    )
+                )
+        return httpx.Response(
+            self.status,
+            json=dict(
+                schema_version=1,
+                tenant_id="foreign" if self.scope_mismatch else "anytoolai",
+                region="ru",
+                user_id=request.url.path.rsplit("/", 1)[1],
+                items=items,
+            ),
+        )
 
 
 @pytest.fixture
 async def cabinet(
-    postgres_session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[tuple[httpx.AsyncClient, UsageBackend, Settings, object]]:
     config = step1_settings().model_copy(update={"backend_consumers": (backend_consumer(), second_consumer())})
     backend = UsageBackend(postgres_session_factory)
@@ -87,7 +104,9 @@ async def cabinet(
     monkeypatch.setattr(paid_router, "settings", config)
     async with (
         paid_read_resources(config, factory=postgres_session_factory) as local,
-        paid_usage_resources(config, factory=postgres_session_factory, transport=httpx.MockTransport(backend.respond)) as usage,
+        paid_usage_resources(
+            config, factory=postgres_session_factory, transport=httpx.MockTransport(backend.respond)
+        ) as usage,
         httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://portal.test") as client,
     ):
         app.state.paid_reads = local
@@ -96,11 +115,18 @@ async def cabinet(
 
 
 async def test_identity_policy_empty_history_and_no_store(
-    migrated_database: object, postgres_session_factory: sessionmaker[Session], cabinet: tuple,
+    migrated_database: object,
+    postgres_session_factory: sessionmaker[Session],
+    cabinet: tuple,
 ) -> None:
     factory = postgres_session_factory
     with factory() as db:
-        for token, verified, tenant in ((TOKEN, True, "anytoolai"), ("unverified", False, "anytoolai"), ("foreign", True, "foreign"), ("inactive", True, "anytoolai")):
+        for token, verified, tenant in (
+            (TOKEN, True, "anytoolai"),
+            ("unverified", False, "anytoolai"),
+            ("foreign", True, "foreign"),
+            ("inactive", True, "anytoolai"),
+        ):
             user, session = reader_identity(token, verified=verified, tenant=tenant)
             if token == "inactive":
                 user.status = UserStatus.INACTIVE
@@ -122,7 +148,10 @@ async def test_identity_policy_empty_history_and_no_store(
 
 @pytest.mark.parametrize("mode", ["observed", "unobserved", "tuple", "scope", "outage"])
 async def test_actual_usage_scope_tuple_outage_and_read_only(
-    production_scenario: tuple, postgres_session_factory: sessionmaker[Session], cabinet: tuple, mode: str,
+    production_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    cabinet: tuple,
+    mode: str,
 ) -> None:
     factory = postgres_session_factory
     await reconcile(production_scenario, factory)
@@ -149,7 +178,9 @@ async def test_actual_usage_scope_tuple_outage_and_read_only(
 
 
 async def test_revision_change_during_http_refuses_mixed_result(
-    production_scenario: tuple, postgres_session_factory: sessionmaker[Session], cabinet: tuple,
+    production_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    cabinet: tuple,
 ) -> None:
     await reconcile(production_scenario, postgres_session_factory)
     client, backend, _, _ = cabinet
@@ -168,13 +199,17 @@ async def test_revision_change_during_http_refuses_mixed_result(
 
 
 async def test_new_cycle_replaces_current_identity_without_rewriting_history(
-    production_scenario: tuple, postgres_session_factory: sessionmaker[Session], cabinet: tuple,
+    production_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    cabinet: tuple,
 ) -> None:
     factory = postgres_session_factory
     await reconcile(production_scenario, factory)
     client, backend, _, _ = cabinet
     first = (await client.get("/api/paid-usage", headers=headers())).json()["items"][0]
-    production_scenario[0].subscriptions[0].update(last_tariffication_period_start="2026-11-30", last_tariffication_period_end="2026-12-30")
+    production_scenario[0].subscriptions[0].update(
+        last_tariffication_period_start="2026-11-30", last_tariffication_period_end="2026-12-30"
+    )
     await reconcile(production_scenario, factory)
     before = billing_snapshot(factory)
     second = (await client.get("/api/paid-usage", headers=headers())).json()["items"][0]
@@ -185,22 +220,30 @@ async def test_new_cycle_replaces_current_identity_without_rewriting_history(
 
 @pytest.mark.parametrize("with_history", [True, False])
 async def test_future_issuance_never_hides_eligible_history_even_after_start(
-    production_scenario: tuple, postgres_session_factory: sessionmaker[Session], cabinet: tuple,
-    monkeypatch: pytest.MonkeyPatch, with_history: bool,
+    production_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    cabinet: tuple,
+    monkeypatch: pytest.MonkeyPatch,
+    with_history: bool,
 ) -> None:
     from calendar import monthrange
     from app.domains.billing import paid_usage
 
     factory = postgres_session_factory
     start = datetime.now(UTC) + timedelta(minutes=2)
+
     def month(value: datetime, delta: int) -> datetime:
         index = value.year * 12 + value.month - 1 + delta
         year, m = divmod(index, 12)
         return value.replace(year=year, month=m + 1, day=min(value.day, monthrange(year, m + 1)[1]))
+
     previous, end = month(start, -1), month(start, 1)
     source = production_scenario[0].subscriptions[0]
-    source.update(subscription_instance_start_date=previous.isoformat(),
-                  last_tariffication_period_start=previous.isoformat(), last_tariffication_period_end=start.isoformat())
+    source.update(
+        subscription_instance_start_date=previous.isoformat(),
+        last_tariffication_period_start=previous.isoformat(),
+        last_tariffication_period_end=start.isoformat(),
+    )
     client, backend, _, _ = cabinet
     if with_history:
         await reconcile(production_scenario, factory)
@@ -226,7 +269,9 @@ async def test_future_issuance_never_hides_eligible_history_even_after_start(
 
 @pytest.mark.parametrize("paid_scenario", [None], indirect=True)
 async def test_simulated_history_is_excluded(
-    paid_scenario: tuple, postgres_session_factory: sessionmaker[Session], cabinet: tuple,
+    paid_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    cabinet: tuple,
 ) -> None:
     await reconcile(paid_scenario, postgres_session_factory)
     client, backend, _, _ = cabinet
@@ -237,19 +282,24 @@ async def test_simulated_history_is_excluded(
 
 
 async def test_access_capacity_survives_usage_pressure_cancellation_and_timeout(
-    production_scenario: tuple, postgres_session_factory: sessionmaker[Session], cabinet: tuple,
+    production_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    cabinet: tuple,
 ) -> None:
     await reconcile(production_scenario, postgres_session_factory)
     client, backend, config, usage = cabinet
     backend.assert_no_sql = False
     backend.gate = asyncio.Event()
-    tasks = [asyncio.create_task(client.get("/api/paid-usage", headers=headers())) for _ in range(USAGE_CONCURRENCY + USAGE_MAX_WAITING)]
+    tasks = [
+        asyncio.create_task(client.get("/api/paid-usage", headers=headers()))
+        for _ in range(USAGE_CONCURRENCY + USAGE_MAX_WAITING)
+    ]
     try:
         await backend.entered.wait()
         for _ in range(100):
             if usage.admission.waiting_count == USAGE_MAX_WAITING:
                 break
-            await asyncio.sleep(.005)
+            await asyncio.sleep(0.005)
         assert usage.admission.active_count == USAGE_CONCURRENCY
         assert usage.admission.waiting_count == USAGE_MAX_WAITING
         saturated = await client.get("/api/paid-usage", headers=headers())
@@ -262,9 +312,13 @@ async def test_access_capacity_survives_usage_pressure_cancellation_and_timeout(
         backend.gate.set()
         await asyncio.gather(*tasks, return_exceptions=True)
     # Bound the complete remote read using the existing nonrenewable budget.
-    config = config.model_copy(update={"preflight_total_timeout_seconds": .2, "preflight_cleanup_timeout_seconds": .05})
+    config = config.model_copy(
+        update={"preflight_total_timeout_seconds": 0.2, "preflight_cleanup_timeout_seconds": 0.05}
+    )
     backend.gate = asyncio.Event()
-    async with paid_usage_resources(config, factory=postgres_session_factory, transport=httpx.MockTransport(backend.respond)) as bounded:
+    async with paid_usage_resources(
+        config, factory=postgres_session_factory, transport=httpx.MockTransport(backend.respond)
+    ) as bounded:
         with pytest.raises(BillingRefused, match="paid_usage_unavailable"):
             await bounded.read(config, TOKEN)
     assert (await client.get("/api/paid-access", headers=headers())).status_code == 200
@@ -272,7 +326,10 @@ async def test_access_capacity_survives_usage_pressure_cancellation_and_timeout(
 
 @pytest.mark.parametrize("change", ["revoke", "inactive"])
 async def test_parent_session_rechecked_after_http(
-    production_scenario: tuple, postgres_session_factory: sessionmaker[Session], cabinet: tuple, change: str,
+    production_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    cabinet: tuple,
+    change: str,
 ) -> None:
     await reconcile(production_scenario, postgres_session_factory)
     client, backend, _, _ = cabinet
@@ -292,7 +349,9 @@ async def test_parent_session_rechecked_after_http(
 
 @pytest.mark.parametrize("bad_product", [None, "synthetic_summary"])
 async def test_mixed_owners_are_routed_and_foreign_tuple_cannot_contaminate_other_item(
-    production_scenario: tuple, postgres_session_factory: sessionmaker[Session], cabinet: tuple,
+    production_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    cabinet: tuple,
     bad_product: str | None,
 ) -> None:
     from app.composition import purchases
@@ -311,26 +370,53 @@ async def test_mixed_owners_are_routed_and_foreign_tuple_cannot_contaminate_othe
     transport = production_scenario[0]
     # A different product needs a distinct synthetic commercial association.
     summary_recording = SelectedOfferRecording(tariff_id=702)
-    summary_recording.bodies = {name: body.replace(b'"tariff_id":701', b'"tariff_id":702') for name, body in transport.offer.bodies.items()}
+    summary_recording.bodies = {
+        name: body.replace(b'"tariff_id":701', b'"tariff_id":702') for name, body in transport.offer.bodies.items()
+    }
     config = source_settings()
     manifest = httpx.MockTransport(lambda request: httpx.Response(200, json=summary_manifest()))
-    lbx = httpx.MockTransport(lambda request: summary_recording.respond(request)
-                              if "/tariffs/702" in request.url.path else transport.respond(request))
-    fresh = await fresh_link_evaluation(
-        config, selection=link_selection(product_id="synthetic_summary", tariff_id=702), technical_offer=summary_offer(),
-        principal="os-euid:29001", kernel_transport=manifest, lbx_transport=lbx,
+    lbx = httpx.MockTransport(
+        lambda request: (
+            summary_recording.respond(request) if "/tariffs/702" in request.url.path else transport.respond(request)
+        )
     )
-    publish_product_link(factory, evaluation=fresh.document, expected_previous_revision=0,
-                         deadline=fresh.deadline, lock_timeout_seconds=1, provider_origin=config.lbx_provider_origin)
+    fresh = await fresh_link_evaluation(
+        config,
+        selection=link_selection(product_id="synthetic_summary", tariff_id=702),
+        technical_offer=summary_offer(),
+        principal="os-euid:29001",
+        kernel_transport=manifest,
+        lbx_transport=lbx,
+    )
+    publish_product_link(
+        factory,
+        evaluation=fresh.document,
+        expected_previous_revision=0,
+        deadline=fresh.deadline,
+        lock_timeout_seconds=1,
+        provider_origin=config.lbx_provider_origin,
+    )
     async with source_resources(config, kernel_transport=manifest, lbx_transport=lbx) as sources:
         link, offer, documents, terms = await purchases.review_purchase(
-            sources, config, factory=factory, token=TOKEN, product_id="synthetic_summary",
+            sources,
+            config,
+            factory=factory,
+            token=TOKEN,
+            product_id="synthetic_summary",
         )
         purchase = await purchases.confirm_purchase(
-            sources, config, factory=factory, token=TOKEN, key="mixed-owner-usage",
-            meaning=reviewed_meaning("synthetic_summary", link.mapping_revision_id, offer.fingerprint, documents, terms),
+            sources,
+            config,
+            factory=factory,
+            token=TOKEN,
+            key="mixed-owner-usage",
+            meaning=reviewed_meaning(
+                "synthetic_summary", link.mapping_revision_id, offer.fingerprint, documents, terms
+            ),
         )
-        linked = await purchases.advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+        linked = await purchases.advance_purchase(
+            sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id
+        )
     with factory() as db:
         sub = db.scalar(select(ExternalSubscription).where(ExternalSubscription.product_id == "synthetic_summary"))
         summary = materialize_allowance(db, sub, linked.accepted, cycle(), skew_seconds=5)
@@ -355,17 +441,26 @@ async def test_mixed_owners_are_routed_and_foreign_tuple_cannot_contaminate_othe
 
 
 async def test_legacy_history_without_terms_has_no_usage_item_or_backend_request(
-    production_scenario: tuple, postgres_session_factory: sessionmaker[Session], cabinet: tuple,
+    production_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    cabinet: tuple,
 ) -> None:
     factory = postgres_session_factory
     # Seed a retained predecessor row, which genuinely has no unit/terms.
     with factory() as db:
         sub = db.scalar(select(ExternalSubscription))
-        db.add(PurchasedAllowance(
-            subscription_id=sub.subscription_id, source_component_id="legacy", product_id=sub.product_id,
-            metric_key="legacy.metric", quantity=42, cycle_schema_version="legacy-utc:v1",
-            period_start=datetime.now(UTC)-timedelta(days=31), period_end=datetime.now(UTC)-timedelta(days=1),
-        ))
+        db.add(
+            PurchasedAllowance(
+                subscription_id=sub.subscription_id,
+                source_component_id="legacy",
+                product_id=sub.product_id,
+                metric_key="legacy.metric",
+                quantity=42,
+                cycle_schema_version="legacy-utc:v1",
+                period_start=datetime.now(UTC) - timedelta(days=31),
+                period_end=datetime.now(UTC) - timedelta(days=1),
+            )
+        )
         db.commit()
     before = billing_snapshot(factory)
     client, backend, _, _ = cabinet
@@ -382,7 +477,9 @@ def test_usage_openapi_uses_named_dtos_and_portal_authentication() -> None:
 
 
 async def test_historical_selection_has_deterministic_created_at_and_identity_order(
-    production_scenario: tuple, postgres_session_factory: sessionmaker[Session], cabinet: tuple,
+    production_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    cabinet: tuple,
 ) -> None:
     from app.domains.billing.paid_allowances import materialize_allowance
     from app.domains.purchases.evidence import accepted
@@ -394,9 +491,18 @@ async def test_historical_selection_has_deterministic_created_at_and_identity_or
         sub = db.scalar(select(ExternalSubscription))
         purchase = accepted(db.get(PurchaseIntent, sub.purchase_intent_id))
         first = materialize_allowance(db, sub, purchase, cycle(), skew_seconds=5)
-        later = materialize_allowance(db, sub, purchase, cycle().model_copy(update={
-            "start": "2026-11-30", "end": "2026-12-30",
-        }), skew_seconds=5)
+        later = materialize_allowance(
+            db,
+            sub,
+            purchase,
+            cycle().model_copy(
+                update={
+                    "start": "2026-11-30",
+                    "end": "2026-12-30",
+                }
+            ),
+            skew_seconds=5,
+        )
         db.commit()
     with factory() as db:
         rows = list(db.scalars(select(PurchasedAllowance)))

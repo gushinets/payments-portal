@@ -13,7 +13,8 @@ from app.domains.billing.usage_contracts import PaidUsageErrorResponse, PaidUsag
 from app.http.backend_auth import portal_user_bearer
 
 router = APIRouter(
-    prefix="/api", tags=["paid-usage"],
+    prefix="/api",
+    tags=["paid-usage"],
     responses={status: {"model": PaidUsageErrorResponse} for status in (401, 403, 503)},
 )
 
@@ -22,11 +23,15 @@ async def usage_resources(request: Request) -> PaidUsageResources:
     return request.app.state.paid_usage
 
 
-@router.get("/paid-usage", response_model=PaidUsageResponse, description=(
-    "Read actual usage for server-selected current or eligible historical allowances. "
-    "Requires an active verified-email Portal session. No caller-selected owner or allowance IDs. "
-    "No-store responses; backend outages and concurrent paid-state changes return retryable 503."
-))
+@router.get(
+    "/paid-usage",
+    response_model=PaidUsageResponse,
+    description=(
+        "Read actual usage for server-selected current or eligible historical allowances. "
+        "Requires an active verified-email Portal session. No caller-selected owner or allowance IDs. "
+        "No-store responses; backend outages and concurrent paid-state changes return retryable 503."
+    ),
+)
 async def paid_usage(
     response: Response,
     reads: Annotated[PaidUsageResources, Depends(usage_resources)],
