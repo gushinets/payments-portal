@@ -305,3 +305,18 @@ See the common backend guide's implemented Step 14 section for settings, errors,
 lease/recovery and enablement. Local PostgreSQL and synthetic reverse transport
 are covered; actual paired browser/HTTP acceptance remains Step 16. Live/deployed
 acceptance is not claimed.
+
+## ANY-766 Step 16 — focused local acceptance
+
+The Portal-owned [joint harness](../../tools/joint_paid_runtime/README.md) composes
+the real Portal API/embedded worker and Kernel API/worker over TCP, with separate
+disposable PostgreSQL databases and ordinary session/service authentication.
+It prepares persisted test purchases through existing publication, consent and
+reconciliation paths. LBX/AI responses and the second backend are explicitly
+synthetic; no Portal/Kernel endpoint or trusted identity is replaced.
+
+The 2026-11-11 user amendment limits verification to the common backend API and
+main paid journeys, including desktop/mobile launch/result/usage and accessibility
+checks on Portal surfaces. The synchronized plan owns the actual completion
+status and deferred matrix. This is not real third-party adoption or a live
+payment/deployed acceptance. Build/install preparation remains Step 17.
