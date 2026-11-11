@@ -8,6 +8,7 @@ from app.domains.billing.contracts import BillingRefused, CustomerOpen
 from app.domains.billing.paid_access import apply_paid_source, commit_paid_state, resolve_access_end
 from app.domains.billing.paid_deadlines import effective_deadline
 from app.domains.billing.paid_policy import PaidDecision, paid_decision
+from app.domains.billing.paid_cycles import CalendarEvidence
 from app.domains.billing.customers import lock_customer, lock_user, mark_customer_identity_conflict
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.reconciliation_contracts import (
@@ -21,7 +22,7 @@ from app.domains.billing.reconciliation_contracts import (
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
-from app.infrastructure.queries import billing_reconciliation as queries, purchases
+from app.infrastructure.queries import billing_reconciliation as queries, paid_access as paid_queries, purchases
 from app.infrastructure.queries.billing_customers import customer_operation, open_customer_reviews
 from app.domains.billing.work import RECONCILIATION, schedule_reconciliation, verify_claim
 from app.domains.billing.work_contracts import WorkClaim
@@ -134,6 +135,16 @@ def claim_reconciliation(
             or current.external_agreement_id != agreement.bound_external_object_id
         ):
             raise BillingRefused("subscription_provenance_unproven", 409)
+        established_calendar = None
+        if evidence.technical_terms is not None:
+            history = paid_queries.allowances(
+                db,
+                current.subscription_id,
+                str(evidence.selection.tariff_service_id),
+                evidence.technical_terms.offer.metric_key,
+            )
+            if history and history[0].calendar_document is not None:
+                established_calendar = CalendarEvidence.model_validate(history[0].calendar_document)
         now = as_utc(queries.database_now(db))
         if current.reconciliation_lease_expires_at and as_utc(current.reconciliation_lease_expires_at) > now:
             raise BillingRefused("subscription_reconciliation_busy", 409)
@@ -157,6 +168,7 @@ def claim_reconciliation(
             current.reconciliation_fencing_token,
             current.reconciliation_lease_expires_at,
             now,
+            established_calendar=established_calendar,
         )
         db.commit()
         return result

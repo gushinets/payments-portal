@@ -3,11 +3,11 @@
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, null, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -23,6 +23,7 @@ from app.models import (
     BillingStateObservation,
     BillingWorkItem,
     ExternalSubscription,
+    ManualReviewCase,
     PaidAccessState,
     PurchasedAllowance,
 )
@@ -53,11 +54,14 @@ async def paid_source(
     migrated_database: Engine,
     postgres_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> AsyncIterator[Scenario]:
     monkeypatch.setattr("app.integrations.lbx.current_offer.utc_now", lambda: datetime(2026, 10, 27, 12, tzinfo=UTC))
     factory = postgres_session_factory
     config = step1_settings(purchase_test_terms_enabled=True, paid_access_clock_skew_seconds=10)
     transport = setup_purchase(factory)
+    if getattr(request, "param", None) == "calendar_month":
+        transport.offer.replace("tariff", '"float_period":1', '"float_period":0')
     async with source_resources(
         config,
         kernel_transport=httpx.MockTransport(transport.kernel),
@@ -377,3 +381,202 @@ async def test_paid_writer_stale_active_cannot_restore_committed_negative(paid_s
         apply_reconciliation(scenario.factory, subject, active, clock_skew_seconds=10)
     assert persisted(scenario.factory) == negative
     assert negative[2] == (2, {"grants": [], "allowances": []})
+
+
+@pytest.mark.parametrize("paid_source", ["calendar_month"], indirect=True)
+@pytest.mark.parametrize(
+    "activation,offset,reread_utc",
+    [
+        ("2026-10-01T00:30:00+03:00", "+03:00", True),
+        ("2026-10-31T23:30:00-04:00", "-04:00", True),
+        ("2026-10-15T12:34:56.123456+03:00", "+03:00", True),
+        ("2026-10-15T12:34:56.123456-04:00", "-04:00", True),
+        ("2026-10-01T00:30:00+03:00", "+03:00", False),
+        ("2026-10-15T12:00:00Z", "+00:00", True),
+    ],
+)
+async def test_paid_writer_calendar_frame_survives_equivalent_source_reread(
+    paid_source: Scenario, activation: str, offset: str, reread_utc: bool
+) -> None:
+    scenario = paid_source
+    point = scenario.transport.subscriptions[0]
+    point.update(
+        subscription_start_date=activation,
+        subscription_instance_start_date=activation,
+        last_tariffication_period_start=f"2026-11-01T00:00:00{offset}",
+        last_tariffication_period_end=f"2026-12-01T00:00:00{offset}",
+    )
+    first = await reconcile(scenario)
+    assert first.proof.complete and first.proof.cycle.precision == "timestamp"
+    assert first.subject.established_calendar is None
+    before = persisted(scenario.factory)
+    assert len(before[2][1]["allowances"]) == 1
+    with scenario.factory() as db:
+        frozen = db.execute(select(PurchasedAllowance.__table__)).one()
+        frozen_outbox = db.execute(select(AccessInvalidationOutbox.__table__)).one()
+        assert frozen.quantity == 100
+    fields = (
+        "subscription_start_date",
+        "subscription_instance_start_date",
+        "last_tariffication_period_start",
+        "last_tariffication_period_end",
+    )
+    if reread_utc:
+        for field in fields:
+            point[field] = datetime.fromisoformat(point[field]).astimezone(UTC).isoformat().replace("+00:00", "Z")
+    repeated = await reconcile(scenario)
+    after = persisted(scenario.factory)
+    # A new observation may renew finite trust; semantic access and outbox stay fixed.
+    assert after[2:5] == before[2:5]
+    assert after[0][3] >= before[0][3] and after[0][5] != before[0][5]
+    assert repeated.proof.cycle.anchor == first.proof.cycle.anchor
+    assert repeated.subject.established_calendar == first.proof.cycle
+    with scenario.factory() as db:
+        assert db.execute(select(PurchasedAllowance.__table__)).one() == frozen
+        assert db.execute(select(AccessInvalidationOutbox.__table__)).one() == frozen_outbox
+        observation = db.get(BillingStateObservation, repeated.observation_id)
+        assert observation.resulting_access_revision is None
+        assert observation.evidence_document["cycle"] == repeated.proof.cycle.model_dump(mode="json")
+        assert all(observation.evidence_document["calendar"][field] == point[field] for field in fields)
+
+    # A proven next cycle creates one new ID and still retains the original frame.
+    point.update(
+        last_tariffication_period_start=f"2026-12-01T00:00:00{offset}",
+        last_tariffication_period_end=f"2027-01-01T00:00:00{offset}",
+    )
+    if reread_utc:
+        for field in fields:
+            point[field] = datetime.fromisoformat(point[field]).astimezone(UTC).isoformat().replace("+00:00", "Z")
+    later = await reconcile(scenario)
+    assert later.proof.cycle.anchor == first.proof.cycle.anchor
+    with scenario.factory() as db:
+        rows = list(db.scalars(select(PurchasedAllowance).order_by(PurchasedAllowance.created_at)))
+        assert len(rows) == 2 and rows[0].allowance_id != rows[1].allowance_id
+        assert rows[1].quantity == frozen.quantity
+        assert rows[1].calendar_document["anchor"] == frozen.calendar_document["anchor"]
+        assert rows[1].provider_cycle_key == f"timestamp:2026-12-01T00:00:00{offset}:2027-01-01T00:00:00{offset}"
+        assert (
+            db.execute(
+                select(PurchasedAllowance.__table__).where(PurchasedAllowance.allowance_id == frozen.allowance_id)
+            ).one()
+            == frozen
+        )
+
+
+@pytest.mark.parametrize("paid_source", ["calendar_month"], indirect=True)
+@pytest.mark.parametrize("offset", ["+03:00", "-04:00"])
+@pytest.mark.parametrize("change", ["activation_month", "cycle_start", "cycle_end", "naive", "mixed"])
+async def test_paid_writer_established_frame_does_not_hide_calendar_changes(
+    paid_source: Scenario, offset: str, change: str
+) -> None:
+    scenario = paid_source
+    point = scenario.transport.subscriptions[0]
+    point.update(
+        subscription_start_date=f"2026-10-15T12:00:00{offset}",
+        subscription_instance_start_date=f"2026-10-15T12:00:00{offset}",
+        last_tariffication_period_start=f"2026-11-01T00:00:00{offset}",
+        last_tariffication_period_end=f"2026-12-01T00:00:00{offset}",
+    )
+    first = await reconcile(scenario)
+    with scenario.factory() as db:
+        frozen = db.execute(select(PurchasedAllowance.__table__)).one()
+    if change == "activation_month":
+        point["subscription_start_date"] = f"2026-09-15T12:00:00{offset}"
+    elif change == "naive":
+        point["subscription_start_date"] = "2026-10-15T12:00:00"
+    elif change == "mixed":
+        point["last_tariffication_period_end"] = "2026-11-30"
+    else:
+        field = "last_tariffication_period_start" if change == "cycle_start" else "last_tariffication_period_end"
+        point[field] = (datetime.fromisoformat(point[field]) + timedelta(hours=1)).isoformat()
+    result = await reconcile(scenario)
+    assert result.subject.established_calendar == first.proof.cycle
+    assert result.proof.complete and result.proof.financial == "allowed"
+    if change == "naive":
+        assert not result.proof.calendar_complete and result.proof.cycle is None
+    elif change == "mixed":
+        assert result.proof.cycle.precision == "unresolved"
+    elif change == "activation_month":
+        assert result.proof.cycle.anchor == f"2026-09-01T00:00:00{offset}"
+    assert persisted(scenario.factory)[2][1]["allowances"] == []
+    with scenario.factory() as db:
+        assert db.execute(select(PurchasedAllowance.__table__)).one() == frozen
+        review = db.scalar(select(ManualReviewCase).where(ManualReviewCase.scope_kind == "subscription_metric"))
+        assert review.reason_code == "allowance_cycle_conflict" and review.case_state == "open"
+
+
+@pytest.mark.parametrize("paid_source", ["calendar_month"], indirect=True)
+@pytest.mark.parametrize("history_kind", ["other_subscription", "other_component", "other_metric", "legacy"])
+async def test_paid_writer_uses_only_exact_supported_calendar_history(paid_source: Scenario, history_kind: str) -> None:
+    from app.integrations.lbx.calendar import normalize_calendar
+
+    scenario = paid_source
+    # A foreign +03:00 history must not change the initial UTC calendar frame.
+    calendar = normalize_calendar(
+        {
+            "subscription_start_date": "2026-10-01T00:30:00+03:00",
+            "last_tariffication_period_start": "2026-11-01T00:00:00+03:00",
+            "last_tariffication_period_end": "2026-12-01T00:00:00+03:00",
+        },
+        "calendar_month",
+    )
+    with scenario.factory() as db:
+        sub = db.get(ExternalSubscription, scenario.subscription_id)
+        history_subscription_id = sub.subscription_id
+        if history_kind == "other_subscription":
+            other = ExternalSubscription(
+                external_billing_account_id=sub.external_billing_account_id,
+                customer_id=sub.customer_id,
+                user_id=sub.user_id,
+                product_id=sub.product_id,
+                external_subscription_id="999",
+                external_agreement_id="998",
+                lifecycle_status=sub.lifecycle_status,
+                financial_access_status=sub.financial_access_status,
+                commercial_access_status=sub.commercial_access_status,
+                last_authoritative_read_at=sub.last_authoritative_read_at,
+                projection_valid_until=sub.projection_valid_until,
+            )
+            db.add(other)
+            db.flush()
+            history_subscription_id = other.subscription_id
+        # Synthetic retained history, with real normalized source-calendar evidence.
+        db.add(
+            PurchasedAllowance(
+                allowance_id=uuid4(),
+                subscription_id=history_subscription_id,
+                product_id=sub.product_id,
+                source_component_id="1002" if history_kind == "other_component" else "1001",
+                metric_key="other_metric" if history_kind == "other_metric" else "proposal_ai.test_generations",
+                quantity=100,
+                provider_cycle_key="retained-history",
+                cycle_schema_version="legacy-utc:v1" if history_kind == "legacy" else "timestamp:v1",
+                calendar_document=null() if history_kind == "legacy" else calendar.model_dump(mode="json"),
+                terms_document=null() if history_kind == "legacy" else {},
+                unit=None if history_kind == "legacy" else "generation",
+                provider_cycle_start=None if history_kind == "legacy" else datetime.fromisoformat(calendar.start),
+                provider_cycle_end=None if history_kind == "legacy" else datetime.fromisoformat(calendar.end),
+                period_start=datetime.fromisoformat(calendar.start) + timedelta(seconds=10),
+                period_end=datetime.fromisoformat(calendar.end) - timedelta(seconds=10),
+            )
+        )
+        db.commit()
+        retained = db.execute(select(PurchasedAllowance.__table__)).one()
+    scenario.transport.subscriptions[0].update(
+        subscription_start_date="2026-09-30T21:30:00Z",
+        subscription_instance_start_date="2026-09-30T21:30:00Z",
+        last_tariffication_period_start="2026-11-01T00:00:00Z",
+        last_tariffication_period_end="2026-12-01T00:00:00Z",
+    )
+    result = await reconcile(scenario)
+    assert result.subject.established_calendar is None
+    assert result.proof.cycle.anchor == "2026-09-01T00:00:00+00:00"
+    state = persisted(scenario.factory)[2][1]
+    assert len(state["allowances"]) == (0 if history_kind == "legacy" else 1)
+    with scenario.factory() as db:
+        assert (
+            db.execute(
+                select(PurchasedAllowance.__table__).where(PurchasedAllowance.allowance_id == retained.allowance_id)
+            ).one()
+            == retained
+        )

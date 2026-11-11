@@ -15,7 +15,12 @@ from app.domains.billing.paid_policy import (
     paid_decision,
 )
 from app.domains.billing.paid_contracts import EffectiveState, canonical_state
-from app.domains.billing.reconciliation_contracts import CommercialProof, IdentityProof, SubscriptionProof
+from app.domains.billing.reconciliation_contracts import (
+    CommercialProof,
+    IdentityProof,
+    SubscriptionCandidateSubject,
+    SubscriptionProof,
+)
 from app.domains.catalog.commercial_offer import CommercialPeriod
 from apps.api.tests.factories.reconciliation import subject_factory
 from apps.api.tests.support.any709_step1 import step1_settings
@@ -256,7 +261,8 @@ def test_paid_access_calendar_anchor_keeps_provider_meaning(
 
 
 @pytest.mark.parametrize("offset", ["+03:00", "-04:00"])
-def test_calendar_month_zoned_activation_normalizes_to_calendar_boundary(offset: str) -> None:
+@pytest.mark.parametrize("bound", [False, True])
+def test_calendar_month_zoned_activation_normalizes_to_calendar_boundary(offset: str, bound: bool) -> None:
     from apps.api.tests.factories.reconciliation import (
         agreement_factory,
         subscription_factory,
@@ -271,6 +277,14 @@ def test_calendar_month_zoned_activation_normalizes_to_calendar_boundary(offset:
         update={"offer": replace(subject.purchase.accepted.offer, period=monthly)}
     )
     subject = replace(subject, purchase=replace(subject.purchase, accepted=accepted))
+    if not bound:
+        subject = SubscriptionCandidateSubject(
+            subject.purchase,
+            subject.customer,
+            subject.agreement_id,
+            subject.agreement_key,
+            subject.provider_subscription_id,
+        )
     tariff = tariff_factory(subject)
     proof = normalize_subscription(
         subject,
@@ -410,6 +424,52 @@ def test_calendar_month_annual_unresolved_precision_never_acquires_a_zone(
     )
     assert current is not None and current.precision == "unresolved"
     assert classify_cycle(current, period("year", anchor="calendar_month")).kind == CycleKind.AMBIGUOUS
+
+
+@pytest.mark.parametrize(
+    "history",
+    [
+        None,
+        calendar("2026-10-01", "2026-10-31", "2026-10-01"),
+        calendar("2026-10-01T00:00:00", "2026-11-01T00:00:00", "2026-10-01T00:00:00", "unresolved"),
+        calendar("2026-10-01T00:00:00+03:00", "2026-11-01T00:00:00+03:00", None, "timestamp"),
+    ],
+)
+def test_calendar_month_without_proven_historical_offset_keeps_initial_frame(history: CalendarEvidence | None) -> None:
+    from app.integrations.lbx.calendar import normalize_calendar
+
+    result = normalize_calendar(
+        {
+            "subscription_start_date": "2026-09-30T21:30:00Z",
+            "last_tariffication_period_start": "2026-10-01T00:00:00Z",
+            "last_tariffication_period_end": "2026-11-01T00:00:00Z",
+        },
+        "calendar_month",
+        established_calendar=history,
+    )
+    assert result.anchor == "2026-09-01T00:00:00+00:00"
+    assert result.precision == "timestamp"
+
+
+@pytest.mark.parametrize("anchor_kind", ["instance_start", "first_instance_start"])
+def test_instance_anchors_do_not_use_established_calendar_offset(anchor_kind: str) -> None:
+    from app.integrations.lbx.calendar import normalize_calendar
+
+    result = normalize_calendar(
+        {
+            "subscription_start_date": "2026-09-30T21:30:00Z",
+            "subscription_instance_start_date": "2026-10-31T21:30:00Z",
+            "last_tariffication_period_start": "2026-10-31T21:30:00Z",
+            "last_tariffication_period_end": "2026-11-30T21:30:00Z",
+        },
+        anchor_kind,
+        established_calendar=calendar(
+            "2026-10-01T00:00:00+03:00", "2026-11-01T00:00:00+03:00", "2026-10-01T00:00:00+03:00", "timestamp"
+        ),
+    )
+    assert result.anchor == (
+        "2026-09-30T21:30:00Z" if anchor_kind == "first_instance_start" else "2026-10-31T21:30:00Z"
+    )
 
 
 def test_paid_access_proof_document_serializes_lossless_cycle_and_finite_end() -> None:

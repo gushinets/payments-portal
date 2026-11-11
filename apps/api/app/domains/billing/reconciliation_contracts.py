@@ -51,6 +51,7 @@ class ReconciliationSubject:
     fence: int
     lease_expires_at: datetime
     claimed_at: datetime
+    established_calendar: CalendarEvidence | None = None
 
 
 @dataclass(frozen=True)
