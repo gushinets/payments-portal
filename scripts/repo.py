@@ -453,6 +453,9 @@ def write_runtime(config: RuntimeConfig) -> None:
         "CADDY_PORT": str(runtime_caddy_port(config)),
         "KERNEL_MOCK_PORT": str(config.kernel_mock_port),
         "NEXT_PUBLIC_API_BASE_URL": caddy_origin,
+        "NEXT_PUBLIC_KERNEL_WEB_BASE_URL": os.environ.get(
+            "NEXT_PUBLIC_KERNEL_WEB_BASE_URL", local_env.get("NEXT_PUBLIC_KERNEL_WEB_BASE_URL", "")
+        ),
         "CORS_ALLOW_ORIGINS": cors_allow_origins,
         "APP_PUBLIC_BASE_URL": app_public_base_url,
         "SMTP_HOST": local_env.get("SMTP_HOST", ""),
@@ -3309,7 +3312,7 @@ def cmd_billing_purchase(args: argparse.Namespace) -> None:
         args.action,
     ]
     for name in (
-        "user_id", "purchase_id",
+        "user_id", "purchase_id", "recipient_id",
         "resolution", "case_id", "expected_case_digest",
         "expected_observation_id", "expected_reconciliation_fence",
         "operation_id", "expected_operation_fence", "reason", "reference",
@@ -3565,6 +3568,7 @@ def build_parser() -> argparse.ArgumentParser:
     # The application CLI owns required options for each subcommand.
     purchase.add_argument("--user-id", type=uuid.UUID)
     purchase.add_argument("--purchase-id", type=uuid.UUID)
+    purchase.add_argument("--recipient-id")
     purchase.add_argument("--resolution", choices=("restore-original", "bind-original", "select-primary"))
     for name in ("case-id", "expected-observation-id", "operation-id", "expected-operation-fence"):
         purchase.add_argument("--" + name, type=uuid.UUID)

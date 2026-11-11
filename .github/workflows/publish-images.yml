@@ -17,6 +17,9 @@ on:
       portal_api_origin:
         description: Portal browser API origin (frontend build)
         type: string
+      kernel_web_base_url:
+        description: Optional Kernel browser launch base URL (frontend build)
+        type: string
       sentry_dsn:
         description: Optional public Sentry DSN
         type: string
@@ -57,6 +60,7 @@ jobs:
           PUBLISH: ${{ inputs.publish }}
           APP_PUBLIC_BASE_URL: ${{ inputs.portal_origin }}
           NEXT_PUBLIC_API_BASE_URL: ${{ inputs.portal_api_origin }}
+          NEXT_PUBLIC_KERNEL_WEB_BASE_URL: ${{ inputs.kernel_web_base_url }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ inputs.sentry_dsn }}
         run: |
           set -euo pipefail
@@ -68,6 +72,7 @@ jobs:
             --label "org.opencontainers.image.revision=$GITHUB_SHA" \
             --build-arg "APP_PUBLIC_BASE_URL=$APP_PUBLIC_BASE_URL" \
             --build-arg "NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL" \
+            --build-arg "NEXT_PUBLIC_KERNEL_WEB_BASE_URL=$NEXT_PUBLIC_KERNEL_WEB_BASE_URL" \
             --build-arg "NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN" \
             --tag "$image" .
           docker image inspect --format '{{.Id}}' "$image" >> "$GITHUB_STEP_SUMMARY"

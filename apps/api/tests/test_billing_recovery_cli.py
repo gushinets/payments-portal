@@ -188,6 +188,30 @@ def test_operation_lookup_harness_forwards_only_its_operation_reference(monkeypa
     ]
 
 
+@pytest.mark.parametrize("action", ["inspect-invalidation", "retry-invalidation"])
+def test_invalidation_harness_forwards_user_and_recipient(monkeypatch: pytest.MonkeyPatch, action: str) -> None:
+    user_id = str(uuid4())
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **kwargs: object) -> SimpleNamespace:
+        calls.append(command)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(repo, "direct_api_environment", lambda: {})
+    monkeypatch.setattr(repo.subprocess, "run", run)
+    arguments = repo.build_parser().parse_args([
+        "billing-purchase", action, "--user-id", user_id, "--recipient-id", "platform-kernel",
+    ])
+    with pytest.raises(SystemExit) as outcome:
+        arguments.func(arguments)
+    assert outcome.value.code == 0
+    assert len(calls) == 1
+    forwarded = cli.parser().parse_args(calls[0][3:])
+    assert forwarded.command == action
+    assert str(forwarded.user_id) == user_id
+    assert forwarded.recipient_id == "platform-kernel"
+
+
 def test_billing_recovery_cli_safe_error(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     def fail(*args: object) -> None:
         raise BillingRefused("billing_review_stale", 409)
