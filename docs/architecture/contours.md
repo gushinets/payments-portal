@@ -1,7 +1,7 @@
 # Contours
 
 Status: authoritative target architecture; implemented product remains `ru`
-Last updated: 2026-11-10
+Last updated: 2026-11-11
 
 A **contour** is the compliance zone in which this AnyToolAI Portal is deployed.
 It may serve any number of countries assigned to that zone. It is not a locale,
@@ -93,8 +93,9 @@ Manage. ANY-715 implements contour-local embedded polling-only reconciliation
 and recovery. ANY-765 adds contour-local paid grants/allowances, semantic
 revisions/outbox, autonomous expiry and authenticated cabinet reads. This build
 has no webhook receiver or receiver enablement setting. ANY-766 adds scoped
-delegation, snapshot V2 and invalidation delivery within that contour; paired
-local acceptance and production enablement retain their separate gates. See the
+delegation V2, snapshot V3 and recipient-specific invalidation delivery within
+that contour. Focused paired local acceptance is complete; full and remote/live
+acceptance and production enablement retain their separate gates. See the
 [as-built RU Portal 4F handoff](../product/ru-mvp.md).
 
 Planned, not implemented:

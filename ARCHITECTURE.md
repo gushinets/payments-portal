@@ -33,8 +33,9 @@ are stopped. Step 12 supplies local TCP
 auth/access evidence. Step 14 adds owner-checked immutable exhaustion hints and
 Kernel usage readback. Step 15 adds separate bounded cabinet usage with saved-owner
 routing, eligible historical selection and a post-I/O revision/session recheck.
-Assembled paid browser/execution acceptance and production enablement remain
-later work. The
+Steps 16/17 supply focused local paid browser/execution acceptance and
+build/install preparation. The full matrix, remote/live acceptance and
+production enablement remain ANY-767 work. The
 [active plan](docs/exec-plans/active/ANY-766-implementation-plan.md) records the
 remaining scope and gates; the [billing operations guide](docs/engineering/billing-background-operations.md)
 defines current serving and delivery behavior.
@@ -46,8 +47,8 @@ See [contours](docs/architecture/contours.md) and the
 The [Platform Kernel integration map](docs/integrations/platform-kernel.md)
 records pinned peer implementation and the remaining enablement gates. Manifest
 HTTP reads are implemented, with an optional development mock. Snapshot and
-invalidation transport are implemented; assembled local acceptance remains
-ANY-766 Step 16, followed by remote/live acceptance in ANY-767.
+invalidation transport are implemented; Step 16 supplies focused assembled local
+acceptance, followed by remote/live acceptance in ANY-767.
 
 ```mermaid
 flowchart LR

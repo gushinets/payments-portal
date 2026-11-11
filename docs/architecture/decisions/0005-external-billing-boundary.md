@@ -183,10 +183,11 @@ The former direct-provider runtime has been physically removed. ANY-709 adds
 direct product links, live offers, account Widget and accepted-purchase
 preparation/recovery. ANY-715 adds polling-only reconciliation/recovery; ANY-765
 adds local paid projection, allowances, revisions/outbox, expiry and authenticated
-cabinet reads. ANY-766 adds delegated identity, snapshot V2, coherent Kernel paid
-admission, durable invalidation delivery and recoverable paid browser launch.
-Usage integration and paired local acceptance remain pending; ANY-767 owns
-remote/live acceptance and rollout.
+cabinet reads. ANY-766 adds delegated identity V2, snapshot V3, coherent Kernel paid
+admission, recipient-specific invalidation delivery, recoverable paid browser
+launch and cabinet usage readback. Steps 16/17 supply focused local acceptance
+and build/install preparation; the full matrix, remote/live acceptance and
+rollout belong to ANY-767.
 Current boundaries are in [ARCHITECTURE](../../../ARCHITECTURE.md) and
 [billing operations](../../engineering/billing-background-operations.md).
 The original context above records transition history.

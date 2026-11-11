@@ -224,9 +224,11 @@ Legacy `KERNEL_BASE_URL`/`KERNEL_SERVICE_TOKEN` no longer select invalidation de
 Before cutover, stop the Portal API and embedded workers and the paired Kernel
 API/worker; retain the existing databases/backups. Install the compatible Kernel
 receiver with matching scope/current-or-previous Portal service token and set
-`ANYTOOLAI_PORTAL_ACCESS_INVALIDATION_ENABLED=true` there. Apply Portal forward
-migration `20261111_0010` after `20261111_0009`; Kernel remains at `0020`.
-Use the synchronized
+`ANYTOOLAI_PORTAL_ACCESS_INVALIDATION_ENABLED=true` there. The historical Step 13
+pair used Portal `20261111_0010` and Kernel `0020`; the current Step 14 pair
+requires Portal `20261111_0011` and Kernel `0021`. Follow the
+[paired installation and compatibility procedure](../architecture/deployment.md#paired-compatibility-and-synchronized-cutover)
+and the synchronized
 [consumer identity cutover](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover)
 and restart only compatible binaries with the complete registry. Startup installs
 snapshot-recipient membership alongside the existing policy guard; removed
@@ -656,8 +658,9 @@ HTTP. The [producer handoff](#step-10-handoff--any-765) below defines the inheri
 seams. ANY-766 Step 12 now serves consumer-scoped V3 and extends Kernel paid
 admission with independent durable P/R floors; Step 7's Kernel invalidation
 delivery is now partitioned by recipient in Step 13. Step 12 proves
-local TCP auth/access; Step 16 owns assembled paid browser/execution acceptance. ANY-767 owns
-the subsequent remote/live journey, remaining natural renewal and rollout.
+local TCP auth/access; Step 16 supplies focused assembled local paid browser/execution
+acceptance. Step 17 supplies build/install preparation. ANY-767 owns the full
+deferred matrix, remote/live journey, remaining natural renewal and rollout.
 
 ## Step 10 handoff — ANY-765
 
@@ -853,8 +856,10 @@ and ANY-767 the deployed journey/natural renewal/production enablement. No
 test-only limit or historical positive QA result waives those gates. Commercial
 quantities, exact LBX associations and sales enablement require separate owner
 approval. The [ANY-766 contract bundle](../contracts/portal-kernel-paid/README.md)
-records the selected wire contracts and implemented server attachment points;
-browser/usage integration and paired local acceptance remain pending.
+records the selected wire contracts and implemented server attachment points.
+Browser/usage integration is implemented, and Steps 16/17 supply focused local
+acceptance and build/install preparation. Full and remote/live acceptance remain
+ANY-767 work.
 
 
 ### ANY-766 Step 14 — immutable exhaustion hints
@@ -876,7 +881,8 @@ work identity. Quiesce affected workers during migration; do not replace this
 insert with ordinary coalescing. Kernel migration `0021`, sender settings,
 lease/retry/parking behavior and the reverse usage contract are documented in the
 [common backend guide](../contracts/product-backend-api/README.md#implemented-step-14-usage-and-exhaustion).
-Step 15 implements cabinet usage composition; paired local acceptance remains Step 16.
+Step 15 implements cabinet usage composition; Step 16 supplies focused paired local
+acceptance, with the full matrix and remote/live acceptance deferred to ANY-767.
 
 
 ### ANY-766 Step 15 — independent cabinet usage reads
