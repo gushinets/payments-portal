@@ -6,7 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 import time
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -15,12 +15,16 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.composition import purchases
+from app.composition.backend_consumers import initialize_backend_consumers
 from app.composition.catalog import catalog_preview
 from app.composition.mapping_operator import fresh_link_evaluation
 from app.composition.sources import TechnicalSourceRefused, source_resources
+from app.core.backend_consumers import BackendConsumer
 from app.domains.billing.paid_allowances import materialize_allowance
+from app.domains.billing.paid_contracts import EFFECTIVE_SCHEMA, EffectiveAllowance, EffectiveState, PaidGrant
 from app.domains.billing.paid_cycles import CalendarEvidence
 from app.domains.billing.paid_policy import MeteringPolicy
+from app.domains.billing.paid_read import BillingRefused, read_access_snapshot
 from app.domains.catalog.commercial_offer import CommercialScope, canonical_document, commercial_digest
 from app.domains.catalog.link_publication import publish_product_link, validate_product_link
 from app.domains.catalog.mapping_evidence import MappingRefused
@@ -33,6 +37,7 @@ from app.models import (
     ExternalSubscription,
     LegalAcceptanceEvent,
     PurchasedAllowance,
+    PaidAccessState,
     PurchaseIntent,
     PurchaseIntentState,
     ExternalSubscriptionLifecycleStatus,
@@ -46,6 +51,7 @@ from apps.api.tests.support.any709_step3 import PurchaseTransport
 from apps.api.tests.support.backend_consumers import backend_consumer, second_consumer
 from apps.api.tests.test_any709_step2_postgres import TOKEN, seed
 from apps.api.tests.test_any766_technical_sources import source_settings, summary_manifest, summary_offer
+from apps.api.tests.test_paid_access_read_postgres import billing_snapshot
 
 pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
 HISTORY = json.loads(
@@ -67,6 +73,33 @@ def fixed_billing_calendar(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def cycle() -> CalendarEvidence:
     return CalendarEvidence(precision="date", start="2026-10-31", end="2026-11-29", anchor="2026-01-31")
+
+
+def assert_snapshot_keeps_retained_owner(
+    factory: sessionmaker[Session], user_id: UUID, allowance: EffectiveAllowance, owner: BackendConsumer
+) -> None:
+    # Seed the committed reader input from the actual materialized allowance.
+    document = EffectiveState(grants=(PaidGrant(product_id=allowance.product_id),), allowances=(allowance,))
+    with factory() as db:
+        db.add(PaidAccessState(
+            tenant_id=owner.tenant_id, region=owner.region, user_id=user_id, access_revision=1,
+            effective_state_schema_version=EFFECTIVE_SCHEMA, effective_state_document=document.model_dump(mode="json"),
+            committed_at=datetime.now(UTC),
+        ))
+        db.commit()
+    config = source_settings(backend_consumers=(owner,), paid_access_clock_skew_seconds=5)
+    initialize_backend_consumers(config, factory)
+    before = billing_snapshot(factory)
+    snapshot = read_access_snapshot(factory, config, user_id, owner)
+    assert snapshot.revision == 1 and snapshot.document == document
+    foreign_factory = second_consumer if owner.consumer_id == "platform-kernel" else backend_consumer
+    foreign = foreign_factory(allowed_products=[allowance.product_id])
+    changed = config.model_copy(update={"backend_consumers": (foreign,)})
+    initialize_backend_consumers(changed, factory)
+    with pytest.raises(BillingRefused, match="paid_access_owner_conflict") as refused:
+        read_access_snapshot(factory, changed, user_id, foreign)
+    assert refused.value.status == 503
+    assert billing_snapshot(factory) == before
 
 
 @pytest.mark.parametrize("case", [row for row in HISTORY if row["kind"] == "purchase"], ids=lambda row: row["name"])
@@ -112,6 +145,7 @@ async def test_populated_old_links_consent_terms_and_allowances_are_never_conver
     legacy_link["identity_digest"] = commercial_digest(unchecked.identity_json())
     link = ProductLinkDocument.model_validate_json(json.dumps(legacy_link))
     user, auth = reader_identity(TOKEN)
+    user_id = user.id
     customer_id, purchase_id, event_id, subscription_id = (uuid4() for _ in range(4))
     seeded_allowance_id = uuid4()
     revision_id = accepted.meaning.revision_id
@@ -249,6 +283,8 @@ async def test_populated_old_links_consent_terms_and_allowances_are_never_conver
         assert canonical_document(saved.accepted_snapshot) == case["serialized"]
         assert hashlib.sha256(canonical_document(saved.accepted_snapshot).encode()).hexdigest() == case["sha256"]
         assert db.get(CommercialMappingRevision, revision_id).mapping_document == legacy_link
+    if first:
+        assert_snapshot_keeps_retained_owner(factory, user_id, first, backend_consumer())
 
 
 async def test_non_kernel_publication_purchase_send_replay_and_renewal_keep_owner_and_quantity(
@@ -367,3 +403,4 @@ async def test_non_kernel_publication_purchase_send_replay_and_renewal_keep_owne
         # Select and refuse the persisted owner before any LBX read/new acceptance.
         with pytest.raises(TechnicalSourceRefused):
             await catalog_preview(sources, wrong, session_factory=factory, product_id="synthetic_summary")
+    assert_snapshot_keeps_retained_owner(factory, purchase.user_id, original, second_consumer())

@@ -223,8 +223,9 @@ but readers predating Step 11 cannot read newly written formats even at the same
 migration head; exclude those binaries from rollback/install combinations.
 Legacy links without a published quantity cannot start a new production purchase;
 original accepted-operation replay/recovery remains independent of new-sale terms.
-ANY-766 Step 5 implements configured-source allowance derivation and snapshot V2
-serving; [billing operations](billing-background-operations.md#any-766-step-5--production-allowances-and-snapshot-serving)
+ANY-766 Step 5 implements configured-source allowance derivation; Step 12 now
+serves consumer-scoped V3 snapshots in place of the original V2 wire.
+[Billing operations](billing-background-operations.md#any-766-step-5--production-allowances-and-snapshot-serving)
 defines their provenance and serving rules.
 
 For the configured harness, use its shared lock and current host UID:
@@ -574,7 +575,8 @@ transitions. Reuse these owners when changing either path:
   subscription lease before point reads and apply through the same fenced
   transaction. Repeated opens do not rebind financial operations or append
   preparation observations. ANY-765 adds committed paid state and authenticated
-  cabinet reads. ANY-766 now implements snapshot V2 and invalidation delivery;
+  cabinet reads. ANY-766 now implements consumer-scoped snapshot V3, durable
+  policy/access floors and Kernel invalidation delivery;
   cabinet usage remains pending. Preparation grants no paid access.
 - Payment presentation requires a committed complete identity/commercial match,
   supported nonterminal lifecycle and final local session/customer/purchase

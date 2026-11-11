@@ -31,20 +31,21 @@ plans do not override accepted sources.
 
 ## Observed implementation
 
-Sources: Portal `b346f0e90c9745f942847734bc06d0d3f5b0a73d` and Kernel
-`192f4cb2ebf19a697f9fb1298147d26221a0a6a0`, plus the Step 11 working diff.
+Sources: Portal `1caa078418ffb07781467dcb4f62158f17e029a3` and Kernel
+`952a6337a17136cd9d1f3c38cb32d8fa5766a41d`, plus the Step 12 working diff.
 The [active plan](../exec-plans/active/ANY-766-implementation-plan.md) records
-completed Steps 1–11: common identity V2, configured consumer callbacks and the
-policy guard, plus V2/R paid admission and invalidation. Step 11 adds configured technical sources and immutable source/owner history.
-Consumer-filtered V3 access, generic recipients, usage, assembled local acceptance and build
-preparation remain pending. Current identity configuration is in the
+completed Steps 1–12: common identity V2, configured consumer callbacks and the
+policy guard, consumer-filtered V3 paid admission with independent durable P/R
+floors, and V1 invalidation. Step 11 adds configured technical sources and
+immutable source/owner history.
+Generic recipients, usage, assembled local acceptance and build preparation remain pending. Current identity configuration is in the
 [common guide](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).
 Remote installation and live-service acceptance belong to ANY-767.
 
 | Operation / request direction | Payload producer | Payload consumer / receiver | Verification status |
 | --- | --- | --- | --- |
 | `GET /internal/v1/capability-manifest`: Portal -> Kernel | Service-authenticated Kernel endpoint implemented; separate Portal development mock remains optional | Portal typed HTTP client implemented | Source inspected; local fixture evidence does not establish current joint conformance |
-| `GET /internal/v1/access-snapshots/{user_id}`: Kernel -> Portal | Step 5 serves scoped read-only V2 from committed paid state | Step 6 implements the client, durable coherence and paid admission | Paired local acceptance remains Step 16 |
+| `GET /internal/v1/access-snapshots/{user_id}`: Kernel -> Portal | Step 12 serves consumer-filtered read-only V3 | Step 12 adds durable consumer/P/R coherence while retaining ANY-507 admission | Paired local acceptance remains Step 16 |
 | `POST /internal/v1/access-invalidations`: Portal -> Kernel | ANY-766 Step 7 implements bounded claimed delivery, exact-N ACK, restart repair and parked-work CLI | Kernel Step 6 implements the durable receiver; permission is disabled by default | Focused local PostgreSQL delivery tests with synthetic HTTP responses; paired HTTP acceptance remains Step 16 |
 
 Portal's enabled embedded worker starts delivery automatically from legacy
@@ -68,8 +69,9 @@ snapshots, immutable source/owner history and recipient/usage routing. The
 schemas/fixture payloads and independently checked target additions.
 
 At this historical Step 9 checkpoint, runtime, migrations and generated OpenAPI
-were unchanged (Kernel identity V1/snapshot V2). Step 10 now implements common
-identity V2 and its generated security; snapshot remains Kernel-only V2. The guide records
+were unchanged (Kernel identity V1/snapshot V2). Step 10 subsequently implemented
+common identity V2/security while retaining the then-current Kernel-only V2
+snapshot. Step 12 now supersedes that wire with consumer-filtered V3/P/R. The guide records
 actual owning modules, minimal replacements, populated-state forward migration
 requirements and focused acceptance cases; active Kernel code is not a purge
 target. Common identity is Step 10, technical-source ownership Step 11, working
@@ -139,15 +141,18 @@ are unchanged.
 
 ## Dependencies before real integration
 
-ANY-766 Step 5 serves only snapshot V2 through the reverse-direction service
-credential with explicit `access-snapshot:read` permission. Scope is required in
-the query; known empty users retain revision zero without writes. The producer
-shares the reserved local paid-read resources, rejects overdue committed states,
-and performs no peer/source I/O or identity bookkeeping. Production metering
+ANY-766 Step 12 serves consumer-filtered snapshot V3 through each backend's
+reverse-direction service credential with explicit `access-snapshot:read`
+permission. Scope is required in the query; known empty users retain revision
+zero without writes. The producer shares the reserved local paid-read resources
+and filters authorized products/supporting facts before completeness/deadline
+checks, without peer/source I/O or identity bookkeeping. The cabinet and writer
+retain whole-user guarantees. Production metering
 requires accepted `CONFIGURED_SOURCE` terms; SIMULATED history stays labelled
 and can supply no production allowance. See the [as-built serving rules](../engineering/billing-background-operations.md#any-766-step-5--production-allowances-and-snapshot-serving).
-Install the compatible Step 6 consumer before enabling the V2 connection. This
-checkpoint changes no commercial flags or deployed configuration.
+Quiesce both APIs/workers and migrate Kernel to `0020` before starting the
+compatible V3 pair. Old V2 readers are excluded; this local checkpoint changes
+no commercial flags or deployed configuration.
 
 - **Identity:** paid access uses Portal's authenticated UUID under
   `(tenant_id, region, user_id)`, verified through Step 10 common delegation V2
@@ -256,3 +261,20 @@ scenario or real external product is registered. See the
 Synthetic HTTP fixtures with disposable PostgreSQL prove source selection and
 history compatibility, not live LBX, real third-party adoption or paired HTTP
 acceptance. Generic snapshot/delivery/usage remain later steps.
+
+
+## ANY-766 Step 12 auth/access checkpoint — 2026-11-11
+
+Peer inspected: Kernel `952a6337a17136cd9d1f3c38cb32d8fa5766a41d`, plus the paired Step 12 working diff.
+Portal now serves consumer-filtered V3, selecting products before provenance and
+deadline/completeness checks; its cabinet/writer retain whole-user rules. Kernel
+migration `0020` preserves R, usage, active reservations and replay while binding
+old coherence rows to platform-kernel/P1 and evicting incompatible V2 cache
+metadata. Independent durable policy/access floors fence stale response/admission;
+P changes do not require a paid R transition. The Portal-owned common API guide
+and generated OpenAPI/Swagger document actual identity V2/access V3 security,
+schemas, examples, errors, cutover and backend enforcement duties.
+Focused real PostgreSQL and local TCP auth/access evidence is separate from the
+Step 16 assembled browser/execution journey. The second identity and external
+LBX/manifest sources are synthetic; generic recipients/usage remain Steps 13–15.
+No real third-party, live payment or deployed acceptance is claimed.

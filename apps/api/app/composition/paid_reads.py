@@ -12,6 +12,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
+from app.core.backend_consumers import BackendConsumer
 from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.paid_read import PaidRead, SnapshotRead, read_access_snapshot, read_paid_access
@@ -34,9 +35,9 @@ class PaidReadResources:
     async def read(self, configuration: Settings, token: str) -> PaidRead:
         return await self._run(partial(read_paid_access, self.factory, configuration, token))
 
-    async def snapshot(self, configuration: Settings, user_id: UUID) -> SnapshotRead:
+    async def snapshot(self, configuration: Settings, user_id: UUID, consumer: BackendConsumer) -> SnapshotRead:
         try:
-            return await self._run(partial(read_access_snapshot, self.factory, configuration, user_id))
+            return await self._run(partial(read_access_snapshot, self.factory, configuration, user_id, consumer))
         except SQLAlchemyError:
             raise BillingRefused("paid_access_unavailable", 503) from None
 

@@ -6,6 +6,7 @@ CONFIGURED_SOURCE fixtures approve neither a real offer nor live LBX access.
 import asyncio
 from calendar import monthrange
 from collections.abc import AsyncIterator
+import json
 from datetime import UTC, datetime, timedelta
 from threading import Event, Lock
 from uuid import UUID, uuid4
@@ -18,20 +19,24 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.composition import paid_reads, purchases
+from app.composition.backend_consumers import initialize_backend_consumers
 from app.composition.reconciliation import reconcile_subscription
 from app.composition.sources import source_resources
 from app.core.observability import request_id_context
 from app.core.backend_consumers import BackendPermission
 from apps.api.tests.support.backend_consumers import backend_consumer
+from apps.api.tests.support.backend_consumers import second_consumer
 from app.domains.billing import paid_access, paid_read, snapshot_router, work
 from app.domains.billing.customers import lock_user
 from app.domains.billing.paid_access import commit_paid_state
 from app.domains.billing.paid_contracts import EffectiveAllowance
 from app.domains.billing.work_contracts import WorkLane
 from app.domains.identity.services.auth import as_utc
+from app.domains.purchases.technical_terms import AcceptedTechnicalTerms
 from app.http import backend_auth
 from app.infrastructure.preflight import PreflightCleanupPending
 from app.infrastructure.queries import billing_reconciliation
+from app.infrastructure.queries.backend_policies import install_policy
 from app.main import create_app
 from app.models import (
     AuthSession,
@@ -39,6 +44,7 @@ from app.models import (
     BillingWorkItem,
     BillingWorkState,
     ExternalSubscription,
+    PaidAccessState,
     PurchasedAllowance,
 )
 from apps.api.tests.factories.paid_access import reader_identity
@@ -133,11 +139,16 @@ async def snapshot_client(
                     backend_to_portal_previous_secret=PREVIOUS,
                     permissions=[BackendPermission.READ_SNAPSHOT],
                 ),
+                second_consumer(),
             ),
         }
     )
     monkeypatch.setattr(snapshot_router, "settings", config)
     monkeypatch.setattr(backend_auth, "settings", config)
+    with postgres_session_factory() as db:
+        for consumer in config.backend_consumers:
+            install_policy(db, consumer)
+        db.commit()
     app = create_app()
     # No source/worker dependency is installed in this HTTP application.
     async with (
@@ -156,7 +167,7 @@ def headers(token: str = SERVICE) -> dict[str, str]:
     return {"Authorization": "Bearer " + token, "X-Request-ID": "synthetic-snapshot"}
 
 
-def test_snapshot_openapi_has_required_scope_and_exact_v2_component_fields() -> None:
+def test_snapshot_openapi_has_required_scope_and_exact_v3_component_fields() -> None:
     schema = create_app().openapi()
     operation = schema["paths"]["/internal/v1/access-snapshots/{user_id}"]["get"]
     assert {(item["name"], item["in"]) for item in operation["parameters"] if item["required"]} == {
@@ -166,6 +177,11 @@ def test_snapshot_openapi_has_required_scope_and_exact_v2_component_fields() -> 
     }
     response = operation["responses"]["200"]["content"]["application/json"]["schema"]
     assert response == {"$ref": "#/components/schemas/AccessSnapshotResponse"}
+    assert operation["security"] == [{"BackendServiceBearer": []}]
+    assert "purchased ceiling" in operation["description"]
+    example = schema["components"]["schemas"]["AccessSnapshotResponse"]["examples"][0]
+    assert example["schema_version"] == 3
+    validate_contract("snapshot-v3", json.dumps(example))
     for status in (401, 403, 404, 422, 503):
         assert operation["responses"][str(status)]["content"]["application/json"]["schema"] == {
             "$ref": "#/components/schemas/BackendErrorResponse"
@@ -174,6 +190,137 @@ def test_snapshot_openapi_has_required_scope_and_exact_v2_component_fields() -> 
         component = schema["components"]["schemas"][name]
         assert set(component["required"]) == set(component["properties"])
         assert component["additionalProperties"] is False
+
+
+async def test_consumer_filtering_precedes_deadlines_and_policy_change_keeps_paid_revision(
+    production_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    snapshot_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scenario, factory = production_scenario, postgres_session_factory
+    await reconcile(scenario, factory)
+    kernel = backend_auth.settings.backend_consumers[0]
+    summary = second_consumer()
+    config = backend_auth.settings.model_copy(update={"backend_consumers": (kernel, summary)})
+    monkeypatch.setattr(backend_auth, "settings", config)
+    now = datetime.now(UTC)
+    end = now + timedelta(seconds=120)
+    with factory() as db:
+        install_policy(db, summary)
+        row = db.scalars(select(PaidAccessState)).one()
+        row.access_revision += 1
+        row.effective_state_document = {
+            **row.effective_state_document,
+            "grants": [*row.effective_state_document["grants"], {
+                "product_id": "synthetic_summary", "valid_until": end.isoformat(),
+            }],
+        }
+        db.add(BillingProductAccessScope(
+            user_id=scenario[4], product_id="synthetic_summary",
+            effective_access_document={"grants": [{"product_id": "synthetic_summary", "valid_until": end.isoformat()}],
+                                       "allowances": []},
+            effective_access_until=end,
+        ))
+        revision = row.access_revision
+        db.commit()
+    summary_headers = headers(summary.backend_to_portal_current_secret.get_secret_value())
+    before = billing_snapshot(factory)
+    first = await snapshot_client.get(path(scenario[4]), headers=summary_headers)
+    assert first.status_code == 200, first.text
+    body = first.json()
+    assert body["consumer_id"] == summary.consumer_id
+    assert body["access_revision"] == revision
+    assert body["allowances"] == []
+    assert [g["product_id"] for g in body["grants"]] == ["synthetic_summary"]
+    assert datetime.fromisoformat(body["expires_at"]) == end - timedelta(seconds=5)
+    monkeypatch.setattr(paid_read, "database_now", lambda db: end)
+    # This included overdue fact refuses Summary, while Kernel stays complete.
+    assert (await snapshot_client.get(path(scenario[4]), headers=summary_headers)).status_code == 503
+    kernel_response = await snapshot_client.get(path(scenario[4]), headers=headers())
+    assert kernel_response.status_code == 200, kernel_response.text
+    assert [g["product_id"] for g in kernel_response.json()["grants"]] == ["proposal_ai"]
+    assert kernel_response.json()["access_revision"] == revision
+    # Cabinet keeps the whole-user refusal; GETs never rewrite stored contents.
+    with pytest.raises(paid_read.BillingRefused, match="paid_access_deadline_pending"):
+        paid_read.read_paid_access(factory, config, TOKEN)
+    assert billing_snapshot(factory) == before
+    # A policy-only reduction changes P and contents, without a financial R write.
+    newer = summary.model_copy(update={"consumer_policy_revision": 2, "allowed_products": frozenset()})
+    with factory() as db:
+        install_policy(db, newer)
+        db.commit()
+    assert (await snapshot_client.get(path(scenario[4]), headers=summary_headers)).status_code == 503
+    monkeypatch.setattr(backend_auth, "settings", config.model_copy(update={"backend_consumers": (kernel, newer)}))
+    reduced = await snapshot_client.get(path(scenario[4]), headers=summary_headers)
+    assert reduced.status_code == 200, reduced.text
+    assert reduced.json()["consumer_policy_revision"] == 2
+    assert reduced.json()["access_revision"] == revision
+    assert reduced.json()["grants"] == reduced.json()["allowances"] == []
+    assert billing_snapshot(factory) == before
+
+
+@pytest.mark.parametrize("change", ["consumer", "source"])
+async def test_snapshot_policy_change_cannot_transfer_retained_allowance(
+    production_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    snapshot_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    change: str,
+) -> None:
+    scenario, factory = production_scenario, postgres_session_factory
+    await reconcile(scenario, factory)
+    kernel, summary = backend_auth.settings.backend_consumers
+    original = await snapshot_client.get(path(scenario[4]), headers=headers())
+    assert original.status_code == 200, original.text
+    with factory() as db:
+        allowance = db.scalars(select(PurchasedAllowance)).one()
+        terms = AcceptedTechnicalTerms.model_validate(allowance.terms_document["technical_terms"])
+        assert terms.schema_version == "purchased-technical-terms:v3"
+        assert terms.ownership.backend_consumer_id == kernel.consumer_id
+    # A foreign retained allowance outside Summary's scope does not deny its read.
+    summary_headers = headers(summary.backend_to_portal_current_secret.get_secret_value())
+    empty = await snapshot_client.get(path(scenario[4]), headers=summary_headers)
+    assert empty.status_code == 200 and empty.json()["allowances"] == []
+    if change == "consumer":
+        changed = (
+            kernel.model_copy(update={"consumer_policy_revision": 2, "allowed_products": frozenset()}),
+            second_consumer(consumer_policy_revision=2, allowed_products=["proposal_ai"]),
+        )
+        request_headers = summary_headers
+    else:
+        changed = (
+            kernel.model_copy(update={"consumer_policy_revision": 2, "technical_source_id": "replacement-source"}),
+            summary,
+        )
+        request_headers = headers()
+    # Valid configuration and higher P are insufficient to transfer old authority.
+    config = type(scenario[2]).model_validate(scenario[2].model_dump() | {"backend_consumers": changed})
+    initialize_backend_consumers(config, factory)
+    monkeypatch.setattr(backend_auth, "settings", config)
+    monkeypatch.setattr(snapshot_router, "settings", config)
+    before = billing_snapshot(factory)
+    refused = await snapshot_client.get(path(scenario[4]), headers=request_headers)
+    assert refused.status_code == 503, refused.text
+    assert refused.json() == {"detail": {"code": "paid_access_owner_conflict"}}
+    # The cabinet retains the whole-user view; GETs preserve terms, IDs and R.
+    cabinet = paid_read.read_paid_access(factory, config, TOKEN)
+    assert cabinet.revision == original.json()["access_revision"]
+    assert [item.allowance_id for item in cabinet.document.allowances] == [
+        item["allowance_id"] for item in original.json()["allowances"]
+    ]
+    assert billing_snapshot(factory) == before
+    restored = config.model_copy(update={"backend_consumers": tuple(
+        consumer.model_copy(update={"consumer_policy_revision": 3}) for consumer in (kernel, summary)
+    )})
+    initialize_backend_consumers(restored, factory)
+    monkeypatch.setattr(backend_auth, "settings", restored)
+    monkeypatch.setattr(snapshot_router, "settings", restored)
+    recovered = await snapshot_client.get(path(scenario[4]), headers=headers())
+    assert recovered.status_code == 200, recovered.text
+    for field in ("access_revision", "grants", "allowances"):
+        assert recovered.json()[field] == original.json()[field]
+    assert billing_snapshot(factory) == before
 
 
 async def test_snapshot_known_zero_auth_scope_rotation_and_read_only(
@@ -202,10 +349,10 @@ async def test_snapshot_known_zero_auth_scope_rotation_and_read_only(
     engine = factory.kw["bind"]
     event.listen(engine, "before_cursor_execute", observe)
     try:
-        for credential in (SERVICE, PREVIOUS):
+        for credential in (SERVICE, PREVIOUS, second_consumer().backend_to_portal_current_secret.get_secret_value()):
             response = await snapshot_client.get(path(user_id), headers=headers(credential))
             assert response.status_code == 200
-            validate_contract("snapshot-v2", response.text)
+            validate_contract("snapshot-v3", response.text)
             body = response.json()
             assert (body["access_revision"], body["grants"], body["allowances"]) == (0, [], [])
             assert body["user_id"] == str(user_id)
@@ -257,7 +404,7 @@ async def test_production_snapshot_revision_noop_block_and_same_cycle_recovery(
     await reconcile(scenario, factory)
     first = await snapshot_client.get(path(user_id), headers=headers())
     assert first.status_code == 200
-    validate_contract("snapshot-v2", first.text)
+    validate_contract("snapshot-v3", first.text)
     body = first.json()
     assert body["access_revision"] == 1 and len(body["allowances"]) == 1
     allowance = body["allowances"][0]
@@ -738,6 +885,9 @@ async def test_snapshot_overload_and_cancellation_keep_resource_ownership(
             ),
         }
     )
+    with factory() as db:
+        install_policy(db, service_config.backend_consumers[0])
+        db.commit()
     monkeypatch.setattr(backend_auth, "settings", service_config)
     app = create_app()
     tasks = []
@@ -795,3 +945,22 @@ async def test_snapshot_authentication_and_read_survive_shared_thread_saturation
     finally:
         release.set()
         await asyncio.gather(*tasks)
+
+
+async def test_unrelated_simulated_allowance_does_not_refuse_another_consumer(
+    paid_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    snapshot_client: httpx.AsyncClient,
+) -> None:
+    await reconcile(paid_scenario, postgres_session_factory)
+    before = billing_snapshot(postgres_session_factory)
+    assert (await snapshot_client.get(path(paid_scenario[4]), headers=headers())).status_code == 503
+    summary = second_consumer()
+    result = await snapshot_client.get(
+        path(paid_scenario[4]), headers=headers(summary.backend_to_portal_current_secret.get_secret_value())
+    )
+    assert result.status_code == 200, result.text
+    assert result.json()["consumer_id"] == summary.consumer_id
+    assert result.json()["access_revision"] > 0
+    assert result.json()["grants"] == result.json()["allowances"] == []
+    assert billing_snapshot(postgres_session_factory) == before
