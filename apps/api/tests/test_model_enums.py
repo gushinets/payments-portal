@@ -110,9 +110,17 @@ def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
         "external_create_deadline",
         "external_create_recovery",
         "access_invalidation",
+        "allowance_exhaustion",
     }
     assert _values(BillingWorkState) == {"pending", "running", "completed", "invalid", "done", "paused"}
-    assert _values(BillingWorkScope) == {"billing_account", "subscription", "customer", "create_operation", "user"}
+    assert _values(BillingWorkScope) == {
+        "allowance",
+        "billing_account",
+        "subscription",
+        "customer",
+        "create_operation",
+        "user",
+    }
     assert set(model_enums.__all__) == {
         "AcceptanceKind",
         "BillingStateObservationKind",

@@ -39,12 +39,23 @@ class AccessSnapshotAllowance(BaseModel):
 class AccessSnapshotResponse(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
-        json_schema_extra={"examples": [{
-            "schema_version": 3, "consumer_id": "platform-kernel", "consumer_policy_revision": 1,
-            "tenant_id": "anytoolai", "region": "ru", "user_id": "00000000-0000-4000-8000-000000000001",
-            "access_revision": 0, "refresh_after": "2026-11-11T04:01:00Z",
-            "expires_at": "2026-11-11T04:04:55Z", "grants": [], "allowances": [],
-        }]},
+        json_schema_extra={
+            "examples": [
+                {
+                    "schema_version": 3,
+                    "consumer_id": "platform-kernel",
+                    "consumer_policy_revision": 1,
+                    "tenant_id": "anytoolai",
+                    "region": "ru",
+                    "user_id": "00000000-0000-4000-8000-000000000001",
+                    "access_revision": 0,
+                    "refresh_after": "2026-11-11T04:01:00Z",
+                    "expires_at": "2026-11-11T04:04:55Z",
+                    "grants": [],
+                    "allowances": [],
+                }
+            ]
+        },
     )
     schema_version: Literal[3]
     consumer_id: str = Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")

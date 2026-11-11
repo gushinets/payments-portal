@@ -81,11 +81,17 @@ def assert_snapshot_keeps_retained_owner(
     # Seed the committed reader input from the actual materialized allowance.
     document = EffectiveState(grants=(PaidGrant(product_id=allowance.product_id),), allowances=(allowance,))
     with factory() as db:
-        db.add(PaidAccessState(
-            tenant_id=owner.tenant_id, region=owner.region, user_id=user_id, access_revision=1,
-            effective_state_schema_version=EFFECTIVE_SCHEMA, effective_state_document=document.model_dump(mode="json"),
-            committed_at=datetime.now(UTC),
-        ))
+        db.add(
+            PaidAccessState(
+                tenant_id=owner.tenant_id,
+                region=owner.region,
+                user_id=user_id,
+                access_revision=1,
+                effective_state_schema_version=EFFECTIVE_SCHEMA,
+                effective_state_document=document.model_dump(mode="json"),
+                committed_at=datetime.now(UTC),
+            )
+        )
         db.commit()
     config = source_settings(backend_consumers=(owner,), paid_access_clock_skew_seconds=5)
     initialize_backend_consumers(config, factory)

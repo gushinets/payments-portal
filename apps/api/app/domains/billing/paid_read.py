@@ -121,7 +121,8 @@ def read_committed_state(
         provenance,
         as_utc(row.committed_at) if row else None,
         {
-            scope.product_id: scope for scope in queries.scopes(db, user_id)
+            scope.product_id: scope
+            for scope in queries.scopes(db, user_id)
             if products is None or scope.product_id in products
         },
     )
@@ -138,9 +139,7 @@ def read_access_snapshot(
             require_current_policy(db, consumer)
         except BackendPolicyConflict:
             raise BillingRefused("paid_access_policy_unavailable", 503) from None
-        state = read_committed_state(
-            db, user_id, consumer.tenant_id, consumer.region, consumer=consumer
-        )
+        state = read_committed_state(db, user_id, consumer.tenant_id, consumer.region, consumer=consumer)
         # Wall time is sampled after every possibly waiting read under the
         # shared user lock. No last_seen bookkeeping or commit occurs here.
         now = as_utc(database_now(db))
