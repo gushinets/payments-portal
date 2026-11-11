@@ -1,7 +1,7 @@
 """Authenticated customer paid-state contract, separate from the Kernel wire."""
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from pydantic import BaseModel, Field
@@ -11,6 +11,7 @@ from app.core.settings import settings
 from app.composition.paid_reads import PaidReadResources
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.paid_read import PaidRead, ProductPaidStatus
+from app.domains.catalog.contracts import SourceProvenance
 from app.http.dependencies import get_paid_read_resources
 
 router = APIRouter(prefix="/api", tags=["paid-access"])
@@ -27,7 +28,7 @@ class PaidAccessAllowanceResponse(BaseModel):
     metric_key: str
     unit: str
     quantity: int = Field(strict=True, ge=0)
-    provenance: Literal["SIMULATED", "CONFIGURED_SOURCE"]
+    provenance: SourceProvenance
 
 
 class PaidAccessProductResponse(BaseModel):

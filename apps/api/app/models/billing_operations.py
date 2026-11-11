@@ -17,7 +17,7 @@ from app.models._shared import (
     uuid,
     uuid_type,
 )
-from app.models.enums import WebhookDeliveryState
+from app.models.enums import BillingWorkKind, WebhookDeliveryState
 
 
 class BillingWorkItem(Base):
@@ -31,11 +31,13 @@ class BillingWorkItem(Base):
             unique=True,
             postgresql_where=text(
                 "work_kind IN ('subscription_reconciliation', 'subscription_trust_expiry', "
-                "'billing_enrollment_sweep', 'customer_inventory', 'external_create_deadline', 'access_invalidation')"
+                "'billing_enrollment_sweep', 'customer_inventory', 'external_create_deadline', "
+                f"'{BillingWorkKind.ACCESS_INVALIDATION.value}')"
             ),
             sqlite_where=text(
                 "work_kind IN ('subscription_reconciliation', 'subscription_trust_expiry', "
-                "'billing_enrollment_sweep', 'customer_inventory', 'external_create_deadline', 'access_invalidation')"
+                "'billing_enrollment_sweep', 'customer_inventory', 'external_create_deadline', "
+                f"'{BillingWorkKind.ACCESS_INVALIDATION.value}')"
             ),
         ),
         CheckConstraint(

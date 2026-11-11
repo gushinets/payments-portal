@@ -43,13 +43,13 @@ def authenticate_kernel(request: Request) -> KernelPrincipal:
 
 
 def authorize_exchange(principal: Annotated[KernelPrincipal, Depends(authenticate_kernel)]) -> KernelPrincipal:
-    if "kernel-session:exchange" not in principal.permissions:
+    if KernelAccessPermission.EXCHANGE not in principal.permissions:
         raise HTTPException(403, detail={"code": "kernel_session_forbidden"})
     return principal
 
 
 def authorize_introspection(principal: Annotated[KernelPrincipal, Depends(authenticate_kernel)]) -> KernelPrincipal:
-    if "kernel-session:introspect" not in principal.permissions:
+    if KernelAccessPermission.INTROSPECT not in principal.permissions:
         raise HTTPException(403, detail={"code": "kernel_session_forbidden"})
     return principal
 
@@ -58,7 +58,7 @@ async def authorize_snapshot(request: Request) -> KernelPrincipal:
     # Header-only authentication must not queue behind the shared sale threads
     # before reaching the reserved local read capacity.
     principal = authenticate_kernel(request)
-    if "access-snapshot:read" not in principal.permissions:
+    if KernelAccessPermission.READ_SNAPSHOT not in principal.permissions:
         raise HTTPException(403, detail={"code": "access_snapshot_forbidden"})
     if set(request.query_params) != {"tenant_id", "region"}:
         raise HTTPException(422, detail={"code": "access_snapshot_scope_required"})

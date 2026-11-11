@@ -28,7 +28,7 @@ class PaidReadResources:
         self.cleanup_timeout_seconds = cleanup_timeout_seconds
         self.engine = engine
         self.limiter = anyio.CapacityLimiter(PAID_READ_CONCURRENCY)
-        self.tasks: set[asyncio.Task] = set()
+        self.tasks: set[asyncio.Task[object]] = set()
         self.closed = False
 
     async def read(self, configuration: Settings, token: str) -> PaidRead:

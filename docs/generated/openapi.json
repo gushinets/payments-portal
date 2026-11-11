@@ -974,12 +974,7 @@
             "type": "string"
           },
           "provenance": {
-            "enum": [
-              "SIMULATED",
-              "CONFIGURED_SOURCE"
-            ],
-            "title": "Provenance",
-            "type": "string"
+            "$ref": "#/components/schemas/SourceProvenance"
           },
           "quantity": {
             "minimum": 0.0,
@@ -1421,12 +1416,7 @@
             "$ref": "#/components/schemas/TechnicalOffer"
           },
           "provenance": {
-            "enum": [
-              "SIMULATED",
-              "CONFIGURED_SOURCE"
-            ],
-            "title": "Provenance",
-            "type": "string"
+            "$ref": "#/components/schemas/SourceProvenance"
           },
           "source_digest": {
             "pattern": "^sha256:[0-9a-f]{64}$",

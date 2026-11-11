@@ -20,7 +20,7 @@ from app.domains.catalog.contracts import (
     SourceProvenance,
 )
 from app.infrastructure.preflight import PreflightBudget
-from app.domains.billing.work_contracts import InvalidationDelivery
+from app.domains.billing.work_contracts import InvalidationDelivery, InvalidationFailureCode
 
 
 MANIFEST_PATH = "/internal/v1/capability-manifest"
@@ -68,7 +68,9 @@ class KernelTimeout(KernelError):
 
 
 class KernelInvalidationFailed(KernelError):
-    def __init__(self, code: str, *, permanent: bool) -> None:
+    code: InvalidationFailureCode
+
+    def __init__(self, code: InvalidationFailureCode, *, permanent: bool) -> None:
         super().__init__(code)
         self.permanent = permanent
 
@@ -251,20 +253,20 @@ class PlatformKernelClient:
                     status = response.status_code
                     if status != 204:
                         raise KernelInvalidationFailed(
-                            "kernel_invalidation_authentication_failed"
+                            InvalidationFailureCode.AUTHENTICATION_FAILED
                             if status == 401
-                            else "kernel_invalidation_scope_forbidden"
+                            else InvalidationFailureCode.SCOPE_FORBIDDEN
                             if status == 403
-                            else "kernel_invalidation_unavailable"
+                            else InvalidationFailureCode.UNAVAILABLE
                             if status == 429 or 500 <= status <= 599
-                            else "kernel_invalidation_contract_invalid",
+                            else InvalidationFailureCode.CONTRACT_INVALID,
                             permanent=not (status == 429 or 500 <= status <= 599),
                         )
                 budget.check()
             except httpx.TimeoutException:
-                raise KernelInvalidationFailed("kernel_invalidation_timeout", permanent=False) from None
+                raise KernelInvalidationFailed(InvalidationFailureCode.TIMEOUT, permanent=False) from None
             except httpx.TransportError:
-                raise KernelInvalidationFailed("kernel_invalidation_unavailable", permanent=False) from None
+                raise KernelInvalidationFailed(InvalidationFailureCode.UNAVAILABLE, permanent=False) from None
 
         await budget.run(send)
 

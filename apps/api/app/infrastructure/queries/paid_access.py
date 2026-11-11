@@ -177,7 +177,7 @@ def missing_deadline_users(
     region: str,
     limit: int,
     *,
-    permitted_provenances: tuple[str, ...] = ("CONFIGURED_SOURCE", "SIMULATED"),
+    permitted_provenances: tuple[str, ...] | None = None,
 ) -> list[UUID]:
     """Persisted scope/identity, independent of today's source account setting."""
     allowance_end = (
@@ -200,7 +200,9 @@ def missing_deadline_users(
         BillingWorkItem.next_attempt_at <= metering_deadline,
     )
     needs_repair = ~scheduled
-    if "SIMULATED" not in permitted_provenances:
+    # Application supplies this optional storage filter; persistence does not
+    # interpret provenance vocabularies or decide environment policy.
+    if permitted_provenances is not None:
         unpermitted = exists().where(
             ExternalSubscription.subscription_id == BillingProductAccessScope.primary_subscription_id,
             ExternalSubscription.purchase_intent_id == PurchaseIntent.purchase_intent_id,

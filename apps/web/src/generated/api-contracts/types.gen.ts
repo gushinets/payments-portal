@@ -621,10 +621,7 @@ export type PaidAccessAllowanceResponse = {
      * Product Id
      */
     product_id: string;
-    /**
-     * Provenance
-     */
-    provenance: 'SIMULATED' | 'CONFIGURED_SOURCE';
+    provenance: SourceProvenance;
     /**
      * Quantity
      */
@@ -865,10 +862,7 @@ export type PurchaseTechnicalTermsResponse = {
      */
     digest: string;
     offer: TechnicalOffer;
-    /**
-     * Provenance
-     */
-    provenance: 'SIMULATED' | 'CONFIGURED_SOURCE';
+    provenance: SourceProvenance;
     /**
      * Source Digest
      */

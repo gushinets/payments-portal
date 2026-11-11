@@ -95,9 +95,39 @@ class WebhookDeliveryState(StrEnum):
     IGNORED = "ignored"
 
 
+class BillingWorkKind(StrEnum):
+    SUBSCRIPTION_RECONCILIATION = "subscription_reconciliation"
+    SUBSCRIPTION_TRUST_EXPIRY = "subscription_trust_expiry"
+    BILLING_ENROLLMENT_SWEEP = "billing_enrollment_sweep"
+    CUSTOMER_INVENTORY = "customer_inventory"
+    EXTERNAL_CREATE_DEADLINE = "external_create_deadline"
+    EXTERNAL_CREATE_RECOVERY = "external_create_recovery"
+    ACCESS_INVALIDATION = "access_invalidation"
+
+
+class BillingWorkState(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    INVALID = "invalid"
+    DONE = "done"
+    PAUSED = "paused"
+
+
+class BillingWorkScope(StrEnum):
+    BILLING_ACCOUNT = "billing_account"
+    SUBSCRIPTION = "subscription"
+    CUSTOMER = "customer"
+    CREATE_OPERATION = "create_operation"
+    USER = "user"
+
+
 __all__ = [
     "AcceptanceKind",
     "BillingStateObservationKind",
+    "BillingWorkKind",
+    "BillingWorkScope",
+    "BillingWorkState",
     "ExternalBillingCustomerBindingState",
     "ExternalCreateOperationKind",
     "ExternalCreateOperationState",

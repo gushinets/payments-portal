@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
+from app.core.settings import AppEnv
+from app.domains.catalog.contracts import SourceProvenance
 from app.domains.billing.reconciliation_contracts import CommercialProof, IdentityProof, SubscriptionProof
 from app.models import ExternalSubscriptionFinancialAccessStatus as Financial
 from app.models import ExternalSubscriptionLifecycleStatus as Lifecycle
@@ -19,15 +21,19 @@ class MeteringPolicy(StrEnum):
     NONPRODUCTION = "nonproduction"
 
     @classmethod
-    def for_environment(cls, environment: str) -> "MeteringPolicy":
-        return cls.CONFIGURED_ONLY if environment == "production" else cls.NONPRODUCTION
+    def for_environment(cls, environment: AppEnv) -> "MeteringPolicy":
+        return cls.CONFIGURED_ONLY if environment == AppEnv.PRODUCTION else cls.NONPRODUCTION
 
-    def permits(self, provenance: str | None) -> bool:
+    def permits(self, provenance: SourceProvenance | None) -> bool:
         return provenance in self.provenances
 
     @property
-    def provenances(self) -> tuple[str, ...]:
-        return ("CONFIGURED_SOURCE", "SIMULATED") if self == self.NONPRODUCTION else ("CONFIGURED_SOURCE",)
+    def provenances(self) -> tuple[SourceProvenance, ...]:
+        return (
+            (SourceProvenance.CONFIGURED_SOURCE, SourceProvenance.SIMULATED)
+            if self == self.NONPRODUCTION
+            else (SourceProvenance.CONFIGURED_SOURCE,)
+        )
 
 
 def paid_decision(proof: SubscriptionProof, *, review: bool = False) -> PaidDecision:

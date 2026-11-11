@@ -16,6 +16,7 @@ from app.domains.billing.paid_policy import MeteringPolicy
 from app.domains.billing.reconciliation_contracts import RECONCILIATION_SCHEMA, IdentityProof, CommercialProof
 from app.domains.billing.reconciliation import SOURCE_TRUST
 from app.domains.catalog.publication import SessionFactory
+from app.domains.catalog.contracts import SourceProvenance
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases.technical_terms import AcceptedTechnicalTerms
 from app.infrastructure.queries import paid_read as queries
@@ -46,7 +47,7 @@ class ProductEvidence:
 class PaidRead:
     revision: int
     document: EffectiveState
-    provenance: dict[str, str]
+    provenance: dict[str, SourceProvenance]
     committed_at: datetime | None
     read_at: datetime
     products: tuple[ProductEvidence, ...]
@@ -66,7 +67,7 @@ class SnapshotRead:
 class CommittedPaidState:
     revision: int
     document: EffectiveState
-    provenance: dict[str, str]
+    provenance: dict[str, SourceProvenance]
     committed_at: datetime | None
     scopes: dict[str, BillingProductAccessScope]
 

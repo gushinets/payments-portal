@@ -23,6 +23,7 @@ from app.models import (
     BillingStateObservation,
     BillingStateObservationKind,
     BillingWorkItem,
+    BillingWorkKind,
     ExternalSubscription,
     ExternalSubscriptionFinancialAccessStatus as Financial,
 )
@@ -98,13 +99,16 @@ def enroll_batch(factory: SessionFactory, configuration: Settings) -> int:
 
 def repair_paid_deadlines(factory: SessionFactory, configuration: Settings) -> int:
     """Bounded missing set is its own progress marker; no source config or HTTP."""
+    policy = MeteringPolicy.for_environment(configuration.app_env)
     with factory() as db:
         users = paid_access.missing_deadline_users(
             db,
             configuration.instance_tenant_id,
             configuration.instance_region,
             configuration.billing_worker_scan_batch_size,
-            permitted_provenances=MeteringPolicy.for_environment(configuration.app_env).provenances,
+            permitted_provenances=tuple(provenance.value for provenance in policy.provenances)
+            if policy == MeteringPolicy.CONFIGURED_ONLY
+            else None,
         )
     repaired = 0
     for identity in users:
@@ -116,7 +120,7 @@ def repair_paid_deadlines(factory: SessionFactory, configuration: Settings) -> i
                     user,
                     None,
                     as_utc(billing_reconciliation.database_now(db)),
-                    metering_policy=MeteringPolicy.for_environment(configuration.app_env),
+                    metering_policy=policy,
                 )
                 db.commit()
                 repaired += 1
@@ -162,7 +166,7 @@ def claim_work(factory: SessionFactory, configuration: Settings, lane: WorkLane)
             db,
             (SWEEP, EXPIRY, "external_create_deadline")
             if lane == WorkLane.LOCAL
-            else ("access_invalidation",)
+            else (BillingWorkKind.ACCESS_INVALIDATION,)
             if lane == WorkLane.DELIVERY
             else (RECONCILIATION, "external_create_recovery", "customer_inventory"),
             now,

@@ -11,6 +11,8 @@ from app.models import (
     BillingProductAccessScope,
     BillingStateObservation,
     BillingWorkItem,
+    BillingWorkKind,
+    BillingWorkState,
     ExternalSubscription,
     ExternalBillingCustomer,
     ExternalCreateOperation,
@@ -94,7 +96,7 @@ def claimable(
                 User.tenant_id == tenant,
                 User.region == region,
             ),
-            (BillingWorkItem.work_kind == "access_invalidation")
+            (BillingWorkItem.work_kind == BillingWorkKind.ACCESS_INVALIDATION)
             & exists().where(
                 func.cast(User.id, Text) == BillingWorkItem.scope_reference,
                 User.tenant_id == tenant,
@@ -181,9 +183,9 @@ def by_key(db: Session, kind: str, key: str, *, lock: bool = False) -> BillingWo
 
 def missing_invalidations(db: Session, tenant: str, region: str, limit: int) -> list[UUID]:
     enrolled = exists().where(
-        BillingWorkItem.work_kind == "access_invalidation",
+        BillingWorkItem.work_kind == BillingWorkKind.ACCESS_INVALIDATION,
         BillingWorkItem.coalescing_key == func.cast(AccessInvalidationOutbox.user_id, Text),
-        BillingWorkItem.work_state.in_(("pending", "running", "invalid")),
+        BillingWorkItem.work_state.in_((BillingWorkState.PENDING, BillingWorkState.RUNNING, BillingWorkState.INVALID)),
     )
     return list(
         db.scalars(
@@ -228,7 +230,7 @@ def backlog(
                     "external_create_recovery",
                     "external_create_deadline",
                     "customer_inventory",
-                    "access_invalidation",
+                    BillingWorkKind.ACCESS_INVALIDATION,
                 )
             ),
             or_(
@@ -250,7 +252,7 @@ def backlog(
                     User.region == region,
                 ),
                 source_scope,
-                (BillingWorkItem.work_kind == "access_invalidation")
+                (BillingWorkItem.work_kind == BillingWorkKind.ACCESS_INVALIDATION)
                 & exists().where(
                     func.cast(User.id, Text) == BillingWorkItem.scope_reference,
                     User.tenant_id == tenant,

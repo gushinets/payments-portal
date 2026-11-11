@@ -12,7 +12,7 @@ from sqlalchemy import event
 from sqlalchemy.exc import OperationalError
 
 from app.core.database import SessionLocal
-from app.core.settings import Settings, settings
+from app.core.settings import KernelAccessPermission, Settings, settings
 from app.domains.identity.services import kernel_delegation as delegation
 from app.domains.identity.services.auth import validate_session
 from app.http.kernel_session_policy import KernelErrorResponse
@@ -34,7 +34,7 @@ def isolated_delegation_settings() -> Iterator[None]:
         settings,
         kernel_access_service_token=SecretStr(SERVICE_TOKEN),
         kernel_access_service_token_previous=SecretStr(PREVIOUS_TOKEN),
-        kernel_access_permissions=("kernel-session:exchange", "kernel-session:introspect"),
+        kernel_access_permissions=(KernelAccessPermission.EXCHANGE, KernelAccessPermission.INTROSPECT),
         paid_access_clock_skew_seconds=5,
     ):
         yield
