@@ -1,14 +1,15 @@
 # Common product backend API
 
-Status: **AUTH/ACCESS, DELIVERY, USAGE/EXHAUSTION AND CABINET READBACK IMPLEMENTED — ANY-766 Steps 12–15, 2026-11-11.**
+Status: **LOCAL SCOPE IMPLEMENTED — ANY-766 Steps 1–17, 2026-11-11; focused acceptance complete, PR review pending.**
 Consumer-bound delegation V2, configured callbacks, the persisted policy guard,
 consumer-filtered AccessSnapshot V3 and Kernel's durable consumer/P/R coherence
 are implemented. Generated OpenAPI documents actual routes, security, schemas,
 examples and refusals. Technical source/owner routing preserves purchased history.
 Step 13 implements recipient-partitioned delivery. Step 14 implements Kernel usage
 V1 and durable backend exhaustion hints; cabinet usage is implemented in Step 15;
-assembled paid browser/execution acceptance remains Step 16, build/install Step 17.
-Remote/live acceptance belongs to ANY-767. Synthetic providers and the second
+Step 16 supplies focused assembled local paid browser/execution acceptance and
+Step 17 build/install preparation. The full matrix and remote/live acceptance
+belong to ANY-767. Synthetic providers and the second
 consumer establish protocol behavior, not a real payment or third-party adoption.
 
 Authority: [ADR 0005](../../architecture/decisions/0005-external-billing-boundary.md),
@@ -73,6 +74,12 @@ credentials; they are not accepted field names in the runtime registry.
 ```
 
 ### Implemented Step 10 settings and cutover
+
+Step-specific migration paragraphs below retain the historical Steps 10–13
+cutover checkpoints. The current pair requires Portal `20261111_0011` and Kernel
+`0021`, delegation V2 and snapshot V3. For installation use the
+[paired compatibility/cutover procedure](../../architecture/deployment.md#paired-compatibility-and-synchronized-cutover),
+not an intermediate checkpoint's migration head.
 
 `BACKEND_CONSUMERS` is a JSON array (at most 16 entries), parsed by Portal
 `app/core/backend_consumers.py` and `Settings`. Each entry requires the identity,

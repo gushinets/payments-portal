@@ -16,8 +16,8 @@ Widget with fresh original-purchase proof. ANY-715 adds embedded subscription
 reconciliation, GET-only recovery and audited operations. ANY-765 adds committed
 paid-access reads and cabinet presentation. ANY-766 implements delegated
 identity, consumer-scoped snapshot V3, durable Kernel invalidations and recoverable paid browser
-launch. Step 15 adds actual current/historical usage in the cabinet; paired local
-acceptance remains Step 16; the
+launch. Step 15 adds actual current/historical usage in the cabinet; Steps 16/17
+supply focused local acceptance and build/install preparation. The
 [active plan](../exec-plans/active/ANY-766-implementation-plan.md) records that scope.
 ANY-664's v1 publication/DB-only catalog is historical. Current listing discovers
 enabled Kernel products; details/review read selected live LBX offers.
@@ -191,7 +191,7 @@ names and ownership decisions.
 | Purchase/payment Widget entry | External Billing with Portal orchestration and generated contracts | ANY-709 implements Buy/Continue/Manage, review/consent and fresh verified payment presentation |
 | Subscription/billing state | Step 7 preparation/history plus ANY-715 authoritative normalized observations with finite source trust | Preparation is not payment verification; reconciliation facts are not paid grants; no new UI state contract is claimed |
 | Provider reconciliation/recovery | ANY-715 embedded polling, GET-only recovery/inventory and provider-free deadlines over authoritative External Billing reads | Step 8 implemented; polling-only; webhook receiver removed; verification scope/results are in the [completed ANY-715 plan](../exec-plans/completed/ANY-715-mvp-rebuild-plan.md#stage-6-verification-and-handoff--2026-11-06) |
-| Confirmed paid-access state and delivery | ANY-765 committed provider-neutral projection from shared authoritative observations | Local authenticated cabinet read, ANY-766 snapshot V3 and durable invalidation delivery implemented; paired acceptance remains ANY-766 Step 16 |
+| Confirmed paid-access state and delivery | ANY-765 committed provider-neutral projection from shared authoritative observations | Local authenticated cabinet read, ANY-766 snapshot V3 and durable invalidation delivery implemented; Step 16 supplies focused paired local acceptance |
 | Actual usage and remaining quota | Each saved backend owner retains persisted usage; Portal `/api/paid-usage` selects and validates readback | ANY-766 Step 15 displays actual current/historical counters and read time; unobserved/unavailable states contain no invented counters |
 
 The Portal owns identity/legal, the billing anti-corruption, observation/projection,
@@ -209,7 +209,9 @@ contracts. ANY-664 adds the Step 6 producer for immutable mapping revisions;
 ANY-709 adds purchase UI/preparation; ANY-715 adds operating reconciliation/recovery;
 ANY-765 adds committed paid projection and cabinet reads. ANY-766 implements
 snapshot/invalidation transport, Kernel paid admission and recoverable paid
-browser launch and current/historical cabinet usage; paired local acceptance remains Step 16. See the
+browser launch and current/historical cabinet usage. Steps 16/17 supply focused
+local acceptance and build/install preparation; full and remote/live acceptance
+remain ANY-767 work. See the
 [purchase runbook](../engineering/ANY-709-billing-runbook.md) and
 [current billing operations guide](../engineering/billing-background-operations.md).
 
@@ -249,9 +251,9 @@ business facts. Their owning steps must supply authoritative data/actions:
 
 Step 9 current-version live acceptance remains partial. Parent Step 10 (ANY-766)
 has implemented the server identity/access/delivery boundary and recoverable paid
-browser launch and cabinet usage; joint local acceptance and build preparation
-remain its pending work. Parent
-Step 11 (ANY-767) owns remote/live acceptance and production rollout.
+browser launch and cabinet usage; focused joint local acceptance and build/install
+preparation are complete in the agreed scope. Parent Step 11 (ANY-767) owns the
+deferred full matrix, remote/live acceptance and production rollout.
 Step 7 acceptance and review status are recorded in ANY-709.
 Provider-dependent semantics and launch retain the Phase 0 gates. No step may
 treat an unavailable source as “no subscription”, “no access”, a default/free

@@ -579,7 +579,7 @@ transitions. Reuse these owners when changing either path:
   preparation observations. ANY-765 adds committed paid state and authenticated
   cabinet reads. ANY-766 now implements consumer-scoped snapshot V3, durable
   policy/access floors and Kernel invalidation delivery;
-  cabinet usage remains pending. Preparation grants no paid access.
+  cabinet usage is implemented separately in Step 15. Preparation grants no paid access.
 - Payment presentation requires a committed complete identity/commercial match,
   supported nonterminal lifecycle and final local session/customer/purchase
   admission after Client readiness. Waiting/unpaid and financially blocked
@@ -636,8 +636,11 @@ empty; unavailable reads are never presented as empty. Product evidence is bound
 to 100 entries with `evidence_complete=false` when truncated; committed grants and
 allowances are not truncated. Technical terms retain their `SIMULATED` or
 `CONFIGURED_SOURCE` provenance; legacy purchases without terms stay unknown.
-Actual usage and remaining quota remain unavailable. Production cannot derive
-simulated metering; this read does not implement Kernel enforcement or delivery.
+This endpoint does not return actual usage or remaining quota; the cabinet reads
+those separately through `GET /api/paid-usage`, as described in the
+[usage guide](../contracts/product-backend-api/README.md#implemented-step-15-cabinet-usage).
+Production cannot derive simulated metering; this local read does not implement
+Kernel enforcement or delivery.
 
 ## Verification commands
 

@@ -45,7 +45,8 @@ paid projection, allowances, revisions/outbox and autonomous expiry. ANY-766
 implements session delegation, consumer-scoped snapshot V3 and durable invalidation delivery;
 Kernel provides coherent paid admission and ownership. Step 8 implements
 recoverable paid browser launch. Step 15 implements isolated cabinet usage;
-paired local acceptance remains Step 16. See the
+Step 16 supplies focused paired local acceptance and Step 17 build/install
+preparation; full and remote/live acceptance remain deferred to ANY-767. See the
 [billing operations guide](engineering/billing-background-operations.md). The sole long-term
 production target is external-billing-managed.
 
@@ -147,9 +148,6 @@ trust boundary under ANY-541.
 - Remaining real-source acceptance and approved production sales/metering
   enablement. Step 9's current-version test-LBX checkpoint remains partial;
   historical positive QA does not establish live allowance delivery or launch.
-- Remaining ANY-766 paired local acceptance and build preparation.
-  Workflow execution, artifacts, actual usage and quota enforcement belong to
-  the separate Platform Kernel repository.
 - ANY-767 deployed billing journey, natural-renewal acceptance and production
   rollout.
 

@@ -31,25 +31,26 @@ plans do not override accepted sources.
 
 ## Observed implementation
 
-Current local sources: Portal `9632ec4ce440fa17d8463f230b98df7cccccc934`
-and Kernel `36be7fa3c3147b032b97f050a898a97423db2070`, plus the paired
-Steps 14/15 working-tree changes.
+Historical Steps 14/15 source inspection: Portal `9632ec4ce440fa17d8463f230b98df7cccccc934`
+and Kernel `36be7fa3c3147b032b97f050a898a97423db2070`, plus the then-uncommitted
+paired changes. These pins identify that checkpoint, not current branch tips.
 The [active plan](../exec-plans/active/ANY-766-implementation-plan.md) records
-completed Steps 1–15: common identity V2, configured consumer callbacks and the
-policy guard, consumer-filtered V3 paid admission with independent durable P/R
+completed Steps 1–17 in the agreed local scope: common identity V2, configured
+consumer callbacks and the policy guard, consumer-filtered V3 paid admission with independent durable P/R
 floors, and V1 invalidation. Step 11 adds configured technical sources and
 immutable source/owner history.
 Step 13 partitions delivery by recipient; Step 14 adds usage readback and durable
 exhaustion hints. Step 15 adds isolated cabinet usage reads and current/historical
-presentation; assembled local acceptance and build preparation remain Steps 16/17. Current identity configuration is in the
+presentation. Steps 16/17 supply focused assembled local acceptance and build/install
+preparation; the full matrix and remote/live acceptance remain ANY-767 work.
+Current identity configuration is in the
 [common guide](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).
-Remote installation and live-service acceptance belong to ANY-767.
 
 | Operation / request direction | Payload producer | Payload consumer / receiver | Verification status |
 | --- | --- | --- | --- |
-| `GET /internal/v1/capability-manifest`: Portal -> Kernel | Service-authenticated Kernel endpoint implemented; separate Portal development mock remains optional | Portal typed HTTP client implemented | Source inspected; local fixture evidence does not establish current joint conformance |
-| `GET /internal/v1/access-snapshots/{user_id}`: Kernel -> Portal | Step 12 serves consumer-filtered read-only V3 | Step 12 adds durable consumer/P/R coherence while retaining ANY-507 admission | Paired local acceptance remains Step 16 |
-| `POST /internal/v1/access-invalidations`: Portal -> Kernel | ANY-766 Step 7 implements bounded claimed delivery, exact-N ACK, restart repair and parked-work CLI | Kernel Step 6 implements the durable receiver; permission is disabled by default | Focused local PostgreSQL delivery tests with synthetic HTTP responses; paired HTTP acceptance remains Step 16 |
+| `GET /internal/v1/capability-manifest`: Portal -> Kernel | Service-authenticated Kernel endpoint implemented; separate Portal development mock remains optional | Portal typed HTTP client implemented | Focused Step 16 real-app local acceptance with explicit external substitutes; no live/deployed acceptance claimed |
+| `GET /internal/v1/access-snapshots/{user_id}`: Kernel -> Portal | Step 12 serves consumer-filtered read-only V3 | Step 12 adds durable consumer/P/R coherence while retaining ANY-507 admission | Focused Step 16 paired local HTTP/PostgreSQL acceptance; full matrix deferred |
+| `POST /internal/v1/access-invalidations`: Portal -> Kernel | ANY-766 Step 7 implements bounded claimed delivery, exact-N ACK, restart repair and parked-work CLI | Kernel Step 6 implements the durable receiver; permission is disabled by default | Focused PostgreSQL delivery checks and Step 16 paired HTTP acceptance; full matrix deferred |
 
 Portal's enabled embedded worker now selects each snapshot recipient's origin
 and outgoing credential from `BACKEND_CONSUMERS`; legacy Kernel connection
@@ -303,8 +304,8 @@ composition. Kernel `0021` and Portal `20261111_0011` extend previous heads with
 resetting usage, purchases or queue history. V1 wire/fixture bytes are unchanged.
 See the common backend guide's implemented Step 14 section for settings, errors,
 lease/recovery and enablement. Local PostgreSQL and synthetic reverse transport
-are covered; actual paired browser/HTTP acceptance remains Step 16. Live/deployed
-acceptance is not claimed.
+are covered. Step 16 below supplies focused paired local browser/HTTP acceptance;
+the full matrix and live/deployed acceptance remain deferred to ANY-767.
 
 ## ANY-766 Step 16 — focused local acceptance
 
