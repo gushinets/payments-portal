@@ -71,7 +71,7 @@ describe("direct account authentication and session", () => {
     window.localStorage.clear();
     fetchMock.mockReset();
     purchasesFetchMock.mockReset().mockImplementation(async () => jsonResponse({ purchases: [{ ...savedPurchase, created_at: "2026-10-27T12:00:00Z" }], next_cursor: null }));
-    vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/paid-access") ? Promise.resolve(Response.json(paidState({ access_revision: 0, grants: [], allowances: [], products: [], effective_until: null }))) : String(input).endsWith("/api/purchase-intents")
+    vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/paid-access") ? Promise.resolve(Response.json(paidState({ access_revision: 0, grants: [], allowances: [], products: [], effective_until: null }))) : String(input).endsWith("/api/paid-usage") ? Promise.resolve(Response.json({ access_revision: 0, items: [] })) : String(input).endsWith("/api/purchase-intents")
       ? purchasesFetchMock(input, init) : String(input).includes("/api/purchase-intents/current?")
         ? Promise.resolve(jsonResponse({ purchase: null })) : fetchMock(input, init)) satisfies typeof fetch);
   });

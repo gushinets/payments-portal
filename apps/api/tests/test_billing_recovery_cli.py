@@ -199,9 +199,16 @@ def test_invalidation_harness_forwards_user_and_recipient(monkeypatch: pytest.Mo
 
     monkeypatch.setattr(repo, "direct_api_environment", lambda: {})
     monkeypatch.setattr(repo.subprocess, "run", run)
-    arguments = repo.build_parser().parse_args([
-        "billing-purchase", action, "--user-id", user_id, "--recipient-id", "platform-kernel",
-    ])
+    arguments = repo.build_parser().parse_args(
+        [
+            "billing-purchase",
+            action,
+            "--user-id",
+            user_id,
+            "--recipient-id",
+            "platform-kernel",
+        ]
+    )
     with pytest.raises(SystemExit) as outcome:
         arguments.func(arguments)
     assert outcome.value.code == 0

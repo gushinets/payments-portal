@@ -19,7 +19,9 @@ from .support.backend_consumers import backend_consumer
 
 @pytest.mark.parametrize("override", [None, "https://override.invalid/tools", ""])
 def test_real_dotenv_forwards_kernel_web_build_origin(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, override: str | None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    override: str | None,
 ) -> None:
     harness = tmp_path / ".harness"
     monkeypatch.setattr(repo, "HARNESS_DIR", harness)

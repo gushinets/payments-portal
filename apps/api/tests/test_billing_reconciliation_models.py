@@ -155,6 +155,7 @@ def test_target_reconciliation_model_columns_are_exact() -> None:
         "work_kind",
         "scope_kind",
         "scope_reference",
+        "recipient_id",
         "coalescing_key",
         "payload_schema_version",
         "payload_document",
@@ -232,6 +233,7 @@ def test_nullable_slots_are_limited_to_the_approved_contract() -> None:
         "last_error_classification",
     }
     assert _nullable_columns(BillingWorkItem) == {
+        "recipient_id",
         "last_attempt_started_at",
         "active_recovery_deadline_at",
         "coalescing_key",
@@ -432,6 +434,7 @@ def test_step_4_safe_checks_are_exact() -> None:
         "ck_external_billing_webhook_deliveries_evidence_schema_nonempty",
     }
     assert _check_names(BillingWorkItem) == {
+        "ck_billing_work_items_recipient",
         "ck_billing_work_items_payload_schema_nonempty",
         "ck_billing_work_items_lease_pair",
         "ck_billing_work_items_generation_nonnegative",

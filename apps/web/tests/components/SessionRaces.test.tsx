@@ -47,7 +47,7 @@ function changeSession(token: string | null, event: "same-tab" | "storage" = "sa
 }
 
 describe.each(["account", "header", "verification"])("%s session races", (entry) => {
-  beforeEach(() => { window.localStorage.clear(); fetchMock.mockReset(); vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/paid-access") ? Promise.resolve(Response.json(paidState({ access_revision: 0, grants: [], allowances: [], products: [], effective_until: null }))) : String(input).endsWith("/api/purchase-intents") ? Promise.resolve(json({ purchases: [], next_cursor: null })) : fetchMock(input, init)) satisfies typeof fetch); });
+  beforeEach(() => { window.localStorage.clear(); fetchMock.mockReset(); vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/paid-access") ? Promise.resolve(Response.json(paidState({ access_revision: 0, grants: [], allowances: [], products: [], effective_until: null }))) : String(input).endsWith("/api/paid-usage") ? Promise.resolve(Response.json({ access_revision: 0, items: [] })) : String(input).endsWith("/api/purchase-intents") ? Promise.resolve(json({ purchases: [], next_cursor: null })) : fetchMock(input, init)) satisfies typeof fetch); });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   it.each(["success", "failure"])("ignores stale login %s after a newer session", async (result) => {
@@ -150,7 +150,7 @@ describe.each(["account", "header", "verification"])("%s session races", (entry)
 });
 
 describe.each(["account", "verification"])("%s and header auth ownership", (entry) => {
-  beforeEach(() => { window.localStorage.clear(); fetchMock.mockReset(); vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/paid-access") ? Promise.resolve(Response.json(paidState({ access_revision: 0, grants: [], allowances: [], products: [], effective_until: null }))) : String(input).endsWith("/api/purchase-intents") ? Promise.resolve(json({ purchases: [], next_cursor: null })) : fetchMock(input, init)) satisfies typeof fetch); });
+  beforeEach(() => { window.localStorage.clear(); fetchMock.mockReset(); vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/paid-access") ? Promise.resolve(Response.json(paidState({ access_revision: 0, grants: [], allowances: [], products: [], effective_until: null }))) : String(input).endsWith("/api/paid-usage") ? Promise.resolve(Response.json({ access_revision: 0, items: [] })) : String(input).endsWith("/api/purchase-intents") ? Promise.resolve(json({ purchases: [], next_cursor: null })) : fetchMock(input, init)) satisfies typeof fetch); });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   const cases = (["page", "header"] as const).flatMap((first) =>
@@ -217,7 +217,7 @@ describe.each(["account", "verification"])("%s and header auth ownership", (entr
 });
 
 describe("adjacent mutation lifetime guards", () => {
-  beforeEach(() => { window.localStorage.clear(); fetchMock.mockReset(); vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/paid-access") ? Promise.resolve(Response.json(paidState({ access_revision: 0, grants: [], allowances: [], products: [], effective_until: null }))) : String(input).endsWith("/api/purchase-intents") ? Promise.resolve(json({ purchases: [], next_cursor: null })) : fetchMock(input, init)) satisfies typeof fetch); });
+  beforeEach(() => { window.localStorage.clear(); fetchMock.mockReset(); vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/paid-access") ? Promise.resolve(Response.json(paidState({ access_revision: 0, grants: [], allowances: [], products: [], effective_until: null }))) : String(input).endsWith("/api/paid-usage") ? Promise.resolve(Response.json({ access_revision: 0, items: [] })) : String(input).endsWith("/api/purchase-intents") ? Promise.resolve(json({ purchases: [], next_cursor: null })) : fetchMock(input, init)) satisfies typeof fetch); });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   it("only auth attempts participate in shared ownership", () => {
@@ -296,7 +296,7 @@ describe("adjacent mutation lifetime guards", () => {
 });
 
 describe.each(["account", "verification"])("%s explicit logout", (entry) => {
-  beforeEach(() => { window.localStorage.clear(); fetchMock.mockReset(); vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/paid-access") ? Promise.resolve(Response.json(paidState({ access_revision: 0, grants: [], allowances: [], products: [], effective_until: null }))) : String(input).endsWith("/api/purchase-intents") ? Promise.resolve(json({ purchases: [], next_cursor: null })) : fetchMock(input, init)) satisfies typeof fetch); });
+  beforeEach(() => { window.localStorage.clear(); fetchMock.mockReset(); vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/paid-access") ? Promise.resolve(Response.json(paidState({ access_revision: 0, grants: [], allowances: [], products: [], effective_until: null }))) : String(input).endsWith("/api/paid-usage") ? Promise.resolve(Response.json({ access_revision: 0, items: [] })) : String(input).endsWith("/api/purchase-intents") ? Promise.resolve(json({ purchases: [], next_cursor: null })) : fetchMock(input, init)) satisfies typeof fetch); });
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
   const logoutLabel = entry === "account"

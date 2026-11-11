@@ -92,21 +92,39 @@ async def test_actual_portal_kernel_tcp_auth_access_for_two_consumers(
     with tcp_server(app) as origin, httpx.Client(base_url=origin, trust_env=False) as client:
         cases = []
         for consumer in consumers:
-            response = client.post("/api/backend-session-codes", headers={"Authorization": "Bearer " + TOKEN}, json={
-                "consumer_id": consumer.consumer_id,
-                "code_challenge": pkce_challenge(verifier), "code_challenge_method": "S256",
-            })
+            response = client.post(
+                "/api/backend-session-codes",
+                headers={"Authorization": "Bearer " + TOKEN},
+                json={
+                    "consumer_id": consumer.consumer_id,
+                    "code_challenge": pkce_challenge(verifier),
+                    "code_challenge_method": "S256",
+                },
+            )
             assert response.status_code == 200
-            cases.append({"consumer_id": consumer.consumer_id, "code": response.json()["code"],
-                          "service_token": consumer.backend_to_portal_current_secret.get_secret_value(),
-                          "products": ["proposal_ai"] if consumer.consumer_id == "platform-kernel" else []})
+            cases.append(
+                {
+                    "consumer_id": consumer.consumer_id,
+                    "code": response.json()["code"],
+                    "service_token": consumer.backend_to_portal_current_secret.get_secret_value(),
+                    "products": ["proposal_ai"] if consumer.consumer_id == "platform-kernel" else [],
+                }
+            )
         environment = os.environ.copy()
         environment["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
-        environment["ANYTOOLAI_POSTGRES_TEST_DATABASE_URL"] = factory.kw["bind"].url.set(database="postgres").render_as_string(hide_password=False)
+        environment["ANYTOOLAI_POSTGRES_TEST_DATABASE_URL"] = (
+            factory.kw["bind"].url.set(database="postgres").render_as_string(hide_password=False)
+        )
         environment["ANYTOOLAI_DATABASE_URL"] = environment["ANYTOOLAI_POSTGRES_TEST_DATABASE_URL"]
-        result = subprocess.run([str(executable), str(probe)], cwd=kernel, env=environment,
-                                input=json.dumps({"portal_origin": origin, "verifier": verifier, "consumers": cases}),
-                                text=True, capture_output=True, timeout=90)
+        result = subprocess.run(
+            [str(executable), str(probe)],
+            cwd=kernel,
+            env=environment,
+            input=json.dumps({"portal_origin": origin, "verifier": verifier, "consumers": cases}),
+            text=True,
+            capture_output=True,
+            timeout=90,
+        )
         assert result.returncode == 0, result.stdout + result.stderr
         assert "PASS: two consumer-bound TCP exchanges" in result.stdout
         # Runtime Swagger/OpenAPI is served by the same actual application.

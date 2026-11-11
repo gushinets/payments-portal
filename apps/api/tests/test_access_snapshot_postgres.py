@@ -212,16 +212,25 @@ async def test_consumer_filtering_precedes_deadlines_and_policy_change_keeps_pai
         row.access_revision += 1
         row.effective_state_document = {
             **row.effective_state_document,
-            "grants": [*row.effective_state_document["grants"], {
-                "product_id": "synthetic_summary", "valid_until": end.isoformat(),
-            }],
+            "grants": [
+                *row.effective_state_document["grants"],
+                {
+                    "product_id": "synthetic_summary",
+                    "valid_until": end.isoformat(),
+                },
+            ],
         }
-        db.add(BillingProductAccessScope(
-            user_id=scenario[4], product_id="synthetic_summary",
-            effective_access_document={"grants": [{"product_id": "synthetic_summary", "valid_until": end.isoformat()}],
-                                       "allowances": []},
-            effective_access_until=end,
-        ))
+        db.add(
+            BillingProductAccessScope(
+                user_id=scenario[4],
+                product_id="synthetic_summary",
+                effective_access_document={
+                    "grants": [{"product_id": "synthetic_summary", "valid_until": end.isoformat()}],
+                    "allowances": [],
+                },
+                effective_access_until=end,
+            )
+        )
         revision = row.access_revision
         db.commit()
     summary_headers = headers(summary.backend_to_portal_current_secret.get_secret_value())
@@ -310,9 +319,13 @@ async def test_snapshot_policy_change_cannot_transfer_retained_allowance(
         item["allowance_id"] for item in original.json()["allowances"]
     ]
     assert billing_snapshot(factory) == before
-    restored = config.model_copy(update={"backend_consumers": tuple(
-        consumer.model_copy(update={"consumer_policy_revision": 3}) for consumer in (kernel, summary)
-    )})
+    restored = config.model_copy(
+        update={
+            "backend_consumers": tuple(
+                consumer.model_copy(update={"consumer_policy_revision": 3}) for consumer in (kernel, summary)
+            )
+        }
+    )
     initialize_backend_consumers(restored, factory)
     monkeypatch.setattr(backend_auth, "settings", restored)
     monkeypatch.setattr(snapshot_router, "settings", restored)
