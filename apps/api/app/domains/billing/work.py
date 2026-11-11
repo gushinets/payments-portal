@@ -159,7 +159,11 @@ def ensure_sweep(factory: SessionFactory, configuration: Settings) -> None:
         db.commit()
 
 
-def claim_work(factory: SessionFactory, configuration: Settings, lane: WorkLane) -> WorkClaim | None:
+def claim_work(
+    factory: SessionFactory, configuration: Settings, lane: WorkLane, *, recipient_id: str | None = None
+) -> WorkClaim | None:
+    if lane == WorkLane.DELIVERY and recipient_id is None:
+        raise ValueError("Delivery claims require a recipient")
     with factory() as db:
         now = as_utc(billing_reconciliation.database_now(db))
         row = queries.claimable(
@@ -178,6 +182,7 @@ def claim_work(factory: SessionFactory, configuration: Settings, lane: WorkLane)
             local_scope=(configuration.instance_tenant_id, configuration.instance_region)
             if lane in (WorkLane.LOCAL, WorkLane.DELIVERY)
             else None,
+            recipient_id=recipient_id,
             urgent_before=now + URGENT_TRUST_WINDOW,
             urgent_attempt_before=now - timedelta(seconds=URGENT_SECONDS),
         )
@@ -196,6 +201,7 @@ def claim_work(factory: SessionFactory, configuration: Settings, lane: WorkLane)
             row.enqueue_generation,
             now,
             row.lease_expires_at,
+            row.recipient_id,
         )
         db.commit()
         # A failed/uncertain commit cannot return ownership or start HTTP.
@@ -210,6 +216,7 @@ def verify_claim(db: Session, claim: WorkClaim) -> BillingWorkItem:
         or row.work_state != "running"
         or row.work_kind != claim.kind
         or row.scope_reference != claim.reference
+        or row.recipient_id != claim.recipient_id
         or row.lease_owner != claim.owner
         or row.lease_expires_at is None
         or as_utc(row.lease_expires_at) <= now

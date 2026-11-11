@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     AccessInvalidationOutbox,
+    BackendConsumerPolicy,
     BillingProductAccessScope,
     BillingStateObservation,
     ExternalBillingCustomer,
@@ -86,9 +87,41 @@ def state(db: Session, user_id: UUID) -> PaidAccessState | None:
     return db.scalar(select(PaidAccessState).where(PaidAccessState.user_id == user_id).with_for_update())
 
 
-def outbox(db: Session, user_id: UUID) -> AccessInvalidationOutbox | None:
+def outbox(db: Session, user_id: UUID, recipient_id: str) -> AccessInvalidationOutbox | None:
     return db.scalar(
-        select(AccessInvalidationOutbox).where(AccessInvalidationOutbox.user_id == user_id).with_for_update()
+        select(AccessInvalidationOutbox)
+        .where(
+            AccessInvalidationOutbox.user_id == user_id,
+            AccessInvalidationOutbox.recipient_id == recipient_id,
+        )
+        .with_for_update()
+    )
+
+
+def outboxes(db: Session, user_id: UUID) -> list[AccessInvalidationOutbox]:
+    return list(
+        db.scalars(
+            select(AccessInvalidationOutbox)
+            .where(
+                AccessInvalidationOutbox.user_id == user_id,
+            )
+            .order_by(AccessInvalidationOutbox.recipient_id)
+            .with_for_update()
+        )
+    )
+
+
+def snapshot_recipients(db: Session, tenant_id: str, region: str) -> list[str]:
+    return list(
+        db.scalars(
+            select(BackendConsumerPolicy.consumer_id)
+            .where(
+                BackendConsumerPolicy.tenant_id == tenant_id,
+                BackendConsumerPolicy.region == region,
+                BackendConsumerPolicy.snapshot_delivery_enabled.is_(True),
+            )
+            .order_by(BackendConsumerPolicy.consumer_id)
+        )
     )
 
 

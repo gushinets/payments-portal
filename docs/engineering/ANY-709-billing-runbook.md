@@ -43,8 +43,10 @@ With `BACKEND_CONSUMERS` configured, Step 11 selects each product's manifest
 origin and outgoing credential from its registered backend entry. See the
 [source configuration](../contracts/product-backend-api/README.md#implemented-step-11-technical-sources-and-history).
 Legacy `KERNEL_BASE_URL`/`KERNEL_SERVICE_TOKEN` still serve technical reads when
-the registry is empty and remain the Step 7 invalidation sender's connection
-until Step 13. Keep them aligned with the Kernel entry when delivery is enabled.
+the registry is empty. Step 13 invalidation delivery uses only the registered
+backend origin and outgoing key, independently for each snapshot consumer.
+Follow the [delivery cutover and recipient CLI](billing-background-operations.md#any-766-step-7--durable-kernel-invalidations)
+before starting the updated workers.
 They do not select another registered backend's manifest. Optional
 `KERNEL_MOCK_ENABLED=1` with explicit matching `KERNEL_MOCK_TOKEN` and
 `KERNEL_SERVICE_TOKEN` starts the development technical mock at

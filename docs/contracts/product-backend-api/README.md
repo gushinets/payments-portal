@@ -5,7 +5,8 @@ Consumer-bound delegation V2, configured callbacks, the persisted policy guard,
 consumer-filtered AccessSnapshot V3 and Kernel's durable consumer/P/R coherence
 are implemented. Generated OpenAPI documents actual routes, security, schemas,
 examples and refusals. Technical source/owner routing preserves purchased history.
-Recipient partitioning, usage/exhaustion and cabinet usage remain Steps 13–15;
+Step 13 implements recipient-partitioned delivery; usage/exhaustion and cabinet
+usage remain Steps 14–15;
 assembled paid browser/execution acceptance remains Step 16, build/install Step 17.
 Remote/live acceptance belongs to ANY-767. Synthetic providers and the second
 consumer establish protocol behavior, not a real payment or third-party adoption.
@@ -123,8 +124,12 @@ At API startup, `initialize_backend_consumers` atomically installs validated
 policies in `backend_consumer_policies`. Reused-P digest changes and rollback
 abort startup. Identity requests read the guard and refuse stale installations
 with safe `503`; introspection performs no policy writes or session bookkeeping.
-The persisted key is consumer/tenant/region; rows store only P and digest.
-This step does not add policy to Core owners, replay partitions or usage buckets.
+The persisted key is consumer/tenant/region. Rows retain P/digest and, since
+Step 13, `snapshot_delivery_enabled` for installed snapshot-recipient membership.
+Startup derives membership from the complete configured registry and each entry's
+`access-snapshot:read` permission. This flag selects delivery recipients without
+changing P/digest semantics or adding policy to Core owners, replay partitions
+or usage buckets. No service secrets or callbacks are persisted in this table.
 Introspection also requires `PAID_ACCESS_CLOCK_SKEW_SECONDS`; configure 5 for the
 selected local clock budget. Missing configuration returns `503`; deployed
 support for that budget remains an operator requirement.
@@ -163,9 +168,9 @@ V2 authorization preserves the exact original request and idempotency key;
 different-owner authorization clears private recovery. No guest fallback is added.
 
 Step 11 selects manifest origins and outbound keys from `BACKEND_CONSUMERS`.
-The Step 7 invalidation sender still uses `KERNEL_BASE_URL` and
-`KERNEL_SERVICE_TOKEN` until Step 13; keep those settings aligned with the Kernel
-registry entry. Configuring only the registry does not start that delivery lane.
+Step 13 selects invalidation origins and outbound keys from that same registry.
+With the worker enabled, each snapshot consumer's delivery lane starts automatically;
+legacy Kernel settings no longer select a delivery destination.
 Step 12 replaces the interim Kernel-only V2 endpoint with consumer-filtered V3.
 Every consumer requires explicit access-snapshot:read; the credential selects
 consumer identity and products. No V2 wire translation or legacy route remains.
@@ -217,10 +222,8 @@ producer conformance or approve sales. `KERNEL_MOCK_ENABLED` keeps the Kernel
 consumer `SIMULATED`, including when its URL comes from the registry. With an
 empty registry, technical reads retain the existing Kernel-only source settings,
 while backend service authentication remains disabled. `require_kernel()` remains
-for that compatibility path and the explicit Kernel conformance check. The Step 7
-worker composes its own legacy Kernel client for invalidation delivery.
-Until Step 13, keep legacy outgoing Kernel settings aligned with its registry
-entry for invalidation delivery. Unknown products, ambiguous source IDs and
+for that compatibility path and the explicit Kernel conformance check. Step 13 composes independent invalidation clients from each snapshot consumer's
+registry origin/outgoing key; legacy settings do not select delivery destinations. Unknown products, ambiguous source IDs and
 source/owner disagreement with a saved link or purchase fail closed.
 
 New metered publications write `product-link-v4`; purchased terms use
@@ -248,8 +251,9 @@ transfer needs a separately authorized continuity procedure.
 
 Step 11 required no database migration or JSON rewrite: its heads were Portal
 `20261111_0009`, Kernel `0019` (Step 12 now advances Kernel to `0020`). New formats require the Step 11 reader; equal
-migration heads do not permit rollback to an older reader. Snapshot V3 is now implemented; recipient-specific delivery and generic usage
-remain Steps 13–15. Do not enable
+migration heads do not permit rollback to an older reader. Snapshot V3 and
+recipient-specific delivery are now implemented; generic usage/exhaustion and
+cabinet usage remain Steps 14–15. Do not enable
 external-product sales before those dependent runtime steps and commercial gates.
 
 Step 11 reuses the Step 1/2 manifest contract and leaves Kernel scenario/metric
@@ -258,7 +262,7 @@ their original identities; Steps 6/8 execution ownership, pending starts and
 usage buckets do not acquire a consumer/source dimension. Step 10 delegation,
 callback selection and policy guards are unchanged. At the Step 11 checkpoint the Step 5 V2 snapshot still exposed the whole-user
 paid set; Step 12 supersedes it with the scoped V3 behavior below.
-Step 7 still has one Kernel recipient and is not generalized by the new registry.
+Step 13 now generalizes Step 7 delivery using this registry and the retained V1 wire.
 
 ## Identity and complete auth/access example
 
@@ -462,7 +466,7 @@ their original bucket. Guest behavior and observational client events remain.
 
 These are backend responsibilities, **not Portal reverse-endpoint routes**.
 Kernel manifest and invalidation receivers already work. Generic source routing
-is implemented in Step 11; recipient fan-out remains Step 13; usage/exhaustion
+is implemented in Step 11 and recipient fan-out in Step 13; usage/exhaustion
 routes and cabinet reads remain Steps 14/15. The descriptions below specify their target behavior.
 Kernel
 owns the existing V1 manifest/usage/exhaustion wire schemas; other backends use
@@ -558,7 +562,7 @@ itself changed only the specification. Existing Kernel execution/product behavio
    `portal_session.py` own expected consumer/scope and V2 validation. Focused
    checks cover two identities, explicit permissions, key-slot/scope isolation,
    version reuse/rollback and stale installations. Source/destination composition
-   uses the source seam in Step 11; destination delivery remains Step 13.
+   uses the source seam in Step 11; Step 13 routes delivery through the same registry.
 2. **Delegation/audience/callback — implemented Step 10, Portal identity and both browsers.**
    `app/domains/identity/backend_router.py`,
    `app/domains/identity/services/backend_delegation.py`,
@@ -602,13 +606,10 @@ itself changed only the specification. Existing Kernel execution/product behavio
    `app/models/billing_access.py::AccessInvalidationOutbox`,
    `app/domains/billing/paid_access.py`, `access_invalidation.py`, `work.py`,
    `app/jobs/billing.py`, work queries/persistence and existing CLI own delivery.
-   Add recipient to uniqueness, coalescing/work keys, claim/destination,
-   retry/parking/repair and delivered revision; fan out R atomically, including
-   grant removal. Bind old outbox rows to Kernel with exact pending/delivered
-   revisions. Stop workers before replacing work keys/retiring claims; retain
-   unresolved work and let existing repair reschedule it. Test populated pending,
-   parked, in-flight and N+1 migration, claim loss and independent ACK/failure
-   without starving local deadlines. No new scheduler or policy-event protocol.
+   The [implemented recipient checkpoint](#implemented-step-13-recipient-delivery)
+   records behavior, migration and evidence. The
+   [delivery runbook](../../engineering/billing-background-operations.md#any-766-step-7--durable-kernel-invalidations)
+   owns cutover, resource bounds, diagnostics and recipient-specific CLI retry.
 6. **Usage/exhaustion — Steps 14/15, backend finalizer and Portal reads.**
    Kernel Core `quotas/finalization.py`, `execution_service.py`, `readback.py`
    and existing worker/work storage own result/debit/recovery. Attach V1
@@ -623,14 +624,14 @@ itself changed only the specification. Existing Kernel execution/product behavio
 routes/modules/settings after moving their active callers to the common
 contract. Old identity routes/settings are no longer supported. Active Kernel
 adapters remain; source routing was generalized in Step 11 and consumer/P/R
-coherence in Step 12. Recipient delivery remains Step 13. No unrelated runtime
+coherence in Step 12 and recipient delivery in Step 13. No unrelated runtime
 purge is authorized. Existing inert source-projection
 models are retained schema history, not evidence authorizing a purge here.
 Kernel scenarios/products, guest paths and ANY-507 execution semantics stay owned
 by Kernel; a non-Kernel product requires no Kernel scenario registration.
 
-**Cutover:** Portal remains `20261111_0009`; Step 12 advances Kernel from
-`0019` to `0020`. Later steps extend the resulting actual heads; never
+**Cutover:** Step 13 advances Portal to `20261111_0010`; Kernel remains at
+Step 12's `0020`. Later steps extend the resulting actual heads; never
 edit applied migrations. First test forward migrations against populated isolated
 local databases. Quiesce both APIs/workers; migrate identity/policy, source-owner
 read compatibility, coherence and recipient scheduling in owning-step order;
@@ -678,7 +679,8 @@ commercial and operational gates stay in the plan.
 ## Step 12 local auth/access checkpoint
 
 The wire versions are delegation **2**, access snapshot **3**, manifest **1** and
-invalidation **1**. Portal migration head is `20261111_0009`; Kernel is `0020`.
+invalidation **1**. The Step 12 checkpoint used Portal `20261111_0009` and
+Kernel `0020`; Step 13 advances only Portal to `20261111_0010`.
 Use the paired [schema/fixture checksums](../portal-kernel-paid/SHA256SUMS).
 Swagger is `<PORTAL_ORIGIN>/docs`, live OpenAPI is
 `<PORTAL_ORIGIN>/openapi.json`, and the checked-in generated schema is linked above.
@@ -703,8 +705,8 @@ start only the paired V3-capable binaries. Portal needs the Step 11 purchased-te
 reader even though its migration head is unchanged. Old V2 readers are excluded;
 there is no concurrent translation route. Do not downgrade the consumer-scoped
 coherence schema; recover with a compatible retained backup and matching binaries.
-The existing Kernel invalidation sender/receiver remains operational; generic
-per-recipient delivery is still Step 13. Generic usage/exhaustion and cabinet
+Step 13 now partitions the existing invalidation sender by recipient; the Kernel
+V1 receiver remains compatible. Generic usage/exhaustion and cabinet
 usage are still Steps 14/15 and are not implemented by this auth/access handoff.
 
 The focused local regression targets are Portal
@@ -720,3 +722,30 @@ application paths with synthetic LBX/manifest responses and a second configured
 synthetic identity. No transport or trusted identity is replaced between services.
 It does not claim the Step 16 full paid-execution/browser journey, live LBX/AI,
 third-party adoption or deployed acceptance.
+
+
+## Implemented Step 13 recipient delivery
+
+Portal migration `20261111_0010` partitions outbox/work by recipient/scoped user
+and preserves Kernel's queued history. Stop both local APIs/workers before the
+forward migration and registry installation; start only Step 13-capable Portal
+binaries and the compatible Kernel V3/P/R receiver (`0020`). Pending, parked,
+in-flight and N+1 migration are tested on disposable PostgreSQL. Old claims
+cannot settle migrated or repaired work. Recovery requires compatible backups
+and binaries; downgrade is refused when non-Kernel recipient history exists.
+
+Registry consumers with `access-snapshot:read` receive each material whole-user
+R in the writer transaction, even after their last grant is removed. Policy-only
+changes still use introspected P, without another delivery protocol. Semantic
+no-ops preserve retry backoff and enqueue generations. A `204` acknowledges
+only that recipient's captured N, preserving N+1 and every other recipient.
+Each configured recipient has independent bounded HTTP admission, cleanup and
+DB thread slots. Missing/completed scheduling is repaired; parking and unresolved
+history survive restart. Removed entries retain history and receive no new R.
+
+Use `--recipient-id <consumer-id>` with `inspect-invalidation` or
+`retry-invalidation`; the [runbook](../../engineering/billing-background-operations.md#any-766-step-7--durable-kernel-invalidations)
+records exact commands, resource bounds and safe classifications. Local tests
+use synthetic backend HTTP responses with independent service keys; they do not
+claim real external-backend adoption, live billing or assembled Step 16 acceptance.
+Generic usage/exhaustion and cabinet usage remain Steps 14/15.

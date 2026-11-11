@@ -213,11 +213,12 @@ def commit_paid_state(
         deadlines.append((primary, scope))
     effective = canonical_state(states).model_dump(mode="json")
     row = queries.state(db, user.id)
-    outbox = queries.outbox(db, user.id)
+    outboxes = {item.recipient_id: item for item in queries.outboxes(db, user.id)}
     if (row.effective_state_document if row else EffectiveState().model_dump(mode="json")) == effective:
         if schedule_deadlines:
-            if outbox is not None and outbox.pending_revision > outbox.delivered_revision:
-                schedule_delivery(db, user.id, now, hint=False)
+            for outbox in outboxes.values():
+                if outbox.pending_revision > outbox.delivered_revision:
+                    schedule_delivery(db, user.id, now, recipient_id=outbox.recipient_id, hint=False)
             for primary, scope in deadlines:
                 schedule_deadline(db, primary, scope, evaluated_at=now)
         return row.access_revision if row else 0
@@ -267,23 +268,30 @@ def commit_paid_state(
     for related in related_causes:
         if related.resulting_access_revision is None:
             related.resulting_access_revision = revision
-    if outbox is None:
-        db.add(
-            AccessInvalidationOutbox(
-                tenant_id=user.tenant_id,
-                region=user.region,
-                user_id=user.id,
-                pending_revision=revision,
-                delivered_revision=0,
-                attempt_count=0,
-                next_attempt_at=now,
+    # Fan out the whole-user R, including grant removal, in this same transaction.
+    # Product filtering belongs to snapshots; it must not omit a removed grant's recipient.
+    for recipient_id in queries.snapshot_recipients(db, user.tenant_id, user.region):
+        outbox = outboxes.get(recipient_id)
+        if outbox is None:
+            db.add(
+                AccessInvalidationOutbox(
+                    recipient_id=recipient_id,
+                    tenant_id=user.tenant_id,
+                    region=user.region,
+                    user_id=user.id,
+                    pending_revision=revision,
+                    delivered_revision=0,
+                    attempt_count=0,
+                    next_attempt_at=now,
+                )
             )
-        )
-    else:
-        outbox.pending_revision = max(outbox.pending_revision, revision)
+        else:
+            outbox.pending_revision = max(outbox.pending_revision, revision)
     db.flush()
     if schedule_deadlines:
-        schedule_delivery(db, user.id, now)
+        for outbox in queries.outboxes(db, user.id):
+            if outbox.pending_revision > outbox.delivered_revision:
+                schedule_delivery(db, user.id, now, recipient_id=outbox.recipient_id)
         for primary, scope in deadlines:
             schedule_deadline(db, primary, scope, evaluated_at=now)
     return revision

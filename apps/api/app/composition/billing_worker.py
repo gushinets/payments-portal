@@ -7,13 +7,14 @@ import httpx
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.core.backend_consumers import BackendPermission
 from app.core.settings import Settings
 from app.domains.catalog.publication import SessionFactory
 from app.domains.catalog.contracts import SourceProvenance
 from app.domains.billing.work_contracts import WorkLane
 from app.infrastructure.preflight import PreflightCleanupPending
 from app.integrations.lbx.client import LbxServerClient
-from app.integrations.kernel.client import PlatformKernelClient
+from app.integrations.kernel.client import ManifestConnection, PlatformKernelClient
 from app.jobs.billing import BillingWorker
 
 
@@ -23,7 +24,7 @@ async def billing_worker_resources(
     *,
     factory: SessionFactory | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
-    kernel_transport: httpx.AsyncBaseTransport | None = None,
+    invalidation_transport: httpx.AsyncBaseTransport | None = None,
 ) -> AsyncIterator[BillingWorker | None]:
     if not configuration.billing_worker_enabled:
         yield None
@@ -31,12 +32,18 @@ async def billing_worker_resources(
     source_concurrency = (
         configuration.billing_worker_urgent_concurrency + configuration.billing_worker_normal_concurrency
     )
+    recipients = tuple(
+        consumer
+        for consumer in configuration.backend_consumers
+        if BackendPermission.READ_SNAPSHOT in consumer.permissions
+    )
+    delivery_concurrency = len(recipients) * configuration.billing_worker_delivery_concurrency
     engine = None
     if factory is None:
         options = {"pool_pre_ping": True}
         if configuration.database_url.startswith("postgresql"):
             options.update(
-                pool_size=source_concurrency + configuration.billing_worker_delivery_concurrency + 1,
+                pool_size=source_concurrency + delivery_concurrency + 1,
                 max_overflow=0,
                 pool_timeout=2,
                 connect_args={"options": "-c statement_timeout=10000 -c lock_timeout=2000"},
@@ -50,17 +57,17 @@ async def billing_worker_resources(
         if configuration.lbx_configuration_error is None
         else None
     )
-    kernel_client = (
-        PlatformKernelClient(
+    delivery_clients = {
+        consumer.consumer_id: PlatformKernelClient(
             configuration,
             provenance=SourceProvenance.CONFIGURED_SOURCE,
-            transport=kernel_transport,
+            transport=invalidation_transport,
             max_connections=configuration.billing_worker_delivery_concurrency,
+            connection=ManifestConnection(consumer.backend_base_url, consumer.portal_to_backend_current_secret),
         )
-        if configuration.kernel_base_url
-        else None
-    )
-    worker = BillingWorker(configuration, factory, client, kernel_client=kernel_client)
+        for consumer in recipients
+    }
+    worker = BillingWorker(configuration, factory, client, delivery_clients=delivery_clients)
     try:
         await worker.start()
         yield worker
@@ -75,10 +82,10 @@ async def billing_worker_resources(
             except TimeoutError:
                 worker.failed = True
                 raise PreflightCleanupPending() from None
-        if kernel_client is not None:
+        for delivery_client in delivery_clients.values():
             try:
                 async with asyncio.timeout(configuration.preflight_cleanup_timeout_seconds):
-                    await kernel_client.aclose()
+                    await delivery_client.aclose()
             except TimeoutError:
                 worker.failed = True
                 raise PreflightCleanupPending() from None

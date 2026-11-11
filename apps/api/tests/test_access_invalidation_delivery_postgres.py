@@ -21,7 +21,7 @@ from app.composition.billing_worker import billing_worker_resources
 from app.core.settings import Settings
 from app.domains.billing import access_invalidation as delivery, work
 from app.domains.billing.contracts import BillingRefused
-from app.domains.billing.work_contracts import WorkLane
+from app.domains.billing.work_contracts import WorkLane, DeliveryLane
 from app.domains.catalog.contracts import SourceProvenance
 from app.integrations.kernel.client import PlatformKernelClient
 from app.jobs.billing import BillingWorker
@@ -34,6 +34,7 @@ from app.models import (
 )
 from apps.api.tests.factories.paid_access import reader_identity
 from apps.api.tests.support.any709_step1 import step1_settings
+from apps.api.tests.support.backend_consumers import backend_consumer
 from apps.api.tests.support.postgres import alembic_test_config
 from apps.api.tests.test_paid_access_reconciliation_postgres import paid_source as paid_source, reconcile, Scenario
 
@@ -47,7 +48,12 @@ def anyio_backend() -> str:
 
 @pytest.fixture
 def pending(migrated_database: Engine, postgres_session_factory: sessionmaker[Session]) -> tuple:
-    config = step1_settings(lbx_base_url="", lbx_server_username=SecretStr(""), lbx_server_password=SecretStr(""))
+    config = step1_settings(
+        backend_consumers=(backend_consumer(),),
+        lbx_base_url="",
+        lbx_server_username=SecretStr(""),
+        lbx_server_password=SecretStr(""),
+    )
     with postgres_session_factory() as db:
         user, _ = reader_identity("synthetic-delivery")
         db.add(user)
@@ -55,6 +61,7 @@ def pending(migrated_database: Engine, postgres_session_factory: sessionmaker[Se
         identity = user.id
         db.add(
             AccessInvalidationOutbox(
+                recipient_id="platform-kernel",
                 tenant_id=user.tenant_id,
                 region=user.region,
                 user_id=identity,
@@ -63,7 +70,7 @@ def pending(migrated_database: Engine, postgres_session_factory: sessionmaker[Se
                 next_attempt_at=datetime.now(UTC),
             )
         )
-        delivery.schedule_delivery(db, identity, datetime.now(UTC))
+        delivery.schedule_delivery(db, identity, datetime.now(UTC), recipient_id="platform-kernel")
         db.commit()
     return postgres_session_factory, config, identity
 
@@ -113,19 +120,19 @@ async def test_exact_sent_n_keeps_concurrent_n_plus_one_without_lbx(pending: tup
         if len(requests) == 1:
             with factory() as db:
                 user = work.lock_user(db, identity)
-                outbox = delivery.paid_access.outbox(db, user.id)
+                outbox = delivery.paid_access.outbox(db, user.id, "platform-kernel")
                 outbox.pending_revision = 2
-                delivery.schedule_delivery(db, identity, datetime.now(UTC))
+                delivery.schedule_delivery(db, identity, datetime.now(UTC), recipient_id="platform-kernel")
                 db.commit()
         return httpx.Response(204)
 
     client = kernel(config, respond)
-    worker = BillingWorker(config, factory, None, kernel_client=client)
+    worker = BillingWorker(config, factory, None, delivery_clients={"platform-kernel": client})
     try:
         assert config.lbx_configuration_error == "lbx_not_configured"
-        assert await worker.tick(WorkLane.DELIVERY)
+        assert await worker.tick(DeliveryLane("platform-kernel"))
         assert saved(factory)[:3] == (2, 1, "pending")
-        assert await worker.tick(WorkLane.DELIVERY)
+        assert await worker.tick(DeliveryLane("platform-kernel"))
         assert saved(factory)[:3] == (2, 2, "completed")
         assert [row["access_revision"] for row in requests] == [1, 2]
         assert requests[0] == dict(
@@ -141,7 +148,7 @@ async def test_crash_restart_redelivers_unacknowledged_n(
     pending: tuple, monkeypatch: pytest.MonkeyPatch, crash: str
 ) -> None:
     factory, config, _ = pending
-    claim = work.claim_work(factory, config, WorkLane.DELIVERY)
+    claim = work.claim_work(factory, config, WorkLane.DELIVERY, recipient_id="platform-kernel")
     sent = delivery.capture_delivery(factory, config, claim)
     applied = []
 
@@ -150,9 +157,9 @@ async def test_crash_restart_redelivers_unacknowledged_n(
         return httpx.Response(204)
 
     client = kernel(config, respond)
-    worker = BillingWorker(config, factory, None, kernel_client=client)
+    worker = BillingWorker(config, factory, None, delivery_clients={"platform-kernel": client})
     if crash != "before_send":
-        async with worker.admissions[WorkLane.DELIVERY].operation() as budget:
+        async with worker.admissions[DeliveryLane("platform-kernel")].operation() as budget:
             await client.send_invalidation(sent, budget=budget)
     if crash == "ack_rollback":
 
@@ -166,7 +173,7 @@ async def test_crash_restart_redelivers_unacknowledged_n(
     assert saved(factory)[:3] == (1, 0, "running")
     due(factory, expire=True)
     try:
-        assert await worker.tick(WorkLane.DELIVERY)
+        assert await worker.tick(DeliveryLane("platform-kernel"))
         assert saved(factory)[:3] == (1, 1, "completed")
         assert applied == ([1] if crash == "before_send" else [1, 1])
     finally:
@@ -189,21 +196,25 @@ async def test_outage_backoff_and_permanent_parking_cli_retry(
         return httpx.Response(outcome, text="synthetic-remote-secret")
 
     client = kernel(config, respond)
-    worker = BillingWorker(config, factory, None, kernel_client=client)
+    worker = BillingWorker(config, factory, None, delivery_clients={"platform-kernel": client})
     permanent = isinstance(outcome, int) and outcome not in {429, 500, 503}
     try:
-        assert await worker.tick(WorkLane.DELIVERY)
+        assert await worker.tick(DeliveryLane("platform-kernel"))
         assert saved(factory)[:3] == (1, 0, "invalid" if permanent else "pending")
         with factory() as db:
             outbox = db.scalar(select(AccessInvalidationOutbox))
             assert outbox.attempt_count == 1 and outbox.last_error_classification.startswith("kernel_invalidation_")
             assert outbox.next_attempt_at > datetime.now(UTC)
-        assert not await worker.tick(WorkLane.DELIVERY)
+        assert not await worker.tick(DeliveryLane("platform-kernel"))
         assert len(attempts) == 1
         assert "synthetic-remote-secret" not in caplog.text
         monkeypatch.setattr("app.core.database.SessionLocal", factory)
         inspected = await _run(
-            parser().parse_args(["inspect-invalidation", "--user-id", str(identity)]), config, "test-operator"
+            parser().parse_args(
+                ["inspect-invalidation", "--user-id", str(identity), "--recipient-id", "platform-kernel"]
+            ),
+            config,
+            "test-operator",
         )
         assert inspected["delivered_revision"] == 0
         if permanent:
@@ -212,16 +223,20 @@ async def test_outage_backoff_and_permanent_parking_cli_retry(
             with factory() as db:
                 outbox = db.scalar(select(AccessInvalidationOutbox))
                 outbox.pending_revision = 2
-                delivery.schedule_delivery(db, identity, datetime.now(UTC))
+                delivery.schedule_delivery(db, identity, datetime.now(UTC), recipient_id="platform-kernel")
                 db.commit()
             assert saved(factory)[:3] == (2, 0, "invalid")
             result = await _run(
-                parser().parse_args(["retry-invalidation", "--user-id", str(identity)]), config, "test-operator"
+                parser().parse_args(
+                    ["retry-invalidation", "--user-id", str(identity), "--recipient-id", "platform-kernel"]
+                ),
+                config,
+                "test-operator",
             )
             assert result["work_state"] == "pending"
         else:
             with pytest.raises(BillingRefused, match="invalidation_not_parked"):
-                delivery.inspect_delivery(factory, config, identity, retry=True)
+                delivery.inspect_delivery(factory, config, identity, recipient_id="platform-kernel", retry=True)
     finally:
         await worker.aclose()
         await client.aclose()
@@ -229,16 +244,16 @@ async def test_outage_backoff_and_permanent_parking_cli_retry(
 
 def test_stale_lease_cannot_ack_and_late_n_cannot_regress_delivered_n_plus_one(pending: tuple) -> None:
     factory, config, identity = pending
-    old = work.claim_work(factory, config, WorkLane.DELIVERY)
+    old = work.claim_work(factory, config, WorkLane.DELIVERY, recipient_id="platform-kernel")
     sent = delivery.capture_delivery(factory, config, old)
     due(factory, expire=True)
-    successor = work.claim_work(factory, config, WorkLane.DELIVERY)
+    successor = work.claim_work(factory, config, WorkLane.DELIVERY, recipient_id="platform-kernel")
     with pytest.raises(BillingRefused, match="billing_work_stale"):
         delivery.capture_delivery(factory, config, old)
     with factory() as db:
         outbox = db.scalar(select(AccessInvalidationOutbox))
         outbox.pending_revision = 2
-        delivery.schedule_delivery(db, identity, datetime.now(UTC))
+        delivery.schedule_delivery(db, identity, datetime.now(UTC), recipient_id="platform-kernel")
         db.commit()
     newer = delivery.capture_delivery(factory, config, successor)
     delivery.apply_delivery(factory, successor, newer)
@@ -247,7 +262,7 @@ def test_stale_lease_cannot_ack_and_late_n_cannot_regress_delivered_n_plus_one(p
         delivery.apply_delivery(factory, old, sent)
     assert saved(factory) == before and before[:3] == (2, 2, "pending")
     # The unconsumed new generation is completed only by its own claimant.
-    last = work.claim_work(factory, config, WorkLane.DELIVERY)
+    last = work.claim_work(factory, config, WorkLane.DELIVERY, recipient_id="platform-kernel")
     assert delivery.capture_delivery(factory, config, last) is None
     assert saved(factory)[:3] == (2, 2, "completed")
 
@@ -258,7 +273,7 @@ def test_competing_claims_and_scoped_restart_repair(pending: tuple) -> None:
 
     def claim() -> object:
         barrier.wait(timeout=5)
-        return work.claim_work(factory, config, WorkLane.DELIVERY)
+        return work.claim_work(factory, config, WorkLane.DELIVERY, recipient_id="platform-kernel")
 
     with ThreadPoolExecutor(2) as pool:
         a, b = pool.submit(claim), pool.submit(claim)
@@ -268,9 +283,9 @@ def test_competing_claims_and_scoped_restart_repair(pending: tuple) -> None:
         db.commit()
     foreign = config.model_copy(update={"instance_region": "us"})
     assert delivery.repair_delivery(factory, foreign) == 0
-    assert work.claim_work(factory, foreign, WorkLane.DELIVERY) is None
+    assert work.claim_work(factory, foreign, WorkLane.DELIVERY, recipient_id="platform-kernel") is None
     with pytest.raises(BillingRefused, match="invalidation_not_found"):
-        delivery.inspect_delivery(factory, foreign, identity)
+        delivery.inspect_delivery(factory, foreign, identity, recipient_id="platform-kernel")
     assert delivery.repair_delivery(factory, config) == 1
     assert delivery.repair_delivery(factory, config) == 0
     assert saved(factory)[:3] == (1, 0, "pending")
@@ -281,7 +296,7 @@ def test_competing_claims_and_scoped_restart_repair(pending: tuple) -> None:
         db.scalar(select(BillingWorkItem)).work_state = BillingWorkState.COMPLETED
         db.commit()
     assert delivery.repair_delivery(factory, config) == 1
-    assert work.claim_work(factory, config, WorkLane.DELIVERY) is None
+    assert work.claim_work(factory, config, WorkLane.DELIVERY, recipient_id="platform-kernel") is None
     with factory() as db:
         assert db.scalar(select(BillingWorkItem.next_attempt_at)) == retry_at
 
@@ -291,7 +306,7 @@ def test_inspection_preserves_raw_retained_queue_state(pending: tuple) -> None:
     with factory() as db:
         db.scalar(select(BillingWorkItem)).work_state = "retained-unknown-state"
         db.commit()
-    inspected = delivery.inspect_delivery(factory, config, identity)
+    inspected = delivery.inspect_delivery(factory, config, identity, recipient_id="platform-kernel")
     assert inspected["work_state"] == "retained-unknown-state"
     assert inspected["last_error_classification"] is None
     encoded = json.loads(json.dumps(inspected))
@@ -318,8 +333,8 @@ async def test_lifespan_repairs_without_lbx_and_owns_independent_pool(pending: t
         requests.append(request)
         return httpx.Response(204)
 
-    async with billing_worker_resources(config, kernel_transport=httpx.MockTransport(respond)) as worker:
-        assert worker.client is None and worker.kernel_client is not None
+    async with billing_worker_resources(config, invalidation_transport=httpx.MockTransport(respond)) as worker:
+        assert worker.client is None and "platform-kernel" in worker.delivery_clients
         engine = worker.factory.kw["bind"]
         assert engine is not factory.kw["bind"]
         assert (
@@ -348,8 +363,10 @@ async def test_paid_commit_atomic_and_saturated_delivery_preserves_local_expiry(
         return httpx.Response(204)
 
     client = kernel(scenario.config, blocked)
-    worker = BillingWorker(scenario.config, scenario.factory, scenario.sources.require_lbx(), kernel_client=client)
-    task = asyncio.create_task(worker.tick(WorkLane.DELIVERY))
+    worker = BillingWorker(
+        scenario.config, scenario.factory, scenario.sources.require_lbx(), delivery_clients={"platform-kernel": client}
+    )
+    task = asyncio.create_task(worker.tick(DeliveryLane("platform-kernel")))
     await asyncio.wait_for(entered.wait(), 3)
     try:
         with scenario.factory() as db:
@@ -358,7 +375,7 @@ async def test_paid_commit_atomic_and_saturated_delivery_preserves_local_expiry(
             deadline = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == work.EXPIRY))
             deadline.next_attempt_at = scope.effective_access_until
             db.commit()
-        assert not await worker.tick(WorkLane.DELIVERY)
+        assert not await worker.tick(DeliveryLane("platform-kernel"))
         async with (
             worker.admissions[WorkLane.URGENT].operation(),
             worker.admissions[WorkLane.URGENT].operation(),
@@ -369,7 +386,7 @@ async def test_paid_commit_atomic_and_saturated_delivery_preserves_local_expiry(
         release.set()
         assert await task
         assert saved(scenario.factory)[:3] == (2, 1, "pending")
-        assert await worker.tick(WorkLane.DELIVERY)
+        assert await worker.tick(DeliveryLane("platform-kernel"))
         assert saved(scenario.factory)[:3] == (2, 2, "completed")
     finally:
         release.set()
@@ -393,6 +410,7 @@ def test_forward_index_migration_preserves_pending_history(pending: tuple, datab
                 scope_kind=row.scope_kind,
                 scope_reference=row.scope_reference,
                 coalescing_key=row.coalescing_key,
+                recipient_id=row.recipient_id,
                 payload_schema_version="billing-work:v1",
                 payload_document={},
                 next_attempt_at=datetime.now(UTC),
@@ -412,9 +430,9 @@ async def test_overdue_refresh_schedules_only_final_causal_revision(
     scheduled = []
     original = delivery.schedule_delivery
 
-    def record(db: Session, user_id: object, now: datetime) -> None:
+    def record(db: Session, user_id: object, now: datetime, *, recipient_id: str) -> None:
         scheduled.append(db.scalar(select(PaidAccessState.access_revision)))
-        original(db, user_id, now)
+        original(db, user_id, now, recipient_id=recipient_id)
 
     with scenario.factory() as db:
         boundary = db.scalar(select(BillingProductAccessScope.effective_access_until))
@@ -430,7 +448,7 @@ async def test_overdue_refresh_schedules_only_final_causal_revision(
 async def test_semantic_noop_preserves_delivery_backoff(paid_source: Scenario) -> None:
     scenario = paid_source
     await reconcile(scenario)
-    claim = work.claim_work(scenario.factory, scenario.config, WorkLane.DELIVERY)
+    claim = work.claim_work(scenario.factory, scenario.config, WorkLane.DELIVERY, recipient_id="platform-kernel")
     sent = delivery.capture_delivery(scenario.factory, scenario.config, claim)
     delivery.apply_delivery(scenario.factory, claim, sent, error="kernel_invalidation_unavailable")
     with scenario.factory() as db:
@@ -461,12 +479,12 @@ async def test_failed_claim_commit_sends_nothing(pending: tuple, monkeypatch: py
         return httpx.Response(204)
 
     client = kernel(config, respond)
-    worker = BillingWorker(config, factory, None, kernel_client=client)
+    worker = BillingWorker(config, factory, None, delivery_clients={"platform-kernel": client})
     try:
         with monkeypatch.context() as patch:
             patch.setattr(Session, "commit", fail_commit)
             with pytest.raises(RuntimeError, match="uncertain claim"):
-                await worker.tick(WorkLane.DELIVERY)
+                await worker.tick(DeliveryLane("platform-kernel"))
         assert requests == [] and saved(factory)[:3] == (1, 0, "pending")
     finally:
         await worker.aclose()
@@ -490,8 +508,8 @@ async def test_timeout_or_cancellation_retains_actual_http_cleanup_slot(pending:
             await release.wait()
 
     client = kernel(config, lambda request: httpx.Response(204, stream=SlowClose()))
-    worker = BillingWorker(config, factory, None, kernel_client=client)
-    task = asyncio.create_task(worker.tick(WorkLane.DELIVERY))
+    worker = BillingWorker(config, factory, None, delivery_clients={"platform-kernel": client})
+    task = asyncio.create_task(worker.tick(DeliveryLane("platform-kernel")))
     try:
         await asyncio.wait_for(entered.wait(), 2)
         if cancel:
@@ -500,9 +518,9 @@ async def test_timeout_or_cancellation_retains_actual_http_cleanup_slot(pending:
                 await task
         else:
             assert await task
-        assert worker.admissions[WorkLane.DELIVERY].active_count == 1
+        assert worker.admissions[DeliveryLane("platform-kernel")].active_count == 1
         assert worker.cleanup_pending == 1
-        assert not await worker.tick(WorkLane.DELIVERY)
+        assert not await worker.tick(DeliveryLane("platform-kernel"))
         assert saved(factory)[1] == 0
     finally:
         release.set()

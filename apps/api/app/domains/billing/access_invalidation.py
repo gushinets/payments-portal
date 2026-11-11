@@ -28,11 +28,17 @@ from app.models import BillingWorkKind, BillingWorkScope, BillingWorkState
 KIND = BillingWorkKind.ACCESS_INVALIDATION
 
 
-def schedule_delivery(db: Session, user_id: UUID, now: datetime, *, hint: bool = True) -> None:
+def delivery_key(recipient_id: str, user_id: UUID) -> str:
+    # User UUID is globally unique and resolves its canonical tenant/region.
+    return f"{recipient_id}:{user_id}"
+
+
+def schedule_delivery(db: Session, user_id: UUID, now: datetime, *, recipient_id: str, hint: bool = True) -> None:
     coalesce(
         db,
         kind=KIND,
-        key=str(user_id),
+        key=delivery_key(recipient_id, user_id),
+        recipient_id=recipient_id,
         scope_kind=BillingWorkScope.USER,
         reference=str(user_id),
         due=now,
@@ -51,14 +57,14 @@ def repair_delivery(factory: SessionFactory, configuration: Settings) -> int:
             configuration.billing_worker_scan_batch_size,
         )
     repaired = 0
-    for identity in users:
+    for recipient_id, identity in users:
         try:
             with factory() as db:
                 user = lock_user(db, identity)
                 if (user.tenant_id, user.region) != (configuration.instance_tenant_id, configuration.instance_region):
                     continue
-                outbox = paid_access.outbox(db, identity)
-                row = billing_work.by_key(db, KIND, str(identity), lock=True)
+                outbox = paid_access.outbox(db, identity, recipient_id)
+                row = billing_work.by_key(db, KIND, delivery_key(recipient_id, identity), lock=True)
                 if (
                     outbox
                     and outbox.pending_revision > outbox.delivered_revision
@@ -68,6 +74,7 @@ def repair_delivery(factory: SessionFactory, configuration: Settings) -> int:
                         db,
                         identity,
                         max(as_utc(outbox.next_attempt_at), as_utc(billing_reconciliation.database_now(db))),
+                        recipient_id=recipient_id,
                     )
                     db.commit()
                     repaired += 1
@@ -80,18 +87,27 @@ def repair_delivery(factory: SessionFactory, configuration: Settings) -> int:
 def capture_delivery(factory: SessionFactory, configuration: Settings, claim: WorkClaim) -> InvalidationDelivery | None:
     with factory() as db:
         user = lock_user(db, UUID(claim.reference))
-        if claim.kind != KIND or (user.tenant_id, user.region) != (
-            configuration.instance_tenant_id,
-            configuration.instance_region,
+        if (
+            claim.kind != KIND
+            or claim.recipient_id is None
+            or (user.tenant_id, user.region)
+            != (
+                configuration.instance_tenant_id,
+                configuration.instance_region,
+            )
         ):
             raise BillingRefused("billing_work_stale", 409)
-        outbox = paid_access.outbox(db, user.id)
+        outbox = paid_access.outbox(db, user.id, claim.recipient_id)
         row = verify_claim(db, claim)
+        if row.coalescing_key != delivery_key(claim.recipient_id, user.id):
+            raise BillingRefused("billing_work_stale", 409)
         if outbox is None or outbox.pending_revision <= outbox.delivered_revision:
             finish(db, row, claim, due=None)
             db.commit()
             return None
-        delivery = InvalidationDelivery(user.tenant_id, user.region, user.id, outbox.pending_revision)
+        delivery = InvalidationDelivery(
+            claim.recipient_id, user.tenant_id, user.region, user.id, outbox.pending_revision
+        )
         outbox.attempt_count += 1
         db.commit()
         return delivery
@@ -107,11 +123,14 @@ def apply_delivery(
 ) -> None:
     with factory() as db:
         user = lock_user(db, sent.user_id)
-        outbox = paid_access.outbox(db, user.id)
+        outbox = paid_access.outbox(db, user.id, claim.recipient_id)
         row = verify_claim(db, claim)
+        if row.coalescing_key != delivery_key(claim.recipient_id, user.id):
+            raise BillingRefused("billing_work_stale", 409)
         if (
             claim.kind != KIND
             or claim.reference != str(sent.user_id)
+            or claim.recipient_id != sent.recipient_id
             or outbox is None
             or (user.tenant_id, user.region) != (sent.tenant_id, sent.region)
         ):
@@ -133,7 +152,7 @@ def apply_delivery(
 
 
 def inspect_delivery(
-    factory: SessionFactory, configuration: Settings, user_id: UUID, *, retry: bool = False
+    factory: SessionFactory, configuration: Settings, user_id: UUID, *, recipient_id: str, retry: bool = False
 ) -> InvalidationInspection:
     with factory() as db:
         try:
@@ -145,8 +164,8 @@ def inspect_delivery(
             configuration.instance_region,
         ):
             raise BillingRefused("invalidation_not_found", 404)
-        outbox = paid_access.outbox(db, user_id)
-        row = billing_work.by_key(db, KIND, str(user_id), lock=True)
+        outbox = paid_access.outbox(db, user_id, recipient_id)
+        row = billing_work.by_key(db, KIND, delivery_key(recipient_id, user_id), lock=True)
         if outbox is None:
             raise BillingRefused("invalidation_not_found", 404)
         if retry:
@@ -158,6 +177,7 @@ def inspect_delivery(
             row.next_attempt_at = outbox.next_attempt_at = now
             row.last_error_classification = outbox.last_error_classification = None
         result: InvalidationInspection = {
+            "recipient_id": recipient_id,
             "user_id": str(user_id),
             "pending_revision": outbox.pending_revision,
             "delivered_revision": outbox.delivered_revision,

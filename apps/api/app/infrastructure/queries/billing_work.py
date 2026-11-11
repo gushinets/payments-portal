@@ -65,6 +65,7 @@ def claimable(
     urgent_before: datetime,
     urgent_attempt_before: datetime,
     local_scope: tuple[str, str] | None = None,
+    recipient_id: str | None = None,
 ) -> BillingWorkItem | None:
     account_scope = or_(
         (BillingWorkItem.work_kind == "billing_enrollment_sweep") & (BillingWorkItem.coalescing_key == sweep_key),
@@ -110,6 +111,8 @@ def claimable(
         account_scope,
         or_(BillingWorkItem.lease_expires_at.is_(None), BillingWorkItem.lease_expires_at <= now),
     )
+    if recipient_id is not None:
+        query = query.where(BillingWorkItem.recipient_id == recipient_id)
     if urgent is not None:
         # A normal job can become urgent while waiting, independently of another
         # source attempt or an enrollment sweep. Only the queue row is locked.
@@ -181,25 +184,27 @@ def by_key(db: Session, kind: str, key: str, *, lock: bool = False) -> BillingWo
     return db.scalar(query.with_for_update().execution_options(populate_existing=True) if lock else query)
 
 
-def missing_invalidations(db: Session, tenant: str, region: str, limit: int) -> list[UUID]:
+def missing_invalidations(db: Session, tenant: str, region: str, limit: int) -> list[tuple[str, UUID]]:
     enrolled = exists().where(
         BillingWorkItem.work_kind == BillingWorkKind.ACCESS_INVALIDATION,
-        BillingWorkItem.coalescing_key == func.cast(AccessInvalidationOutbox.user_id, Text),
+        BillingWorkItem.recipient_id == AccessInvalidationOutbox.recipient_id,
+        BillingWorkItem.scope_reference == func.cast(AccessInvalidationOutbox.user_id, Text),
         BillingWorkItem.work_state.in_((BillingWorkState.PENDING, BillingWorkState.RUNNING, BillingWorkState.INVALID)),
     )
-    return list(
-        db.scalars(
-            select(AccessInvalidationOutbox.user_id)
+    return [
+        (recipient_id, user_id)
+        for recipient_id, user_id in db.execute(
+            select(AccessInvalidationOutbox.recipient_id, AccessInvalidationOutbox.user_id)
             .where(
                 AccessInvalidationOutbox.tenant_id == tenant,
                 AccessInvalidationOutbox.region == region,
                 AccessInvalidationOutbox.pending_revision > AccessInvalidationOutbox.delivered_revision,
                 ~enrolled,
             )
-            .order_by(AccessInvalidationOutbox.user_id)
+            .order_by(AccessInvalidationOutbox.recipient_id, AccessInvalidationOutbox.user_id)
             .limit(limit)
         )
-    )
+    ]
 
 
 def backlog(

@@ -66,7 +66,8 @@ class AccessInvalidationOutbox(Base):
             "tenant_id",
             "region",
             "user_id",
-            name="uq_access_invalidation_outbox_tenant_region_user",
+            "recipient_id",
+            name="uq_access_invalidation_outbox_recipient_user",
         ),
         CheckConstraint(
             "pending_revision > 0",
@@ -83,6 +84,7 @@ class AccessInvalidationOutbox(Base):
         ),
     )
 
+    recipient_id: Mapped[str] = mapped_column(Text, nullable=False)
     outbox_id: Mapped[uuid.UUID] = mapped_column(uuid_type, primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(Text, nullable=False)
     region: Mapped[str] = mapped_column(Text, nullable=False)

@@ -6,6 +6,7 @@ Generated from SQLAlchemy metadata. Do not edit directly.
 
 | Column | Type | Nullable | Key |
 |---|---|---:|---|
+| `recipient_id` | `TEXT` | no |  |
 | `outbox_id` | `CHAR(32)` | no | PK |
 | `tenant_id` | `TEXT` | no | FK |
 | `region` | `TEXT` | no | FK |
@@ -24,7 +25,7 @@ Indexes and constraints:
 - `ck_access_invalidation_outbox_pending_revision_positive`
 - `ck_access_invalidation_outbox_revision_order`
 - `fk_access_invalidation_outbox_user_scope`
-- `uq_access_invalidation_outbox_tenant_region_user`
+- `uq_access_invalidation_outbox_recipient_user`
 - `ix_access_invalidation_outbox_next_attempt_at`
 
 ## `auth_sessions`
@@ -60,6 +61,7 @@ Indexes and constraints:
 | `region` | `TEXT` | no | PK |
 | `consumer_policy_revision` | `BIGINT` | no |  |
 | `policy_digest` | `TEXT` | no |  |
+| `snapshot_delivery_enabled` | `BOOLEAN` | no |  |
 
 Indexes and constraints:
 
@@ -181,6 +183,7 @@ Indexes and constraints:
 | `work_kind` | `TEXT` | no |  |
 | `scope_kind` | `TEXT` | no |  |
 | `scope_reference` | `TEXT` | no |  |
+| `recipient_id` | `TEXT` | yes |  |
 | `coalescing_key` | `TEXT` | yes |  |
 | `payload_schema_version` | `TEXT` | no |  |
 | `payload_document` | `JSON` | no |  |
@@ -200,6 +203,7 @@ Indexes and constraints:
 - `ck_billing_work_items_generation_nonnegative`
 - `ck_billing_work_items_lease_pair`
 - `ck_billing_work_items_payload_schema_nonempty`
+- `ck_billing_work_items_recipient`
 - `ix_billing_work_items_claim_scan`
 - `ix_billing_work_items_coalescing_key`
 - `ix_billing_work_items_kind_state`

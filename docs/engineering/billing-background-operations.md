@@ -168,14 +168,16 @@ The initial deployment is one API process/replica with an embedded worker.
 There is no separate process to launch or standalone worker command/container.
 
 - `BILLING_WORKER_ENABLED=true`: enables local expiry/repair; source lanes start
-  only when LBX is configured. Kernel delivery starts when its connection is
-  configured, independently of LBX. Disabling the worker stops all lanes.
+  only when LBX is configured. Delivery starts independently for each
+  `BACKEND_CONSUMERS` entry with `access-snapshot:read`, without LBX configuration.
+  Disabling the worker stops all lanes.
 - `BILLING_WORKER_URGENT_CONCURRENCY=2`: urgent source slots, range 1–16.
 - `BILLING_WORKER_NORMAL_CONCURRENCY=1`: normal source slots, range 1–16.
-- `BILLING_WORKER_DELIVERY_CONCURRENCY=1`: independent Kernel delivery slots,
-  range 1–16, with a dedicated HTTP pool and DB delegation limiter. The worker's
-  private DB pool fits urgent + normal + delivery slots plus one local slot;
-  overflow is disabled. The paid-read pool remains separate.
+- `BILLING_WORKER_DELIVERY_CONCURRENCY=1`: slots per snapshot recipient,
+  range 1–16 per recipient, with at most 16 registry entries. Each recipient has
+  its own HTTP pool and DB delegation limiter. The worker's private DB pool is
+  bounded to urgent + normal + (snapshot recipient count × delivery concurrency)
+  + one local slot, with zero overflow. The paid-read pool remains separate.
 - `BILLING_WORKER_IO_TIMEOUT_SECONDS=60`: total source/cleanup budget; greater
   than the cleanup reserve and at most 240 seconds. This leaves the 30-second
   claim/apply margin and refusal retry within the five-minute urgent cadence.
@@ -202,7 +204,7 @@ quotas. Urgent, normal and provider-free local work have reserved capacity;
 worker resources are isolated from purchase/Widget/new-sale resources.
 Delivery slots/cleanup cannot occupy urgent, normal or local-deadline slots.
 Unconfigured or partially configured LBX disables its source lanes; local work
-and configured Kernel delivery remain available. Disabling the entire worker
+and configured snapshot-recipient delivery remain available. Disabling the entire worker
 reports `disabled`. Source outage alone does not withdraw identity readiness.
 
 Increase capacity only from measured queue age/source latency and actual LBX
@@ -212,29 +214,43 @@ adding processes. Limits do not coordinate capacity across API replicas.
 
 ## ANY-766 Step 7 — durable Kernel invalidations
 
-The sender retains the legacy Kernel connection: `KERNEL_BASE_URL` and
-`KERNEL_SERVICE_TOKEN` for Portal → Kernel. Step 11's registry-based manifest
-clients do not replace this worker client or add recipient fan-out; keep its
-origin/token aligned with the Kernel entry until Step 13. Whenever that connection and
-`BILLING_WORKER_ENABLED=true` are configured, the delivery lane starts
-automatically; there is no separate Portal sender-enable flag. The
-reverse-direction identity/snapshot credential remains independent.
+Step 13 now selects each destination from `BACKEND_CONSUMERS`, using its
+`backend_base_url` and `portal_to_backend_current_secret`. The reverse-direction
+identity/snapshot credential stays independent. Every configured consumer with
+`access-snapshot:read` has its own bounded delivery lane when
+`BILLING_WORKER_ENABLED=true`; there is no separate Portal sender-enable flag.
+Legacy `KERNEL_BASE_URL`/`KERNEL_SERVICE_TOKEN` no longer select invalidation delivery.
 
-Before starting this Portal writer, install the compatible Kernel receiver
-with matching scope/current-or-previous Portal service token and explicitly set
-`ANYTOOLAI_PORTAL_ACCESS_INVALIDATION_ENABLED=true` there. Then apply Portal
-migration `20261110_0008` after `20261110_0007`. With completed Step 10, also
-apply `20261111_0009` and use the synchronized
+Before cutover, stop the Portal API and embedded workers and the paired Kernel
+API/worker; retain the existing databases/backups. Install the compatible Kernel
+receiver with matching scope/current-or-previous Portal service token and set
+`ANYTOOLAI_PORTAL_ACCESS_INVALIDATION_ENABLED=true` there. Apply Portal forward
+migration `20261111_0010` after `20261111_0009`; Kernel remains at `0020`.
+Use the synchronized
 [consumer identity cutover](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover)
-before restarting the compatible Portal/Kernel pair.
-The migration extends the existing recurring-work index; it adds no table,
-scheduler or mandatory worker container. A disabled Kernel permission returns
-`403` and parks delivery; enabling it later also requires the CLI retry below.
+and restart only compatible binaries with the complete registry. Startup installs
+snapshot-recipient membership alongside the existing policy guard; removed
+consumers retain their delivery history but receive no new revisions.
+
+The migration binds all retained outbox/work rows to `platform-kernel` without
+changing pending/delivered revisions, row IDs, attempts, backoff or parked state.
+It replaces delivery keys with `recipient_id:user_id`, clears old claim leases
+and moves only running rows to pending with a higher generation. Old claims
+cannot acknowledge replacement work. Missing/completed scheduling is restored
+by existing bounded startup/sweep repair. No table or worker framework is added.
+An absent recipient configuration leaves its unresolved work retained and unsent;
+restore the entry before retrying. A disabled receiver permission returns `403`
+and parks only that recipient; enabling it later also requires CLI retry.
+
 Production connections retain public HTTPS validation, verified TLS, no
 environment proxy, no redirects and no browser Origin. Configuration does not
 establish joint or deployed acceptance and does not enable sales.
 
-The whole-user paid commit coalesces `access_invalidation` work with its outbox.
+The whole-user paid commit atomically fans out R to each installed in-scope
+snapshot recipient, including when its last product grant is removed. Each
+recipient/scoped user has its own outbox, work key, claim, attempts, retry/parking
+and delivered revision. One recipient's ACK or failure cannot settle another's
+work. The V1 payload is unchanged; the authenticated destination selects the recipient.
 An overdue refresh preserves the causal reduction/restoration revisions while
 only the final phase touches the queue. Semantic no-ops preserve existing
 delivery backoff. A short capture transaction locks User → outbox → queue,
@@ -251,7 +267,14 @@ the row as `invalid` with a safe diagnostic and an error log; Sentry reporting
 uses the existing optional configuration. Response
 bodies, tokens and authorization headers never enter diagnostics. The existing
 worker metrics include the `delivery` lane, retry/parked attempts and parked
-backlog. Monitor invalid backlog as well as due-work age.
+backlog. Monitor invalid backlog as well as due-work age. Safe logs and CLI
+identify the recipient; historical `kernel_invalidation_*` classifications remain
+compatible for every recipient. Metrics retain the aggregate `delivery` label.
+
+Each recipient lane has separate HTTP admission, cleanup ownership and DB
+thread capacity, so one blocked recipient cannot occupy another's slot or the
+local deadline lane. The [worker resource limits](#embedded-worker-settings-and-resource-limits)
+define per-recipient concurrency and the aggregate DB pool budget.
 
 Local startup/sweeps repair missing or prematurely completed scheduling from
 unresolved outbox rows in bounded batches without LBX configuration or HTTP.
@@ -260,8 +283,8 @@ repairing credentials, permission, scope or deployed schema, use the existing
 privileged OS-principal CLI from the repository root:
 
 ```bash
-./.venv/bin/python scripts/repo.py billing-purchase inspect-invalidation --user-id <uuid>
-./.venv/bin/python scripts/repo.py billing-purchase retry-invalidation --user-id <uuid>
+./.venv/bin/python scripts/repo.py billing-purchase inspect-invalidation --recipient-id <consumer-id> --user-id <uuid>
+./.venv/bin/python scripts/repo.py billing-purchase retry-invalidation --recipient-id <consumer-id> --user-id <uuid>
 ```
 
 Inspection is local; retry only re-enqueues a parked row and sends no HTTP.
@@ -430,7 +453,7 @@ cannot resolve review.
 Invoke `.venv/bin/python scripts/repo.py billing-purchase <action>` with
 `--user-id <portal-user-uuid>` and `--purchase-id <purchase-intent-uuid>`.
 The read-only `inspect-operation` lookup instead takes only `--operation-id`.
-`inspect-invalidation` and `retry-invalidation` instead take only `--user-id`;
+`inspect-invalidation` and `retry-invalidation` instead take `--recipient-id` and `--user-id`;
 they inspect local delivery state or re-enqueue a parked invalidation after repair.
 Success JSON includes the operator principal. Exit 0 means the command completed,
 not that payment or positive source proof was established. Exit 1 returns only
@@ -632,7 +655,7 @@ existing local lane reduces expired access and repairs deadlines without source
 HTTP. The [producer handoff](#step-10-handoff--any-765) below defines the inherited
 seams. ANY-766 Step 12 now serves consumer-scoped V3 and extends Kernel paid
 admission with independent durable P/R floors; Step 7's Kernel invalidation
-delivery remains in place until recipient partitioning in Step 13. Step 12 proves
+delivery is now partitioned by recipient in Step 13. Step 12 proves
 local TCP auth/access; Step 16 owns assembled paid browser/execution acceptance. ANY-767 owns
 the subsequent remote/live journey, remaining natural renewal and rollout.
 
@@ -799,7 +822,7 @@ remain unchanged. Time alone cannot prove a new cycle or extend authority.
 ### Migration, configuration, recovery and evidence limits
 
 The current chain is `20260924_0001 → 20261001_0002 → 20261029_0003 →
-20261028_0005 → 20261031_0006 → 20261110_0007 → 20261110_0008 → 20261111_0009`;
+20261028_0005 → 20261031_0006 → 20261110_0007 → 20261110_0008 → 20261111_0009 → 20261111_0010`;
 there is no `0004` dependency to recreate.
 `0006` preserves legacy UTC and v2 purchases, preflights incompatible history,
 enforces immutable allowance/logical identity and monotonic state/outbox guards,

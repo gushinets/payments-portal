@@ -8,7 +8,7 @@ Last updated: 2026-11-11 (ANY-766 consumer-bound delegation and policy guard)
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 -> 20261110_0008 -> 20261111_0009 (head)
+20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 -> 20261110_0008 -> 20261111_0009 -> 20261111_0010 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
@@ -66,15 +66,18 @@ through the existing work table; it stores no Portal usage ledger.
 A fresh database has exactly 29 application tables: ten retained
 identity/session/legal tables, fifteen original external-billing persistence
 tables, one current product-link pointer, one purchase mutex, one session
-delegation table and one backend policy guard. Alembic has eight revisions in
+delegation table and one backend policy guard. Alembic has nine revisions in
 one linear chain and one current head. Revision
 `20261029_0003` belongs to ANY-709, `20261028_0005` to ANY-715 and
-`20261031_0006` to ANY-765 and `20261110_0007`/`20261110_0008`/`20261111_0009` to ANY-766.
+`20261031_0006` to ANY-765 and `20261110_0007`/`20261110_0008`/`20261111_0009`/`20261111_0010` to ANY-766.
 Revision `20261110_0007` adds only `kernel_session_delegations`; revision
 `20261110_0008` extends recurring-work uniqueness to `access_invalidation`.
-Head `20261111_0009` renames that delegation table and its audience column,
+Revision `20261111_0009` renames that delegation table and its audience column,
 preserving all credentials/parent bindings, and adds the monotonic consumer
-policy guard. Migrations are not applied automatically by the API.
+policy guard. Head `20261111_0010` adds recipient-specific invalidation identity
+and configured snapshot-recipient membership, preserving historical Kernel
+outbox revisions and retiring old running claims during the quiesced cutover.
+Migrations are not applied automatically by the API.
 
 There is no Portal-owned product, plan, order, payment, refund, subscription,
 entitlement, trial, provider-account, or direct-payment webhook table. There is
@@ -380,14 +383,22 @@ PostgreSQL triggers prevent updates/deletes, including all new fields.
 stores a complete effective-state document with a non-null `access_revision`
 slot. Migration `20261031_0006` enforces positive revisions, unchanged meaning
 within a revision, increments of exactly one and no identity changes or deletes.
-`access_invalidation_outbox` has the same unique scope. Its physical checks
+`access_invalidation_outbox` is unique by `(tenant_id, region, user_id, recipient_id)`.
+Migration `20261111_0010` adds immutable recipient identity to the existing guard,
+binds historical rows to Kernel and preserves exact pending/delivered revisions. Its physical checks
 require a positive pending revision and forbid `delivered_revision` from
 exceeding it. Migration `20261031_0006` also requires nonnegative delivered
 revisions and rejects identity changes, revision regression and deletion;
 these guards do not implement delivery. The caller-transaction paid writer
 canonicalizes the whole-user state, increments its revision and coalesces the
 pending outbox revision atomically with source facts. ANY-766 Step 7 schedules
-one recurring `access_invalidation` item per user in that transaction. Capture
+one recurring `access_invalidation` item per recipient/user in that transaction
+as of Step 13. The installed policy guard's `snapshot_delivery_enabled` records
+configured snapshot-recipient membership; the writer fans out R within its
+existing transaction, including grant removal. Queue rows carry `recipient_id`
+only for invalidation, use `recipient_id:user_id` keys and copy the recipient into
+claims. Migration `20261111_0010` retires running pre-cutover claims while
+preserving pending/delivered history and parking. Capture
 and ACK lock User → outbox → queue with HTTP outside SQL; a live-claim ACK
 advances only through the sent revision. Queue generations preserve newer hints,
 `invalid` parks permanent failures, and bounded local repair restores missing
