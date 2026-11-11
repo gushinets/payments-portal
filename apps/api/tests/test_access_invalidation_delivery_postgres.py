@@ -25,7 +25,13 @@ from app.domains.billing.work_contracts import WorkLane
 from app.domains.catalog.contracts import SourceProvenance
 from app.integrations.kernel.client import PlatformKernelClient
 from app.jobs.billing import BillingWorker
-from app.models import AccessInvalidationOutbox, BillingWorkItem, BillingProductAccessScope, PaidAccessState
+from app.models import (
+    AccessInvalidationOutbox,
+    BillingWorkItem,
+    BillingWorkState,
+    BillingProductAccessScope,
+    PaidAccessState,
+)
 from apps.api.tests.factories.paid_access import reader_identity
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.support.postgres import alembic_test_config
@@ -272,12 +278,27 @@ def test_competing_claims_and_scoped_restart_repair(pending: tuple) -> None:
     with factory() as db:
         retry_at = datetime.now(UTC) + timedelta(minutes=5)
         db.scalar(select(AccessInvalidationOutbox)).next_attempt_at = retry_at
-        db.scalar(select(BillingWorkItem)).work_state = "completed"
+        db.scalar(select(BillingWorkItem)).work_state = BillingWorkState.COMPLETED
         db.commit()
     assert delivery.repair_delivery(factory, config) == 1
     assert work.claim_work(factory, config, WorkLane.DELIVERY) is None
     with factory() as db:
         assert db.scalar(select(BillingWorkItem.next_attempt_at)) == retry_at
+
+
+def test_inspection_preserves_raw_retained_queue_state(pending: tuple) -> None:
+    factory, config, identity = pending
+    with factory() as db:
+        db.scalar(select(BillingWorkItem)).work_state = "retained-unknown-state"
+        db.commit()
+    inspected = delivery.inspect_delivery(factory, config, identity)
+    assert inspected["work_state"] == "retained-unknown-state"
+    assert inspected["last_error_classification"] is None
+    encoded = json.loads(json.dumps(inspected))
+    assert encoded == inspected and encoded["user_id"] == str(identity)
+    assert (encoded["pending_revision"], encoded["delivered_revision"]) == (1, 0)
+    with factory() as db:
+        assert db.scalar(select(BillingWorkItem.work_state)) == "retained-unknown-state"
 
 
 async def test_lifespan_repairs_without_lbx_and_owns_independent_pool(pending: tuple) -> None:
@@ -375,7 +396,7 @@ def test_forward_index_migration_preserves_pending_history(pending: tuple, datab
                 payload_schema_version="billing-work:v1",
                 payload_document={},
                 next_attempt_at=datetime.now(UTC),
-                work_state="pending",
+                work_state=BillingWorkState.PENDING,
             )
         )
         db.flush()

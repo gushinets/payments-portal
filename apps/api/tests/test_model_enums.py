@@ -13,6 +13,9 @@ from app.core.database import Base
 from app.models import (
     AcceptanceKind,
     BillingStateObservationKind,
+    BillingWorkKind,
+    BillingWorkScope,
+    BillingWorkState,
     ExternalBillingCustomerBindingState,
     ExternalCreateOperationKind,
     ExternalCreateOperationState,
@@ -99,9 +102,23 @@ def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
         "deterministic_access_boundary",
     }
     assert _values(WebhookDeliveryState) == {"pending", "processed", "ignored"}
+    assert _values(BillingWorkKind) == {
+        "subscription_reconciliation",
+        "subscription_trust_expiry",
+        "billing_enrollment_sweep",
+        "customer_inventory",
+        "external_create_deadline",
+        "external_create_recovery",
+        "access_invalidation",
+    }
+    assert _values(BillingWorkState) == {"pending", "running", "completed", "invalid", "done", "paused"}
+    assert _values(BillingWorkScope) == {"billing_account", "subscription", "customer", "create_operation", "user"}
     assert set(model_enums.__all__) == {
         "AcceptanceKind",
         "BillingStateObservationKind",
+        "BillingWorkKind",
+        "BillingWorkScope",
+        "BillingWorkState",
         "ExternalBillingCustomerBindingState",
         "ExternalCreateOperationKind",
         "ExternalCreateOperationState",

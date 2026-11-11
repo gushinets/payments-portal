@@ -8,9 +8,13 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from app.models import BillingWorkItem
+from app.models import BillingWorkItem, BillingWorkKind
 
-RECURRING_INDEX = "work_kind IN ('subscription_reconciliation', 'subscription_trust_expiry', 'billing_enrollment_sweep', 'customer_inventory', 'external_create_deadline', 'access_invalidation')"
+RECURRING_INDEX = (
+    "work_kind IN ('subscription_reconciliation', 'subscription_trust_expiry', "
+    "'billing_enrollment_sweep', 'customer_inventory', 'external_create_deadline', "
+    f"'{BillingWorkKind.ACCESS_INVALIDATION.value}')"
+)
 
 
 def coalesce(

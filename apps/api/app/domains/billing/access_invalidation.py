@@ -10,13 +10,22 @@ from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.customers import lock_user
 from app.domains.billing.work import finish, spread_seconds, verify_claim
-from app.domains.billing.work_contracts import WorkClaim, InvalidationDelivery
+from app.domains.billing.work_contracts import (
+    WorkClaim,
+    InvalidationDelivery,
+    InvalidationFailureCode,
+    InvalidationInspection,
+    InvalidationSchedulingStatus,
+)
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.infrastructure.persistence.billing_work import coalesce
 from app.infrastructure.queries import billing_reconciliation, billing_work, paid_access
+from app.models import BillingWorkKind, BillingWorkScope, BillingWorkState
 
-KIND = "access_invalidation"
+# Delivery uses canonical symbols through the existing TEXT-backed queue seam.
+# Converting legacy ORM fields/producers to PersistedEnumType belongs to ANY-800.
+KIND = BillingWorkKind.ACCESS_INVALIDATION
 
 
 def schedule_delivery(db: Session, user_id: UUID, now: datetime, *, hint: bool = True) -> None:
@@ -24,7 +33,7 @@ def schedule_delivery(db: Session, user_id: UUID, now: datetime, *, hint: bool =
         db,
         kind=KIND,
         key=str(user_id),
-        scope_kind="user",
+        scope_kind=BillingWorkScope.USER,
         reference=str(user_id),
         due=now,
         priority=0,
@@ -53,7 +62,7 @@ def repair_delivery(factory: SessionFactory, configuration: Settings) -> int:
                 if (
                     outbox
                     and outbox.pending_revision > outbox.delivered_revision
-                    and (row is None or row.work_state == "completed")
+                    and (row is None or row.work_state == BillingWorkState.COMPLETED)
                 ):
                     schedule_delivery(
                         db,
@@ -93,7 +102,7 @@ def apply_delivery(
     claim: WorkClaim,
     sent: InvalidationDelivery,
     *,
-    error: str | None = None,
+    error: InvalidationFailureCode | None = None,
     permanent: bool = False,
 ) -> None:
     with factory() as db:
@@ -119,11 +128,13 @@ def apply_delivery(
         outbox.next_attempt_at = due or now
         finish(db, row, claim, due=due, error=error)
         if permanent:
-            row.work_state = "invalid"
+            row.work_state = BillingWorkState.INVALID
         db.commit()
 
 
-def inspect_delivery(factory: SessionFactory, configuration: Settings, user_id: UUID, *, retry: bool = False) -> dict:
+def inspect_delivery(
+    factory: SessionFactory, configuration: Settings, user_id: UUID, *, retry: bool = False
+) -> InvalidationInspection:
     with factory() as db:
         try:
             user = lock_user(db, user_id)
@@ -139,20 +150,20 @@ def inspect_delivery(factory: SessionFactory, configuration: Settings, user_id: 
         if outbox is None:
             raise BillingRefused("invalidation_not_found", 404)
         if retry:
-            if row is None or row.work_state != "invalid":
+            if row is None or row.work_state != BillingWorkState.INVALID:
                 raise BillingRefused("invalidation_not_parked", 409)
             now = as_utc(billing_reconciliation.database_now(db))
-            row.work_state = "pending"
+            row.work_state = BillingWorkState.PENDING
             row.enqueue_generation += 1
             row.next_attempt_at = outbox.next_attempt_at = now
             row.last_error_classification = outbox.last_error_classification = None
-        result = {
+        result: InvalidationInspection = {
             "user_id": str(user_id),
             "pending_revision": outbox.pending_revision,
             "delivered_revision": outbox.delivered_revision,
             "attempt_count": outbox.attempt_count,
             "last_error_classification": outbox.last_error_classification,
-            "work_state": row.work_state if row else "unscheduled",
+            "work_state": row.work_state if row else InvalidationSchedulingStatus.UNSCHEDULED,
             "next_attempt_at": row.next_attempt_at.isoformat() if row else outbox.next_attempt_at.isoformat(),
         }
         if retry:

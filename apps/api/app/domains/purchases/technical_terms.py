@@ -19,7 +19,7 @@ class TestTermsSource(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     schema_version: Literal["development-purchase-terms:v1"]
     source_version: Nonempty
-    provenance: Literal["SIMULATED"]
+    provenance: Literal[SourceProvenance.SIMULATED]
     purpose: Nonempty
     offers: tuple[TechnicalOffer, ...] = Field(min_length=1)
 
@@ -42,7 +42,7 @@ class AcceptedTechnicalTerms(BaseModel):
     )
     source_version: Nonempty
     source_digest: Digest
-    provenance: Literal["SIMULATED", "CONFIGURED_SOURCE"] = "SIMULATED"
+    provenance: SourceProvenance = SourceProvenance.SIMULATED
     mapping_digest: Digest | None = Field(default=None, exclude_if=lambda value: value is None)
     offer: TechnicalOffer
     account_id: Nonempty
@@ -56,10 +56,10 @@ class AcceptedTechnicalTerms(BaseModel):
     @model_validator(mode="after")
     def verify_digest(self) -> AcceptedTechnicalTerms:
         if self.schema_version == "purchased-technical-terms:v1":
-            if self.provenance != "SIMULATED" or self.mapping_digest is not None:
+            if self.provenance != SourceProvenance.SIMULATED or self.mapping_digest is not None:
                 raise ValueError("legacy technical terms remain simulated")
         elif (
-            self.provenance != "CONFIGURED_SOURCE"
+            self.provenance != SourceProvenance.CONFIGURED_SOURCE
             or self.kernel_provenance != SourceProvenance.CONFIGURED_SOURCE
             or self.mapping_digest is None
             or self.source_version != QUANTITY_LINK_SCHEMA
@@ -106,7 +106,7 @@ def bind_test_terms(
         "schema_version": "purchased-technical-terms:v1",
         "source_version": source.source_version,
         "source_digest": source.content_digest(),
-        "provenance": "SIMULATED",
+        "provenance": SourceProvenance.SIMULATED,
         "offer": offer.model_dump(mode="json"),
         "account_id": account_id,
         "revision_id": str(revision_id),
@@ -138,7 +138,7 @@ def bind_published_terms(
         "schema_version": "purchased-technical-terms:v2",
         "source_version": link.schema_version,
         "source_digest": link.content_digest(),
-        "provenance": "CONFIGURED_SOURCE",
+        "provenance": SourceProvenance.CONFIGURED_SOURCE,
         "mapping_digest": link.identity_digest,
         "offer": offer.model_dump(mode="json"),
         "account_id": link.scope.external_billing_account_id,

@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import json
 import sys
+from collections.abc import Mapping
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -55,7 +56,9 @@ def resolution_request(arguments: argparse.Namespace) -> ResolutionRequest:
     return ResolutionRequest.model_validate({key: value for key, value in vars(arguments).items() if key != "command"})
 
 
-async def _run(arguments: argparse.Namespace, configuration: Settings, principal: str) -> dict:
+async def _run(arguments: argparse.Namespace, configuration: Settings, principal: str) -> Mapping[str, object]:
+    # CLI serialization joins the typed delivery result and legacy command
+    # documents; it does not consume or redefine those commands' nested shapes.
     from app.core.database import SessionLocal
 
     if arguments.command in ("inspect-invalidation", "retry-invalidation"):

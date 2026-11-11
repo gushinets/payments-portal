@@ -22,6 +22,7 @@ from app.composition import paid_reads, purchases
 from app.composition.reconciliation import reconcile_subscription
 from app.composition.sources import source_resources
 from app.core.observability import request_id_context
+from app.core.settings import KernelAccessPermission
 from app.domains.billing import paid_access, paid_read, snapshot_router, work
 from app.domains.billing.customers import lock_user
 from app.domains.billing.paid_access import commit_paid_state
@@ -32,7 +33,14 @@ from app.http import kernel_auth
 from app.infrastructure.preflight import PreflightCleanupPending
 from app.infrastructure.queries import billing_reconciliation
 from app.main import create_app
-from app.models import AuthSession, BillingProductAccessScope, BillingWorkItem, ExternalSubscription, PurchasedAllowance
+from app.models import (
+    AuthSession,
+    BillingProductAccessScope,
+    BillingWorkItem,
+    BillingWorkState,
+    ExternalSubscription,
+    PurchasedAllowance,
+)
 from apps.api.tests.factories.paid_access import reader_identity
 from apps.api.tests.factories.paid_runtime import paid_scenario as paid_scenario, paid_source as paid_source, reconcile
 from apps.api.tests.factories.purchase_terms import reviewed_meaning
@@ -121,7 +129,7 @@ async def snapshot_client(
             "app_env": "production",
             "kernel_access_service_token": SecretStr(SERVICE),
             "kernel_access_service_token_previous": SecretStr(PREVIOUS),
-            "kernel_access_permissions": ("access-snapshot:read",),
+            "kernel_access_permissions": (KernelAccessPermission.READ_SNAPSHOT,),
         }
     )
     monkeypatch.setattr(snapshot_router, "settings", config)
@@ -459,7 +467,7 @@ async def test_future_timestamp_bucket_waits_for_authoritative_reconciliation(
     )
     with factory() as db:
         for queued in db.scalars(select(BillingWorkItem).where(BillingWorkItem.work_kind == work.RECONCILIATION)):
-            queued.work_state = "completed"
+            queued.work_state = BillingWorkState.COMPLETED
         db.commit()
     await reconcile(scenario, factory)
     body = (await snapshot_client.get(path(scenario[4]), headers=headers())).json()
@@ -543,7 +551,7 @@ async def test_excluded_start_survives_time_crossing_during_source_apply(
     with factory() as db:
         for queued in db.scalars(select(BillingWorkItem)):
             if queued.work_kind == work.RECONCILIATION:
-                queued.work_state = "completed"
+                queued.work_state = BillingWorkState.COMPLETED
             else:
                 queued.next_attempt_at = base + timedelta(days=1)
         if apply_path == "primary_selection":
@@ -714,7 +722,7 @@ async def test_snapshot_overload_and_cancellation_keep_resource_ownership(
     service_config = config.model_copy(
         update={
             "kernel_access_service_token": SecretStr(SERVICE),
-            "kernel_access_permissions": ("access-snapshot:read",),
+            "kernel_access_permissions": (KernelAccessPermission.READ_SNAPSHOT,),
         }
     )
     monkeypatch.setattr(kernel_auth, "settings", service_config)

@@ -20,7 +20,7 @@ from app.core.settings import Settings
 from app.core.time import utc_now
 from app.domains.billing import work
 from app.domains.billing.contracts import BillingRefused
-from app.domains.billing.work_contracts import WorkLane
+from app.domains.billing.work_contracts import WorkLane, WorkAttemptOutcome, InvalidationFailureCode
 from app.domains.catalog.publication import SessionFactory
 from app.infrastructure import billing_worker_metrics as metrics
 from app.infrastructure.preflight import (
@@ -150,7 +150,7 @@ class BillingWorker:
             return False
         if any(task in self.db_cleanup for task in self.db_tasks[lane]):
             return False  # An interrupted DB owner may still be committing.
-        attempt_outcome = "completed"
+        attempt_outcome = WorkAttemptOutcome.COMPLETED
         if lane == WorkLane.LOCAL:
             claim = await self.db(lane, work.claim_work, self.factory, self.configuration, lane)
             if claim is None:
@@ -192,14 +192,14 @@ class BillingWorker:
                             lane, access_invalidation.capture_delivery, self.factory, self.configuration, claim
                         )
                         if sent is not None:
-                            error = None
+                            error: InvalidationFailureCode | None = None
                             permanent = False
                             try:
                                 await self.kernel_client.send_invalidation(sent, budget=budget)
                             except KernelInvalidationFailed as failure:
                                 error, permanent = failure.code, failure.permanent
                             except PreflightDeadlineExceeded:
-                                error = "kernel_invalidation_timeout"
+                                error = InvalidationFailureCode.TIMEOUT
                             await self.db(
                                 lane,
                                 access_invalidation.apply_delivery,
@@ -214,7 +214,13 @@ class BillingWorker:
                                 report_exception(
                                     KernelInvalidationFailed(error, permanent=True), operation=Operation.BILLING_WORKER
                                 )
-                            attempt_outcome = "parked" if permanent else "retry" if error else "completed"
+                            attempt_outcome = (
+                                WorkAttemptOutcome.PARKED
+                                if permanent
+                                else WorkAttemptOutcome.RETRY
+                                if error
+                                else WorkAttemptOutcome.COMPLETED
+                            )
                     elif claim.kind == background_recovery.RECOVERY:
                         await recover_operation(
                             self.client,
@@ -276,7 +282,7 @@ class BillingWorker:
                     )
                     if not saved:
                         raise
-                    attempt_outcome = "refused"
+                    attempt_outcome = WorkAttemptOutcome.REFUSED
         self.last_progress_at = utc_now()
         metrics.PROGRESS.set(self.last_progress_at.timestamp())
         metrics.ATTEMPTS.labels(lane=lane.value, outcome=attempt_outcome).inc()
@@ -295,7 +301,7 @@ class BillingWorker:
                 raise
             except Exception as error:
                 self.failures += 1
-                metrics.ATTEMPTS.labels(lane=lane.value, outcome="failed").inc()
+                metrics.ATTEMPTS.labels(lane=lane.value, outcome=WorkAttemptOutcome.FAILED).inc()
                 # Safe constant message; the reporting adapter strips raw errors.
                 logger.warning("Billing worker attempt failed", extra={"structured": {"lane": lane.value}})
                 report_exception(error, operation=Operation.BILLING_WORKER)
