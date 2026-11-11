@@ -116,4 +116,18 @@ def test_workflow_components_and_build_origins() -> None:
     script = jobs["web"]["steps"][-1]["run"]
     assert '--build-arg "APP_PUBLIC_BASE_URL=$APP_PUBLIC_BASE_URL"' in script
     assert '--build-arg "NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL"' in script
+    assert '--build-arg "NEXT_PUBLIC_KERNEL_WEB_BASE_URL=$NEXT_PUBLIC_KERNEL_WEB_BASE_URL"' in script
+    assert jobs["web"]["steps"][-1]["env"]["NEXT_PUBLIC_KERNEL_WEB_BASE_URL"] == "${{ inputs.kernel_web_base_url }}"
     assert 'if [ "$PUBLISH" = true ]' in script
+
+
+@pytest.mark.parametrize("filename", ["docker-compose.agent.yml", "docker-compose.prod.yml"])
+def test_compose_forwards_kernel_web_build_origin(filename: str) -> None:
+    compose = yaml.safe_load((image_deploy.ROOT / filename).read_text())
+    assert compose["services"]["web"]["build"]["args"]["NEXT_PUBLIC_KERNEL_WEB_BASE_URL"] == (
+        "${NEXT_PUBLIC_KERNEL_WEB_BASE_URL:-}"
+    )
+    dockerfile = (image_deploy.ROOT / "apps/web/Dockerfile").read_text()
+    builder = dockerfile.split("FROM dependencies AS builder", 1)[1].split("FROM node:", 1)[0]
+    assert "ARG NEXT_PUBLIC_KERNEL_WEB_BASE_URL" in builder
+    assert "ENV NEXT_PUBLIC_KERNEL_WEB_BASE_URL=${NEXT_PUBLIC_KERNEL_WEB_BASE_URL}" in builder

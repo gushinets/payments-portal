@@ -200,9 +200,15 @@ require a matching reviewed control checkout and Docker Compose supporting
 `.github/workflows/publish-images.yml` is manually dispatched with `backend`,
 `frontend` or `all`. Its default is build only; `publish=true` is a separately
 authorized post-review GHCR action. Backend builds do not require frontend inputs.
-Frontend builds require `APP_PUBLIC_BASE_URL`, `NEXT_PUBLIC_API_BASE_URL` and the
-optional public `NEXT_PUBLIC_SENTRY_DSN`; runtime environment changes do not
-rewrite the browser bundle. Frontend image tags include the workflow run ID so
+Frontend builds require `APP_PUBLIC_BASE_URL` and `NEXT_PUBLIC_API_BASE_URL`.
+Set the optional `NEXT_PUBLIC_KERNEL_WEB_BASE_URL` (workflow input
+`kernel_web_base_url`) to the public Kernel launch base URL, including any base
+path; empty keeps product launch links unavailable. The local harness forwards
+this value from `.env`, with the process environment taking precedence. Compose
+source builds pass it into the web builder, alongside the optional public
+`NEXT_PUBLIC_SENTRY_DSN`. Runtime environment changes do not rewrite the browser
+bundle; changing the launch URL requires rebuilding the web image.
+Frontend image tags include the workflow run ID so
 builds with different origins cannot silently share a source-only tag.
 Never send backend consumer credentials as build arguments.
 

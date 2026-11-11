@@ -17,6 +17,27 @@ from scripts import repo
 from .support.backend_consumers import backend_consumer
 
 
+@pytest.mark.parametrize("override", [None, "https://override.invalid/tools", ""])
+def test_real_dotenv_forwards_kernel_web_build_origin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, override: str | None,
+) -> None:
+    harness = tmp_path / ".harness"
+    monkeypatch.setattr(repo, "HARNESS_DIR", harness)
+    monkeypatch.setattr(repo, "RUNTIME_ENV", harness / "runtime.env")
+    monkeypatch.setattr(repo, "RUNTIME_JSON", harness / "runtime.json")
+    reader = repo.read_dotenv
+    monkeypatch.setattr(repo, "read_dotenv", lambda: reader(tmp_path / ".env"))
+    monkeypatch.delenv("NEXT_PUBLIC_KERNEL_WEB_BASE_URL", raising=False)
+    (tmp_path / ".env").write_text("NEXT_PUBLIC_KERNEL_WEB_BASE_URL=https://kernel.invalid/tools\n", encoding="utf-8")
+    if override is not None:
+        monkeypatch.setenv("NEXT_PUBLIC_KERNEL_WEB_BASE_URL", override)
+
+    repo.write_runtime(repo.runtime_config(root=tmp_path))
+    assert repo.read_runtime_env().get("NEXT_PUBLIC_KERNEL_WEB_BASE_URL") == (
+        "https://kernel.invalid/tools" if override is None else override
+    )
+
+
 @pytest.mark.parametrize("override", [False, True])
 def test_real_dotenv_forwards_backend_consumers_privately(
     tmp_path: Path,

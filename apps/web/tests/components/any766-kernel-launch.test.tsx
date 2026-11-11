@@ -88,6 +88,17 @@ it("offers product launch only for a current grant", () => {
   expect(screen.queryByRole("link", { name: ru.Account.products.paid.openProduct })).toBeNull();
 });
 
+it("keeps paid access visible when the Kernel launch host is unset", () => {
+  vi.stubEnv("NEXT_PUBLIC_KERNEL_WEB_BASE_URL", "");
+  const paid: ReturnType<typeof usePaidAccess> = {
+    state: { status: PaidReadStatus.Ready, data: paidState(), expiresAt: null }, refresh: vi.fn(),
+  };
+  renderWithIntl(<PaidProductAccess productId="proposal_ai" paid={paid} />, { locale: "ru", messages: ru });
+  expect(screen.getByText(ru.Account.products.paid.confirmed)).toBeTruthy();
+  expect(screen.getByText(ru.Account.products.paid.launchUnavailable)).toBeTruthy();
+  expect(screen.queryByRole("link", { name: ru.Account.products.paid.openProduct })).toBeNull();
+});
+
 it("rejects unsafe web-host configuration and duplicate PKCE inputs", () => {
   expect(kernelWebBaseUrl("https://user:secret@kernel.invalid")).toBeNull();
   expect(kernelWebBaseUrl("http://kernel.invalid")).toBeNull();
