@@ -1,6 +1,6 @@
 # ANY-832 implementation plan
 
-Status: **IN PROGRESS** — steps 1–2 complete; step 3 has not started.
+Status: **COMPLETE** — steps 1–3 complete; owner-approved scoped step 3 verification passed.
 Created: 2026-11-11
 Issue: [ANY-832](https://linear.app/paveldik/issue/ANY-832/fix-deferred-pr-164-inventory-completeness-and-calendar-allowance-edge)
 Predecessor: [PR #164](https://github.com/gushinets/payments-portal/pull/164), reviewed at `b2ef280048ac634a60c18e820fbf702beddba19c`.
@@ -100,27 +100,27 @@ Review source: [annual calendar anchor](https://github.com/gushinets/payments-po
 
 ### 3. Preserve the established calendar frame across equivalent rereads
 
-- [ ] Add a failing PostgreSQL regression through the real normalizer,
+- [x] Add a failing PostgreSQL regression through the real normalizer,
   persisted allowance history and source-apply path before the fix. Do not
   bypass normalization with a manually corrected `CalendarEvidence`.
-- [ ] Extend the internal `ReconciliationSubject` with
+- [x] Extend the internal `ReconciliationSubject` with
   `established_calendar: CalendarEvidence | None = None`.
-- [ ] During the short `claim_reconciliation` transaction, after checking
+- [x] During the short `claim_reconciliation` transaction, after checking
   permanent provenance, obtain the first issued calendar for this exact
   subscription, accepted service component and metric using the existing
   ordered allowance-history query. Purchases without technical terms or a
   supported historical calendar provide no established frame. Unbound
   `SubscriptionCandidateSubject` reads retain their no-history behavior.
-- [ ] Pass the immutable context through the shared reconciliation read to
+- [x] Pass the immutable context through the shared reconciliation read to
   [calendar.py](../../../apps/api/app/integrations/lbx/calendar.py). For
   `calendar_month` with a proven explicit historical offset, convert the raw
   explicitly zoned activation into that offset before deriving the month start.
   Compute the new anchor; do not simply substitute the historical anchor.
-- [ ] Normalize before constructing and saving `SubscriptionProof`; retain the
+- [x] Normalize before constructing and saving `SubscriptionProof`; retain the
   original source strings in its raw calendar evidence. HTTP, worker, inventory
   and operator reads continue through the shared path. Integration remains
   database-free; Domain must not import Integration.
-- [ ] Without suitable history, retain initial normalization. Legacy rows
+- [x] Without suitable history, retain initial normalization. Legacy rows
   without calendar evidence, naive timestamps and mixed precision must not
   acquire an inferred timezone. Keep current-history classification and
   provenance/fencing checks when applying the result.
@@ -142,16 +142,18 @@ Review source: [offset-only reread](https://github.com/gushinets/payments-portal
 
 ## Verification and completion
 
-- [ ] Assess existing coverage, record each regression's expected failure on
+- [x] Assess existing coverage, record each regression's expected failure on
   unchanged behavior, then implement the smallest coherent correction.
-- [ ] Run focused affected suites during implementation. Start only the isolated
+- [x] Run focused affected suites during implementation. Start only the isolated
   worktree test PostgreSQL through the repository harness when persistence tests
   require it; pytest owns the disposable test-database lifecycle.
-- [ ] Run `npm run test:api:fast`, `npm run test:api:postgres` and the broadest
-  supported canonical `npm run check`. Documentation changes must pass
-  `npm run docs:check`. Record actual results and environment limitations;
-  skipped persistence checks do not count as a PostgreSQL PASS.
-- [ ] Inspect the final diff, apply the relevant review checklists and record
+- [x] Run the owner-approved step 3 checks: affected PostgreSQL scenarios,
+  `npm run check:fast` (including the API fast target) and `npm run docs:check`.
+  On 2026-11-11 the owner explicitly limited this step to these checks instead
+  of the originally planned full `test:api:postgres` / `npm run check` runs.
+  Record actual results; scoped persistence checks do not count as a full-suite
+  PostgreSQL PASS.
+- [x] Inspect the final diff, apply the relevant review checklists and record
   completion evidence here. Confirm no unrelated behavior, generated contracts,
   dependencies or immutable history changed.
 
@@ -317,3 +319,70 @@ Browser/provider acceptance is not applicable to this local classifier
 correction; no live LBX or Kernel requests, provider writes, paid quota acceptance
 or production enablement are claimed. The live naive-activation/date-only
 precision limitation recorded in the planning evidence remains unchanged.
+
+### Step 3 execution evidence — 2026-11-11
+
+Scope: step 3 only, on `ANY-832`; the working tree was clean at entry.
+No other implementation step, public/Kernel contract, persisted calendar format,
+schema, generated artifact, dependency or production-enablement gate changed.
+
+- Coverage assessment: policy and allowance-history tests already compared
+  equivalent normalized instants, but did not reread raw LBX activation through
+  the real normalizer after a committed calendar-month allowance. Recomputing
+  month start in the response's new offset changed the original anchor.
+- Before correction, six new PostgreSQL cases produced **4 failed / 2 passed**.
+  Both positive and negative offsets, including UTC month-boundary crossings,
+  lost the effective allowance and advanced access revision/outbox on an
+  equivalent `Z` reread. Unchanged spelling and an original UTC frame passed.
+  No manually corrected `CalendarEvidence` bypassed source normalization.
+- After permanent provenance checks, the short claim loads the first issued
+  calendar using the existing subscription/component/metric-ordered history
+  query. The frozen subject carries that typed immutable evidence after the
+  transaction closes. Purchases without technical terms and legacy rows without
+  calendar evidence supply no frame; unbound candidates retain initial behavior.
+- Integration converts only an explicitly zoned calendar-month activation into
+  the historical anchor's proven explicit offset, then derives its month start.
+  It does not substitute the historical anchor. Normalized proof is saved
+  alongside the unchanged raw source strings. Integration remains database-free;
+  apply still checks current history, permanent provenance and lease fences.
+- The six main cases pass with fresh claim/apply sessions, full allowance-row
+  equality, unchanged quantity/key/ID, full outbox-row equality and unchanged
+  effective semantic state/revision. New observations and finite trust renewal
+  remain allowed. A valid next cycle issues exactly one new allowance while
+  retaining the first frame and original row.
+- Controls cover changed activation month and cycle boundaries, naive activation,
+  mixed precision, unrelated subscription/component/metric history, legacy UTC
+  rows, no technical terms, date/unresolved/missing historical offset, unbound
+  candidates and unchanged instance-based anchors. Invalid calendar evidence
+  still omits the metric allowance without rewriting immutable history.
+- Focused verification: **169 policy/normalization tests passed** before adding
+  the two unbound-candidate cases; all final policy cases also passed in the
+  canonical fast suite. The three affected PostgreSQL suites initially passed
+  **69/72**. Two controls were corrected to assert the existing absent-cycle
+  behavior for naive activation; the legacy fixture was corrected to store SQL
+  NULL rather than JSON null. The unchanged production correction then passed
+  **11/11** focused repeats, covering those three controls and all six main
+  cases with full outbox assertions. Together these runs verify all **72**
+  distinct affected PostgreSQL scenarios; no full-PostgreSQL PASS is claimed.
+- **PASS:** `npm run check:fast`: documentation, generated freshness,
+  architecture, API Ruff check/format, web boundaries (**38**), web components
+  (**414**), web ESLint and API fast tests (**1906**). No dependencies were
+  installed. Existing local Kernel mock/origin/token settings were disabled or
+  cleared in command environments only; no saved settings changed.
+- **SKIPPED by explicit owner choice:** the full PostgreSQL suite and
+  `npm run check`; verification was limited to affected PostgreSQL scenarios
+  and `check:fast`, following the same scope preference recorded for step 2.
+- Review: applied correctness and payment/security checklists; traced HTTP,
+  worker, inventory and operator consumers through shared reconciliation and
+  immutable allowance classification. Peer impact: **None**; local Kernel source
+  `0f950355e3f282c6d5f036542f71e1f2b4295827` was inspected for allowance/usage
+  ownership. This correction preserves its consumed identity/quantity contract;
+  no peer files changed.
+- Runtime evidence is disposable local PostgreSQL with simulated source
+  transports. Browser E2E and live-provider acceptance are **SKIPPED**: this step
+  changes internal calendar normalization and has no UI or source-enablement
+  scope. No live LBX request or write was needed.
+- **PASS:** final `npm run docs:check`, focused Ruff check/format and
+  `git diff --check`. pytest removed its disposable database (absence verified)
+  and the isolated worktree PostgreSQL server was stopped. No commit, push,
+  publication or deployment was performed.

@@ -9,8 +9,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.domains.billing.paid_allowances import materialize_allowance
 from app.domains.billing.paid_cycles import CalendarEvidence
+from app.domains.billing.reconciliation import claim_reconciliation
 from app.models import AccessInvalidationOutbox, ExternalSubscription, PaidAccessState, PurchasedAllowance
 from apps.api.tests.factories.paid_access import AcceptedSubscription
+from apps.api.tests.support.any709_step1 import step1_settings
 
 pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
 
@@ -50,6 +52,10 @@ async def test_paid_access_accepted_terms_are_the_only_quantity_source(
         # Stage 1 does not connect allowance issuance to source apply or grants.
         for model in (PaidAccessState, AccessInvalidationOutbox):
             assert db.scalar(select(func.count()).select_from(model)) == 0
+    subject = claim_reconciliation(
+        postgres_session_factory, step1_settings(), scenario.subscription_id, io_timeout_seconds=60
+    )
+    assert subject.established_calendar == (calendar() if scenario.accepted.technical_terms is not None else None)
 
 
 @pytest.mark.parametrize("paid_terms_scenario", ["proposal_ai"], indirect=True)

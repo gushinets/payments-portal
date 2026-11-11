@@ -269,7 +269,13 @@ def normalize_subscription(
         complete,
         tuple(reasons),
         (),
-        cycle=normalize_calendar(calendar, accepted.offer.period.anchor) if calendar_complete else None,
+        cycle=normalize_calendar(
+            calendar,
+            accepted.offer.period.anchor,
+            established_calendar=subject.established_calendar if isinstance(subject, ReconciliationSubject) else None,
+        )
+        if calendar_complete
+        else None,
         access_end_at=normalize_access_end(calendar.get("subscription_end_date")),
     )
 
