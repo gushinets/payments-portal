@@ -1,12 +1,13 @@
 # Common product backend API
 
-Status: **IDENTITY IMPLEMENTED — ANY-766 Step 10, 2026-11-11.**
+Status: **IDENTITY AND TECHNICAL SOURCES IMPLEMENTED — ANY-766 Steps 10/11, 2026-11-11.**
 Consumer-bound code issuance, exchange/introspection V2, configured callbacks and
 the persisted policy guard are implemented. Generated OpenAPI documents the
 actual common identity routes and named Bearer schemes. Snapshot remains the
 Kernel-only V2 baseline; consumer-filtered V3 and the complete auth/access handoff
-remain Step 12, prioritized for **2026-11-13**. Technical sources, recipient
-routing, usage/cabinet and assembled local acceptance remain Steps 11–16;
+remain Step 12, prioritized for **2026-11-13**. Step 11 implements source/owner
+routing and immutable history compatibility. Recipient routing, usage/cabinet
+and assembled local acceptance remain Steps 13–16;
 build/install preparation remains Step 17. Remote/live acceptance belongs to
 ANY-767. Local synthetic evidence does not establish third-party adoption or a
 payment.
@@ -28,8 +29,9 @@ first backend, `consumer_id=platform-kernel`; it has no special wire privilege.
 The second fixture consumer, `synthetic-summary`, owns only `synthetic_summary`.
 It is an isolated protocol example, not the real Document Summary product or
 approval to register, contact or implement another team's service. Step 10
-validates configured product ownership and guards its policy digest; technical
-source routing remains Step 11 and product-filtered snapshot authority Step 12.
+validates configured product ownership and guards its policy digest; Step 11
+routes technical reads by that ownership. Product-filtered snapshot authority
+remains Step 12.
 
 Operator configuration defines a small explicit consumer set. The following is
 a **logical configuration**. The implemented server environment format is
@@ -162,8 +164,10 @@ separate owner/custody and pending prepared-start records remain readable. Same-
 V2 authorization preserves the exact original request and idempotency key;
 different-owner authorization clears private recovery. No guest fallback is added.
 
-Until Steps 11/13, manifest and invalidation transport retain their existing
-Kernel URL/outgoing settings; keep them aligned with the Kernel registry entry.
+Step 11 selects manifest origins and outbound keys from `BACKEND_CONSUMERS`.
+The Step 7 invalidation sender still uses `KERNEL_BASE_URL` and
+`KERNEL_SERVICE_TOKEN` until Step 13; keep those settings aligned with the Kernel
+registry entry. Configuring only the registry does not start that delivery lane.
 Until Step 12, the common service principal can access snapshot V2 only as
 platform-kernel with explicit access-snapshot:read. A synthetic second consumer
 is refused there, so it cannot receive the unfiltered baseline snapshot.
@@ -171,11 +175,11 @@ This intentional intermediate state is not the completed auth/access handoff.
 
 This minimal example does not replace Kernel's full configured product set.
 The migrated Kernel policy must include every intended existing product.
-Step 11 will connect technical-source metadata to origin/client selection and
-provenance through the existing manifest V1 validation seam. Step 10 only stores
-that metadata in deployment configuration; existing Kernel source composition
-still owns manifest calls. Validate unique consumer IDs, nonoverlapping
-service secrets and a single source/backend owner for each product. Allowed
+Step 11 connects technical-source metadata to origin/client selection and
+provenance through the existing manifest V1 validation seam. Each technical
+source ID has one configured backend owner and each product belongs to one
+entry. Validate unique consumer/source IDs, nonoverlapping service secrets and
+a single source/backend owner for each product. Allowed
 products must agree with that ownership. No shared Kernel key, dynamic
 registration/admin API, source mirror or automatic owner transfer is added.
 
@@ -197,6 +201,68 @@ local dev/test loopback HTTP exceptions), no browser Origin/public CORS and
 used only by Portal code issuance; never forward it to a backend. Operation
 permissions grant no other operation. Do not use service keys in external
 Swagger browsers or log bodies, codes, tokens, headers, fragments or PII.
+
+## Implemented Step 11 technical sources and history
+
+`BACKEND_CONSUMERS` is also the technical routing configuration. For each entry,
+`technical_source_id` identifies the source, `consumer_id` the execution/usage
+owner, `allowed_products` its product scope, `backend_base_url` the manifest
+origin and `portal_to_backend_current_secret` the outbound Bearer credential.
+Portal requests the same `/internal/v1/capability-manifest` V1 shape and validates
+scope, digest, unique products/metrics, selected enabled capability and unit
+through the existing client. No Kernel scenario registration is needed for an
+external product. A selected detail/publication/purchase reads only its source;
+discovery reads the configured sources under the same bounded preflight budget
+and filters each response to its configured products.
+
+Configured connections carry `CONFIGURED_SOURCE`, which does not establish live
+producer conformance or approve sales. `KERNEL_MOCK_ENABLED` keeps the Kernel
+consumer `SIMULATED`, including when its URL comes from the registry. With an
+empty registry, technical reads retain the existing Kernel-only source settings,
+while backend service authentication remains disabled. `require_kernel()` remains
+for that compatibility path and the explicit Kernel conformance check. The Step 7
+worker composes its own legacy Kernel client for invalidation delivery.
+Until Step 13, keep legacy outgoing Kernel settings aligned with its registry
+entry for invalidation delivery. Unknown products, ambiguous source IDs and
+source/owner disagreement with a saved link or purchase fail closed.
+
+New metered publications write `product-link-v4`; purchased terms use
+`purchased-technical-terms:v3` inside `accepted-purchase:v4`. Link and terms bind
+`technical_source_id`/`backend_consumer_id` and neutral `manifest_provenance`;
+terms use `manifest_version` instead of `kernel_manifest_version`. Selected
+consent uses `selected-technical-terms:v2`, binding source/owner and the selected
+commercial/technical meaning without unrelated manifest audit churn. The
+unmetered development path retains its legacy link/test-terms format only for
+the original `platform-kernel` source/owner pair; it cannot supply a new production
+quantity. Every other source/owner pair requires an explicit technical offer.
+Existing v3 links remain usable with terms v2 and acceptance v3 after fresh
+admission; there is no mandatory republication or conversion to v4.
+
+Pre-Step-11 links, terms and acceptances keep their original schemas, omitted
+fields, serialization and hashes. Their legacy `ownership` view returns Kernel
+in memory; it never adds fields to `model_dump()` or persisted JSON. New records
+retain their explicit stored owner. Both historical
+v2 consent-digest variants replay their saved digest. Allowance materialization
+still compares the original `terms_document`; same-cycle recovery reuses its
+allowance ID and a later cycle retains the accepted quantity. SIMULATED terms
+remain excluded from production metering and v1 purchases gain no quantity.
+Publication refuses a changed source/owner for a retained product head; owner
+transfer needs a separately authorized continuity procedure.
+
+No database migration or JSON rewrite is required: Portal head remains
+`20261111_0009`, Kernel `0019`. New formats require the Step 11 reader; equal
+migration heads do not permit rollback to an older reader. Snapshot V3,
+recipient-specific delivery and generic usage remain Steps 12–15. Do not enable
+external-product sales before those dependent runtime steps and commercial gates.
+
+Step 11 reuses the Step 1/2 manifest contract and leaves Kernel scenario/metric
+declarations unchanged. Step 3 consent replay and Step 5 allowance issuance keep
+their original identities; Steps 6/8 execution ownership, pending starts and
+usage buckets do not acquire a consumer/source dimension. Step 10 delegation,
+callback selection and policy guards are unchanged. The current Step 5 V2
+snapshot still exposes the whole-user paid set to Kernel without filtering by
+product or allowance owner; storing source metadata does not implement Step 12.
+Step 7 still has one Kernel recipient and is not generalized by the new registry.
 
 ## Identity and complete auth/access example
 
@@ -394,8 +460,8 @@ their original bucket. Guest behavior and observational client events remain.
 
 These are backend responsibilities, **not Portal reverse-endpoint routes**.
 Kernel manifest and invalidation receivers already work. Generic source routing
-and recipient fan-out remain Steps 11/13; usage/exhaustion routes and cabinet
-reads remain Steps 14/15. The descriptions below specify their target behavior.
+is implemented in Step 11; recipient fan-out remains Step 13; usage/exhaustion
+routes and cabinet reads remain Steps 14/15. The descriptions below specify their target behavior.
 Kernel
 owns the existing V1 manifest/usage/exhaustion wire schemas; other backends use
 the same meanings with their own products. See the
@@ -479,8 +545,8 @@ ignore old-generation responses and never fall back to a guest in paid mode.
 ## Bounded replacement and migration inventory
 
 This inventory records current owners and the remaining work. Items 1–2 were
-implemented in Step 10; items 3–6 remain planned. Step 9 itself changed only the
-specification. Existing Kernel execution/product behavior is preserved.
+implemented in Step 10 and item 3 in Step 11; items 4–6 remain planned. Step 9
+itself changed only the specification. Existing Kernel execution/product behavior is preserved.
 
 1. **Service config/principals — implemented Step 10, Portal composition.**
    `app/core/backend_consumers.py`, `app/core/settings.py`,
@@ -490,7 +556,7 @@ specification. Existing Kernel execution/product behavior is preserved.
    `portal_session.py` own expected consumer/scope and V2 validation. Focused
    checks cover two identities, explicit permissions, key-slot/scope isolation,
    version reuse/rollback and stale installations. Source/destination composition
-   remains with existing Kernel mechanisms until Steps 11/13.
+   uses the source seam in Step 11; destination delivery remains Step 13.
 2. **Delegation/audience/callback — implemented Step 10, Portal identity and both browsers.**
    `app/domains/identity/backend_router.py`,
    `app/domains/identity/services/backend_delegation.py`,
@@ -505,28 +571,17 @@ specification. Existing Kernel execution/product behavior is preserved.
    Focused API/PostgreSQL/component/browser checks cover consumer isolation,
    single-use races, parent revocation, callback tampering and uncertain-start
    recovery. The active Kernel adapters remain in place.
-3. **Source/owner serialization — Step 11, Portal catalog/purchases.**
-   `app/composition/sources.py::require_kernel`, catalog, mapping_operator and
-   purchase_offer compose current live source reads. ProductLinkDocument,
-   AcceptedTechnicalTerms, AcceptedPurchase and
-   `app/domains/billing/paid_allowances.py::materialize_allowance` own immutable
-   history/terms_document equality. Replace unconditional source selection with
-   configured source/owner selection using manifest V1 validation. New versions
-   are product-link-v4, purchased-technical-terms:v3, accepted-purchase:v4 and
-   selected-technical-terms:v2; add technical_source_id/backend_consumer_id to
-   new link/terms identity and selected-consent meaning. New source evidence
-   uses manifest_version/manifest_provenance in place of Kernel-specific names.
-   The new selected digest binds source/owner, selected offer, account, mapping
-   revision, selection, commercial fingerprint and provenance; full manifest
-   version/source audit changes for unrelated products remain outside it.
-   accepted-purchase:v4 pins that selected-technical-terms:v2 digest. Retain every
-   old serializer and hash input, including full-audit versus selected v2 consent. Legacy
-   missing source/owner resolves to platform-kernel only in a separate in-memory
-   view; do not add default fields to old model_dump or rewrite stored JSON.
-   Preserve configured/simulated labels, quantity and same-cycle IDs/usage.
-   Extend publication/purchase/replay/derivation tests with populated old links,
-   both digest variants, terms_document equality and same-cycle renewal/recovery;
-   compare exact serialized bytes and saved digests before/after migration.
+3. **Source/owner serialization — implemented Step 11, Portal catalog/purchases.**
+   `app/composition/sources.py::technical_source`, catalog, mapping_operator and
+   purchase_offer compose product-owned V1 manifest reads. ProductLinkDocument,
+   AcceptedTechnicalTerms and AcceptedPurchase own versioned identity and a
+   separate legacy ownership read view. Existing allowance materialization
+   consumes the unchanged historical representation. The
+   [source/history rules above](#implemented-step-11-technical-sources-and-history)
+   define v4/v3/v4 and selected-consent v2, provenance and reader compatibility.
+   Focused tests cover independent configured sources, selected capability/unit,
+   both old v2 consent variants, populated old terms/allowances, original IDs,
+   renewal quantities and owner-transfer refusal.
 4. **Snapshot/filtering/P/R — Step 12, Portal paid reads and Kernel coherence.**
    Portal `app/domains/billing/paid_read.py::CommittedPaidState` currently checks
    whole-user effective_until/require_current; `snapshot_router.py` and

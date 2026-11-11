@@ -10,10 +10,11 @@ wire semantics, AccessSnapshot, AccessInvalidation and paid-access trust remain 
 
 ## ANY-766 consumer-neutral amendment — 2026-11-10
 
-Status: **Step 10 identity implemented (2026-11-11); remaining consumer-neutral
+Status: **Steps 10/11 identity and technical sources implemented (2026-11-11); remaining consumer-neutral
 runtime work is planned.** Common delegation V2, configured callbacks, the
 persisted policy guard and generated identity security are implemented. Snapshot
-remains Kernel-only V2; filtering/P/R coherence is Step 12, sources Step 11 and
+remains Kernel-only V2; Step 11 implements source/owner routing and historical
+serialization compatibility. Filtering/P/R coherence is Step 12 and
 recipient routing Step 13. The implementation status is recorded in the guide
 and active plan; historical baseline sections below do not restore old routes.
 The [common product backend API guide](../../contracts/product-backend-api/README.md)

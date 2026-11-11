@@ -21,11 +21,13 @@ from app.domains.catalog.commercial_offer import (
 from app.domains.catalog.contracts import MAX_PRODUCT_ID_LENGTH, SourceProvenance
 from app.domains.catalog.mapping_evidence import Digest, ImmutableInput, Nonempty, PositiveInteger
 from app.domains.catalog.technical_offer import TechnicalOffer
+from app.domains.catalog.technical_source import LEGACY_KERNEL_OWNERSHIP, SourceIdentifier, TechnicalOwnership
 
 
 LINK_SCHEMA = "product-link-v2"
 QUANTITY_LINK_SCHEMA = "product-link-v3"
-LINK_SCHEMAS = (LINK_SCHEMA, QUANTITY_LINK_SCHEMA)
+OWNED_LINK_SCHEMA = "product-link-v4"
+LINK_SCHEMAS = (LINK_SCHEMA, QUANTITY_LINK_SCHEMA, OWNED_LINK_SCHEMA)
 
 
 class ProductLinkRequest(ImmutableInput):
@@ -44,11 +46,14 @@ class ProductLinkRequest(ImmutableInput):
 
 
 class ProductLinkDocument(ImmutableInput):
-    schema_version: Literal["product-link-v2", "product-link-v3"] = LINK_SCHEMA
+    schema_version: Literal["product-link-v2", "product-link-v3", "product-link-v4"] = LINK_SCHEMA
     scope: CommercialScope
     selection: ProductLinkRequest
     technical_offer: TechnicalOffer | None = Field(default=None, exclude_if=lambda value: value is None)
-    kernel_provenance: SourceProvenance
+    kernel_provenance: SourceProvenance | None = Field(default=None, exclude_if=lambda value: value is None)
+    manifest_provenance: SourceProvenance | None = Field(default=None, exclude_if=lambda value: value is None)
+    technical_source_id: SourceIdentifier | None = Field(default=None, exclude_if=lambda value: value is None)
+    backend_consumer_id: SourceIdentifier | None = Field(default=None, exclude_if=lambda value: value is None)
     lbx_evidence_mode: CommercialEvidenceMode
     manifest_version: Digest
     manifest_generated_at: AwareDatetime
@@ -58,6 +63,16 @@ class ProductLinkDocument(ImmutableInput):
     reason: Nonempty
     identity_digest: Digest
     product_revision_number: PositiveInteger | None = None
+
+    @property
+    def ownership(self) -> TechnicalOwnership:
+        if self.schema_version == OWNED_LINK_SCHEMA:
+            return TechnicalOwnership(self.technical_source_id, self.backend_consumer_id)
+        return LEGACY_KERNEL_OWNERSHIP
+
+    @property
+    def source_provenance(self) -> SourceProvenance:
+        return self.manifest_provenance if self.schema_version == OWNED_LINK_SCHEMA else self.kernel_provenance
 
     def content_digest(self) -> str:
         """Complete immutable source/audit document, separate from selected identity."""
@@ -69,7 +84,15 @@ class ProductLinkDocument(ImmutableInput):
                 "schema": self.schema_version,
                 "scope": asdict(self.scope),
                 "selection": self.selection.model_dump(mode="json"),
-                "kernel_provenance": self.kernel_provenance,
+                **(
+                    {
+                        "technical_source_id": self.technical_source_id,
+                        "backend_consumer_id": self.backend_consumer_id,
+                        "manifest_provenance": self.manifest_provenance,
+                    }
+                    if self.schema_version == OWNED_LINK_SCHEMA
+                    else {"kernel_provenance": self.kernel_provenance}
+                ),
                 "lbx_evidence_mode": self.lbx_evidence_mode,
                 **({"technical_offer": self.technical_offer.model_dump(mode="json")} if self.technical_offer else {}),
             }
@@ -77,11 +100,26 @@ class ProductLinkDocument(ImmutableInput):
 
     @model_validator(mode="after")
     def validate_identity(self) -> ProductLinkDocument:
-        if self.schema_version == QUANTITY_LINK_SCHEMA:
+        if self.schema_version == OWNED_LINK_SCHEMA:
+            if (
+                self.technical_source_id is None
+                or self.backend_consumer_id is None
+                or self.manifest_provenance is None
+                or self.kernel_provenance is not None
+            ):
+                raise ValueError("owned link requires explicit source provenance")
+        elif (
+            self.technical_source_id is not None
+            or self.backend_consumer_id is not None
+            or self.manifest_provenance is not None
+            or self.kernel_provenance is None
+        ):
+            raise ValueError("historical link cannot acquire ownership metadata")
+        if self.schema_version in (QUANTITY_LINK_SCHEMA, OWNED_LINK_SCHEMA):
             if (
                 self.technical_offer is None
                 or self.technical_offer.product_id != self.selection.product_id
-                or self.kernel_provenance != SourceProvenance.CONFIGURED_SOURCE
+                or self.source_provenance != SourceProvenance.CONFIGURED_SOURCE
                 or self.lbx_evidence_mode != CommercialEvidenceMode.CONFIGURED_SOURCE
             ):
                 raise ValueError("invalid configured technical offer")

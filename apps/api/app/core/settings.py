@@ -129,11 +129,14 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_backend_consumers(self) -> Settings:
-        consumers, products, secrets = set(), set(), set()
+        consumers, products, secrets, sources = set(), set(), set(), set()
         for consumer in self.backend_consumers:
             if consumer.consumer_id in consumers:
                 raise ValueError("Backend consumer IDs must be unique")
             consumers.add(consumer.consumer_id)
+            if consumer.technical_source_id in sources:
+                raise ValueError("Each technical source must have one backend owner")
+            sources.add(consumer.technical_source_id)
             if (consumer.tenant_id, consumer.region) != (self.instance_tenant_id, self.instance_region):
                 raise ValueError("Backend consumer must belong to the instance scope")
             if products & consumer.allowed_products:

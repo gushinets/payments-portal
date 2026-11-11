@@ -13,6 +13,7 @@ from app.domains.billing.contracts import BillingRefused
 from app.domains.catalog.product_link import CurrentOffer, ProductLinkRequest
 from app.domains.catalog.mapping_evidence import Digest
 from app.domains.purchases.technical_terms import AcceptedTechnicalTerms
+from app.domains.catalog.technical_source import LEGACY_KERNEL_OWNERSHIP, TechnicalOwnership
 from app.models import ExternalCreateOperationKind, ExternalCreateOperationState, PurchaseIntentState
 
 type FinancialRequestDocument = dict[str, str | int | bool | list[dict[str, int]]]
@@ -81,9 +82,9 @@ class PurchaseMeaning(BaseModel):
 
 class AcceptedPurchase(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    schema_version: Literal["accepted-purchase:v1", "accepted-purchase:v2", "accepted-purchase:v3"] = (
-        "accepted-purchase:v1"
-    )
+    schema_version: Literal[
+        "accepted-purchase:v1", "accepted-purchase:v2", "accepted-purchase:v3", "accepted-purchase:v4"
+    ] = "accepted-purchase:v1"
     meaning: PurchaseMeaning
     selection: ProductLinkRequest
     offer: CurrentOffer
@@ -92,13 +93,22 @@ class AcceptedPurchase(BaseModel):
     seller_id: int
     technical_terms: AcceptedTechnicalTerms | None = None
 
+    @property
+    def ownership(self) -> TechnicalOwnership:
+        return self.technical_terms.ownership if self.technical_terms else LEGACY_KERNEL_OWNERSHIP
+
     @model_validator(mode="after")
     def verify_technical_meaning(self) -> AcceptedPurchase:
         terms = self.technical_terms
         if self.schema_version == "accepted-purchase:v1" and (terms or self.meaning.expected_technical_terms_digest):
             raise ValueError("legacy purchase has no technical evidence")
-        if self.schema_version == "accepted-purchase:v3":
-            if terms is None or terms.schema_version != "purchased-technical-terms:v2":
+        if self.schema_version in ("accepted-purchase:v3", "accepted-purchase:v4"):
+            expected = (
+                "purchased-technical-terms:v3"
+                if self.schema_version == "accepted-purchase:v4"
+                else "purchased-technical-terms:v2"
+            )
+            if terms is None or terms.schema_version != expected:
                 raise ValueError("configured purchase requires published technical terms")
         elif terms is not None and terms.schema_version != "purchased-technical-terms:v1":
             raise ValueError("historical purchase cannot acquire configured technical terms")
@@ -106,7 +116,7 @@ class AcceptedPurchase(BaseModel):
         # pin selected meaning; both retain the independently verified audit hash.
         digests = (
             {terms.confirmation_digest()}
-            if self.schema_version == "accepted-purchase:v3"
+            if self.schema_version in ("accepted-purchase:v3", "accepted-purchase:v4")
             else {terms.digest, terms.confirmation_digest()}
             if terms
             else {None}

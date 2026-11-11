@@ -92,14 +92,19 @@ Preparation or recovery binding alone still supplies no positive paid authority.
 ## ANY-766 Step 5 — production allowances and snapshot serving
 
 The existing claimed source apply and sole whole-user paid writer now use an
-explicit provenance policy. Production permits only accepted
-`purchased-technical-terms:v2` with `CONFIGURED_SOURCE` provenance. Development
+explicit provenance policy. Production permits accepted
+`purchased-technical-terms:v2` and Step 11's `purchased-technical-terms:v3` only
+with `CONFIGURED_SOURCE` provenance. Development
 and tests also permit the historical SIMULATED terms. Legacy purchases without
 technical terms can retain independently proven product access but receive no
 invented allowance. Accepted quantities, units and initial cycle anchors stay
 fixed through republication and renewal. Same-cycle block/recovery reuses allowance
 IDs; a proven new cycle issues new IDs without rewriting historical allowances.
 No sale flags, mappings or deployed settings are enabled by this implementation.
+Step 11 records source/backend ownership in new terms and preserves the exact
+old `terms_document` representation used by this writer. Its
+[source/history rules](../contracts/product-backend-api/README.md#implemented-step-11-technical-sources-and-history)
+do not add another meter or change execution/usage ownership.
 
 `GET /internal/v1/access-snapshots/{user_id}?tenant_id=anytoolai&region=ru`
 serves the [selected V2 wire contract](../contracts/portal-kernel-paid/README.md#snapshot-v2-and-invalidation-v1).
@@ -108,7 +113,8 @@ platform-kernel entry of `BACKEND_CONSUMERS`, with explicit
 `access-snapshot:read` permission, as described by the
 [current identity configuration](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).
 No permission is granted by default. Snapshot remains Kernel-only V2 until
-Step 12. The permission grants
+Step 12 and returns the whole-user paid set without product/owner filtering;
+Step 11 source routing does not change this serving boundary. The permission grants
 neither exchange nor introspection. Exactly one Bearer header and the matching
 tenant/region query are required. Origin, foreign/ambiguous scope, unknown input
 and malformed identity are refused; success/refusal responses are no-store.
@@ -198,8 +204,10 @@ adding processes. Limits do not coordinate capacity across API replicas.
 
 ## ANY-766 Step 7 — durable Kernel invalidations
 
-The sender uses the existing manifest connection: `KERNEL_BASE_URL` and
-`KERNEL_SERVICE_TOKEN` for Portal → Kernel. Whenever that connection and
+The sender retains the legacy Kernel connection: `KERNEL_BASE_URL` and
+`KERNEL_SERVICE_TOKEN` for Portal → Kernel. Step 11's registry-based manifest
+clients do not replace this worker client or add recipient fan-out; keep its
+origin/token aligned with the Kernel entry until Step 13. Whenever that connection and
 `BILLING_WORKER_ENABLED=true` are configured, the delivery lane starts
 automatically; there is no separate Portal sender-enable flag. The
 reverse-direction identity/snapshot credential remains independent.

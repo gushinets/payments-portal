@@ -554,7 +554,7 @@ def test_any709_step1_direct_cli_dry_run_publish_query_and_secret_redaction(
     )
     queried = json.loads(cli.execute(cli.parser().parse_args(["query", "--product-id", "proposal_ai"]), offline))
     assert queried["mapping_revision_id"] == json.loads(result)["mapping_revision_id"]
-    assert queried["revision_number"] == 1 and queried["document"]["schema_version"] == "product-link-v3"
+    assert queried["revision_number"] == 1 and queried["document"]["schema_version"] == "product-link-v4"
     assert queried["operator_audit"]["execution_principal"] == "os-euid:42"
     assert queried["document"]["publisher_principal"] == "os-euid:29001"
     rotated = step1_settings(

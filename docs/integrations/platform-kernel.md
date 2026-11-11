@@ -31,12 +31,12 @@ plans do not override accepted sources.
 
 ## Observed implementation
 
-Sources: Portal `f6c5e2543a7c281bf3a0e26a0ad9af64372f651b` and Kernel
-`5aaa0a5fc9f0fdce977dd671727cd5957c13fb39`, plus the paired Step 10 working diff.
+Sources: Portal `b346f0e90c9745f942847734bc06d0d3f5b0a73d` and Kernel
+`192f4cb2ebf19a697f9fb1298147d26221a0a6a0`, plus the Step 11 working diff.
 The [active plan](../exec-plans/active/ANY-766-implementation-plan.md) records
-completed Steps 1–10: common identity V2, configured consumer callbacks and the
-policy guard, plus V2/R paid admission and invalidation. Consumer-filtered V3
-access, generic sources/recipients, usage, assembled local acceptance and build
+completed Steps 1–11: common identity V2, configured consumer callbacks and the
+policy guard, plus V2/R paid admission and invalidation. Step 11 adds configured technical sources and immutable source/owner history.
+Consumer-filtered V3 access, generic recipients, usage, assembled local acceptance and build
 preparation remain pending. Current identity configuration is in the
 [common guide](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).
 Remote installation and live-service acceptance belong to ANY-767.
@@ -47,8 +47,10 @@ Remote installation and live-service acceptance belong to ANY-767.
 | `GET /internal/v1/access-snapshots/{user_id}`: Kernel -> Portal | Step 5 serves scoped read-only V2 from committed paid state | Step 6 implements the client, durable coherence and paid admission | Paired local acceptance remains Step 16 |
 | `POST /internal/v1/access-invalidations`: Portal -> Kernel | ANY-766 Step 7 implements bounded claimed delivery, exact-N ACK, restart repair and parked-work CLI | Kernel Step 6 implements the durable receiver; permission is disabled by default | Focused local PostgreSQL delivery tests with synthetic HTTP responses; paired HTTP acceptance remains Step 16 |
 
-Portal's enabled embedded worker starts delivery automatically from the existing
-manifest URL/token. Configure the compatible Kernel receiver and its permission
+Portal's enabled embedded worker starts delivery automatically from legacy
+`KERNEL_BASE_URL`/`KERNEL_SERVICE_TOKEN`. Step 11 selects manifest connections
+from the backend registry; that does not replace the Step 7 sender. Keep its
+Kernel origin/token aligned until recipient routing in Step 13. Configure the compatible Kernel receiver and its permission
 first; the [delivery runbook](../engineering/billing-background-operations.md#any-766-step-7--durable-kernel-invalidations)
 describes migration order, parking and local CLI retry. Step 8 implements browser
 custody/recovery; usage/exhaustion and cabinet usage remain pending. No deployed or live-provider
@@ -233,8 +235,24 @@ pending requests retain their exact request/key. See the
 Portal migration 20261111_0009 preserves populated delegation parent links,
 hashes, TTLs and single-use state while binding historical audience to Kernel.
 Step 10 needs no Kernel migration or usage reset. Snapshot remains Kernel-only
-V2; another consumer cannot read that unfiltered baseline. V3/filtering/coherence
-remain Step 12, sources Step 11 and recipient delivery Step 13. Existing outgoing
-Kernel manifest/invalidation settings stay active until their owning steps.
+V2; another consumer cannot read that unfiltered baseline. At this Step 10
+checkpoint, source routing and recipient delivery remained Steps 11/13.
+The Step 11 checkpoint below supersedes source selection; V3/filtering/coherence
+and recipient delivery remain Steps 12/13.
 Local synthetic/API/component and disposable PostgreSQL checks are distinct from
 Step 16's assembled real HTTP acceptance and ANY-767 remote/live acceptance.
+
+
+## ANY-766 Step 11 technical-source checkpoint — 2026-11-11
+
+Peer inspected: Kernel `192f4cb2ebf19a697f9fb1298147d26221a0a6a0`.
+Portal base: `b346f0e90c9745f942847734bc06d0d3f5b0a73d`, plus the Step 11 diff.
+The configured backend registry now selects each product's V1 manifest origin
+and independent outbound key. New metered links/terms/purchases bind source and
+backend owner; old serializers, saved consent, quantities and allowance IDs are
+preserved. Kernel's producer and execution remain unchanged; no new Kernel
+scenario or real external product is registered. See the
+[source/history guide](../contracts/product-backend-api/README.md#implemented-step-11-technical-sources-and-history).
+Synthetic HTTP fixtures with disposable PostgreSQL prove source selection and
+history compatibility, not live LBX, real third-party adoption or paired HTTP
+acceptance. Generic snapshot/delivery/usage remain later steps.

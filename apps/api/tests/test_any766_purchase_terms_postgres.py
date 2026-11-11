@@ -167,8 +167,8 @@ async def test_http_pins_exact_published_quantity_and_replays_before_source_io(
                 row = db.scalars(select(PurchaseIntent)).one()
                 saved = service.accepted(row)
                 terms = saved.technical_terms
-                assert saved.schema_version == row.accepted_snapshot_schema_version == "accepted-purchase:v3"
-                assert terms.schema_version == "purchased-technical-terms:v2"
+                assert saved.schema_version == row.accepted_snapshot_schema_version == "accepted-purchase:v4"
+                assert terms.schema_version == "purchased-technical-terms:v3"
                 assert terms.mapping_digest == link.document.identity_digest
                 assert terms.offer == technical_offer(quantity) and terms.selection.quantity == 1
                 assert terms.account_id == row.external_billing_account_id
@@ -342,7 +342,7 @@ async def test_global_manifest_changes_preserve_selected_consent_and_full_audit_
         )
         accepted = purchase.accepted.technical_terms
         assert accepted.confirmation_digest() == terms.confirmation_digest()
-        assert accepted.digest != terms.digest and accepted.kernel_manifest_version != terms.kernel_manifest_version
+        assert accepted.digest != terms.digest and accepted.manifest_version != terms.manifest_version
         assert (
             accepted.source_digest == terms.source_digest
             and accepted.mapping_digest == original.document.identity_digest

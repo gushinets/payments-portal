@@ -5,11 +5,12 @@ import hashlib
 import json
 import re
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, Any
 
 import httpx
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from app.core.errors import AppError
 from app.core.settings import Settings
@@ -187,6 +188,12 @@ class _CleanupProtectedStream(httpx.AsyncByteStream):
             await self._stream.aclose()
 
 
+@dataclass(frozen=True)
+class ManifestConnection:
+    base_url: str
+    service_token: SecretStr
+
+
 class PlatformKernelClient:
     """One lifespan-owned async HTTP pool; no construction/startup fetch or LKG.
 
@@ -202,15 +209,18 @@ class PlatformKernelClient:
         provenance: SourceProvenance,
         transport: httpx.AsyncBaseTransport | None = None,
         max_connections: int | None = None,
+        connection: ManifestConnection | None = None,
     ) -> None:
-        if not configuration.kernel_base_url:
+        # The same V1 protocol/validator serves each explicitly configured source.
+        endpoint = connection or ManifestConnection(configuration.kernel_base_url, configuration.kernel_service_token)
+        if not endpoint.base_url:
             raise KernelNotConfigured()
         self._configuration = configuration
         self._provenance = provenance
         self._http = httpx.AsyncClient(
-            base_url=configuration.kernel_base_url,
+            base_url=endpoint.base_url,
             headers={
-                "Authorization": f"Bearer {configuration.kernel_service_token.get_secret_value()}",
+                "Authorization": f"Bearer {endpoint.service_token.get_secret_value()}",
                 "Accept": "application/json",
                 "Accept-Encoding": "identity",
                 "Cache-Control": "no-cache, no-store",

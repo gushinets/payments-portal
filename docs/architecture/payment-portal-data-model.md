@@ -172,8 +172,10 @@ document-version material.
 account. Their schema/version/timestamp/JSON columns remain physical storage
 only. Both tables are inert: no startup/periodic synchronization or admission
 reader is planned under the accepted amendment. Publication/new purchase read
-sources live. ANY-709 discovery reads enabled Kernel products and selected
-current LBX values; PostgreSQL retains immutable links/history.
+sources live. Step 11 routes discovery to configured product backends using
+manifest V1, retaining the legacy Kernel source when the consumer registry is
+empty. Selected detail reads current LBX values; PostgreSQL retains immutable
+links/history.
 
 `commercial_mapping_revisions` is append-only publication evidence. A revision
 is unique within `(external_billing_account_id, billing_offer_id)`, has a
@@ -195,7 +197,10 @@ service/tariff/period/quantity, independent source provenance, manifest evidence
 and operator audit. It contains no price, approval certificates or invented
 technical allowance. ANY-766 Step 3 adds `product-link-v3` in the same table;
 its identity also pins one explicit fixed-per-cycle product/metric/unit/quantity
-offer, with configured Kernel/LBX provenance. Historical documents are unchanged.
+offer, with configured Kernel/LBX provenance. Step 11 writes metered
+`product-link-v4` with explicit technical source/backend owner and neutral
+manifest provenance, using the same table and product-head CAS. Historical
+documents are unchanged and missing ownership resolves to Kernel only in memory.
 `commercial_product_heads` has primary key
 `(external_billing_account_id, product_id)`, a restrictive composite FK to the
 immutable revision in the same account, and a positive product revision counter.
@@ -246,6 +251,14 @@ the reader compatibility floor must accompany the unchanged migration head.
 Existing accepted subscriptions keep their quantity across republished links
 and proven new cycles. Step 5 implements configured-source derivation and
 snapshot V2 serving; Step 7 implements invalidation delivery.
+Step 11 writes `accepted-purchase:v4` for v4 links with required
+`purchased-technical-terms:v3` and `selected-technical-terms:v2` consent. These
+bind source/backend owner and neutral manifest evidence without changing prior
+serializers, saved consent digests or allowance `terms_document`. Same-cycle IDs
+and accepted renewal quantities remain unchanged. There is no Step 11 migration
+or historical JSON conversion; old readers cannot consume the new formats even
+when migration heads match. See the
+[source/history compatibility guide](../contracts/product-backend-api/README.md#implemented-step-11-technical-sources-and-history).
 
 `external_create_operations` records customer, agreement, or subscription
 create work. Customer creation has no purchase intent; agreement and

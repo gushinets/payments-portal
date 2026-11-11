@@ -100,7 +100,7 @@ Start with the smallest document that matches the task.
 - [Billing authority](architecture/billing-authority.md) — historical/superseded
   reference only; not current-state or target authority
 - [Payment Portal data model](architecture/payment-portal-data-model.md) —
-  authoritative current as-built 28-table schema reference
+  authoritative current as-built 29-table schema reference
 - [Platform Kernel contract boundary](architecture/platform-kernel-contract.md)
   — superseded planned contract; retained historical context
 
@@ -124,7 +124,7 @@ Start with the smallest document that matches the task.
 - [Security](SECURITY.md)
 - [Quality score](QUALITY_SCORE.md)
 - [Execution plans](exec-plans/README.md)
-- [ANY-766 active implementation plan](exec-plans/active/ANY-766-implementation-plan.md) — authoritative Portal/backend API and Kernel integration plan; Steps 1–9 complete, consumer-neutral runtime work from ANY-833 planned in Steps 10–13, remaining local delivery in Steps 14–17.
+- [ANY-766 active implementation plan](exec-plans/active/ANY-766-implementation-plan.md) — authoritative Portal/backend API and Kernel integration plan; Steps 1–11 complete, consumer-neutral snapshot/delivery work from ANY-833 remains in Steps 12–13, remaining local delivery in Steps 14–17.
 - [ANY-715 completed MVP rebuild plan](exec-plans/completed/ANY-715-mvp-rebuild-plan.md) — Stages 0–6 closed by owner decision; verification evidence, limitations and follow-ups under ANY-820 are retained.
 - [Background billing operations](engineering/billing-background-operations.md) — worker settings, scheduling, polling-only operation, retained inbox history, operator commands and diagnostics.
 
