@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.composition.billing_operator import resolve_review
+from app.composition.backend_consumers import initialize_backend_consumers
 from app.composition.purchase_inventory import collect_inventory
 from app.core.errors import AppError
 from app.domains.billing.operator_diagnostics import inspect_evidence
@@ -18,6 +19,7 @@ from app.integrations.lbx.financial import Subscription
 from app.models import AccessInvalidationOutbox, BillingProductAccessScope, ExternalSubscription, ManualReviewCase
 from apps.api.tests.factories.billing_operator import resolution_request
 from apps.api.tests.support.any709_step1 import step1_settings
+from apps.api.tests.support.backend_consumers import backend_consumer
 from apps.api.tests.test_billing_background_recovery_postgres import (
     background_scenario as background_scenario,
     synthetic_prepare,
@@ -62,6 +64,7 @@ async def test_primary_resolution_requires_complete_relevant_product(
     if unrelated_incomplete:
         transport.subscriptions[0]["total_price"] = None
     config = step1_settings(paid_access_clock_skew_seconds=10)
+    initialize_backend_consumers(config.model_copy(update={"backend_consumers": (backend_consumer(),)}), factory)
     with factory() as db:
         identity = db.scalar(
             select(ExternalSubscription.subscription_id).where(ExternalSubscription.product_id == "brief_decoder")

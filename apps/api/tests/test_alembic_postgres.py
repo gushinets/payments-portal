@@ -19,7 +19,7 @@ BASELINE_REVISION = "20260924_0001"
 EMAIL_VERIFICATION_REVISION = "20261001_0002"
 BILLING_PREPARATION_REVISION = "20261029_0003"
 WORKER_REVISION = "20261028_0005"
-HEAD_REVISION = "20261031_0006"
+HEAD_REVISION = "20261111_0011"
 
 SURVIVOR_TABLES = {
     "regions",
@@ -52,6 +52,8 @@ TARGET_TABLES = {
     "manual_review_cases",
     "paid_access_states",
     "access_invalidation_outbox",
+    "backend_session_delegations",
+    "backend_consumer_policies",
 }
 
 APPLICATION_TABLES = SURVIVOR_TABLES | TARGET_TABLES
@@ -367,6 +369,7 @@ EXPECTED_COLUMNS = {
         "work_kind",
         "scope_kind",
         "scope_reference",
+        "recipient_id",
         "coalescing_key",
         "payload_schema_version",
         "payload_document",
@@ -410,6 +413,7 @@ EXPECTED_COLUMNS = {
         "tenant_id",
         "region",
         "user_id",
+        "recipient_id",
         "pending_revision",
         "delivered_revision",
         "attempt_count",
@@ -417,6 +421,25 @@ EXPECTED_COLUMNS = {
         "last_error_classification",
         "created_at",
         "updated_at",
+    },
+    "backend_session_delegations": {
+        "id",
+        "auth_session_id",
+        "consumer_id",
+        "code_hash",
+        "code_challenge",
+        "code_expires_at",
+        "exchanged_at",
+        "token_hash",
+        "token_expires_at",
+    },
+    "backend_consumer_policies": {
+        "consumer_id",
+        "tenant_id",
+        "region",
+        "consumer_policy_revision",
+        "policy_digest",
+        "snapshot_delivery_enabled",
     },
 }
 
@@ -483,6 +506,7 @@ EXPECTED_CHECKS = {
         "ck_billing_work_items_payload_schema_nonempty",
         "ck_billing_work_items_lease_pair",
         "ck_billing_work_items_generation_nonnegative",
+        "ck_billing_work_items_recipient",
     },
     "manual_review_cases": {"ck_manual_review_cases_evidence_schema_nonempty"},
     "paid_access_states": {"ck_paid_access_states_revision_positive"},
@@ -491,6 +515,8 @@ EXPECTED_CHECKS = {
         "ck_access_invalidation_outbox_pending_revision_positive",
         "ck_access_invalidation_outbox_revision_order",
     },
+    "backend_session_delegations": {"ck_backend_delegation_exchange_shape"},
+    "backend_consumer_policies": {"ck_backend_policy_positive"},
 }
 
 EXPECTED_UNIQUE_CONSTRAINTS = {
@@ -547,7 +573,11 @@ EXPECTED_UNIQUE_CONSTRAINTS = {
     },
     "purchased_allowances": {"uq_purchased_allowances_logical_cycle"},
     "paid_access_states": {"uq_paid_access_states_tenant_region_user"},
-    "access_invalidation_outbox": {"uq_access_invalidation_outbox_tenant_region_user"},
+    "access_invalidation_outbox": {"uq_access_invalidation_outbox_recipient_user"},
+    "backend_session_delegations": {
+        "kernel_session_delegations_code_hash_key",
+        "kernel_session_delegations_token_hash_key",
+    },
 }
 
 EXPECTED_INDEXES = {
@@ -697,6 +727,7 @@ EXPECTED_INDEXES = {
         "ix_manual_review_cases_resolved_by",
     },
     "access_invalidation_outbox": {"ix_access_invalidation_outbox_next_attempt_at"},
+    "backend_session_delegations": {"ix_backend_session_delegations_auth_session_id"},
 }
 
 ORM_ONLY_DEFAULT_COLUMNS = {
@@ -759,6 +790,11 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         assert script.get_bases() == [BASELINE_REVISION]
         assert [item.revision for item in script.walk_revisions()] == [
             HEAD_REVISION,
+            "20261111_0010",
+            "20261111_0009",
+            "20261110_0008",
+            "20261110_0007",
+            "20261031_0006",
             WORKER_REVISION,
             BILLING_PREPARATION_REVISION,
             EMAIL_VERIFICATION_REVISION,
@@ -767,7 +803,7 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         command.upgrade(config, "head")
 
     assert tuple(logging.getLogger().handlers) == handlers
-    assert len(APPLICATION_TABLES) == 27
+    assert len(APPLICATION_TABLES) == 29
     assert _public_table_names(postgres_engine) == APPLICATION_TABLES | {"alembic_version"}
     assert LEGACY_TABLES.isdisjoint(_public_table_names(postgres_engine))
     with postgres_engine.connect() as connection:

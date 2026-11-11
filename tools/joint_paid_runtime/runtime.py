@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import os
+import secrets
 import signal
 import socket
 import subprocess
@@ -22,6 +23,7 @@ from types import TracebackType
 import httpx
 import psycopg
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.engine import URL, make_url
 
 PORTAL = Path(__file__).resolve().parents[2]
 KERNEL = Path(
@@ -167,10 +169,11 @@ class JointRuntime:
 
     def database(self, owner: str) -> str:
         port = free_port()
+        password = secrets.token_urlsafe(32)
         prefix = "POSTGRES" if owner == "portal" else "ANYTOOLAI_POSTGRES"
         path = self.run / (owner + ".env")
         path.write_text(
-            f"{prefix}_USER=joint\n{prefix}_PASSWORD=joint-disposable-only\n"
+            f"{prefix}_USER=joint\n{prefix}_PASSWORD={password}\n"
             f"{prefix}_DB=joint_{owner}_tests\n{prefix}_PORT={port}\n"
         )
         path.chmod(0o600)
@@ -188,7 +191,7 @@ class JointRuntime:
                     host="127.0.0.1",
                     port=port,
                     user="joint",
-                    password="joint-disposable-only",
+                    password=password,
                     dbname=f"joint_{owner}_tests",
                     connect_timeout=2,
                 ) as connection:
@@ -198,7 +201,14 @@ class JointRuntime:
                 if monotonic() >= deadline:
                     raise
                 sleep(0.1)
-        return f"postgresql+psycopg://joint:joint-disposable-only@127.0.0.1:{port}/joint_{owner}_tests"
+        return URL.create(
+            "postgresql+psycopg",
+            username="joint",
+            password=password,
+            host="127.0.0.1",
+            port=port,
+            database=f"joint_{owner}_tests",
+        ).render_as_string(hide_password=False)
 
     def kernel_command(self, role: str) -> list[str]:
         return [
@@ -248,6 +258,7 @@ class JointRuntime:
         try:
             self.portal_url = self.database("portal")
             self.kernel_url = self.database("kernel")
+            portal_database = make_url(self.portal_url)
             # Credentials are synthetic and unique by direction/consumer, never inherited.
             consumers = []
             for consumer, origin, products in (
@@ -305,9 +316,9 @@ class JointRuntime:
                 "DATABASE_URL": self.portal_url,
                 "POSTGRES_DB": "joint_portal_tests",
                 "POSTGRES_USER": "joint",
-                "POSTGRES_PASSWORD": "joint-disposable-only",
+                "POSTGRES_PASSWORD": portal_database.password,
                 "POSTGRES_HOST": "127.0.0.1",
-                "POSTGRES_PORT": self.portal_url.split(":")[-1].split("/")[0],
+                "POSTGRES_PORT": str(portal_database.port),
                 "CORS_ALLOW_ORIGINS": self.origins["portal_web"],
                 "KERNEL_MOCK_ENABLED": "false",
                 "KERNEL_BASE_URL": consumers[0]["backend_base_url"],
