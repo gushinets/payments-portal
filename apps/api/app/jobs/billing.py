@@ -16,6 +16,7 @@ from app.composition.reconciliation import reconcile_subscription
 from app.composition.billing_background import recover_operation, inventory_customer, apply_deadline
 from app.domains.billing import background_recovery
 from app.domains.billing import access_invalidation
+from app.domains.billing import allowance_exhaustion
 from app.core.settings import Settings
 from app.core.time import utc_now
 from app.domains.billing import work
@@ -182,6 +183,8 @@ class BillingWorker:
                 )
             elif claim.kind == background_recovery.DEADLINE:
                 await apply_deadline(self.factory, claim, delegate=partial(self.db, lane))
+            elif claim.kind == allowance_exhaustion.KIND:
+                await self.db(lane, allowance_exhaustion.process_exhaustion, self.factory, claim)
             else:
                 await self.db(lane, work.expire_trust, self.factory, claim)
         else:

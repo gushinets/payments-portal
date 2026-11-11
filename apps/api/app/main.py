@@ -13,6 +13,7 @@ from app.composition.backend_consumers import initialize_backend_consumers
 from app.composition.sources import source_resources
 from app.composition.billing_worker import billing_worker_resources
 from app.composition.paid_reads import paid_read_resources
+from app.composition.paid_usage import paid_usage_resources
 from app.core.database import SessionLocal, engine
 from app.core.errors import AppError
 from app.core.observability import (
@@ -20,7 +21,9 @@ from app.core.observability import (
     request_context_middleware,
 )
 from app.core.settings import AppEnv, settings
+from app.domains.billing.exhaustion_router import router as exhaustion_router
 from app.domains.billing.paid_router import router as paid_access_router
+from app.domains.billing.usage_router import router as paid_usage_router
 from app.domains.billing.snapshot_router import router as access_snapshot_router
 from app.domains.billing.router import router as billing_router
 from app.domains.catalog.router import router as catalog_router
@@ -52,8 +55,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     if os.getenv("SKIP_LEGAL_SEED") != "true":
         await run_in_threadpool(_seed_legal_documents_sync)
 
-    async with paid_read_resources(settings) as reads, source_resources(settings) as sources:
+    async with paid_read_resources(settings) as reads, source_resources(settings) as sources, paid_usage_resources(settings) as usage:
         _app.state.paid_reads = reads
+        _app.state.paid_usage = usage
         _app.state.sources = sources
         async with billing_worker_resources(settings) as worker:
             _app.state.billing_worker = worker
@@ -103,7 +107,9 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RequestValidationError, session_validation_error)
     app.include_router(backend_session_router)
     app.include_router(billing_router)
+    app.include_router(exhaustion_router)
     app.include_router(paid_access_router)
+    app.include_router(paid_usage_router)
     app.include_router(access_snapshot_router)
     app.include_router(purchases_router)
     app.include_router(catalog_router)

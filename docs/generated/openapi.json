@@ -283,6 +283,82 @@
         "title": "AccountPurchasesResponse",
         "type": "object"
       },
+      "AllowanceExhaustion": {
+        "additionalProperties": false,
+        "properties": {
+          "allowance_id": {
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "title": "Allowance Id",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "allowance_exhausted",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "metric_key": {
+            "minLength": 1,
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "product_id": {
+            "minLength": 1,
+            "title": "Product Id",
+            "type": "string"
+          },
+          "quantity": {
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "region": {
+            "minLength": 1,
+            "title": "Region",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "tenant_id": {
+            "minLength": 1,
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "unit": {
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          },
+          "user_id": {
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "event_type",
+          "tenant_id",
+          "region",
+          "user_id",
+          "allowance_id",
+          "product_id",
+          "metric_key",
+          "unit",
+          "quantity",
+          "occurred_at"
+        ],
+        "title": "AllowanceExhaustion",
+        "type": "object"
+      },
       "BackendCodeRequest": {
         "additionalProperties": false,
         "examples": [
@@ -1075,6 +1151,81 @@
         "title": "LogoutResponse",
         "type": "object"
       },
+      "ObservedPaidUsage": {
+        "properties": {
+          "allowance_id": {
+            "title": "Allowance Id",
+            "type": "string"
+          },
+          "available": {
+            "minimum": 0.0,
+            "title": "Available",
+            "type": "integer"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/UsageClassification"
+          },
+          "metric_key": {
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "quantity": {
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "read_at": {
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          },
+          "remaining": {
+            "minimum": 0.0,
+            "title": "Remaining",
+            "type": "integer"
+          },
+          "reserved": {
+            "minimum": 0.0,
+            "title": "Reserved",
+            "type": "integer"
+          },
+          "status": {
+            "const": "observed",
+            "title": "Status",
+            "type": "string"
+          },
+          "successful_used": {
+            "minimum": 0.0,
+            "title": "Successful Used",
+            "type": "integer"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "allowance_id",
+          "product_id",
+          "metric_key",
+          "unit",
+          "quantity",
+          "classification",
+          "status",
+          "successful_used",
+          "reserved",
+          "remaining",
+          "available",
+          "read_at"
+        ],
+        "title": "ObservedPaidUsage",
+        "type": "object"
+      },
       "PaidAccessAllowanceResponse": {
         "properties": {
           "allowance_id": {
@@ -1255,6 +1406,83 @@
           "effective_until"
         ],
         "title": "PaidAccessResponse",
+        "type": "object"
+      },
+      "PaidUsageErrorDetail": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          }
+        },
+        "required": [
+          "code",
+          "request_id"
+        ],
+        "title": "PaidUsageErrorDetail",
+        "type": "object"
+      },
+      "PaidUsageErrorResponse": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/PaidUsageErrorDetail"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "PaidUsageErrorResponse",
+        "type": "object"
+      },
+      "PaidUsageResponse": {
+        "properties": {
+          "access_revision": {
+            "minimum": 0.0,
+            "title": "Access Revision",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "observed": "#/components/schemas/ObservedPaidUsage",
+                  "unavailable": "#/components/schemas/UnavailablePaidUsage",
+                  "unobserved": "#/components/schemas/UnobservedPaidUsage"
+                },
+                "propertyName": "status"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ObservedPaidUsage"
+                },
+                {
+                  "$ref": "#/components/schemas/UnobservedPaidUsage"
+                },
+                {
+                  "$ref": "#/components/schemas/UnavailablePaidUsage"
+                }
+              ]
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "access_revision",
+          "items"
+        ],
+        "title": "PaidUsageResponse",
         "type": "object"
       },
       "PasswordResetConfirmRequest": {
@@ -1998,6 +2226,104 @@
         "title": "TechnicalOffer",
         "type": "object"
       },
+      "UnavailablePaidUsage": {
+        "properties": {
+          "allowance_id": {
+            "title": "Allowance Id",
+            "type": "string"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/UsageClassification"
+          },
+          "metric_key": {
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "quantity": {
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "status": {
+            "const": "unavailable",
+            "title": "Status",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "allowance_id",
+          "product_id",
+          "metric_key",
+          "unit",
+          "quantity",
+          "classification",
+          "status"
+        ],
+        "title": "UnavailablePaidUsage",
+        "type": "object"
+      },
+      "UnobservedPaidUsage": {
+        "properties": {
+          "allowance_id": {
+            "title": "Allowance Id",
+            "type": "string"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/UsageClassification"
+          },
+          "metric_key": {
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "quantity": {
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "status": {
+            "const": "unobserved",
+            "title": "Status",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "allowance_id",
+          "product_id",
+          "metric_key",
+          "unit",
+          "quantity",
+          "classification",
+          "status"
+        ],
+        "title": "UnobservedPaidUsage",
+        "type": "object"
+      },
+      "UsageClassification": {
+        "enum": [
+          "current",
+          "historical"
+        ],
+        "title": "UsageClassification",
+        "type": "string"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -2171,7 +2497,7 @@
         "type": "http"
       },
       "PortalUserBearer": {
-        "description": "Primary Portal session bearer. Used only for code issuance; never forwarded to a backend.",
+        "description": "Primary Portal session bearer. Never forwarded to a product backend.",
         "scheme": "bearer",
         "type": "http"
       }
@@ -2964,6 +3290,63 @@
         ]
       }
     },
+    "/api/paid-usage": {
+      "get": {
+        "description": "Read actual usage for server-selected current or eligible historical allowances. Requires an active verified-email Portal session. No caller-selected owner or allowance IDs. No-store responses; backend outages and concurrent paid-state changes return retryable 503.",
+        "operationId": "paid_usage_api_paid_usage_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaidUsageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaidUsageErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaidUsageErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaidUsageErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "PortalUserBearer": []
+          }
+        ],
+        "summary": "Paid Usage",
+        "tags": [
+          "paid-usage"
+        ]
+      }
+    },
     "/api/purchase-intents": {
       "get": {
         "operationId": "account_purchases_api_purchase_intents_get",
@@ -3453,6 +3836,86 @@
         "summary": "Read this consumer's committed paid authority (V3)",
         "tags": [
           "access-snapshot"
+        ]
+      }
+    },
+    "/internal/v1/allowance-exhaustions": {
+      "post": {
+        "description": "Requires BackendServiceBearer with allowance-exhaustion:write. Validates the sender's product and retained source/backend ownership plus the full issued tuple. 204 follows durable commit, including duplicates and historical cycles. All responses are no-store; browser Origin is refused. The hint can schedule GET-only reconciliation; it never revokes, refills or sends financial commands.",
+        "operationId": "allowance_exhaustion_internal_v1_allowance_exhaustions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllowanceExhaustion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "BackendServiceBearer": []
+          }
+        ],
+        "summary": "Durably accept one immutable allowance exhaustion hint (V1)",
+        "tags": [
+          "allowance-exhaustion"
         ]
       }
     },

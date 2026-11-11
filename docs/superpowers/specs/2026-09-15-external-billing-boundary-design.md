@@ -11,12 +11,12 @@ AccessSnapshot, subscription reconciliation and trust deadlines are unchanged.
 
 ## ANY-766 consumer-neutral amendment — 2026-11-10
 
-Status: **Steps 10–13 auth/access, sources and recipient delivery implemented (2026-11-11).**
+Status: **Steps 10–15 auth/access, sources, delivery and backend/cabinet usage implemented (2026-11-11).**
 Common delegation V2, configured callbacks, the persisted policy guard,
 consumer-filtered V3 snapshots, durable P/R coherence and documented generated
 security are implemented. Technical-source routing preserves historical
-serialization. Step 13 adds independent recipient delivery; usage remains
-Steps 14–15. Current local
+serialization. Steps 13/14 add independent recipient delivery and usage/exhaustion;
+Step 15 adds independent current/historical cabinet usage. Current local
 status is recorded in the guide and plan; historical baselines below do not
 restore old routes or the V2 wire contract.
 The [common product backend API guide](../../contracts/product-backend-api/README.md)
@@ -24,7 +24,7 @@ and [paired schemas/fixtures](../../contracts/portal-kernel-paid/README.md)
 are the normative consumer-neutral target. The guide records complete safe
 identity/access examples, operation permissions, source/owner versioning,
 bounded replacement/migration owners and local acceptance cases. The working identity/access/OpenAPI handoff is implemented in Step 12; its
-local TCP checkpoint is distinct from the later assembled acceptance. Usage remains Steps 14–15; assembled local
+local TCP checkpoint is distinct from the later assembled acceptance. Cabinet usage is implemented in Step 15; assembled local
 acceptance is Step 16, build/install preparation Step 17 and remote/live work
 ANY-767. Document Summary adoption belongs to its own team.
 
@@ -256,6 +256,15 @@ returns `503 paid_usage_state_changed`. Generated DTOs retain local terms and
 current/historical classification; observed items carry actual counters, while
 unobserved/unavailable omit them. Outage is `503`, tuple mismatch marks only
 that item unavailable with diagnostics. Portal stores no runtime usage ledger.
+
+Portal's `PaidUsageResponse` Pydantic model, named OpenAPI component and generated
+TypeScript DTOs own the unversioned cabinet response: only `access_revision` and
+`items` at the top level, with no versioned owner envelope. Step 15 supersedes
+the historical `cabinet-usage-v1` target and corresponding `TARGET_ONLY` index
+entries for this route; retained schema/fixture/oracle/index bytes and backend
+usage/exhaustion V1 remain unchanged. Independent resources preserve the shared
+whole-user committed-state/deadline refusals from Steps 5/12; recovery is recorded
+in the common guide.
 
 ## Preserved September baseline
 

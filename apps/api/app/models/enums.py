@@ -103,6 +103,7 @@ class BillingWorkKind(StrEnum):
     EXTERNAL_CREATE_DEADLINE = "external_create_deadline"
     EXTERNAL_CREATE_RECOVERY = "external_create_recovery"
     ACCESS_INVALIDATION = "access_invalidation"
+    ALLOWANCE_EXHAUSTION = "allowance_exhaustion"
 
 
 class BillingWorkState(StrEnum):
@@ -115,6 +116,7 @@ class BillingWorkState(StrEnum):
 
 
 class BillingWorkScope(StrEnum):
+    ALLOWANCE = "allowance"
     BILLING_ACCOUNT = "billing_account"
     SUBSCRIPTION = "subscription"
     CUSTOMER = "customer"

@@ -31,16 +31,17 @@ plans do not override accepted sources.
 
 ## Observed implementation
 
-Baseline sources: Portal `126f6755cc684e4cbbb60ea1b1ece92c7575fde6` and Kernel
-`6dc3e96c26c8ac093614394c6e87787f9f42b395` (completed Step 12). The paired Step 13 changes
-extend this baseline.
+Current local sources: Portal `9632ec4ce440fa17d8463f230b98df7cccccc934`
+and Kernel `36be7fa3c3147b032b97f050a898a97423db2070`, plus the paired
+Steps 14/15 working-tree changes.
 The [active plan](../exec-plans/active/ANY-766-implementation-plan.md) records
-completed Steps 1–13: common identity V2, configured consumer callbacks and the
+completed Steps 1–15: common identity V2, configured consumer callbacks and the
 policy guard, consumer-filtered V3 paid admission with independent durable P/R
 floors, and V1 invalidation. Step 11 adds configured technical sources and
 immutable source/owner history.
-Step 13 partitions delivery by recipient. Usage, assembled local acceptance and
-build preparation remain pending. Current identity configuration is in the
+Step 13 partitions delivery by recipient; Step 14 adds usage readback and durable
+exhaustion hints. Step 15 adds isolated cabinet usage reads and current/historical
+presentation; assembled local acceptance and build preparation remain Steps 16/17. Current identity configuration is in the
 [common guide](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).
 Remote installation and live-service acceptance belong to ANY-767.
 
@@ -53,12 +54,15 @@ Remote installation and live-service acceptance belong to ANY-767.
 Portal's enabled embedded worker now selects each snapshot recipient's origin
 and outgoing credential from `BACKEND_CONSUMERS`; legacy Kernel connection
 settings no longer select delivery destinations. Step 13 adds independent
-bounded delivery lanes and exact-N ACK/repair per recipient. Stop APIs/workers
-before migrating Portal to `20261111_0010`; Kernel remains at `0020`. Configure
-the compatible receiver and its permission first; the
+bounded delivery lanes and exact-N ACK/repair per recipient. Stop affected
+APIs/workers before migrating the Step 14 pair to Portal `20261111_0011` and
+Kernel `0021`. The historical Step 13 heads were Portal `20261111_0010` and
+Kernel `0020`. Configure the compatible invalidation receiver and its permission first; the
 [delivery runbook](../engineering/billing-background-operations.md#any-766-step-7--durable-kernel-invalidations)
-describes migration order, parking and recipient-specific CLI retry. Step 8 implements browser
-custody/recovery; usage/exhaustion and cabinet usage remain pending. No deployed or live-provider
+describes migration order, parking and recipient-specific CLI retry. The
+[Step 14 guide](../contracts/product-backend-api/README.md#implemented-step-14-usage-and-exhaustion)
+records usage/exhaustion settings and migration requirements. Step 8 implements
+browser custody/recovery; Step 15 implements cabinet usage. No deployed or live-provider
 acceptance is inferred from implemented transport.
 
 ## ANY-766 Step 9 common backend specification — 2026-11-10
@@ -187,7 +191,7 @@ no commercial flags or deployed configuration.
   usage/remaining API for the cabinet. The
   [ANY-766 target bundle](../contracts/portal-kernel-paid/README.md) now specifies
   usage/exhaustion and authenticated cross-app launch. Step 8 implements browser
-  launch; usage/exhaustion and cabinet usage remain Steps 14–15. Paired local
+  launch; usage/exhaustion is implemented in Step 14; cabinet usage remains Step 15. Paired local
   acceptance remains Step 16. Kernel product-to-product handoff is not Portal
   login handoff; common product IDs do not imply common origins or sessions.
 - **Commercial meaning:** Kernel product configs and guest quotas do not
@@ -282,3 +286,22 @@ Focused real PostgreSQL and local TCP auth/access evidence is separate from the
 Step 16 assembled browser/execution journey. The second identity and external
 LBX/manifest sources are synthetic; generic recipients/usage remain Steps 13–15.
 No real third-party, live payment or deployed acceptance is claimed.
+
+
+## ANY-766 Step 14 — usage and exhaustion
+
+Kernel now serves authenticated internal and delegated-user product usage V1,
+using actual ANY-507 counters and indistinguishable unknown/foreign results.
+The API permission `ANYTOOLAI_PORTAL_USAGE_READ_ENABLED` defaults off. Successful
+normal/recovery finalization writes one immutable exhaustion edge in the same
+transaction. A separately bounded worker task delivers with live-lease ACK,
+retry/parking and crash redelivery. Portal validates consumer/product, saved
+source/backend owner and full tuple before durably acknowledging one immutable
+hint; current hints schedule GET-only reconciliation, historical hints are inert.
+Portal's V1 client and retained-owner resolver supply Step 15 cabinet
+composition. Kernel `0021` and Portal `20261111_0011` extend previous heads without
+resetting usage, purchases or queue history. V1 wire/fixture bytes are unchanged.
+See the common backend guide's implemented Step 14 section for settings, errors,
+lease/recovery and enablement. Local PostgreSQL and synthetic reverse transport
+are covered; actual paired browser/HTTP acceptance remains Step 16. Live/deployed
+acceptance is not claimed.

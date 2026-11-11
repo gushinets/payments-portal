@@ -188,6 +188,19 @@
         "empty": "There is no paid access yet.",
         "openProduct": "Open product",
         "launchUnavailable": "Product launch is not configured."
+      },
+      "usage": {
+        "current": "Current allowance usage",
+        "historical": "Historical allowance usage",
+        "used": "Successfully used",
+        "reserved": "Reserved",
+        "remaining": "Remaining",
+        "available": "Available now",
+        "readAt": "Read at {time} UTC",
+        "unobserved": "Usage has not been observed yet",
+        "loading": "Loading usage…",
+        "busy": "All remaining capacity is temporarily reserved",
+        "exhausted": "Allowance exhausted"
       }
     }
   },

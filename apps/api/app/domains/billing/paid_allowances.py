@@ -5,6 +5,10 @@ from datetime import date, datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
+from pydantic import ValidationError
+from app.domains.billing.contracts import BillingRefused
+from app.domains.catalog.technical_source import TechnicalOwnership
+from app.domains.purchases.technical_terms import AcceptedTechnicalTerms
 
 from app.domains.billing.paid_contracts import EffectiveAllowance
 from app.domains.billing.paid_cycles import CalendarEvidence, CycleKind, classify_cycle
@@ -119,3 +123,17 @@ def materialize_allowance(
         period_start=as_utc(same.period_start).isoformat() if same.period_start else None,
         period_end=as_utc(same.period_end).isoformat() if same.period_end else None,
     )
+
+
+def allowance_ownership(allowance: PurchasedAllowance) -> TechnicalOwnership:
+    """Resolve the saved owner, including compatible Kernel history, without rewriting it."""
+    try:
+        terms = AcceptedTechnicalTerms.model_validate(allowance.terms_document["technical_terms"])
+    except (ValidationError, KeyError, TypeError):
+        raise BillingRefused("allowance_binding_conflict", 409) from None
+    offer = terms.offer
+    if (offer.product_id, offer.metric_key, offer.unit, offer.quantity) != (
+        allowance.product_id, allowance.metric_key, allowance.unit, allowance.quantity,
+    ):
+        raise BillingRefused("allowance_binding_conflict", 409)
+    return terms.ownership

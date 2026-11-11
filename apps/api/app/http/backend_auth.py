@@ -16,6 +16,12 @@ backend_service_bearer = HTTPBearer(
     description="Backend-to-Portal service credential. Never the delegated user token or primary Portal bearer.",
 )
 
+portal_user_bearer = HTTPBearer(
+    scheme_name="PortalUserBearer",
+    auto_error=False,
+    description="Primary Portal session bearer. Never forwarded to a product backend.",
+)
+
 
 @dataclass(frozen=True)
 class BackendPrincipal:

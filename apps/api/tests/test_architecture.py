@@ -64,6 +64,8 @@ OPENAPI_HTTP_METHODS = (
 )
 RAW_OR_SCHEMA_HIDDEN_ROUTE_EXCEPTIONS = {
     ("GET", "/metrics"),
+    # Exhaustion delivery is acknowledged with 204 only after the durable hint commit.
+    ("POST", "/internal/v1/allowance-exhaustions"),
 }
 
 
@@ -172,6 +174,10 @@ def test_ordinary_json_routes_have_named_openapi_response_schemas() -> None:
     assert readiness_unavailable_schema == {
         "$ref": "#/components/schemas/ReadinessUnavailableResponse",
     }
+
+    exhaustion_responses = openapi["paths"]["/internal/v1/allowance-exhaustions"]["post"]["responses"]
+    assert {status for status in exhaustion_responses if status.startswith("2")} == {"204"}
+    assert "content" not in exhaustion_responses["204"]
 
 
 def test_openapi_guard_rejects_unlisted_non_json_routes() -> None:

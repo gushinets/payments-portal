@@ -11,6 +11,7 @@ from starlette.responses import JSONResponse, Response
 INTERNAL_PREFIX = "/internal/v1/backend-sessions/"
 CODE_PATH = "/api/backend-session-codes"
 SNAPSHOT_PREFIX = "/internal/v1/access-snapshots/"
+EXHAUSTION_PATH = "/internal/v1/allowance-exhaustions"
 
 
 class BackendErrorDetail(BaseModel):
@@ -24,7 +25,7 @@ class BackendErrorResponse(BaseModel):
 
 
 def is_backend_session_path(path: str) -> bool:
-    return path.startswith((INTERNAL_PREFIX, SNAPSHOT_PREFIX)) or path == CODE_PATH
+    return path.startswith((INTERNAL_PREFIX, SNAPSHOT_PREFIX, EXHAUSTION_PATH)) or path == CODE_PATH
 
 
 async def session_validation_error(request: Request, error: RequestValidationError) -> Response:
@@ -38,7 +39,7 @@ async def session_validation_error(request: Request, error: RequestValidationErr
 
 
 async def backend_session_policy(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
-    if request.url.path.startswith((INTERNAL_PREFIX, SNAPSHOT_PREFIX)) and "origin" in request.headers:
+    if request.url.path.startswith((INTERNAL_PREFIX, SNAPSHOT_PREFIX, EXHAUSTION_PATH)) and "origin" in request.headers:
         return JSONResponse(
             status_code=403,
             content={"detail": {"code": "browser_access_forbidden"}},

@@ -188,6 +188,19 @@
         "empty": "Es besteht noch kein bezahlter Zugriff.",
         "openProduct": "Produkt öffnen",
         "launchUnavailable": "Der Produktstart ist nicht konfiguriert."
+      },
+      "usage": {
+        "current": "Nutzung des aktuellen Kontingents",
+        "historical": "Nutzung des bisherigen Kontingents",
+        "used": "Erfolgreich genutzt",
+        "reserved": "Reserviert",
+        "remaining": "Verbleibend",
+        "available": "Jetzt verfügbar",
+        "readAt": "Abgelesen um {time} UTC",
+        "unobserved": "Nutzung wurde noch nicht erfasst",
+        "loading": "Nutzung wird geladen…",
+        "busy": "Die gesamte verbleibende Kapazität ist vorübergehend reserviert",
+        "exhausted": "Kontingent ausgeschöpft"
       }
     }
   },

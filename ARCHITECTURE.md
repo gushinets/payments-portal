@@ -30,8 +30,11 @@ recipient, with atomic whole-user fan-out, independent bounded delivery lanes,
 exact sent-revision ACK and restart repair. Migration `20261111_0010` retains
 queued Kernel revisions/history and retires pre-cutover claims while workers
 are stopped. Step 12 supplies local TCP
-auth/access evidence; assembled paid browser/execution acceptance, usage and
-production enablement remain later work. The
+auth/access evidence. Step 14 adds owner-checked immutable exhaustion hints and
+Kernel usage readback. Step 15 adds separate bounded cabinet usage with saved-owner
+routing, eligible historical selection and a post-I/O revision/session recheck.
+Assembled paid browser/execution acceptance and production enablement remain
+later work. The
 [active plan](docs/exec-plans/active/ANY-766-implementation-plan.md) records the
 remaining scope and gates; the [billing operations guide](docs/engineering/billing-background-operations.md)
 defines current serving and delivery behavior.
@@ -131,7 +134,7 @@ versioned source/backend metadata without converting historical documents or
 allowance identities. The [source/history guide](docs/contracts/product-backend-api/README.md#implemented-step-11-technical-sources-and-history)
 records version and reader compatibility; Kernel execution and manifest V1 stay
 unchanged. Steps 12/13 implement consumer-scoped snapshots and recipient
-delivery; generic usage remains Steps 14/15.
+delivery; Steps 14/15 add generic usage/exhaustion and independent cabinet readback.
 Paid-access derivation, subscription reconciliation/trust and AccessSnapshot
 deadlines are unchanged.
 External Billing owns commercial billing truth and lifecycle. The AnyToolAI
@@ -256,7 +259,8 @@ background. ANY-765 presents the separately committed paid projection, including
 confirmed/absent/unavailable evidence and provenance-labelled purchased limits. The local
 paid read remains independent of purchase listing and source availability.
 ANY-766 Steps 6/8 implement Kernel paid execution and recoverable browser launch;
-actual cabinet usage/remaining remains Steps 14/15. Step 11 does not add another
+Steps 14/15 implement actual cabinet usage/remaining from each saved backend
+owner. Step 11 does not add another
 backend's product UI or browser launch.
 
 `/pricing` and public Pricing navigation are presentation-only: localized

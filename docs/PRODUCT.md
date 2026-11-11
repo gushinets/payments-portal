@@ -1,7 +1,7 @@
 # Product Scope
 
 Status: authoritative
-Last updated: 2026-11-10
+Last updated: 2026-11-11
 
 AnyToolAI Portal combines public product discovery, direct account entry, and
 identity/legal-consent flows for AnyToolAI products, deployed as one contour
@@ -18,8 +18,9 @@ catalog remains one link away. Identity/verification/logout context supports
 one wide billing Widget with an explicit purchase selection. Account/session/email-verification,
 password-recovery and legal-acceptance flows remain implemented. Current offers
 come from LBX; accepted purchase terms remain immutable. The cabinet reads local
-committed paid access; actual usage/remaining quota is unavailable. The repository
-remains pre-production on the
+committed paid access and separately reads actual current/historical usage from
+the allowance’s saved backend owner. Unknown or unavailable usage has no invented
+counters. The repository remains pre-production on the
 surface established by ANY-636 4F. ANY-664 adds
 historical read-only source clients and controlled immutable offer publication.
 ANY-709 Step 1 adds direct versioned links and source-backed catalog/current
@@ -41,10 +42,10 @@ implemented by ANY-709. ANY-715 implements polling-only embedded reconciliation,
 GET-only recovery/inventory and audited operator controls. The webhook receiver
 is removed and retained inbox history is not processed. ANY-765 implements local
 paid projection, allowances, revisions/outbox and autonomous expiry. ANY-766
-implements session delegation, snapshot V2 and durable invalidation delivery;
+implements session delegation, consumer-scoped snapshot V3 and durable invalidation delivery;
 Kernel provides coherent paid admission and ownership. Step 8 implements
-recoverable paid browser launch; cabinet usage integration and paired local
-acceptance remain pending. See the
+recoverable paid browser launch. Step 15 implements isolated cabinet usage;
+paired local acceptance remains Step 16. See the
 [billing operations guide](engineering/billing-background-operations.md). The sole long-term
 production target is external-billing-managed.
 
@@ -97,7 +98,8 @@ only their source-read/admission strategy.
   revisions from authoritative subscription facts. The authenticated cabinet
   distinguishes confirmed access, fresh absence and unavailable evidence;
   paid products remain visible when purchase listing is unavailable. Development
-  quantities are explicitly SIMULATED; usage/remaining stays unavailable.
+  quantities are explicitly SIMULATED and excluded from production usage reads.
+  Configured-source usage shows actual counters/read time independently of access.
 - The approved RU mockup's product/visual direction encoded by evolved Bundle 3
   and applied across the active Portal: navy/amber, flat dark panels, thin
   borders, compact radii/spacing and Manrope (the ANY-636 basic Cyrillic coverage
@@ -145,8 +147,7 @@ trust boundary under ANY-541.
 - Remaining real-source acceptance and approved production sales/metering
   enablement. Step 9's current-version test-LBX checkpoint remains partial;
   historical positive QA does not establish live allowance delivery or launch.
-- Remaining ANY-766 usage/exhaustion and cabinet
-  usage/remaining integration, paired local acceptance and build preparation.
+- Remaining ANY-766 paired local acceptance and build preparation.
   Workflow execution, artifacts, actual usage and quota enforcement belong to
   the separate Platform Kernel repository.
 - ANY-767 deployed billing journey, natural-renewal acceptance and production
