@@ -4,6 +4,7 @@ import json
 import os
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import UUID
 
 import httpx
 import uvicorn
@@ -57,7 +58,7 @@ async def invalidate(request: Request) -> Response:
 
 
 @app.get("/internal/v1/usage/{user_id}")
-async def usage(user_id: str, request: Request) -> dict:
+async def usage(user_id: UUID, request: Request) -> dict:
     authenticate(request)
     async with httpx.AsyncClient(trust_env=False) as client:
         response = await client.get(
@@ -91,7 +92,7 @@ async def usage(user_id: str, request: Request) -> dict:
         "schema_version": 1,
         "tenant_id": "anytoolai",
         "region": "ru",
-        "user_id": user_id,
+        "user_id": str(user_id),
         "items": items,
     }
 

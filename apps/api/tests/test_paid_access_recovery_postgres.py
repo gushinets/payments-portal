@@ -193,7 +193,7 @@ async def test_paid_access_restart_repairs_deadline_and_catches_up(
     async with billing_worker_resources(
         config.model_copy(update={"billing_worker_enabled": True}),
         factory=factory,
-        kernel_transport=httpx.MockTransport(lambda request: httpx.Response(204)),
+        invalidation_transport=httpx.MockTransport(lambda request: httpx.Response(204)),
     ) as worker:
         assert worker is not None and worker.client is None
         import asyncio

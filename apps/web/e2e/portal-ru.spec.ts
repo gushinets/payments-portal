@@ -22,6 +22,7 @@ test("subscription-state guard permits an empty catalog but rejects invented acc
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/paid-access", (route) => route.fulfill({ json: emptyPaidState() }));
+  await page.route("**/api/paid-usage", (route) => route.fulfill({ json: { access_revision: 0, items: [] } }));
   // These layout journeys cover a genuinely empty technical catalog. Unknown
   // product IDs are 404; source outages are covered separately in catalog-preview.
   // Positive source-ID and exact-money coverage lives in catalog-preview.spec.
@@ -106,6 +107,7 @@ async function expectPortalBoundary(
   expect(traffic.apiRequests.filter((request) => request !== "GET /api/auth/session" &&
     request !== "GET /api/purchase-intents" &&
     request !== "GET /api/paid-access" &&
+    request !== "GET /api/paid-usage" &&
     !request.startsWith("GET /api/catalog/products")))
     .toEqual([]);
   const main = page.getByRole("main");

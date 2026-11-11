@@ -79,7 +79,7 @@ services:
       api:
         condition: service_healthy
     environment:
-      BACKEND_CONSUMERS: ${BACKEND_CONSUMERS:-[]}
+      BACKEND_CONSUMERS: ${PLAYWRIGHT_BACKEND_CALLBACKS:-${BACKEND_CONSUMERS:-[]}}
       APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL}
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
     security_opt:

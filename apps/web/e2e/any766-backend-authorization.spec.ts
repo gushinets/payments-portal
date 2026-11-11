@@ -4,7 +4,7 @@ import ru from "../src/messages/ru.json";
 import { purchaseUser } from "../tests/fixtures/purchase";
 
 // Synthetic Portal API responses only. The authorization page and browser are real.
-// Start web with the synthetic-summary callback configured in BACKEND_CONSUMERS.
+// CI supplies the web-only synthetic callback through PLAYWRIGHT_BACKEND_CALLBACKS.
 test("consumer authorization preserves Bundle 3 and refuses callback tampering", async ({ page }, testInfo) => {
   await page.addInitScript(() => localStorage.setItem("anytoolai_session_token_v1", "synthetic-primary-bearer"));
   let issued = 0;

@@ -19,6 +19,9 @@ async function syntheticPaidCabinet(page: Page) {
         ? { status: 503, json: { detail: { code: "paid_access_deadline_pending", request_id: "synthetic-browser-paid" } } }
         : { headers: { "Cache-Control": "no-store" }, json: state.paid });
     }
+    if (path === "/api/paid-usage") return route.fulfill({
+      status: 503, json: { detail: { code: "paid_usage_unavailable" } }
+    });
     state.sourceRequests += 1;
     return route.fulfill({ status: 503, json: { detail: { code: "synthetic_unexpected_source" } } });
   });
