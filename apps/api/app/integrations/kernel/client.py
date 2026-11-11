@@ -304,19 +304,24 @@ class PlatformKernelClient:
         if not 1 <= len(allowance_ids) <= 100 or len(set(allowance_ids)) != len(allowance_ids):
             raise ValueError("Usage requires 1–100 distinct allowance IDs")
         config = self._configuration
-        body = await budget.run(lambda: self._read_body(
-            budget, f"/internal/v1/usage/{user_id}",
-            [("tenant_id", config.instance_tenant_id), ("region", config.instance_region)]
-            + [("allowance_id", str(identity)) for identity in allowance_ids],
-        ))
+        body = await budget.run(
+            lambda: self._read_body(
+                budget,
+                f"/internal/v1/usage/{user_id}",
+                [("tenant_id", config.instance_tenant_id), ("region", config.instance_region)]
+                + [("allowance_id", str(identity)) for identity in allowance_ids],
+            )
+        )
         try:
-            result = UsageResponse.model_validate(json.loads(
-                body.decode("utf-8"), object_pairs_hook=_unique_object, parse_constant=_reject_constant
-            ))
+            result = UsageResponse.model_validate(
+                json.loads(body.decode("utf-8"), object_pairs_hook=_unique_object, parse_constant=_reject_constant)
+            )
         except (ValueError, RecursionError):
             raise BackendUsageInvalid() from None
         if (result.tenant_id, result.region, result.user_id) != (
-            config.instance_tenant_id, config.instance_region, str(user_id)
+            config.instance_tenant_id,
+            config.instance_region,
+            str(user_id),
         ) or [item.allowance_id for item in result.items] != [str(identity) for identity in allowance_ids]:
             raise BackendUsageInvalid()
         budget.check()
@@ -327,7 +332,9 @@ class PlatformKernelClient:
         body = await self._read_body(
             budget, MANIFEST_PATH, [("tenant_id", config.instance_tenant_id), ("region", config.instance_region)]
         )
-        return _decode_manifest(body, tenant_id=config.instance_tenant_id, region=config.instance_region, provenance=self._provenance)
+        return _decode_manifest(
+            body, tenant_id=config.instance_tenant_id, region=config.instance_region, provenance=self._provenance
+        )
 
     async def _read_body(self, budget: PreflightBudget, path: str, params: list[tuple[str, str]]) -> bytes:
         config = self._configuration

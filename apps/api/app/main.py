@@ -55,7 +55,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     if os.getenv("SKIP_LEGAL_SEED") != "true":
         await run_in_threadpool(_seed_legal_documents_sync)
 
-    async with paid_read_resources(settings) as reads, source_resources(settings) as sources, paid_usage_resources(settings) as usage:
+    async with (
+        paid_read_resources(settings) as reads,
+        source_resources(settings) as sources,
+        paid_usage_resources(settings) as usage,
+    ):
         _app.state.paid_reads = reads
         _app.state.paid_usage = usage
         _app.state.sources = sources

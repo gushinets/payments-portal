@@ -133,7 +133,10 @@ def allowance_ownership(allowance: PurchasedAllowance) -> TechnicalOwnership:
         raise BillingRefused("allowance_binding_conflict", 409) from None
     offer = terms.offer
     if (offer.product_id, offer.metric_key, offer.unit, offer.quantity) != (
-        allowance.product_id, allowance.metric_key, allowance.unit, allowance.quantity,
+        allowance.product_id,
+        allowance.metric_key,
+        allowance.unit,
+        allowance.quantity,
     ):
         raise BillingRefused("allowance_binding_conflict", 409)
     return terms.ownership
