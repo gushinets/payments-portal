@@ -11,11 +11,12 @@ AccessSnapshot, subscription reconciliation and trust deadlines are unchanged.
 
 ## ANY-766 consumer-neutral amendment — 2026-11-10
 
-Status: **Steps 10–12 auth/access and technical sources implemented (2026-11-11).**
+Status: **Steps 10–13 auth/access, sources and recipient delivery implemented (2026-11-11).**
 Common delegation V2, configured callbacks, the persisted policy guard,
 consumer-filtered V3 snapshots, durable P/R coherence and documented generated
 security are implemented. Technical-source routing preserves historical
-serialization. Recipient delivery and usage remain Steps 13–15. Current local
+serialization. Step 13 adds independent recipient delivery; usage remains
+Steps 14–15. Current local
 status is recorded in the guide and plan; historical baselines below do not
 restore old routes or the V2 wire contract.
 The [common product backend API guide](../../contracts/product-backend-api/README.md)
@@ -23,7 +24,7 @@ and [paired schemas/fixtures](../../contracts/portal-kernel-paid/README.md)
 are the normative consumer-neutral target. The guide records complete safe
 identity/access examples, operation permissions, source/owner versioning,
 bounded replacement/migration owners and local acceptance cases. The working identity/access/OpenAPI handoff is implemented in Step 12; its
-local TCP checkpoint is distinct from the later assembled acceptance. Delivery/usage remain Steps 13–15; assembled local
+local TCP checkpoint is distinct from the later assembled acceptance. Usage remains Steps 14–15; assembled local
 acceptance is Step 16, build/install preparation Step 17 and remote/live work
 ANY-767. Document Summary adoption belongs to its own team.
 
@@ -94,7 +95,7 @@ SIMULATED labels, quantities, allowance IDs and same-cycle usage stay exact.
 Missing legacy owner/source resolves to Kernel only in a separate in-memory
 view; no JSON rewrite, default-field hash change, owner transfer or usage reset.
 
-Step 13 partitions existing outbox/work uniqueness, coalescing, claims, retries,
+Completed Step 13 partitions existing outbox/work uniqueness, coalescing, claims, retries,
 parking, repair and delivered R by recipient plus scoped user. Fan out R in the
 sole writer transaction, including grant removal. Keep invalidation V1; endpoint
 authentication selects recipient. ACK N affects only that recipient through N,

@@ -23,6 +23,11 @@ from app.models.enums import BillingWorkKind, WebhookDeliveryState
 class BillingWorkItem(Base):
     __tablename__ = "billing_work_items"
     __table_args__ = (
+        CheckConstraint(
+            f"(work_kind = '{BillingWorkKind.ACCESS_INVALIDATION.value}' AND recipient_id IS NOT NULL) OR "
+            f"(work_kind <> '{BillingWorkKind.ACCESS_INVALIDATION.value}' AND recipient_id IS NULL)",
+            name="ck_billing_work_items_recipient",
+        ),
         CheckConstraint("enqueue_generation >= 0", name="ck_billing_work_items_generation_nonnegative"),
         Index(
             "uq_billing_work_items_recurring",
@@ -92,6 +97,7 @@ class BillingWorkItem(Base):
     work_kind: Mapped[str] = mapped_column(Text, nullable=False)
     scope_kind: Mapped[str] = mapped_column(Text, nullable=False)
     scope_reference: Mapped[str] = mapped_column(Text, nullable=False)
+    recipient_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     coalescing_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     payload_schema_version: Mapped[str] = mapped_column(Text, nullable=False)
     payload_document: Mapped[dict] = mapped_column(json_type, nullable=False)

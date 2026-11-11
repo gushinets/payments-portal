@@ -564,12 +564,13 @@ async def test_billing_worker_embedded_lifespan_smoke_and_reserved_local_progres
             config,
             factory=factory,
             transport=httpx.MockTransport(transport.respond),
-            kernel_transport=httpx.MockTransport(lambda request: httpx.Response(204)),
+            invalidation_transport=httpx.MockTransport(lambda request: httpx.Response(204)),
         ) as worker:
             yield worker
 
     monkeypatch.setattr(main, "billing_worker_resources", resources)
     monkeypatch.setattr(main, "settings", config)
+    monkeypatch.setattr(main, "SessionLocal", factory)
     monkeypatch.setattr(database, "SessionLocal", factory)
     app = main.create_app()
     before = len(transport.requests)

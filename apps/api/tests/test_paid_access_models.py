@@ -58,6 +58,7 @@ def test_paid_access_and_invalidation_columns_are_exact() -> None:
     }
     assert _column_names(AccessInvalidationOutbox) == {
         "outbox_id",
+        "recipient_id",
         "tenant_id",
         "region",
         "user_id",
@@ -82,7 +83,11 @@ def test_paid_access_scope_is_identical_and_canonical() -> None:
     }
 
     for model in models:
-        assert _unique_keys(model) == {("tenant_id", "region", "user_id")}
+        assert _unique_keys(model) == {
+            ("tenant_id", "region", "user_id", "recipient_id")
+            if model is AccessInvalidationOutbox
+            else ("tenant_id", "region", "user_id")
+        }
         assert _foreign_keys(model) == expected_foreign_key
         assert all(
             model.__table__.c[column_name].nullable is False for column_name in ("tenant_id", "region", "user_id")

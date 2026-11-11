@@ -188,8 +188,8 @@ async def test_paid_access_migration_keeps_history_immutable_and_revisions_monot
         )
         db.execute(
             text("""INSERT INTO access_invalidation_outbox
-            (outbox_id,tenant_id,region,user_id,pending_revision,delivered_revision,next_attempt_at)
-            VALUES (:id,'anytoolai','ru',:user,1,0,now())"""),
+            (outbox_id,recipient_id,tenant_id,region,user_id,pending_revision,delivered_revision,next_attempt_at)
+            VALUES (:id,'platform-kernel','anytoolai','ru',:user,1,0,now())"""),
             {"id": uuid4(), "user": scenario.user_id},
         )
         db.commit()

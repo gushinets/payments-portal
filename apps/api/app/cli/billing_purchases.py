@@ -31,8 +31,9 @@ def parser() -> argparse.ArgumentParser:
     lookup = commands.add_parser("inspect-operation", help="Resolve a local Sentry operation reference without HTTP")
     lookup.add_argument("--operation-id", required=True, type=UUID)
     for command in ("inspect-invalidation", "retry-invalidation"):
-        action = commands.add_parser(command, help="Inspect/retry parked local Kernel invalidation delivery")
+        action = commands.add_parser(command, help="Inspect/retry parked local backend invalidation delivery")
         action.add_argument("--user-id", required=True, type=UUID)
+        action.add_argument("--recipient-id", required=True)
     for command in ("inspect", "recover", "reconcile", "resolve-review"):
         action = commands.add_parser(command)
         action.add_argument("--user-id", required=True, type=UUID)
@@ -67,6 +68,7 @@ async def _run(arguments: argparse.Namespace, configuration: Settings, principal
             SessionLocal,
             configuration,
             arguments.user_id,
+            recipient_id=arguments.recipient_id,
             retry=arguments.command == "retry-invalidation",
         )
     if arguments.command == "inspect-operation":

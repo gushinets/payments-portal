@@ -5,7 +5,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from app.core.backend_consumers import BackendConsumer
+from app.core.backend_consumers import BackendConsumer, BackendPermission
 from app.models import BackendConsumerPolicy
 
 
@@ -35,6 +35,7 @@ def install_policy(db: Session, consumer: BackendConsumer) -> None:
             region=consumer.region,
             consumer_policy_revision=consumer.consumer_policy_revision,
             policy_digest=consumer.policy_digest,
+            snapshot_delivery_enabled=BackendPermission.READ_SNAPSHOT in consumer.permissions,
         )
         .on_conflict_do_nothing()
     )
@@ -46,6 +47,7 @@ def install_policy(db: Session, consumer: BackendConsumer) -> None:
         raise BackendPolicyConflict("Backend policy version rollback or conflicting digest")
     row.consumer_policy_revision = consumer.consumer_policy_revision
     row.policy_digest = consumer.policy_digest
+    row.snapshot_delivery_enabled = BackendPermission.READ_SNAPSHOT in consumer.permissions
 
 
 def require_current_policy(db: Session, consumer: BackendConsumer) -> None:

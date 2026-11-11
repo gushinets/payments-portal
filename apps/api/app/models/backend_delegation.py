@@ -5,6 +5,7 @@ from sqlalchemy import CheckConstraint
 from app.models._shared import (
     Base,
     BigInteger,
+    Boolean,
     DateTime,
     ForeignKey,
     Mapped,
@@ -52,3 +53,4 @@ class BackendConsumerPolicy(Base):
     region: Mapped[str] = mapped_column(Text, primary_key=True)
     consumer_policy_revision: Mapped[int] = mapped_column(BigInteger, nullable=False)
     policy_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    snapshot_delivery_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

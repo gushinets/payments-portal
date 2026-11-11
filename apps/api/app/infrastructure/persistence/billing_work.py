@@ -30,6 +30,7 @@ def coalesce(
     hint: bool = False,
     replace_deadline: bool = False,
     revive_completed: bool = False,
+    recipient_id: str | None = None,
 ) -> None:
     insert = pg_insert if db.get_bind().dialect.name == "postgresql" else sqlite_insert
     statement = insert(BillingWorkItem).values(
@@ -37,6 +38,7 @@ def coalesce(
         work_kind=kind,
         scope_kind=scope_kind,
         scope_reference=reference,
+        recipient_id=recipient_id,
         coalescing_key=key,
         payload_schema_version="billing-work:v1",
         payload_document=payload,

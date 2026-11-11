@@ -31,14 +31,16 @@ plans do not override accepted sources.
 
 ## Observed implementation
 
-Sources: Portal `1caa078418ffb07781467dcb4f62158f17e029a3` and Kernel
-`952a6337a17136cd9d1f3c38cb32d8fa5766a41d`, plus the Step 12 working diff.
+Baseline sources: Portal `126f6755cc684e4cbbb60ea1b1ece92c7575fde6` and Kernel
+`6dc3e96c26c8ac093614394c6e87787f9f42b395` (completed Step 12). The paired Step 13 changes
+extend this baseline.
 The [active plan](../exec-plans/active/ANY-766-implementation-plan.md) records
-completed Steps 1–12: common identity V2, configured consumer callbacks and the
+completed Steps 1–13: common identity V2, configured consumer callbacks and the
 policy guard, consumer-filtered V3 paid admission with independent durable P/R
 floors, and V1 invalidation. Step 11 adds configured technical sources and
 immutable source/owner history.
-Generic recipients, usage, assembled local acceptance and build preparation remain pending. Current identity configuration is in the
+Step 13 partitions delivery by recipient. Usage, assembled local acceptance and
+build preparation remain pending. Current identity configuration is in the
 [common guide](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).
 Remote installation and live-service acceptance belong to ANY-767.
 
@@ -48,12 +50,14 @@ Remote installation and live-service acceptance belong to ANY-767.
 | `GET /internal/v1/access-snapshots/{user_id}`: Kernel -> Portal | Step 12 serves consumer-filtered read-only V3 | Step 12 adds durable consumer/P/R coherence while retaining ANY-507 admission | Paired local acceptance remains Step 16 |
 | `POST /internal/v1/access-invalidations`: Portal -> Kernel | ANY-766 Step 7 implements bounded claimed delivery, exact-N ACK, restart repair and parked-work CLI | Kernel Step 6 implements the durable receiver; permission is disabled by default | Focused local PostgreSQL delivery tests with synthetic HTTP responses; paired HTTP acceptance remains Step 16 |
 
-Portal's enabled embedded worker starts delivery automatically from legacy
-`KERNEL_BASE_URL`/`KERNEL_SERVICE_TOKEN`. Step 11 selects manifest connections
-from the backend registry; that does not replace the Step 7 sender. Keep its
-Kernel origin/token aligned until recipient routing in Step 13. Configure the compatible Kernel receiver and its permission
-first; the [delivery runbook](../engineering/billing-background-operations.md#any-766-step-7--durable-kernel-invalidations)
-describes migration order, parking and local CLI retry. Step 8 implements browser
+Portal's enabled embedded worker now selects each snapshot recipient's origin
+and outgoing credential from `BACKEND_CONSUMERS`; legacy Kernel connection
+settings no longer select delivery destinations. Step 13 adds independent
+bounded delivery lanes and exact-N ACK/repair per recipient. Stop APIs/workers
+before migrating Portal to `20261111_0010`; Kernel remains at `0020`. Configure
+the compatible receiver and its permission first; the
+[delivery runbook](../engineering/billing-background-operations.md#any-766-step-7--durable-kernel-invalidations)
+describes migration order, parking and recipient-specific CLI retry. Step 8 implements browser
 custody/recovery; usage/exhaustion and cabinet usage remain pending. No deployed or live-provider
 acceptance is inferred from implemented transport.
 

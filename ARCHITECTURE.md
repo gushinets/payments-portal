@@ -25,8 +25,11 @@ ANY-766 Step 5 adds configured-source allowance derivation. Step 12 now serves
 authenticated consumer-filtered V3 snapshots and enforces independent policy/access
 floors in Kernel. Its [serving and provenance rules](docs/engineering/billing-background-operations.md#any-766-step-5--production-allowances-and-snapshot-serving)
 reuse the existing paid writer and do not enable sales.
-ANY-766 Step 7 adds durable Kernel invalidation delivery with independent bounded
-resources, exact sent-revision ACK and restart repair. Step 12 supplies local TCP
+ANY-766 Step 13 partitions the Step 7 invalidation outbox/work by backend
+recipient, with atomic whole-user fan-out, independent bounded delivery lanes,
+exact sent-revision ACK and restart repair. Migration `20261111_0010` retains
+queued Kernel revisions/history and retires pre-cutover claims while workers
+are stopped. Step 12 supplies local TCP
 auth/access evidence; assembled paid browser/execution acceptance, usage and
 production enablement remain later work. The
 [active plan](docs/exec-plans/active/ANY-766-implementation-plan.md) records the
@@ -127,7 +130,8 @@ ANY-766 Step 11 routes source reads by configured product ownership and writes
 versioned source/backend metadata without converting historical documents or
 allowance identities. The [source/history guide](docs/contracts/product-backend-api/README.md#implemented-step-11-technical-sources-and-history)
 records version and reader compatibility; Kernel execution and manifest V1 stay
-unchanged. Generic snapshot/delivery/usage work remains in its later plan steps.
+unchanged. Steps 12/13 implement consumer-scoped snapshots and recipient
+delivery; generic usage remains Steps 14/15.
 Paid-access derivation, subscription reconciliation/trust and AccessSnapshot
 deadlines are unchanged.
 External Billing owns commercial billing truth and lifecycle. The AnyToolAI
