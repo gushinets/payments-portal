@@ -108,7 +108,7 @@ def classify_cycle(
             # not manufacture a new cycle or rewrite the issued tuple.
             start, end = start.astimezone(anchor.tzinfo), end.astimezone(anchor.tzinfo)
         if period.anchor == "calendar_month":
-            if period.unit not in {"month", "year"} or anchor.day != 1 or (period.unit == "year" and anchor.month != 1):
+            if period.unit not in {"month", "year"} or anchor.day != 1:
                 return ambiguous
         elif period.anchor not in {"instance_start", "first_instance_start"}:
             return ambiguous

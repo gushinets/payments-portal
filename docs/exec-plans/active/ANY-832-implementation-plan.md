@@ -1,6 +1,6 @@
 # ANY-832 implementation plan
 
-Status: **IN PROGRESS** — step 1 complete; steps 2–3 have not started.
+Status: **IN PROGRESS** — steps 1–2 complete; step 3 has not started.
 Created: 2026-11-11
 Issue: [ANY-832](https://linear.app/paveldik/issue/ANY-832/fix-deferred-pr-164-inventory-completeness-and-calendar-allowance-edge)
 Predecessor: [PR #164](https://github.com/gushinets/payments-portal/pull/164), reviewed at `b2ef280048ac634a60c18e820fbf702beddba19c`.
@@ -69,15 +69,15 @@ and [agreement-owner/tariff failure](https://github.com/gushinets/payments-porta
 
 ### 2. Support annual calendar cycles outside January
 
-- [ ] Add failing date-only and explicitly zoned annual regressions before the
+- [x] Add failing date-only and explicitly zoned annual regressions before the
   classifier change.
-- [ ] In [paid_cycles.py](../../../apps/api/app/domains/billing/paid_cycles.py),
+- [x] In [paid_cycles.py](../../../apps/api/app/domains/billing/paid_cycles.py),
   remove only the January requirement for `year / calendar_month`.
-- [ ] Retain the first day of the activation month, accepted period length,
+- [x] Retain the first day of the activation month, accepted period length,
   existing calendar arithmetic and frozen original anchor. Do not change offer
   admission or month-boundary normalization, infer a new phase from each cycle,
   or replace calendar arithmetic with a fixed number of days.
-- [ ] Treat an October activation followed by a January annual start as
+- [x] Treat an October activation followed by a January annual start as
   contradictory evidence. That synthetic review example does not establish a
   January billing rule.
 
@@ -254,3 +254,66 @@ Final verification:
   backend inventory decisions and has no UI or provider-enablement scope.
   pytest removed both disposable task databases; the isolated worktree test
   PostgreSQL server was stopped after verification.
+
+### Step 2 execution evidence — 2026-11-11
+
+Scope: step 2 only, on `ANY-832`; step 3 remains unstarted. The working tree
+was clean at entry. The only production-code change removes the January-only
+condition in `classify_cycle()`. First-day validation, accepted period length,
+frozen-anchor arithmetic, normalization and allowance persistence are unchanged.
+
+- Coverage assessment: existing policy tests covered monthly normalization,
+  instance-anchored leap years and equivalent timestamps; allowance-history
+  tests covered frozen IDs/UTC bounds and no backfill. They did not exercise
+  annual `calendar_month` periods outside January.
+- Before correction, the new annual policy batch produced **9 failed / 15
+  passed**: coherent November date-only and explicitly zoned cycles were
+  classified as `AMBIGUOUS`. January and contradictory-evidence controls passed.
+  The PostgreSQL history batch produced **6 failed / 2 passed**: November cycles
+  could not issue an allowance, while January controls retained their identity.
+- Added coverage includes November/January starts, positive/negative explicit
+  offsets, FIRST/SAME/LATER, leap years and accepted two-year lengths. Negative
+  controls cover an October-to-January phase contradiction, non-first-day
+  anchors, incorrect lengths, rewritten historical anchors, inclusive date-only
+  versus half-open timestamp ends, and unresolved/naive/mixed precision.
+- PostgreSQL checks commit and reopen sessions, compare the entire first
+  allowance row, preserve its ID/key/quantity/calendar/terms/UTC bounds despite
+  a changed skew setting, reject re-anchoring, and create exactly one subsequent
+  annual allowance with the original anchor and quantity.
+- Review traced normalization to classification and persisted history through
+  `materialize_allowance()`. No public/Kernel contract, schema, generated file,
+  dependency, offer-admission rule or source-trust/fencing behavior changed.
+  Peer impact: **None**; local Kernel source `0f950355e3f282c6d5f036542f71e1f2b4295827`
+  was inspected for allowance identity/usage persistence; this correction does
+  not change its consumed tuple or quota ownership. No peer files changed.
+
+Verification:
+
+- **PASS:** policy and mapping-calendar suites, **95 tests**; allowance-history
+  and shared paid-reconciliation PostgreSQL suites, **37 tests**.
+- **PASS:** focused Ruff check/format, `npm run docs:check` and `git diff --check`.
+- **PASS:** canonical check stages for documentation, generated freshness,
+  architecture, API Ruff check/format, web boundary tests (**38**), web component
+  tests (**414**), web ESLint, API fast tests (**1898**) and production web build.
+  The API fast target is the same harness target used by `npm run test:api:fast`.
+- **INTERRUPTED:** the broad PostgreSQL stage of `npm run check` was stopped
+  gracefully at the user's request to limit this correction to necessary tests.
+  It ended with **538 passed / 1 failed**; the remaining tests were not completed.
+  No full-check or full-PostgreSQL PASS is claimed. The affected PostgreSQL
+  suites had already passed separately (**37/37**).
+- **Outside-scope failure:**
+  `test_customer_recovery_never_turns_failed_reads_or_terminal_evidence_into_create[receipt_wait]`
+  in `test_billing_customer_recovery_loop_postgres.py` raised
+  `PreflightCleanupPending` at `composition/sources.py:97` while closing clients
+  under its existing **25 ms** cleanup budget. This unchanged customer-only
+  path does not call `classify_cycle()`. No timeout/assertion was weakened, no
+  outside-scope code was changed, and no further broad PostgreSQL run was made.
+- **PASS:** final documentation/diff checks and cleanup. pytest removed the
+  disposable test database after interruption (absence verified); the isolated
+  worktree PostgreSQL server was stopped. Final diff contains only the classifier,
+  its policy/history regressions and this step's execution evidence.
+
+Browser/provider acceptance is not applicable to this local classifier
+correction; no live LBX or Kernel requests, provider writes, paid quota acceptance
+or production enablement are claimed. The live naive-activation/date-only
+precision limitation recorded in the planning evidence remains unchanged.
