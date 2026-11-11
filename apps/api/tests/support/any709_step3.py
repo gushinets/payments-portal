@@ -18,6 +18,7 @@ class PurchaseTransport:
         for name in ("services", "prices"):
             self.offer.replace(name, "100.01", "100")
             self.offer.replace(name, "7.03", "0")
+        self.offers = {self.offer.tariff_id: self.offer}
         self.customer: dict[str, Any] | None = None
         self.agreements: list[dict[str, Any]] = []
         self.subscriptions: list[dict[str, Any]] = []
@@ -44,7 +45,8 @@ class PurchaseTransport:
             if self.before_offer and path.startswith("/tariffs"):
                 callback, self.before_offer = self.before_offer, None
                 callback()
-            return self.offer.respond(request)
+            offer = self.offer if path == "/auth" else self.offers[int(path.split("/")[2])]
+            return offer.respond(request)
         if request.method == "POST":
             if path == "/users":
                 self.customer = {"user_id": 345, "outer_id": body["outer_id"]}

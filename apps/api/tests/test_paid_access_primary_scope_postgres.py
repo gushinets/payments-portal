@@ -54,7 +54,7 @@ async def test_primary_resolution_requires_complete_relevant_product(
     transport, sources, purchase = background_scenario
     factory = postgres_session_factory
     first = synthetic_prepare(factory, transport, purchase, uncertain=False)
-    second = historical_link(factory, first, transport, "brief_decoder", 1)
+    second = historical_link(factory, first, transport, "brief_decoder", 1, tariff_id=702)
     for point in transport.subscriptions:
         point.update(state=2, last_tariffication_period_start="2026-10-01", last_tariffication_period_end="2026-10-31")
     if unrelated_incomplete:

@@ -275,7 +275,7 @@ async def test_other_product_binding_in_review_does_not_compete_for_eligible_pro
     transport, sources, purchase = background_scenario
     factory = postgres_session_factory
     first = synthetic_prepare(factory, transport, purchase, uncertain=False)
-    historical_link(factory, first, transport, "brief_decoder", 1)
+    historical_link(factory, first, transport, "brief_decoder", 1, tariff_id=702)
     transport.subscriptions[0]["services"][0]["price"] = 15
     transport.subscriptions[1].update(
         state=2, last_tariffication_period_start="2026-10-01", last_tariffication_period_end="2026-10-31"
