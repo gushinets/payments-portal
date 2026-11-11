@@ -11,7 +11,13 @@ from app.domains.catalog.admission import require_selected_capability
 from app.domains.catalog.commercial_offer import canonical_document, commercial_digest
 from app.domains.catalog.contracts import CapabilityManifest, SourceProvenance
 from app.domains.catalog.mapping_evidence import Digest, Nonempty
-from app.domains.catalog.product_link import ProductLinkDocument, ProductLinkRequest, QUANTITY_LINK_SCHEMA
+from app.domains.catalog.product_link import (
+    ProductLinkDocument,
+    ProductLinkRequest,
+    QUANTITY_LINK_SCHEMA,
+    OWNED_LINK_SCHEMA,
+)
+from app.domains.catalog.technical_source import LEGACY_KERNEL_OWNERSHIP, SourceIdentifier, TechnicalOwnership
 from app.domains.catalog.technical_offer import TechnicalOffer as TechnicalOffer
 
 
@@ -37,9 +43,9 @@ class TestTermsSource(BaseModel):
 
 class AcceptedTechnicalTerms(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    schema_version: Literal["purchased-technical-terms:v1", "purchased-technical-terms:v2"] = (
-        "purchased-technical-terms:v1"
-    )
+    schema_version: Literal[
+        "purchased-technical-terms:v1", "purchased-technical-terms:v2", "purchased-technical-terms:v3"
+    ] = "purchased-technical-terms:v1"
     source_version: Nonempty
     source_digest: Digest
     provenance: SourceProvenance = SourceProvenance.SIMULATED
@@ -49,20 +55,44 @@ class AcceptedTechnicalTerms(BaseModel):
     revision_id: UUID
     selection: ProductLinkRequest
     commercial_fingerprint: Digest
-    kernel_manifest_version: Digest
-    kernel_provenance: SourceProvenance
+    kernel_manifest_version: Digest | None = Field(default=None, exclude_if=lambda value: value is None)
+    kernel_provenance: SourceProvenance | None = Field(default=None, exclude_if=lambda value: value is None)
+    manifest_version: Digest | None = Field(default=None, exclude_if=lambda value: value is None)
+    manifest_provenance: SourceProvenance | None = Field(default=None, exclude_if=lambda value: value is None)
+    technical_source_id: SourceIdentifier | None = Field(default=None, exclude_if=lambda value: value is None)
+    backend_consumer_id: SourceIdentifier | None = Field(default=None, exclude_if=lambda value: value is None)
     digest: Digest
 
     @model_validator(mode="after")
     def verify_digest(self) -> AcceptedTechnicalTerms:
+        owned = self.schema_version == "purchased-technical-terms:v3"
+        if owned:
+            if (
+                self.technical_source_id is None
+                or self.backend_consumer_id is None
+                or self.manifest_version is None
+                or self.manifest_provenance is None
+                or self.kernel_manifest_version is not None
+                or self.kernel_provenance is not None
+            ):
+                raise ValueError("owned terms require explicit source provenance")
+        elif (
+            self.technical_source_id is not None
+            or self.backend_consumer_id is not None
+            or self.manifest_version is not None
+            or self.manifest_provenance is not None
+            or self.kernel_manifest_version is None
+            or self.kernel_provenance is None
+        ):
+            raise ValueError("historical terms cannot acquire ownership metadata")
         if self.schema_version == "purchased-technical-terms:v1":
             if self.provenance != SourceProvenance.SIMULATED or self.mapping_digest is not None:
                 raise ValueError("legacy technical terms remain simulated")
         elif (
             self.provenance != SourceProvenance.CONFIGURED_SOURCE
-            or self.kernel_provenance != SourceProvenance.CONFIGURED_SOURCE
+            or self.source_provenance != SourceProvenance.CONFIGURED_SOURCE
             or self.mapping_digest is None
-            or self.source_version != QUANTITY_LINK_SCHEMA
+            or self.source_version != (OWNED_LINK_SCHEMA if owned else QUANTITY_LINK_SCHEMA)
         ):
             raise ValueError("configured technical terms require mapping provenance")
         if self.selection.product_id != self.offer.product_id or self.digest != commercial_digest(
@@ -71,19 +101,43 @@ class AcceptedTechnicalTerms(BaseModel):
             raise ValueError("invalid technical terms identity")
         return self
 
+    @property
+    def ownership(self) -> TechnicalOwnership:
+        if self.schema_version == "purchased-technical-terms:v3":
+            return TechnicalOwnership(self.technical_source_id, self.backend_consumer_id)
+        return LEGACY_KERNEL_OWNERSHIP
+
+    @property
+    def source_provenance(self) -> SourceProvenance:
+        return (
+            self.manifest_provenance
+            if self.schema_version == "purchased-technical-terms:v3"
+            else self.kernel_provenance
+        )
+
     def confirmation_digest(self) -> str:
         """Selected accepted meaning, separate from full-source audit identity."""
         return commercial_digest(
             canonical_document(
                 {
-                    "schema_version": "selected-technical-terms:v1",
+                    "schema_version": "selected-technical-terms:v2"
+                    if self.schema_version == "purchased-technical-terms:v3"
+                    else "selected-technical-terms:v1",
                     "provenance": self.provenance,
                     "offer": self.offer.model_dump(mode="json"),
                     "account_id": self.account_id,
                     "revision_id": str(self.revision_id),
                     "selection": self.selection.model_dump(mode="json"),
                     "commercial_fingerprint": self.commercial_fingerprint,
-                    "kernel_provenance": self.kernel_provenance,
+                    **(
+                        {
+                            "technical_source_id": self.technical_source_id,
+                            "backend_consumer_id": self.backend_consumer_id,
+                            "manifest_provenance": self.manifest_provenance,
+                        }
+                        if self.schema_version == "purchased-technical-terms:v3"
+                        else {"kernel_provenance": self.kernel_provenance}
+                    ),
                 }
             )
         )
@@ -129,13 +183,24 @@ def bind_published_terms(
 ) -> AcceptedTechnicalTerms:
     """Bind the published quantity; unrelated manifest changes are audit-only."""
     offer = link.technical_offer
-    if offer is None or link.schema_version != QUANTITY_LINK_SCHEMA:
+    if offer is None or link.schema_version not in (QUANTITY_LINK_SCHEMA, OWNED_LINK_SCHEMA):
         raise ValueError("published technical offer required")
     if manifest.provenance != SourceProvenance.CONFIGURED_SOURCE:
-        raise ValueError("configured Kernel source required")
+        raise ValueError("configured technical source required")
     require_selected_capability(manifest, product_id=offer.product_id, metric_units={offer.metric_key: offer.unit})
+    owned = link.schema_version == OWNED_LINK_SCHEMA
+    evidence = (
+        {
+            "technical_source_id": link.technical_source_id,
+            "backend_consumer_id": link.backend_consumer_id,
+            "manifest_version": manifest.manifest_version,
+            "manifest_provenance": manifest.provenance,
+        }
+        if owned
+        else {"kernel_manifest_version": manifest.manifest_version, "kernel_provenance": manifest.provenance}
+    )
     document = {
-        "schema_version": "purchased-technical-terms:v2",
+        "schema_version": "purchased-technical-terms:v3" if owned else "purchased-technical-terms:v2",
         "source_version": link.schema_version,
         "source_digest": link.content_digest(),
         "provenance": SourceProvenance.CONFIGURED_SOURCE,
@@ -145,8 +210,7 @@ def bind_published_terms(
         "revision_id": str(revision_id),
         "selection": link.selection.model_dump(mode="json"),
         "commercial_fingerprint": commercial_fingerprint,
-        "kernel_manifest_version": manifest.manifest_version,
-        "kernel_provenance": manifest.provenance,
+        **evidence,
     }
     return AcceptedTechnicalTerms.model_validate(
         {**document, "digest": commercial_digest(canonical_document(document))}

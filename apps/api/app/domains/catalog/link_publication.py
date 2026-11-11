@@ -304,6 +304,8 @@ def publish_product_link(
         # Serialize first claims across products and check even an unchanged link.
         lock_mapping_scope(db, account_id=scope.external_billing_account_id, offer_id=selection.billing_offer_id)
         require_offer_product_owner(db, scope=scope, selection=selection)
+        if latest is not None and latest.document.ownership != evaluation.ownership:
+            raise MappingRefused("mapping_technical_owner_transfer_forbidden")
         if latest is not None and latest.document.identity_digest == evaluation.identity_digest:
             _check_deadline(deadline)
             if provider_origin is not None and head.provider_origin is None:

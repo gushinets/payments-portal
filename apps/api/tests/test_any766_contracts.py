@@ -274,7 +274,8 @@ def test_current_history_readers_preserve_pre_amendment_serialization(case: dict
     assert canonical_document(parsed.model_dump(mode="json")) == encoded
     # Legacy ownership is a read-view rule, never a new default in stored evidence.
     assert "technical_source_id" not in before and "backend_consumer_id" not in before
-    assert case["resolved_technical_source_id"] == case["resolved_backend_consumer_id"] == "platform-kernel"
+    assert parsed.ownership.technical_source_id == case["resolved_technical_source_id"] == "platform-kernel"
+    assert parsed.ownership.backend_consumer_id == case["resolved_backend_consumer_id"] == "platform-kernel"
     if case["name"] == "legacy-purchase-v1-no-quantity":
         assert parsed.technical_terms is None
     if case["kind"] == "purchase" and parsed.technical_terms is not None:

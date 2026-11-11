@@ -39,14 +39,24 @@ there is no `LBX_BILLING_TIMEZONE` setting. Provider calendar/sentinel dates nev
 establish paid UTC intervals. Unsupported discounts, credit or effective-price
 facts cannot be filled with guessed zero/false values.
 
-Configure the Kernel URL/service token independently. Optional
+With `BACKEND_CONSUMERS` configured, Step 11 selects each product's manifest
+origin and outgoing credential from its registered backend entry. See the
+[source configuration](../contracts/product-backend-api/README.md#implemented-step-11-technical-sources-and-history).
+Legacy `KERNEL_BASE_URL`/`KERNEL_SERVICE_TOKEN` still serve technical reads when
+the registry is empty and remain the Step 7 invalidation sender's connection
+until Step 13. Keep them aligned with the Kernel entry when delivery is enabled.
+They do not select another registered backend's manifest. Optional
 `KERNEL_MOCK_ENABLED=1` with explicit matching `KERNEL_MOCK_TOKEN` and
 `KERNEL_SERVICE_TOKEN` starts the development technical mock at
 `http://kernel-mock:8091`; it needs no billing mounts, publisher UID or approval
 files. Kernel evidence stays SIMULATED, independently of LBX CONFIGURED_SOURCE.
 Ordinary HTTPS connections may be configured in production; CONFIGURED_SOURCE
 is not producer conformance or launch approval. Mock mode remains development/
-test only, including after changing its URL. Real Kernel conformance is ANY-711.
+test only, including after changing its URL. It also keeps the registered
+`platform-kernel` consumer SIMULATED; the harness mock's token must match that
+entry's outgoing credential when it supplies manifest reads. ANY-711's delivered
+producer/contract evidence does not approve current deployment conformance or
+commercial enablement.
 
 Test and production deployments use the same integration code with separate
 DBs, origins, credentials, sellers and provider objects. Do not repoint a
@@ -183,23 +193,34 @@ The operator supplies an owner-approved integer `APPROVED_ALLOWANCE_QUANTITY`;
 there is no launch default. Zero is a finite zero allowance. Booleans, floats,
 negative values and values above 2^53−1 are rejected. `--quantity` still selects
 LBX commercial service quantity; it never determines the technical allowance.
-The exact product/metric/unit must be enabled in a fresh configured Kernel
-manifest. The development Kernel mock cannot publish configured technical terms.
+The exact product/metric/unit must be enabled in its freshly read configured
+source manifest (Kernel is the first source). The development Kernel mock cannot
+publish configured technical terms.
 Ordinary production commercial flags remain disabled until sales approval;
 these examples authorize neither real associations nor enablement.
 
-New publications use `product-link-v3` in the existing immutable mapping table.
+ANY-766 Step 11 metered publications use `product-link-v4` in the existing
+immutable mapping table.
 Its selected identity includes the fixed-per-cycle technical offer, LBX selection
 and source provenance. Fresh selected-offer LBX reads, OS principal, product CAS,
 history and uncertain-commit recovery remain required. Unrelated manifest/version
 changes do not create a new selected identity. New buyer acceptance pins
-`purchased-technical-terms:v2` inside `accepted-purchase:v3`, including mapping
-revision/digest, account/selection, commercial fingerprint and manifest evidence.
+`purchased-technical-terms:v3` inside `accepted-purchase:v4`, including explicit
+source/backend owner, mapping revision/digest, account/selection, commercial
+fingerprint and neutral manifest evidence.
 The complete source/audit digests remain separate from `confirmation_digest()`.
 Review shows quantity/unit before consent; changed selected terms require a new
 review. Accepted purchases and their renewal quantities never rebind to a newer
 mapping. Existing v1/v2 links and purchases, SIMULATED terms and exact historical
 v2 full-digest replay remain readable without rewriting stored documents.
+The [Step 11 source/history guide](../contracts/product-backend-api/README.md#implemented-step-11-technical-sources-and-history)
+defines registry endpoint/credential selection, source ownership refusal and the
+unchanged historical serializers. Existing v3 links, terms v2 and purchases v3
+remain readable; their missing owner resolves to Kernel only in memory. Metered
+publication refuses changing a retained product's source/backend owner. The
+unmetered Kernel development path retains its old format. No migration is needed,
+but readers predating Step 11 cannot read newly written formats even at the same
+migration head; exclude those binaries from rollback/install combinations.
 Legacy links without a published quantity cannot start a new production purchase;
 original accepted-operation replay/recovery remains independent of new-sale terms.
 ANY-766 Step 5 implements configured-source allowance derivation and snapshot V2

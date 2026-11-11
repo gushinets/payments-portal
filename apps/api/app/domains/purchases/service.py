@@ -330,7 +330,14 @@ def pin_purchase(
                 link.document.technical_offer is not None
                 and (
                     technical_terms is None
-                    or technical_terms.schema_version != "purchased-technical-terms:v2"
+                    or technical_terms.schema_version
+                    != (
+                        "purchased-technical-terms:v3"
+                        if link.document.schema_version == "product-link-v4"
+                        else "purchased-technical-terms:v2"
+                    )
+                    or technical_terms.source_version != link.document.schema_version
+                    or technical_terms.ownership != link.document.ownership
                     or technical_terms.offer != link.document.technical_offer
                     or technical_terms.mapping_digest != link.document.identity_digest
                     or technical_terms.source_digest != link.document.content_digest()
@@ -348,7 +355,13 @@ def pin_purchase(
         if slot.binding_state == Binding.IDENTITY_CONFLICT:
             raise PurchaseRefused("billing_identity_conflict", 409)
         evidence = AcceptedPurchase(
-            schema_version="accepted-purchase:v3" if link.document.technical_offer else "accepted-purchase:v2",
+            schema_version=(
+                "accepted-purchase:v4"
+                if link.document.schema_version == "product-link-v4"
+                else "accepted-purchase:v3"
+                if link.document.technical_offer
+                else "accepted-purchase:v2"
+            ),
             meaning=meaning,
             selection=link.document.selection,
             offer=offer,
