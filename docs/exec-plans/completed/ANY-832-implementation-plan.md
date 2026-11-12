@@ -1,6 +1,6 @@
 # ANY-832 implementation plan
 
-Status: **IN PROGRESS** — steps 1–4 complete; step 5 pending.
+Status: **COMPLETE** — steps 1–5 implemented and locally verified; production gates unchanged.
 Issue: [ANY-832](https://linear.app/paveldik/issue/ANY-832/fix-deferred-pr-164-inventory-completeness-and-calendar-allowance-edge)
 Predecessor: [PR #164](https://github.com/gushinets/payments-portal/pull/164)
 Execution branch: `ANY-832`.
@@ -125,31 +125,32 @@ fixtures; do not mock the collector or writer.
 
 For `year / calendar_month`, activation `2026-11-11T12:34:56+03:00` and cycle
 `[2026-11-01T00:00:00+03:00, 2027-11-01T00:00:00+03:00)`,
-`_calendar_complete()` rejects the cycle because its start precedes activation.
-The classifier supports it, but the full normalizer returns `cycle=None`.
+before the fix `_calendar_complete()` rejected the cycle because its start
+preceded activation. The classifier supported it, but the full normalizer
+returned `cycle=None`.
 
-- [ ] Reproduce the failure through simulated LBX HTTP, the actual parser,
+- [x] Reproduce the failure through simulated LBX HTTP, the actual parser,
   `normalize_subscription()`, shared source apply and PostgreSQL allowance
   issuance. Accept an annual offer through the real local acceptance path;
   do not edit a monthly accepted snapshot or inject prepared `CalendarEvidence`.
-- [ ] In [LBX reconciliation](../../../apps/api/app/integrations/lbx/reconciliation.py),
+- [x] In [LBX reconciliation](../../../apps/api/app/integrations/lbx/reconciliation.py),
   make start containment respect `calendar_month`: the first period may start
   at the proven first-day boundary of the activation month before activation.
   Use the same explicit frame as
   [calendar normalization](../../../apps/api/app/integrations/lbx/calendar.py),
   including established history. Reject arbitrary earlier starts.
-- [ ] Keep [cycle classification](../../../apps/api/app/domains/billing/paid_cycles.py)
+- [x] Keep [cycle classification](../../../apps/api/app/domains/billing/paid_cycles.py)
   responsible for accepted duration, phase, frozen anchor, SAME/LATER and no
   backfill. Preserve ordering, finite ends, instance-based anchors and
   naive/mixed-precision safeguards. Cover both monthly and annual
   `calendar_month`; do not infer a provider timezone.
-- [ ] Commit the first allowance, reopen sessions, claim and reread SAME, then
+- [x] Commit the first allowance, reopen sessions, claim and reread SAME, then
   apply a coherent next annual cycle. SAME preserves the full frozen row,
   ID/key/quantity and, without other semantic changes or expired deadlines,
   effective state/revision/outbox. Trust renewal is allowed. LATER creates
   exactly one allowance and retains the original frame. Keep clocks consistent
   with cycles, source-read deadlines and leases.
-- [ ] Cover positive/negative offsets, exact-boundary activation, date-only
+- [x] Cover positive/negative offsets, exact-boundary activation, date-only
   input, monthly behavior and an instance-based cycle starting before activation.
   Wrong boundaries, duration or phase must omit the metric allowance without
   rewriting history. Retain step 3's equivalent-offset controls.
@@ -165,42 +166,28 @@ and, where needed, [policy tests](../../../apps/api/tests/test_paid_access_polic
 Reuse history tests for arithmetic/immutability; add the missing input-to-writer
 path rather than duplicating the full matrix.
 
-## Remaining verification and completion
+## Verification and completion
 
-- [ ] Establish the step 5 regression before the fix, then run its focused
+- [x] Establish the step 5 regression before the fix, then run its focused
   normalization/policy and PostgreSQL suites.
-- [ ] Recheck automatic/audited primary selection, first issuance, SAME/LATER,
+- [x] Recheck automatic/audited primary selection, first issuance, SAME/LATER,
   unrelated-product independence, finite trust, immutable history and fencing.
-- [ ] Run `npm run check:fast`, `npm run docs:check` and `git diff --check` after
+- [x] Run `npm run check:fast`, `npm run docs:check` and `git diff --check` after
   step 5. Reuse valid results when code, environment and coverage still match.
-- [ ] Inspect the final diff and new files for unrelated changes.
+- [x] Inspect the final diff and new files for unrelated changes.
 
 Use only the isolated worktree test PostgreSQL through the repository harness;
 pytest owns its disposable database. A full PostgreSQL rerun and `npm run check`
 are not required for this scoped correction. No live acceptance is required.
 
-## Review notes — steps 1–4
+## Final verification — 2026-11-12
 
-- **Inventory:** regressions reproduced incorrect automatic and audited primary
-  selection when a point read implicated another product despite unchanged or
-  omitted discovery rows. Tests now assert persisted primary state, an open
-  operator review, durable conflicts and unrelated-product independence in
-  [scoped inventory](../../../apps/api/tests/test_billing_scoped_inventory_postgres.py)
-  and [paid-access review regressions](../../../apps/api/tests/test_paid_access_review_regressions_postgres.py).
-- **Annual cycles:** [policy regressions](../../../apps/api/tests/test_paid_access_policy.py)
-  cover non-January FIRST/SAME/LATER, accepted duration and phase rejection.
-  Full-normalizer first timestamp-cycle issuance remains step 5.
-- **Calendar frame:** [shared-writer regressions](../../../apps/api/tests/test_paid_access_reconciliation_postgres.py)
-  reread equivalent raw offsets after a committed allowance through fresh
-  sessions. They check the frozen allowance row and unchanged effective state,
-  revision and outbox, plus genuine-change and unrelated-history controls.
+Before-fix regression: five timestamp cases failed with `cycle=None`.
 
-**Verified on 2026-11-12, local `ANY-832` changes:** `npm run check:fast` passed
-(1911 API fast tests); 127 PostgreSQL tests passed across scoped inventory,
-paid-access review regressions and
-[primary-selection rebase](../../../apps/api/tests/test_paid_access_rebase_postgres.py).
-The PostgreSQL checks used an isolated local server and simulated source HTTP.
+**PASS:** normalization/policy (200), scoped PostgreSQL (198), `check:fast`
+(1935 API tests), `docs:check`, `git diff --check`.
+`check:fast` used `KERNEL_MOCK_ENABLED=0 KERNEL_BASE_URL= KERNEL_SERVICE_TOKEN=`
+to isolate local Kernel settings.
 
-**Limits:** the full PostgreSQL suite, `npm run check` and live-provider/Kernel
-acceptance were not run. These results do not close step 5 or establish production
-readiness.
+Sources were simulated; PostgreSQL was worktree-isolated. Full `check` and live
+acceptance were not run.
