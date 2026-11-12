@@ -411,3 +411,24 @@ def test_caddy_proxies_canonical_health_routes(path: str) -> None:
     caddyfile = (ROOT / path).read_text(encoding="utf-8")
 
     assert "reverse_proxy /api/*" in caddyfile
+
+
+@pytest.mark.parametrize("path", ["deploy/caddy/Caddyfile.dev", "deploy/caddy/Caddyfile.prod"])
+def test_caddy_routes_service_api_and_swagger_without_rewriting_paths(path: str) -> None:
+    caddyfile = (ROOT / path).read_text(encoding="utf-8")
+    matcher = next(
+        (line.strip() for line in caddyfile.splitlines() if line.strip().startswith("@portal_service_api path ")), ""
+    )
+    paths = set(matcher.split()[2:])
+    assert {
+        "/internal/v1/backend-sessions/exchange",
+        "/internal/v1/backend-sessions/introspect",
+        "/internal/v1/access-snapshots/*",
+        "/internal/v1/allowance-exhaustions",
+        "/docs",
+        "/docs/*",
+        "/openapi.json",
+    } <= paths
+    assert "reverse_proxy @portal_service_api api:8000" in caddyfile
+    assert "handle_path" not in caddyfile
+    assert "payments-portal-prod-api-1" not in caddyfile
