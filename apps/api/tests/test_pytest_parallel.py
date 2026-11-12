@@ -15,7 +15,7 @@ def test_partition_keeps_modules_whole_and_assigns_every_file_once() -> None:
 
 
 @pytest.mark.parametrize("failure", [False, True])
-@pytest.mark.parametrize("marker", [None, "not excluded"])
+@pytest.mark.parametrize("marker", [None, "not postgres"])
 def test_parallel_reports_preserve_all_cases_and_failures(tmp_path: Path, failure: bool, marker: str | None) -> None:
     suite = tmp_path / "suite"
     suite.mkdir()
@@ -25,7 +25,7 @@ def test_parallel_reports_preserve_all_cases_and_failures(tmp_path: Path, failur
     (suite / "test_b.py").write_text(f"def test_b(): assert {not failure}\n")
     if marker:
         (suite / "test_excluded.py").write_text(
-            "import pytest\n@pytest.mark.excluded\ndef test_excluded(): assert False\n"
+            "import pytest\n@pytest.mark.postgres\ndef test_excluded(): assert False\n"
         )
     report = tmp_path / "combined.xml"
     result = run_parallel(
@@ -120,3 +120,19 @@ def test_collection_interruption_preserves_previous_report(monkeypatch: pytest.M
             junitxml=report,
         )
     assert report.read_text() == "previous report"
+
+
+def test_unknown_marker_is_rejected_before_starting_pytest(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def unexpected_run(*args: object, **kwargs: object) -> None:
+        pytest.fail("invalid marker reached pytest")
+
+    monkeypatch.setattr(subprocess, "run", unexpected_run)
+    with pytest.raises(ValueError, match="Unsupported test partition"):
+        run_parallel(
+            root=Path.cwd(),
+            test_path=str(tmp_path),
+            marker="--version",
+            workers=2,
+            artifacts=tmp_path / "artifacts",
+            junitxml=None,
+        )

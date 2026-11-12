@@ -88,6 +88,14 @@ def run_parallel(
 ) -> int:
     if workers < 1:
         raise ValueError("workers must be positive")
+    # This harness runs repository test partitions, not arbitrary pytest options.
+    selection: list[str] = []
+    if marker == "postgres":
+        selection = ["-m", "postgres"]
+    elif marker == "not postgres":
+        selection = ["-m", "not postgres"]
+    elif marker is not None:
+        raise ValueError("Unsupported test partition")
     # pytest handles --version before parsing the option terminator.
     test_path = str((root / test_path).resolve())
     artifacts.mkdir(parents=True)
@@ -102,7 +110,6 @@ def run_parallel(
         "-q",
         f"--rootdir={root}",
     ]
-    selection = [f"-m={marker}"] if marker else []
     manifest = artifacts / "collection.json"
     with (artifacts / "collection.log").open("w", encoding="utf-8") as output:
         collection = subprocess.run(
