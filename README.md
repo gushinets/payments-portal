@@ -143,15 +143,37 @@ make test_db_stop
 ```
 
 The cross-platform equivalents are `python scripts/repo.py test-db up` and
-`python scripts/repo.py test-db stop`. Compose and `repo.py` own the server
-container; pytest creates, migrates, resets, and drops the disposable
-`_tests` database. Developers must not manually create or drop that database.
+`python scripts/repo.py test-db stop`. They use `docker-compose.test.yml` in a
+separate `<worktree-project>-tests` Compose project, on the worktree PostgreSQL
+port plus 10000. Its 2 GiB tmpfs contains only disposable test data; the persistent
+development server and volume are independent. Stopping the test server loses
+its data. No PostgreSQL durability settings are disabled.
+
+`test:api:postgres` uses four independent pytest processes, balanced by collected
+case count while keeping modules together. `test:api` runs the fast partition
+serially first, then the same parallel PostgreSQL partition, and combines their
+JUnit reports. This preserves the existing fast-suite ordering and SQLite
+fixture lifecycle. Each PostgreSQL process creates
+unique `_tests` databases, runs real Alembic migrations once into a template,
+and gives every test using `migrated_database` a fresh schema/seed copy. Business fixtures,
+HTTP clients and real transaction boundaries are unchanged. Explicit migration
+tests retain their own upgrade/downgrade checks. pytest owns database cleanup;
+developers must not manually create or drop these databases.
+
+Use `python scripts/repo.py test api-postgres --workers 1` for serial debugging
+or a constrained/disk-backed server. Direct `.venv/bin/python -m pytest <path>`
+also runs serially with the same per-test isolation. `test:api:fast` remains
+serial and PostgreSQL-free. Parallel logs and per-process JUnit reports are in
+`.harness/test-runs/<run-id>/`; `--junitxml=<path>` combines all worker reports,
+and any worker failure or collection mismatch fails the command.
 
 Test database configuration takes precedence in this order: an explicit
 `TEST_POSTGRES_DATABASE_URL`; a complete explicit `POSTGRES_*_TEST`
 configuration (partial configuration fails clearly); then the current
 worktree runtime configuration, with the mapped host port and an automatically
-derived database name ending in `_tests`.
+derived database name ending in `_tests`. The configured name is validated for
+test use; each pytest process allocates fresh unique names on that server, so
+simultaneous runs never reset each other's databases.
 
 ## Runtime baseline
 

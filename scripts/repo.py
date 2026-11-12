@@ -113,6 +113,10 @@ class RuntimeConfig:
     def kernel_mock_port(self) -> int:
         return self.api_port + 9000
 
+    @property
+    def test_postgres_port(self) -> int:
+        return self.postgres_port + 10000
+
 
 @dataclass(frozen=True)
 class TrivyGateSummary:
@@ -444,6 +448,7 @@ def write_runtime(config: RuntimeConfig) -> None:
         "POSTGRES_PASSWORD": "anytoolai-local-only",
         "POSTGRES_HOST": "postgres",
         "POSTGRES_PORT": str(config.postgres_port),
+        "POSTGRES_PORT_TEST": str(config.test_postgres_port),
         "DATABASE_URL": (
             f"postgresql+psycopg://anytoolai:anytoolai-local-only@postgres:5432/"
             f"{config.database_name}"
@@ -719,10 +724,14 @@ def cmd_down(_: argparse.Namespace) -> None:
 def cmd_test_db(args: argparse.Namespace) -> None:
     config = load_runtime()
     write_runtime(config)
+    command = [
+        tool("docker"), "compose", "--project-name", f"{config.compose_project}-tests",
+        "--env-file", str(RUNTIME_ENV), "-f", str(ROOT / "docker-compose.test.yml"),
+    ]
     if args.action == "up":
-        run([*compose_command(config), "up", "-d", "--no-deps", "--wait", "postgres"])
+        run([*command, "up", "-d", "--no-deps", "--wait", "postgres"])
         return
-    run([*compose_command(config), "stop", "postgres"])
+    run([*command, "stop", "postgres"])
 
 
 def cmd_reset(args: argparse.Namespace) -> None:
@@ -3395,14 +3404,15 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
         return environment
 
     runtime_env = read_runtime_env()
-    runtime_names = ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT")
+    runtime_names = ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT_TEST")
     missing_runtime_names = [name for name in runtime_names if not runtime_env.get(name)]
     if missing_runtime_names:
         raise HarnessError(
             "Cannot derive local PostgreSQL test configuration; runtime.env is missing: "
             + ", ".join(missing_runtime_names)
+            + ". Run python scripts/repo.py test-db up to refresh it."
         )
-    if port_is_free(int(runtime_env["POSTGRES_PORT"])):
+    if port_is_free(int(runtime_env["POSTGRES_PORT_TEST"])):
         raise HarnessError(
             "Local test PostgreSQL server is not running. Start it with:\n"
             "  python scripts/repo.py test-db up\n"
@@ -3413,6 +3423,7 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
     database_environment = {
         **runtime_env,
         "POSTGRES_DB": f"{runtime_env['POSTGRES_DB']}_tests",
+        "POSTGRES_PORT": runtime_env["POSTGRES_PORT_TEST"],
     }
     environment[test_database_url_name] = host_database_url_from_runtime(database_environment)
     return environment
@@ -3427,6 +3438,46 @@ def cmd_test(
         args.target,
         canonical_check_environment() if environment is None else environment,
     )
+    workers = getattr(args, "workers", None)
+    if workers is None:
+        workers = 1 if args.target == "api-fast" else 4
+    if workers < 1:
+        raise HarnessError("--workers must be positive")
+    if args.target == "api":
+        sys.path.insert(0, str(ROOT))
+        from scripts.pytest_parallel import merge_junit
+
+        reports_dir = HARNESS_DIR / "test-runs" / uuid.uuid4().hex
+        reports_dir.mkdir(parents=True)
+        reports = [reports_dir / "fast.xml", reports_dir / "postgres.xml"]
+        failure: subprocess.CalledProcessError | None = None
+        for target, count, report in zip(("api-fast", "api-postgres"), (1, workers), reports):
+            try:
+                cmd_test(
+                    argparse.Namespace(target=target, workers=count, junitxml=str(report)),
+                    environment=check_env,
+                )
+            except subprocess.CalledProcessError as exc:
+                failure = exc
+        available = [report for report in reports if report.exists()]
+        if args.junitxml:
+            merge_junit(available, Path(args.junitxml))
+        if failure is not None:
+            raise failure
+        if len(available) != len(reports):
+            raise HarnessError("Incomplete API test reports")
+        return
+    if args.target == "api-fast" and workers != 1:
+        raise HarnessError("api-fast runs serially; --workers applies to the PostgreSQL partition")
+    if workers > 1:
+        command = [sys.executable, "-m", "scripts.pytest_parallel", "--workers", str(workers)]
+        marker_args = api_test_marker_args(args.target)
+        if marker_args:
+            command.extend(["--marker", marker_args[1]])
+        if args.junitxml:
+            command.extend(["--junitxml", args.junitxml])
+        run([*command, API_TEST_PATH], env=check_env)
+        return
     command = api_pytest_command(*api_test_marker_args(args.target))
     if args.junitxml:
         command.insert(-1, f"--junitxml={args.junitxml}")
@@ -3544,6 +3595,7 @@ def build_parser() -> argparse.ArgumentParser:
     test = sub.add_parser("test")
     test.add_argument("target", choices=("api-fast", "api-postgres", "api"))
     test.add_argument("--junitxml")
+    test.add_argument("--workers", type=int, help="pytest processes (default: 4, api-fast: 1); use 1 for debugging")
     test.set_defaults(func=cmd_test)
     coverage = sub.add_parser("coverage")
     coverage.add_argument("target", choices=("api", "api-fast"))

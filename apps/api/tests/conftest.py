@@ -15,9 +15,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from .support.postgres import (
     create_test_database,
     drop_test_database,
-    reset_public_schema,
+    restore_test_database,
     run_migrations,
-    validate_test_database_url,
+    unique_test_database_url,
 )
 from .support.settings import DEFAULT_API_TEST_ENV
 
@@ -86,7 +86,7 @@ def database_test_url() -> URL:
             database=os.environ["POSTGRES_DB_TEST"],
         )
 
-    return validate_test_database_url(database_url)
+    return unique_test_database_url(database_url)
 
 
 @pytest.fixture(scope="session")
@@ -104,10 +104,11 @@ def postgres_engine(
     database_test_url: URL,
     database_admin_url: URL,
 ) -> Iterator[Engine]:
-    """Own one PostgreSQL database and SQLAlchemy engine for the test session.
+    """Own one uniquely named PostgreSQL database and engine for this process.
 
     Request this fixture indirectly through ``migrated_database`` or
-    ``db_session``. It creates the database once and always removes it at teardown.
+    ``db_session``. Schema restoration reuses the engine after disposing its
+    connections; session teardown removes the process-owned database.
     """
     create_test_database(database_test_url, database_admin_url)
     engine = create_engine(database_test_url, pool_pre_ping=True)
@@ -133,16 +134,27 @@ def postgres_session_factory(postgres_engine: Engine) -> sessionmaker[Session]:
 @pytest.fixture
 def migrated_database(
     postgres_engine: Engine,
-    database_test_url: URL,
+    migrated_template: URL,
 ) -> Iterator[Engine]:
-    """Provide a clean PostgreSQL schema upgraded through Alembic for one test.
+    """Provide a fresh copy of the production-migrated schema for one test.
 
-    Use this fixture for ORM, migration-sensitive, concurrency, and PostgreSQL
-    dialect tests. The schema is rebuilt before every requesting test.
+    Business fixtures and transactions remain function-scoped. Migration tests
+    still execute their own upgrade/downgrade paths against the disposable copy.
     """
-    reset_public_schema(postgres_engine)
-    run_migrations(database_test_url)
+    restore_test_database(postgres_engine, migrated_template)
     yield postgres_engine
+
+
+@pytest.fixture(scope="session")
+def migrated_template(database_test_url: URL, database_admin_url: URL) -> Iterator[URL]:
+    """Build one schema/seed template per process; never cache business scenarios."""
+    template_url = unique_test_database_url(database_test_url)
+    create_test_database(template_url, database_admin_url)
+    try:
+        run_migrations(template_url)
+        yield template_url
+    finally:
+        drop_test_database(template_url, database_admin_url)
 
 
 @pytest.fixture
