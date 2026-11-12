@@ -19,6 +19,7 @@ from app.models import (
     User,
     AccessInvalidationOutbox,
     PurchasedAllowance,
+    BackendConsumerPolicy,
 )
 
 
@@ -204,7 +205,14 @@ def missing_invalidations(db: Session, tenant: str, region: str, limit: int) -> 
         (recipient_id, user_id)
         for recipient_id, user_id in db.execute(
             select(AccessInvalidationOutbox.recipient_id, AccessInvalidationOutbox.user_id)
+            .join(
+                BackendConsumerPolicy,
+                (BackendConsumerPolicy.consumer_id == AccessInvalidationOutbox.recipient_id)
+                & (BackendConsumerPolicy.tenant_id == AccessInvalidationOutbox.tenant_id)
+                & (BackendConsumerPolicy.region == AccessInvalidationOutbox.region),
+            )
             .where(
+                BackendConsumerPolicy.snapshot_delivery_enabled.is_(True),
                 AccessInvalidationOutbox.tenant_id == tenant,
                 AccessInvalidationOutbox.region == region,
                 AccessInvalidationOutbox.pending_revision > AccessInvalidationOutbox.delivered_revision,
@@ -280,6 +288,10 @@ def backlog(
                     func.cast(User.id, Text) == BillingWorkItem.scope_reference,
                     User.tenant_id == tenant,
                     User.region == region,
+                    BackendConsumerPolicy.consumer_id == BillingWorkItem.recipient_id,
+                    BackendConsumerPolicy.tenant_id == User.tenant_id,
+                    BackendConsumerPolicy.region == User.region,
+                    BackendConsumerPolicy.snapshot_delivery_enabled.is_(True),
                 ),
             ),
         )

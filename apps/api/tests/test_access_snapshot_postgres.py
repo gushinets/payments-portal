@@ -23,7 +23,6 @@ from app.composition.backend_consumers import initialize_backend_consumers
 from app.composition.reconciliation import reconcile_subscription
 from app.composition.sources import source_resources
 from app.core.observability import request_id_context
-from app.core.backend_consumers import BackendPermission
 from apps.api.tests.support.backend_consumers import backend_consumer
 from apps.api.tests.support.backend_consumers import second_consumer
 from app.domains.billing import paid_access, paid_read, snapshot_router, work
@@ -137,7 +136,6 @@ async def snapshot_client(
                 backend_consumer(
                     backend_to_portal_current_secret=SERVICE,
                     backend_to_portal_previous_secret=PREVIOUS,
-                    permissions=[BackendPermission.READ_SNAPSHOT],
                 ),
                 second_consumer(),
             ),
@@ -206,33 +204,77 @@ async def test_consumer_filtering_precedes_deadlines_and_policy_change_keeps_pai
     monkeypatch.setattr(backend_auth, "settings", config)
     now = datetime.now(UTC)
     end = now + timedelta(seconds=120)
-    with factory() as db:
-        install_policy(db, summary)
-        row = db.scalars(select(PaidAccessState)).one()
-        row.access_revision += 1
-        row.effective_state_document = {
-            **row.effective_state_document,
-            "grants": [
-                *row.effective_state_document["grants"],
-                {
-                    "product_id": "synthetic_summary",
-                    "valid_until": end.isoformat(),
-                },
-            ],
-        }
-        db.add(
-            BillingProductAccessScope(
-                user_id=scenario[4],
-                product_id="synthetic_summary",
-                effective_access_document={
-                    "grants": [{"product_id": "synthetic_summary", "valid_until": end.isoformat()}],
-                    "allowances": [],
-                },
-                effective_access_until=end,
-            )
+    # Build the second grant from its own accepted configured-source purchase.
+    from app.composition.mapping_operator import fresh_link_evaluation
+    from app.domains.catalog.link_publication import publish_product_link
+    from apps.api.tests.support.any709_step1 import link_selection
+    from apps.api.tests.test_any766_technical_sources import summary_manifest, summary_offer
+
+    from copy import deepcopy
+
+    transport = scenario[0]
+    original_offer = deepcopy(transport.offer)
+    transport.offer.tariff_id = 702
+    transport.offer.bodies = {name: body.replace(b"701", b"702") for name, body in transport.offer.bodies.items()}
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path.startswith("/api/rest/v1/tariffs/701"):
+            return original_offer.respond(request)
+        return transport.respond(request)
+
+    source_config = scenario[2].model_copy(update={"backend_consumers": (kernel, summary)})
+    manifest_transport = httpx.MockTransport(lambda request: httpx.Response(200, json=summary_manifest()))
+    fresh = await fresh_link_evaluation(
+        source_config,
+        selection=link_selection(product_id="synthetic_summary", tariff_id=702),
+        technical_offer=summary_offer(),
+        principal="os-euid:29001",
+        kernel_transport=manifest_transport,
+        lbx_transport=httpx.MockTransport(respond),
+    )
+    publish_product_link(
+        factory,
+        evaluation=fresh.document,
+        expected_previous_revision=0,
+        deadline=fresh.deadline,
+        lock_timeout_seconds=1,
+        provider_origin=source_config.lbx_provider_origin,
+    )
+    async with source_resources(
+        source_config, kernel_transport=manifest_transport, lbx_transport=httpx.MockTransport(respond)
+    ) as sources:
+        link, offer, documents, terms = await purchases.review_purchase(
+            sources, source_config, factory=factory, token=TOKEN, product_id="synthetic_summary"
         )
-        revision = row.access_revision
-        db.commit()
+        purchase = await purchases.confirm_purchase(
+            sources,
+            source_config,
+            factory=factory,
+            token=TOKEN,
+            key="summary-grant",
+            meaning=reviewed_meaning(
+                "synthetic_summary", link.mapping_revision_id, offer.fingerprint, documents, terms
+            ),
+        )
+        await purchases.advance_purchase(sources, source_config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+        with factory.begin() as db:
+            sub = db.scalar(select(ExternalSubscription).where(ExternalSubscription.purchase_intent_id == purchase.id))
+            sub_id = sub.subscription_id
+            db.add(
+                BillingProductAccessScope(
+                    user_id=scenario[4], product_id="synthetic_summary", primary_subscription_id=sub_id
+                )
+            )
+        transport.subscriptions[-1].update(
+            state=2,
+            subscription_start_date="2026-10-01",
+            subscription_end_date=(end + timedelta(seconds=5)).isoformat(),
+        )
+        await reconcile_subscription(
+            sources.require_lbx(), sources.billing, source_config, factory=factory, subscription_id=sub_id
+        )
+    with factory() as db:
+        revision = db.scalar(select(PaidAccessState.access_revision))
     summary_headers = headers(summary.backend_to_portal_current_secret.get_secret_value())
     before = billing_snapshot(factory)
     first = await snapshot_client.get(path(scenario[4]), headers=summary_headers)
@@ -270,23 +312,35 @@ async def test_consumer_filtering_precedes_deadlines_and_policy_change_keeps_pai
 
 
 @pytest.mark.parametrize("change", ["consumer", "source"])
+@pytest.mark.parametrize("with_allowance", [True, False])
 async def test_snapshot_policy_change_cannot_transfer_retained_allowance(
     production_scenario: tuple,
     postgres_session_factory: sessionmaker[Session],
     snapshot_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
     change: str,
+    with_allowance: bool,
 ) -> None:
     scenario, factory = production_scenario, postgres_session_factory
+    if not with_allowance:
+        # A real authoritative future cycle retains the grant but admits no bucket.
+        start = datetime.now(UTC) + timedelta(days=1)
+        scenario[0].subscriptions[0].update(
+            subscription_instance_start_date=start.isoformat(),
+            last_tariffication_period_start=start.isoformat(),
+            last_tariffication_period_end=(start + timedelta(days=31)).isoformat(),
+        )
     await reconcile(scenario, factory)
     kernel, summary = backend_auth.settings.backend_consumers
     original = await snapshot_client.get(path(scenario[4]), headers=headers())
     assert original.status_code == 200, original.text
-    with factory() as db:
-        allowance = db.scalars(select(PurchasedAllowance)).one()
-        terms = AcceptedTechnicalTerms.model_validate(allowance.terms_document["technical_terms"])
-        assert terms.schema_version == "purchased-technical-terms:v3"
-        assert terms.ownership.backend_consumer_id == kernel.consumer_id
+    assert bool(original.json()["allowances"]) is with_allowance
+    if with_allowance:
+        with factory() as db:
+            allowance = db.scalars(select(PurchasedAllowance)).one()
+            terms = AcceptedTechnicalTerms.model_validate(allowance.terms_document["technical_terms"])
+            assert terms.schema_version == "purchased-technical-terms:v3"
+            assert terms.ownership.backend_consumer_id == kernel.consumer_id
     # A foreign retained allowance outside Summary's scope does not deny its read.
     summary_headers = headers(summary.backend_to_portal_current_secret.get_secret_value())
     empty = await snapshot_client.get(path(scenario[4]), headers=summary_headers)
@@ -891,11 +945,7 @@ async def test_snapshot_overload_and_cancellation_keep_resource_ownership(
     monkeypatch.setattr(snapshot_router, "settings", config)
     service_config = config.model_copy(
         update={
-            "backend_consumers": (
-                backend_consumer(
-                    backend_to_portal_current_secret=SERVICE, permissions=[BackendPermission.READ_SNAPSHOT]
-                ),
-            ),
+            "backend_consumers": (backend_consumer(backend_to_portal_current_secret=SERVICE),),
         }
     )
     with factory() as db:
@@ -977,3 +1027,34 @@ async def test_unrelated_simulated_allowance_does_not_refuse_another_consumer(
     assert result.json()["access_revision"] > 0
     assert result.json()["grants"] == result.json()["allowances"] == []
     assert billing_snapshot(postgres_session_factory) == before
+
+
+@pytest.mark.parametrize("proof", ["missing_primary", "unproven_purchase"])
+async def test_grant_without_primary_proof_refuses_snapshot_without_mutation(
+    production_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    snapshot_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    proof: str,
+) -> None:
+    scenario, factory = production_scenario, postgres_session_factory
+    await reconcile(scenario, factory)
+    if proof == "missing_primary":
+        with factory.begin() as db:
+            db.scalar(select(BillingProductAccessScope)).primary_subscription_id = None
+    else:
+        original = paid_read.queries.grant_purchases
+
+        def unproven_purchase(db: Session, user_id: UUID, products: list[str]) -> dict:
+            purchases = original(db, user_id, products)
+            for purchase in purchases.values():
+                db.expunge(purchase)
+                purchase.accepted_snapshot = {}  # Read fault; never rewrite immutable history.
+            return purchases
+
+        monkeypatch.setattr(paid_read.queries, "grant_purchases", unproven_purchase)
+    before = billing_snapshot(factory)
+    response = await snapshot_client.get(path(scenario[4]), headers=headers())
+    assert response.status_code == 503
+    assert response.json() == {"detail": {"code": "paid_access_state_pending"}}
+    assert billing_snapshot(factory) == before

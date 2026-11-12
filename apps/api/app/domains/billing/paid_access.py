@@ -214,10 +214,11 @@ def commit_paid_state(
     effective = canonical_state(states).model_dump(mode="json")
     row = queries.state(db, user.id)
     outboxes = {item.recipient_id: item for item in queries.outboxes(db, user.id)}
+    recipients = set(queries.snapshot_recipients(db, user.tenant_id, user.region))
     if (row.effective_state_document if row else EffectiveState().model_dump(mode="json")) == effective:
         if schedule_deadlines:
             for outbox in outboxes.values():
-                if outbox.pending_revision > outbox.delivered_revision:
+                if outbox.recipient_id in recipients and outbox.pending_revision > outbox.delivered_revision:
                     schedule_delivery(db, user.id, now, recipient_id=outbox.recipient_id, hint=False)
             for primary, scope in deadlines:
                 schedule_deadline(db, primary, scope, evaluated_at=now)
@@ -270,7 +271,7 @@ def commit_paid_state(
             related.resulting_access_revision = revision
     # Fan out the whole-user R, including grant removal, in this same transaction.
     # Product filtering belongs to snapshots; it must not omit a removed grant's recipient.
-    for recipient_id in queries.snapshot_recipients(db, user.tenant_id, user.region):
+    for recipient_id in sorted(recipients):
         outbox = outboxes.get(recipient_id)
         if outbox is None:
             db.add(
@@ -290,7 +291,7 @@ def commit_paid_state(
     db.flush()
     if schedule_deadlines:
         for outbox in queries.outboxes(db, user.id):
-            if outbox.pending_revision > outbox.delivered_revision:
+            if outbox.recipient_id in recipients and outbox.pending_revision > outbox.delivered_revision:
                 schedule_delivery(db, user.id, now, recipient_id=outbox.recipient_id)
         for primary, scope in deadlines:
             schedule_deadline(db, primary, scope, evaluated_at=now)

@@ -103,6 +103,8 @@ class BackendConsumer(BaseModel):
             "tenant_id": self.tenant_id,
             "region": self.region,
             "allowed_products": sorted(self.allowed_products),
+            "permissions": sorted(self.permissions),
+            "technical_source_id": self.technical_source_id,
         }
         return (
             "sha256:"

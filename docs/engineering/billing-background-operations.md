@@ -137,8 +137,11 @@ Snapshot serving selects authorized products and their supporting provenance/dea
 before checking completeness and expiry. An unrelated overdue product cannot
 deny this consumer's view; an included overdue reduction or uncommitted
 provenance/start correction refuses that view rather than omitting tuples at the
-same P/R. Included allowances must retain the authenticated consumer's technical
-source and backend owner. A mismatch returns `503 paid_access_owner_conflict`
+same P/R. Every included grant, even without an allowance, must prove its owner
+through its primary subscription and saved accepted purchase. Missing/unproven
+purchase evidence returns `503 paid_access_state_pending`. Included allowances
+also retain the authenticated consumer's technical source and backend owner.
+A proven mismatch returns `503 paid_access_owner_conflict`
 without rewriting terms, allowance IDs or R; higher P cannot transfer old
 authority or usage. Owner transfer requires a separate explicit continuity
 procedure. The cabinet retains whole-user checks. Time is sampled
@@ -226,13 +229,18 @@ API/worker; retain the existing databases/backups. Install the compatible Kernel
 receiver with matching scope/current-or-previous Portal service token and set
 `ANYTOOLAI_PORTAL_ACCESS_INVALIDATION_ENABLED=true` there. The historical Step 13
 pair used Portal `20261111_0010` and Kernel `0020`; the current Step 14 pair
-requires Portal `20261111_0011` and Kernel `0021`. Follow the
+requires Portal `20261111_0011` and Kernel `0021`. The PR digest correction adds no
+migration but requires a higher P for every existing configured consumer. Follow the
 [paired installation and compatibility procedure](../architecture/deployment.md#paired-compatibility-and-synchronized-cutover)
 and the synchronized
 [consumer identity cutover](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover)
 and restart only compatible binaries with the complete registry. Startup installs
-snapshot-recipient membership alongside the existing policy guard; removed
-consumers retain their delivery history but receive no new revisions.
+snapshot-recipient membership alongside the existing policy guard. The installed
+`BackendConsumerPolicy.snapshot_delivery_enabled` flag controls activity. Removing
+a consumer or its `access-snapshot:read` permission retains its outbox, queue
+history, revisions, leases and diagnostics; neither R changes nor writer no-ops
+create new delivery work for it. Never mark inactive history delivered or delete
+it to clear the active backlog.
 
 The migration binds all retained outbox/work rows to `platform-kernel` without
 changing pending/delivered revisions, row IDs, attempts, backoff or parked state.
@@ -249,7 +257,7 @@ environment proxy, no redirects and no browser Origin. Configuration does not
 establish joint or deployed acceptance and does not enable sales.
 
 The whole-user paid commit atomically fans out R to each installed in-scope
-snapshot recipient, including when its last product grant is removed. Each
+active snapshot recipient, including when its last product grant is removed. Each
 recipient/scoped user has its own outbox, work key, claim, attempts, retry/parking
 and delivered revision. One recipient's ACK or failure cannot settle another's
 work. The V1 payload is unchanged; the authenticated destination selects the recipient.
@@ -269,7 +277,8 @@ the row as `invalid` with a safe diagnostic and an error log; Sentry reporting
 uses the existing optional configuration. Response
 bodies, tokens and authorization headers never enter diagnostics. The existing
 worker metrics include the `delivery` lane, retry/parked attempts and parked
-backlog. Monitor invalid backlog as well as due-work age. Safe logs and CLI
+backlog. Delivery backlog counts include active recipients only; inactive history
+remains available through inspection. Monitor invalid backlog as well as due-work age. Safe logs and CLI
 identify the recipient; historical `kernel_invalidation_*` classifications remain
 compatible for every recipient. Metrics retain the aggregate `delivery` label.
 
@@ -280,7 +289,11 @@ define per-recipient concurrency and the aggregate DB pool budget.
 
 Local startup/sweeps repair missing or prematurely completed scheduling from
 unresolved outbox rows in bounded batches without LBX configuration or HTTP.
-They preserve live leases, existing retry schedules and parked rows. After
+Repair filters by recipient/tenant/region and activity before LIMIT and rechecks
+activity under the User lock before scheduling. Inactive history cannot occupy
+the repair batch. Restore the registry entry/permission with a valid monotonic P
+to resume saved undelivered N through repair/claim/ACK. Live leases and retry
+schedules survive; parked errors still need explicit retry. After
 repairing credentials, permission, scope or deployed schema, use the existing
 privileged OS-principal CLI from the repository root:
 
@@ -289,7 +302,9 @@ privileged OS-principal CLI from the repository root:
 ./.venv/bin/python scripts/repo.py billing-purchase retry-invalidation --recipient-id <consumer-id> --user-id <uuid>
 ```
 
-Inspection is local; retry only re-enqueues a parked row and sends no HTTP.
+Inspection is local and remains available for inactive recipients. Explicit
+retry refuses with `409 invalidation_recipient_inactive` until reactivation;
+an active recipient's retry only re-enqueues a parked row and sends no HTTP.
 Ordinary delivery resumes through the worker. Neither command grants access,
 changes an allowance nor issues a financial operation. Invalidation is a
 convergence hint; finite snapshot expiry remains the correctness backstop.

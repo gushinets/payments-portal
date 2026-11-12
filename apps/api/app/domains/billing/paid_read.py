@@ -21,6 +21,8 @@ from app.domains.catalog.contracts import SourceProvenance
 from app.domains.catalog.technical_source import TechnicalOwnership
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases.technical_terms import AcceptedTechnicalTerms
+from app.domains.purchases.contracts import PurchaseRefused
+from app.domains.purchases.evidence import accepted
 from app.infrastructure.queries import paid_read as queries
 from app.infrastructure.queries.backend_policies import BackendPolicyConflict, require_current_policy
 from app.infrastructure.queries.billing_reconciliation import database_now
@@ -108,6 +110,18 @@ def read_committed_state(
             allowances=tuple(item for item in document.allowances if item.product_id in products),
         )
     ownership = TechnicalOwnership(consumer.technical_source_id, consumer.consumer_id) if consumer is not None else None
+    if ownership is not None and document.grants:
+        purchases = queries.grant_purchases(db, user_id, [grant.product_id for grant in document.grants])
+        for grant in document.grants:
+            purchase = purchases.get(grant.product_id)
+            if purchase is None:
+                raise BillingRefused("paid_access_state_pending", 503)
+            try:
+                saved_owner = accepted(purchase).ownership
+            except PurchaseRefused:
+                raise BillingRefused("paid_access_state_pending", 503) from None
+            if saved_owner != ownership:
+                raise BillingRefused("paid_access_owner_conflict", 503)
     provenance: dict[str, SourceProvenance] = {}
     for item in queries.allowances(db, [UUID(item.allowance_id) for item in document.allowances]):
         terms = AcceptedTechnicalTerms.model_validate(item.terms_document["technical_terms"])

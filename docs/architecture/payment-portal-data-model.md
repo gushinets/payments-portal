@@ -252,8 +252,9 @@ LBX commercial quantity retains its separate meaning. These versions require no
 new table or migration. Readers predating Step 3 cannot consume these documents;
 the reader compatibility floor must accompany the unchanged migration head.
 Existing accepted subscriptions keep their quantity across republished links
-and proven new cycles. Step 5 implements configured-source derivation and
-snapshot V2 serving; Step 7 implements invalidation delivery.
+and proven new cycles. Step 5 implemented configured-source derivation and
+snapshot V2 serving, superseded by consumer-scoped V3 in Step 12. Step 7
+implemented invalidation delivery, partitioned by recipient in Step 13.
 Step 11 writes `accepted-purchase:v4` for v4 links with required
 `purchased-technical-terms:v3` and `selected-technical-terms:v2` consent. These
 bind source/backend owner and neutral manifest evidence without changing prior
@@ -394,8 +395,11 @@ canonicalizes the whole-user state, increments its revision and coalesces the
 pending outbox revision atomically with source facts. ANY-766 Step 7 schedules
 one recurring `access_invalidation` item per recipient/user in that transaction
 as of Step 13. The installed policy guard's `snapshot_delivery_enabled` records
-configured snapshot-recipient membership; the writer fans out R within its
-existing transaction, including grant removal. Queue rows carry `recipient_id`
+active snapshot-recipient membership; the writer fans out R only to active
+recipients within its existing transaction, including grant removal. Writer
+no-ops and repair also skip inactive recipients, retaining their outbox/queue
+history and leases. Reactivation resumes saved delivery; parked rows require
+explicit retry. Queue rows carry `recipient_id`
 only for invalidation, use `recipient_id:user_id` keys and copy the recipient into
 claims. Migration `20261111_0010` retires running pre-cutover claims while
 preserving pending/delivered history and parking. Capture
@@ -544,13 +548,16 @@ records configuration, errors and remaining integration boundaries.
 ## Backend consumer policy guard (ANY-766 Step 10)
 
 `backend_consumer_policies` uses `(consumer_id, tenant_id, region)` as its key.
-It stores strict positive `consumer_policy_revision` and the canonical product
-scope digest. Startup installs configured policies under row locks in one
-transaction; changed meaning at reused P and rollback are refused. Identity reads
+It stores strict positive `consumer_policy_revision`, the canonical policy digest
+and `snapshot_delivery_enabled`. The digest includes consumer/scope, sorted product
+scope, the complete sorted permissions and technical source. Startup installs
+policy and recipient activity under row locks in one transaction; changed meaning
+at reused P and rollback are refused, with activity changes rolled back too. Identity reads
 fail closed when a process's configured P/digest no longer matches the committed
-guard. Rotation/callbacks/operation permissions remain deployment settings and
-are not part of the digest. No paid revision, purchase document, outbox, allowance
-or backend usage is rewritten. See the [common guide](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).
+guard. Credentials, callbacks and backend instance address are outside the digest.
+The expanded digest requires higher configured P when upgrading existing policies,
+without a migration. No paid revision, purchase document, outbox, allowance or
+backend usage is rewritten. See the [common guide](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).
 
 
 ### ANY-766 Step 14 exhaustion hints

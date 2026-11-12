@@ -363,20 +363,31 @@ def test_independent_consumer_and_rotation_cannot_redeem_or_introspect_foreign_a
             assert read.headers["cache-control"] == "no-store"
 
 
-def test_policy_guard_rejects_reused_digest_and_rollback_and_stale_process() -> None:
+@pytest.mark.parametrize(
+    "policy_change",
+    [
+        {"allowed_products": ["proposal_ai"]},
+        {"permissions": ["backend-session:exchange", "backend-session:introspect"]},
+        {"technical_source_id": "replacement-source"},
+    ],
+)
+def test_policy_guard_rejects_reused_digest_and_rollback_and_stale_process(policy_change: dict) -> None:
     from app.infrastructure.queries.backend_policies import BackendPolicyConflict
     from app.models import BackendConsumerPolicy
 
     _, code = issue()
     token = exchange(code).json()["access_token"]
     original = settings.backend_consumers
-    changed = backend_consumer(allowed_products=["proposal_ai"])
+    changed = backend_consumer(**policy_change)
     for invalid in (changed, backend_consumer(consumer_policy_revision=1, allowed_products=["brief_decoder"])):
         with override_settings(settings, backend_consumers=(invalid, second_consumer())):
             with pytest.raises(BackendPolicyConflict):
                 initialize_backend_consumers(settings, SessionLocal)
             assert introspect(token).status_code == 503
-    newer = backend_consumer(consumer_policy_revision=2, allowed_products=["proposal_ai"])
+            with SessionLocal() as db:
+                rows = db.query(BackendConsumerPolicy).all()
+                assert all(row.snapshot_delivery_enabled for row in rows)
+    newer = backend_consumer(consumer_policy_revision=2, **policy_change)
     with override_settings(settings, backend_consumers=(newer, second_consumer())):
         initialize_backend_consumers(settings, SessionLocal)
         assert introspect(token).json()["consumer_policy_revision"] == 2

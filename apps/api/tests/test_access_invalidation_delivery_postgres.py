@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.cli.billing_purchases import _run, parser
+from app.composition.backend_consumers import initialize_backend_consumers
 from app.composition.billing_worker import billing_worker_resources
 from app.core.settings import Settings
 from app.domains.billing import access_invalidation as delivery, work
@@ -72,6 +73,7 @@ def pending(migrated_database: Engine, postgres_session_factory: sessionmaker[Se
         )
         delivery.schedule_delivery(db, identity, datetime.now(UTC), recipient_id="platform-kernel")
         db.commit()
+    initialize_backend_consumers(config, postgres_session_factory)
     return postgres_session_factory, config, identity
 
 

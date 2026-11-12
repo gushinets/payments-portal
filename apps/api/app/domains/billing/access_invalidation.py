@@ -26,6 +26,7 @@ from app.models import BillingWorkKind, BillingWorkScope, BillingWorkState
 # Delivery uses canonical symbols through the existing TEXT-backed queue seam.
 # Converting legacy ORM fields/producers to PersistedEnumType belongs to ANY-800.
 KIND = BillingWorkKind.ACCESS_INVALIDATION
+INACTIVE_RECIPIENT_CODE = "invalidation_recipient_inactive"
 
 
 def delivery_key(recipient_id: str, user_id: UUID) -> str:
@@ -62,6 +63,8 @@ def repair_delivery(factory: SessionFactory, configuration: Settings) -> int:
             with factory() as db:
                 user = lock_user(db, identity)
                 if (user.tenant_id, user.region) != (configuration.instance_tenant_id, configuration.instance_region):
+                    continue
+                if recipient_id not in paid_access.snapshot_recipients(db, user.tenant_id, user.region):
                     continue
                 outbox = paid_access.outbox(db, identity, recipient_id)
                 row = billing_work.by_key(db, KIND, delivery_key(recipient_id, identity), lock=True)
@@ -169,6 +172,8 @@ def inspect_delivery(
         if outbox is None:
             raise BillingRefused("invalidation_not_found", 404)
         if retry:
+            if recipient_id not in paid_access.snapshot_recipients(db, user.tenant_id, user.region):
+                raise BillingRefused(INACTIVE_RECIPIENT_CODE, 409)
             if row is None or row.work_state != BillingWorkState.INVALID:
                 raise BillingRefused("invalidation_not_parked", 409)
             now = as_utc(billing_reconciliation.database_now(db))

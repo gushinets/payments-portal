@@ -461,19 +461,43 @@ def test_populated_step8_forward_migration_preserves_delegations_and_parent_stat
         assert exchanged["token_hash"] and exchanged["auth_session_id"]
 
 
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"allowed_products": ["proposal_ai"]},
+        {"permissions": ["backend-session:exchange", "backend-session:introspect"]},
+        {"technical_source_id": "replacement-source"},
+    ],
+)
 def test_concurrent_stale_installation_cannot_restore_old_consumer_policy(
     migrated_database: Engine,
     postgres_session_factory: sessionmaker[Session],
+    change: dict,
 ) -> None:
-    from app.infrastructure.queries.backend_policies import BackendPolicyConflict, install_policy
+    from app.composition.backend_consumers import initialize_backend_consumers
+    from app.core.settings import Settings
+    from app.infrastructure.queries.backend_policies import (
+        BackendPolicyConflict,
+        install_policy,
+        require_current_policy,
+    )
     from app.models import BackendConsumerPolicy
-    from apps.api.tests.support.backend_consumers import backend_consumer
+    from apps.api.tests.support.backend_consumers import backend_consumer, second_consumer
 
     old = backend_consumer()
-    newer = backend_consumer(consumer_policy_revision=2, allowed_products=["proposal_ai"])
+    newer = backend_consumer(consumer_policy_revision=2, **change)
     factory = postgres_session_factory
-    with factory.begin() as db:
-        install_policy(db, old)
+    configuration = Settings(backend_consumers=(old, second_consumer()))
+    initialize_backend_consumers(configuration, factory)
+    # Registry installation first retires recipients. A reused-P digest conflict
+    # must roll that retirement back too, including the omitted second consumer.
+    with pytest.raises(BackendPolicyConflict):
+        initialize_backend_consumers(
+            configuration.model_copy(update={"backend_consumers": (backend_consumer(**change),)}), factory
+        )
+    with factory() as db:
+        assert all(row.snapshot_delivery_enabled for row in db.query(BackendConsumerPolicy).all())
+        require_current_policy(db, old)
     started = Event()
 
     def stale_installation() -> str:
@@ -494,6 +518,8 @@ def test_concurrent_stale_installation_cannot_restore_old_consumer_policy(
     with factory() as db:
         saved = db.get(BackendConsumerPolicy, (old.consumer_id, old.tenant_id, old.region))
         assert (saved.consumer_policy_revision, saved.policy_digest) == (2, newer.policy_digest)
+        with pytest.raises(BackendPolicyConflict):
+            require_current_policy(db, old)
 
 
 def test_forward_migration_refuses_to_adopt_foreign_historical_audience(

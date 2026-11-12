@@ -20,6 +20,17 @@ ordinary API discovery roots; the ordinary browser configuration excludes
 in the single-repository CI jobs. Do not run another Next
 build/dev process against the same checkouts concurrently. `ANY766_KERNEL_ROOT`
 optionally selects the prepared peer checkout (default: the neighboring clone).
+`--kernel-consumer-id <id>` selects a different Kernel consumer consistently for
+the synthetic Portal registry, Kernel API and browser build (default
+`platform-kernel`). It starts with fresh test purchases owned by that consumer;
+it never renames an existing purchase owner.
+
+The PR correction HTTP regression uses a custom consumer and covers policy
+denial of new starts while an accepted job finishes/replays once, higher-P
+restoration with the same allowance/usage, and independent recipient retirement
+and repair. The separate image/Caddy web-update rehearsal is described in the
+[Kernel deployment runbook](https://github.com/gushinets/anytoolai-platform/blob/main/infra/deployment/README.md#pr-correction-web-update-rehearsal--2026-11-12);
+this harness's normal commands do not build or replace web images.
 
 External substitutions are explicit: LBX uses the existing purchase recordings
 served on loopback, AI uses Kernel's deterministic provider fixtures, and the

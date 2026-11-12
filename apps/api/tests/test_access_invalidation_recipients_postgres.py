@@ -173,8 +173,10 @@ def test_claim_cannot_ack_other_recipient_and_restart_repairs_each_missing_work(
         assert status(factory, config, identity, recipient)["delivered_revision"] == 1
 
 
+@pytest.mark.parametrize("retirement", ["removed", "permission"])
+@pytest.mark.parametrize("old_state", ["missing", "completed", "pending", "running", "invalid"])
 async def test_writer_atomic_fanout_removal_noop_and_rollback(
-    paid_source: Scenario, monkeypatch: pytest.MonkeyPatch
+    paid_source: Scenario, monkeypatch: pytest.MonkeyPatch, retirement: str, old_state: str
 ) -> None:
     scenario = paid_source
     config = scenario.config.model_copy(
@@ -233,12 +235,34 @@ async def test_writer_atomic_fanout_removal_noop_and_rollback(
         assert state.access_revision == 2 and state.effective_state_document == {"grants": [], "allowances": []}
         assert list(db.scalars(select(PurchasedAllowance.allowance_id))) == allowance_ids
     assert all(status(scenario.factory, config, identity, key)["pending_revision"] == 2 for key in (KERNEL, SUMMARY))
-    # Removing a recipient from the registry preserves its unresolved history.
-    initialize_backend_consumers(
-        config.model_copy(update={"backend_consumers": (backend_consumer(),)}), scenario.factory
+    from app.infrastructure.queries import billing_work
+    from app.models import BillingWorkState
+
+    with scenario.factory.begin() as db:
+        row = billing_work.by_key(db, delivery.KIND, delivery.delivery_key(SUMMARY, identity))
+        if old_state == "missing":
+            db.delete(row)
+        else:
+            row.work_state = BillingWorkState(old_state)
+            if old_state == "running":
+                row.lease_owner = "retained-writer-test"
+                row.lease_expires_at = datetime.now(UTC) + timedelta(minutes=2)
+    # Both ways of disabling a recipient preserve every scheduling/history state.
+    registry = (
+        (backend_consumer(),)
+        if retirement == "removed"
+        else (
+            backend_consumer(),
+            second_consumer(consumer_policy_revision=2, permissions=["backend-session:introspect"]),
+        )
     )
+    initialize_backend_consumers(config.model_copy(update={"backend_consumers": registry}), scenario.factory)
+    retired = status(scenario.factory, config, identity, SUMMARY)
+    await reconcile(scenario)  # Semantic no-op must not re-enqueue retired work.
+    assert status(scenario.factory, config, identity, SUMMARY) == retired
     scenario.transport.subscriptions[0]["current_blocking"] = 0
     await reconcile(scenario)
+    assert status(scenario.factory, config, identity, SUMMARY) == retired
     assert status(scenario.factory, config, identity, KERNEL)["pending_revision"] == 3
     assert status(scenario.factory, config, identity, SUMMARY)["pending_revision"] == 2
 
@@ -279,6 +303,7 @@ def test_forward_migration_preserves_history_and_retires_old_claims(
                 before_work = db.execute(text("SELECT * FROM billing_work_items")).mappings().one()
             before_outbox = db.execute(text("SELECT * FROM access_invalidation_outbox")).mappings().one()
         command.upgrade(migrations, "head")
+    initialize_backend_consumers(config, factory)
     with factory() as db:
         after_outbox = db.execute(text("SELECT * FROM access_invalidation_outbox")).mappings().one()
         assert dict(after_outbox) == dict(before_outbox) | {"recipient_id": KERNEL}
@@ -404,3 +429,84 @@ async def test_cleanup_held_by_one_recipient_does_not_block_another(recipients: 
         await worker.aclose()
         for connection in connections.values():
             await connection.aclose()
+
+
+@pytest.mark.parametrize("retirement", ["removed", "permission"])
+@pytest.mark.parametrize("old_state", ["missing", "completed", "pending", "running", "invalid"])
+def test_inactive_recipient_is_not_repaired_or_retried(recipients: tuple, retirement: str, old_state: str) -> None:
+    factory, config, identity = recipients
+    from app.core.backend_consumers import BackendPermission
+    from app.infrastructure.queries import billing_work
+    from app.models import BillingWorkState
+
+    with factory.begin() as db:
+        row = billing_work.by_key(db, delivery.KIND, delivery.delivery_key(SUMMARY, identity))
+        if old_state == "missing":
+            db.delete(row)
+        else:
+            row.work_state = BillingWorkState(old_state)
+            if old_state == "running":
+                row.lease_owner = "retained-owner"
+                row.lease_expires_at = datetime.now(UTC) + timedelta(minutes=2)
+    retired = config.model_copy(
+        update={
+            "backend_consumers": (backend_consumer(),)
+            if retirement == "removed"
+            else (
+                backend_consumer(),
+                second_consumer(consumer_policy_revision=2, permissions=[BackendPermission.INTROSPECT]),
+            )
+        }
+    )
+    initialize_backend_consumers(retired, factory)
+    before = status(factory, retired, identity, SUMMARY)
+    assert delivery.repair_delivery(factory, retired) == 0
+    assert status(factory, retired, identity, SUMMARY) == before
+    pending_count, _, parked_count = work.inspect_backlog(factory, retired)
+    assert (pending_count, parked_count) == (1, 0)
+    with pytest.raises(BillingRefused, match="invalidation_recipient_inactive"):
+        delivery.inspect_delivery(factory, retired, identity, recipient_id=SUMMARY, retry=True)
+    restored = config.model_copy(
+        update={
+            "backend_consumers": (
+                backend_consumer(),
+                second_consumer(consumer_policy_revision=3),
+            )
+        }
+    )
+    initialize_backend_consumers(restored, factory)
+    assert delivery.repair_delivery(factory, restored) == int(old_state in {"missing", "completed"})
+    if old_state == "invalid":
+        assert (
+            delivery.inspect_delivery(factory, restored, identity, recipient_id=SUMMARY, retry=True)["work_state"]
+            == "pending"
+        )
+    assert status(factory, restored, identity, SUMMARY)["pending_revision"] == before["pending_revision"]
+    assert status(factory, restored, identity, SUMMARY)["delivered_revision"] == before["delivered_revision"]
+
+
+@pytest.mark.parametrize("retire_during_scan", [False, True])
+def test_repair_filters_before_limit_and_rechecks_scoped_membership(
+    recipients: tuple,
+    monkeypatch: pytest.MonkeyPatch,
+    retire_during_scan: bool,
+) -> None:
+    from app.infrastructure.queries import billing_work
+
+    factory, config, identity = recipients
+    config = config.model_copy(update={"backend_consumers": (second_consumer(),), "billing_worker_scan_batch_size": 1})
+    initialize_backend_consumers(config, factory)
+    with factory.begin() as db:
+        db.execute(delete(BillingWorkItem).where(BillingWorkItem.work_kind == delivery.KIND))
+    original = billing_work.missing_invalidations
+
+    def candidates(db: Session, tenant: str, region: str, limit: int) -> list[tuple[str, UUID]]:
+        result = original(db, tenant, region, limit)
+        assert result == [(SUMMARY, identity)]  # Retired Kernel sorts first, but cannot consume LIMIT.
+        if retire_during_scan:
+            initialize_backend_consumers(config.model_copy(update={"backend_consumers": ()}), factory)
+        return result
+
+    monkeypatch.setattr(billing_work, "missing_invalidations", candidates)
+    assert delivery.repair_delivery(factory, config) == int(not retire_during_scan)
+    assert status(factory, config, identity, KERNEL)["work_state"] == "unscheduled"

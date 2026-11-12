@@ -78,3 +78,20 @@ def sources(
 
 def allowances(db: Session, identities: list[UUID]) -> list[PurchasedAllowance]:
     return list(db.scalars(select(PurchasedAllowance).where(PurchasedAllowance.allowance_id.in_(identities))))
+
+
+def grant_purchases(db: Session, user_id: UUID, products: list[str]) -> dict[str, PurchaseIntent]:
+    """Resolve committed grant provenance under the caller's shared user lock."""
+    return dict(
+        db.execute(
+            select(BillingProductAccessScope.product_id, PurchaseIntent)
+            .join(
+                ExternalSubscription,
+                ExternalSubscription.subscription_id == BillingProductAccessScope.primary_subscription_id,
+            )
+            .join(PurchaseIntent, PurchaseIntent.purchase_intent_id == ExternalSubscription.purchase_intent_id)
+            .where(BillingProductAccessScope.user_id == user_id, BillingProductAccessScope.product_id.in_(products))
+        )
+        .tuples()
+        .all()
+    )

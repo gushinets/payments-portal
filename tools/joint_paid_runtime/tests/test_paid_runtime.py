@@ -161,11 +161,13 @@ def delegate(
     return response.json()
 
 
-def rows(url: str, sql: str) -> list[dict]:
+def rows(url: str, sql: str, parameters: dict | None = None) -> list[dict]:
     engine = create_engine(url)
     try:
         with engine.connect() as db:
-            return [dict(row) for row in db.execute(text(sql)).mappings()]
+            return [
+                dict(row) for row in db.execute(text(sql), parameters or {}).mappings()
+            ]
     finally:
         engine.dispose()
 
@@ -233,6 +235,16 @@ def test_real_joint_paid_execution_replay_lifecycle_and_retained_storage() -> No
                 headers={**auth, "Idempotency-Key": key},
                 json={"frontend_id": "web_mirror", "input": payload},
             )
+
+        def revision_floor() -> int:
+            # Authentication also records P for the independently scoped foreign user.
+            return rows(
+                runtime.kernel_url,
+                "SELECT revision_floor FROM platform.paid_access_coherence "
+                "WHERE consumer_id = :consumer AND tenant_id = 'anytoolai' "
+                "AND region = 'ru' AND user_id = :user",
+                {"consumer": runtime.kernel_consumer_id, "user": user},
+            )[0]["revision_floor"]
 
         def finish(started: dict) -> dict:
             def completed() -> dict | None:
@@ -348,15 +360,7 @@ def test_real_joint_paid_execution_replay_lifecycle_and_retained_storage() -> No
 
         (runtime.run / "summary-outage").touch()
         source({"current_blocking": 1})
-        eventually(
-            lambda: (
-                rows(
-                    runtime.kernel_url,
-                    "SELECT revision_floor FROM platform.paid_access_coherence",
-                )[0]["revision_floor"]
-                > document["access_revision"]
-            )
-        )
+        eventually(lambda: revision_floor() > document["access_revision"])
         assert start(CASES[0], "blocked-new").status_code == 403
         assert_replay(start(CASES[0], CASES[0][1]), accepted[0])
         # A failing recipient cannot settle or starve the healthy recipient.
@@ -403,15 +407,7 @@ def test_real_joint_paid_execution_replay_lifecycle_and_retained_storage() -> No
             )
             == allowances["proposal_ai"]
         )
-        eventually(
-            lambda: (
-                rows(
-                    runtime.kernel_url,
-                    "SELECT revision_floor FROM platform.paid_access_coherence",
-                )[0]["revision_floor"]
-                >= recovered["access_revision"]
-            )
-        )
+        eventually(lambda: revision_floor() >= recovered["access_revision"])
 
         # A terminal external-provider failure releases capacity without a result/debit.
         (runtime.run / "provider-outage").touch()
@@ -545,15 +541,7 @@ def test_real_joint_paid_execution_replay_lifecycle_and_retained_storage() -> No
             new_bucket["allowance_id"] != allowances["proposal_ai"]["allowance_id"]
             and new_bucket["quantity"] == 8
         )
-        eventually(
-            lambda: (
-                rows(
-                    runtime.kernel_url,
-                    "SELECT revision_floor FROM platform.paid_access_coherence",
-                )[0]["revision_floor"]
-                >= renewed["access_revision"]
-            )
-        )
+        eventually(lambda: revision_floor() >= renewed["access_revision"])
         assert_replay(start(CASES[0], CASES[0][1]), accepted[0])
         new_execution = start(CASES[0], "new-cycle")
         assert new_execution.status_code == 200, new_execution.text
@@ -654,3 +642,188 @@ def test_real_joint_paid_execution_replay_lifecycle_and_retained_storage() -> No
         logout = client.post(portal + "/api/auth/logout", headers=primary)
         assert logout.status_code in {200, 204}, logout.text
         assert start(CASES[0], "revoked-parent").status_code == 401
+
+
+def test_review_policy_cutover_preserves_accepted_work_and_recipient_history() -> None:
+    with (
+        JointRuntime(kernel_consumer_id="custom-kernel") as runtime,
+        httpx.Client(trust_env=False, timeout=10) as client,
+    ):
+        portal, kernel = runtime.origins["portal_api"], runtime.origins["kernel_api"]
+        auth = bearer(delegate(runtime, client)["access_token"])
+        service = bearer(runtime.consumers[0]["backend_to_portal_current_secret"])
+        snapshot_url = (
+            portal
+            + f"/internal/v1/access-snapshots/{runtime.identity.user_id}?tenant_id=anytoolai&region=ru"
+        )
+        original = client.get(snapshot_url, headers=service).json()
+        assert original["consumer_id"] == "custom-kernel"
+        purchases_before = rows(
+            runtime.portal_url,
+            "SELECT purchase_intent_id, accepted_snapshot::text FROM purchase_intents ORDER BY purchase_intent_id",
+        )
+        product, scenario, payload = CASES[0]
+
+        def start(key: str) -> httpx.Response:
+            return client.post(
+                kernel + f"/v1/products/{product}/scenarios/{scenario}/start",
+                headers={**auth, "Idempotency-Key": key},
+                json={"frontend_id": "web_mirror", "input": payload},
+            )
+
+        def restart_portal(consumers: list[dict]) -> None:
+            runtime.stop("portal-api")
+            runtime.portal_env["BACKEND_CONSUMERS"] = json.dumps(consumers)
+            runtime.start(
+                "portal-api",
+                [
+                    str(PORTAL / ".venv/bin/python"),
+                    "-m",
+                    "uvicorn",
+                    "app.main:app",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    str(runtime.ports["portal_api"]),
+                    "--no-access-log",
+                    "--log-level",
+                    "warning",
+                ],
+                PORTAL,
+                runtime.portal_env,
+            )
+            runtime.wait(portal + "/api/auth/session", name="portal-api")
+
+        def usage() -> list[dict]:
+            return rows(
+                runtime.kernel_url,
+                "SELECT * FROM platform.paid_allowance_usage ORDER BY allowance_id",
+            )
+
+        runtime.stop("kernel-worker")
+        response = start("accepted-before-policy")
+        assert response.status_code == 200, response.text
+        accepted = response.json()
+        reserved = usage()
+        original_permissions = runtime.consumers[0]["permissions"][:]
+        runtime.consumers[0]["consumer_policy_revision"] = 2
+        runtime.consumers[0]["permissions"].remove("access-snapshot:read")
+        restart_portal(runtime.consumers)
+        denied = start("denied-after-policy")
+        assert denied.status_code == 503, denied.text
+        assert usage() == reserved
+        assert_replay(start("accepted-before-policy"), accepted)
+        runtime.start(
+            "kernel-worker",
+            runtime.kernel_command("worker"),
+            KERNEL,
+            runtime.kernel_env,
+        )
+
+        def completed() -> dict | None:
+            reply = client.get(
+                kernel + "/v1/scenario-sessions/" + accepted["scenario_session_id"],
+                headers=auth,
+            )
+            assert reply.status_code == 200, reply.text
+            body = reply.json()
+            assert body["status"] not in {"failed", "cancelled"}, body
+            return body if body["result_artifact_id"] else None
+
+        result = eventually(completed)
+        assert (
+            client.get(
+                kernel + "/v1/results/" + result["result_artifact_id"], headers=auth
+            ).status_code
+            == 200
+        )
+        finished_usage = usage()
+        assert_replay(start("accepted-before-policy"), accepted)
+        assert usage() == finished_usage
+        runtime.consumers[0]["consumer_policy_revision"] = 3
+        runtime.consumers[0]["permissions"] = original_permissions
+        restart_portal(runtime.consumers)
+        restored = client.get(snapshot_url, headers=service).json()
+        assert restored["consumer_policy_revision"] == 3
+        for field in ("access_revision", "grants", "allowances"):
+            assert restored[field] == original[field]
+        assert usage() == finished_usage
+        actual = client.get(
+            portal + "/api/paid-usage", headers=bearer(runtime.identity.token)
+        ).json()
+        item = next(item for item in actual["items"] if item["product_id"] == product)
+        assert (item["successful_used"], item["reserved"]) == (1, 0)
+
+        subscription = runtime.identity.subscriptions[product]
+
+        def source(blocked: int) -> None:
+            reply = client.post(
+                runtime.origins["lbx"]
+                + f"/__test__/subscriptions/{subscription.provider_id}",
+                json={"current_blocking": blocked},
+            )
+            assert reply.status_code == 200
+            runtime.command(
+                runtime.portal_command("reconcile", subscription.id),
+                cwd=PORTAL,
+                env=runtime.portal_env,
+                name="review-reconcile",
+            )
+
+        (runtime.run / "summary-outage").touch()
+        source(1)
+        runtime.stop("portal-api")
+        history_sql = "SELECT * FROM access_invalidation_outbox WHERE recipient_id='synthetic-summary'"
+        retained = rows(runtime.portal_url, history_sql)
+        assert retained[0]["pending_revision"] > retained[0]["delivered_revision"]
+        # Fault injection affects only this run's disposable scheduling row.
+        engine = create_engine(runtime.portal_url)
+        try:
+            with engine.begin() as db:
+                db.execute(
+                    text(
+                        "DELETE FROM billing_work_items WHERE work_kind='access_invalidation' AND recipient_id='synthetic-summary'"
+                    )
+                )
+        finally:
+            engine.dispose()
+        restart_portal(runtime.consumers[:1])
+        source(0)
+        assert rows(runtime.portal_url, history_sql) == retained
+        assert (
+            rows(
+                runtime.portal_url,
+                "SELECT 1 FROM billing_work_items WHERE work_kind='access_invalidation' AND recipient_id='synthetic-summary'",
+            )
+            == []
+        )
+        (runtime.run / "summary-outage").unlink()
+        runtime.consumers[1]["consumer_policy_revision"] = 2
+        restart_portal(runtime.consumers)
+        eventually(
+            lambda: (
+                rows(runtime.portal_url, history_sql)[0]["delivered_revision"]
+                == retained[0]["pending_revision"]
+            )
+        )
+        assert usage() == finished_usage
+        assert (
+            rows(
+                runtime.portal_url,
+                "SELECT purchase_intent_id, accepted_snapshot::text FROM purchase_intents ORDER BY purchase_intent_id",
+            )
+            == purchases_before
+        )
+        (runtime.run / "review-corrections.json").write_text(
+            json.dumps(
+                {
+                    "custom_consumer": runtime.kernel_consumer_id,
+                    "policy_revisions": [1, 2, 3],
+                    "accepted_session": accepted["scenario_session_id"],
+                    "successful_used": 1,
+                    "purchase_history_preserved": True,
+                    "retired_recipient_repaired_after_return": True,
+                },
+                indent=2,
+            )
+        )

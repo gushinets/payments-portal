@@ -32,6 +32,7 @@ from app.domains.catalog.product_link import ProductLinkDocument
 from app.domains.purchases.contracts import AcceptedPurchase
 from app.domains.purchases.router import present_purchase
 from app.models import (
+    BillingProductAccessScope,
     CommercialMappingRevision,
     ExternalBillingCustomer,
     ExternalSubscription,
@@ -76,11 +77,25 @@ def cycle() -> CalendarEvidence:
 
 
 def assert_snapshot_keeps_retained_owner(
-    factory: sessionmaker[Session], user_id: UUID, allowance: EffectiveAllowance, owner: BackendConsumer
+    factory: sessionmaker[Session],
+    user_id: UUID,
+    allowance: EffectiveAllowance | None,
+    owner: BackendConsumer,
+    *,
+    subscription_id: UUID | None = None,
 ) -> None:
     # Seed the committed reader input from the actual materialized allowance.
-    document = EffectiveState(grants=(PaidGrant(product_id=allowance.product_id),), allowances=(allowance,))
     with factory() as db:
+        if subscription_id is None:
+            subscription_id = db.get(PurchasedAllowance, allowance.allowance_id).subscription_id
+        sub = db.get(ExternalSubscription, subscription_id)
+        product_id = sub.product_id
+        db.add(
+            BillingProductAccessScope(user_id=user_id, product_id=product_id, primary_subscription_id=subscription_id)
+        )
+        document = EffectiveState(
+            grants=(PaidGrant(product_id=product_id),), allowances=(allowance,) if allowance else ()
+        )
         db.add(
             PaidAccessState(
                 tenant_id=owner.tenant_id,
@@ -99,7 +114,7 @@ def assert_snapshot_keeps_retained_owner(
     snapshot = read_access_snapshot(factory, config, user_id, owner)
     assert snapshot.revision == 1 and snapshot.document == document
     foreign_factory = second_consumer if owner.consumer_id == "platform-kernel" else backend_consumer
-    foreign = foreign_factory(allowed_products=[allowance.product_id])
+    foreign = foreign_factory(allowed_products=[product_id])
     changed = config.model_copy(update={"backend_consumers": (foreign,)})
     initialize_backend_consumers(changed, factory)
     with pytest.raises(BillingRefused, match="paid_access_owner_conflict") as refused:
@@ -289,8 +304,7 @@ async def test_populated_old_links_consent_terms_and_allowances_are_never_conver
         assert canonical_document(saved.accepted_snapshot) == case["serialized"]
         assert hashlib.sha256(canonical_document(saved.accepted_snapshot).encode()).hexdigest() == case["sha256"]
         assert db.get(CommercialMappingRevision, revision_id).mapping_document == legacy_link
-    if first:
-        assert_snapshot_keeps_retained_owner(factory, user_id, first, backend_consumer())
+    assert_snapshot_keeps_retained_owner(factory, user_id, first, backend_consumer(), subscription_id=subscription_id)
 
 
 async def test_non_kernel_publication_purchase_send_replay_and_renewal_keep_owner_and_quantity(

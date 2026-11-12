@@ -1,7 +1,7 @@
 # Platform Kernel integration map
 
 Status: navigation and implementation snapshot; normative contracts are delegated below.
-Last source inspection: 2026-11-11; local source state, not a deployment check.
+Last source inspection: 2026-11-12; local source state, not a deployment check.
 
 ## Ownership and sources
 
@@ -31,9 +31,12 @@ plans do not override accepted sources.
 
 ## Observed implementation
 
-Historical Steps 14/15 source inspection: Portal `9632ec4ce440fa17d8463f230b98df7cccccc934`
-and Kernel `36be7fa3c3147b032b97f050a898a97423db2070`, plus the then-uncommitted
-paired changes. These pins identify that checkpoint, not current branch tips.
+Current source baselines: Portal `c41428de013e69c982386acbb9edda05e1dc9014`
+and Kernel `82f1b155b5d9fbc9af8e5b6bd51364d640434495`, plus the local PR correction
+diff. The dated checkpoints below retain historical evidence, not current setup
+instructions. The corrected pair covers the complete policy digest, saved grant
+ownership without allowances, inactive delivery scheduling, frontend/API consumer
+alignment and web-update ingress retention; focused local acceptance passed.
 The [active plan](../exec-plans/active/ANY-766-implementation-plan.md) records
 completed Steps 1–17 in the agreed local scope: common identity V2, configured
 consumer callbacks and the policy guard, consumer-filtered V3 paid admission with independent durable P/R
@@ -159,9 +162,10 @@ checks, without peer/source I/O or identity bookkeeping. The cabinet and writer
 retain whole-user guarantees. Production metering
 requires accepted `CONFIGURED_SOURCE` terms; SIMULATED history stays labelled
 and can supply no production allowance. See the [as-built serving rules](../engineering/billing-background-operations.md#any-766-step-5--production-allowances-and-snapshot-serving).
-Quiesce both APIs/workers and migrate Kernel to `0020` before starting the
-compatible V3 pair. Old V2 readers are excluded; this local checkpoint changes
-no commercial flags or deployed configuration.
+Use the [paired cutover procedure](../architecture/deployment.md#paired-compatibility-and-synchronized-cutover):
+Portal `20261111_0011`, Kernel `0021`, compatible readers and a higher P for every
+existing configured consumer when installing the expanded digest. Old V2 readers
+are excluded. Local acceptance changes no commercial flags or deployed configuration.
 
 - **Identity:** paid access uses Portal's authenticated UUID under
   `(tenant_id, region, user_id)`, verified through Step 10 common delegation V2
@@ -192,8 +196,9 @@ no commercial flags or deployed configuration.
   usage/remaining API for the cabinet. The
   [ANY-766 target bundle](../contracts/portal-kernel-paid/README.md) now specifies
   usage/exhaustion and authenticated cross-app launch. Step 8 implements browser
-  launch; usage/exhaustion is implemented in Step 14; cabinet usage remains Step 15. Paired local
-  acceptance remains Step 16. Kernel product-to-product handoff is not Portal
+  launch; usage/exhaustion and cabinet usage are implemented in Steps 14/15.
+  Focused paired local acceptance and the PR correction scenarios passed; the
+  broader matrix and remote/live acceptance remain ANY-767 work. Kernel product-to-product handoff is not Portal
   login handoff; common product IDs do not imply common origins or sessions.
 - **Commercial meaning:** Kernel product configs and guest quotas do not
   approve a paid registry. `proposal_ai.test_generations` is TEST-ONLY. Live

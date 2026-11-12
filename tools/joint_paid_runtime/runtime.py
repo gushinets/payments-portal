@@ -60,8 +60,11 @@ def free_port() -> int:
 
 
 class JointRuntime:
-    def __init__(self, *, browser: bool = False) -> None:
+    def __init__(
+        self, *, browser: bool = False, kernel_consumer_id: str = "platform-kernel"
+    ) -> None:
         self.browser = browser
+        self.kernel_consumer_id = kernel_consumer_id
         self.stack = ExitStack()
         self.processes: dict[str, subprocess.Popen[bytes]] = {}
         self.ports = {
@@ -262,7 +265,7 @@ class JointRuntime:
             # Credentials are synthetic and unique by direction/consumer, never inherited.
             consumers = []
             for consumer, origin, products in (
-                ("platform-kernel", self.origins["kernel_web"], PRODUCTS),
+                (self.kernel_consumer_id, self.origins["kernel_web"], PRODUCTS),
                 ("synthetic-summary", self.origins["summary"], ("synthetic_summary",)),
             ):
                 consumers.append(
@@ -281,7 +284,7 @@ class JointRuntime:
                         callback_url=origin + "/portal-session/callback",
                         backend_base_url=(
                             self.origins["kernel_api"]
-                            if consumer == "platform-kernel"
+                            if consumer == self.kernel_consumer_id
                             else origin
                         ),
                         technical_source_id=consumer,
@@ -346,6 +349,7 @@ class JointRuntime:
                 **self.env,
                 "ANYTOOLAI_DATABASE_URL": self.kernel_url,
                 "ANYTOOLAI_ENABLED_PRODUCT_IDS": ",".join(PRODUCTS),
+                "ANYTOOLAI_PORTAL_CONSUMER_ID": self.kernel_consumer_id,
                 "ANYTOOLAI_PORTAL_BASE_URL": self.origins["portal_api"],
                 "ANYTOOLAI_PORTAL_SERVICE_TOKEN": consumers[0][
                     "portal_to_backend_current_secret"
@@ -465,6 +469,7 @@ class JointRuntime:
             **self.env,
             "NODE_PATH": node_types,
             "PLATFORM_API_BASE_URL": self.origins["kernel_api"],
+            "ANYTOOLAI_PORTAL_CONSUMER_ID": self.kernel_consumer_id,
             "NEXT_PUBLIC_PORTAL_AUTHORIZE_URL": self.origins["portal_web"]
             + "/ru/backend/authorize",
             "NEXT_TELEMETRY_DISABLED": "1",
@@ -528,8 +533,11 @@ class JointRuntime:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--browser", action="store_true")
+    parser.add_argument("--kernel-consumer-id", default="platform-kernel")
     args = parser.parse_args()
-    with JointRuntime(browser=args.browser) as runtime:
+    with JointRuntime(
+        browser=args.browser, kernel_consumer_id=args.kernel_consumer_id
+    ) as runtime:
         print(
             f"Joint runtime ready; private configuration/logs: {runtime.run}",
             flush=True,
@@ -540,6 +548,7 @@ def main() -> None:
                 "PLAYWRIGHT_BASE_URL": runtime.origins["portal_web"],
                 "PLAYWRIGHT_API_BASE_URL": runtime.origins["portal_api"],
                 "ANY766_KERNEL_WEB_ORIGIN": runtime.origins["kernel_peer"],
+                "ANYTOOLAI_PORTAL_CONSUMER_ID": runtime.kernel_consumer_id,
                 "ANY766_JOINT_IDENTITY": str(runtime.run / "identity.json"),
             }
             raise SystemExit(

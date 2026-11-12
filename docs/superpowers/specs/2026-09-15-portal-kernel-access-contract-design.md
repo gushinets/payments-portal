@@ -40,8 +40,10 @@ No runtime route, setting, migration or generated OpenAPI changes in Step 9.
 Configure a small explicit set of consumers with independent current/previous
 backend-to-Portal credentials, separate Portal-to-backend credentials, canonical
 consumer_id/tenant/region, product scope, permissions, fixed callback and technical
-source/backend owner. Kernel is platform-kernel, with the same protocol as a
-synthetic second consumer; no registration/admin API or external backend build.
+source/backend owner. Kernel defaults to platform-kernel, with the same protocol
+as a synthetic second consumer; its configured ID must agree across frontend build,
+API and Portal without transferring historical purchases. No registration/admin
+API or external backend build is added.
 Trusted service identity selects consumer; request fields only narrow authority.
 
 Replace the Portal Kernel-named routes with POST /api/backend-session-codes,
@@ -73,9 +75,13 @@ read-only empty R0, later positive empty R, B10/finite-source-trust/clock bounds
 and no local authority extension or inferred cycle.
 
 Persist current P/digest in consumer-scoped Portal configuration guard state.
-Initial migrated Kernel P is 1. Digest canonicalization and field inventory are
-fixed in the guide/bundle; authorized product/snapshot-scope changes require
-higher P, and changed reused versions/rollback fail. Rotation alone changes no
+Initial migrated Kernel P was 1. Current digest canonicalization and field inventory
+are defined in the common guide; the bundle retains historical target vectors.
+Product scope, full permissions and technical source changes require higher P,
+and changed reused versions/rollback fail. Credentials,
+callback and backend instance address are outside the digest. The expanded-digest
+upgrade requires higher P for existing consumers even at unchanged migration heads;
+the current paired cutover procedure is in the guide. Rotation alone changes no
 snapshot meaning. Every introspection returns current P. Extend existing backend
 coherence identity/lock with consumer and independent durable P/R floors; install
 and admission match current introspected P and preserve monotonic R, including
@@ -93,10 +99,18 @@ old documents, model_dump serialization, both consent digest variants,
 SIMULATED labels, quantities, allowance IDs and same-cycle usage stay exact.
 Missing legacy owner/source resolves to Kernel only in a separate in-memory
 view; no JSON rewrite, default-field hash change, owner transfer or usage reset.
+Every included snapshot grant proves this saved purchase owner even without an
+allowance. Missing/unproven evidence refuses with `503 paid_access_state_pending`;
+a proven mismatch refuses with `503 paid_access_owner_conflict`. Filter consumer
+products before proof and retain allowance ownership checks and whole-user cabinet reads.
 
 Completed Step 13 partitions existing outbox/work uniqueness, coalescing, claims, retries,
 parking, repair and delivered R by recipient plus scoped user. Fan out R in the
-sole writer transaction, including grant removal. Keep invalidation V1; endpoint
+sole writer transaction to active snapshot recipients, including grant removal.
+Installed `snapshot_delivery_enabled` also gates no-op scheduling, repair before
+LIMIT and active backlog. Inactive history/leases remain inspectable; retry refuses
+with `409 invalidation_recipient_inactive`. Reactivation resumes saved delivery;
+parked faults require explicit retry. Keep invalidation V1; endpoint
 authentication selects recipient. ACK N affects only that recipient through N,
 retaining N+1; policy is fenced by introspection/P, not a second event protocol.
 Steps 14/15 reuse V1 usage/exhaustion for all backends: route usage by saved owner,
@@ -104,8 +118,9 @@ check authenticated exhaustion consumer/product plus full immutable tuple and
 ACK only after durable deduplicated hint commit. Unknown remains unobserved,
 outage unavailable, busy distinct from exhausted; no Portal meter/financial action.
 
-Extend Portal head 20261110_0008 and Kernel head 0019 with populated-state forward
-migration checks. Quiesce both APIs/workers for synchronized cutover; preserve
+The completed forward migrations extend Portal 20261110_0008 / Kernel 0019 to
+Portal 20261111_0011 / Kernel 0021, with populated-state migration checks. Quiesce
+both APIs/workers for synchronized cutover; preserve
 parent delegation bindings/hashes/state, initialize Kernel consumer/P, retain R
 floor while clearing incompatible cache metadata, and bind old outbox/work to
 Kernel with exact pending/delivered revisions. Retire stale claims only after

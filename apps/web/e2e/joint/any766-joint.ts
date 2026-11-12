@@ -51,7 +51,9 @@ export async function launch(page: Page, info: TestInfo) {
   }
   expect(new URL(page.url()).hash).toBe("");
   expect(await page.evaluate(() => localStorage.getItem("anytoolai_session_token_v1"))).toBeNull();
-  const session = await page.evaluate(() => JSON.parse(sessionStorage.getItem("anytoolai.portal_session.v1") ?? "null") as { version: number; userId?: string });
+  const session = await page.evaluate(() => JSON.parse(sessionStorage.getItem("anytoolai.portal_session.v1") ?? "null") as { version: number; consumerId: string; owner: { userId: string } });
   expect(session).not.toBeNull();
+  expect(session.consumerId).toBe(process.env.ANYTOOLAI_PORTAL_CONSUMER_ID ?? "platform-kernel");
+  expect(session.owner.userId).toBe(identity.user_id);
   return { portal, kernel, identity };
 }

@@ -1,6 +1,6 @@
 # Common product backend API
 
-Status: **LOCAL SCOPE IMPLEMENTED — ANY-766 Steps 1–17, 2026-11-11; focused acceptance complete, PR review pending.**
+Status: **LOCAL SCOPE IMPLEMENTED — ANY-766 Steps 1–17 and five PR corrections, 2026-11-12; focused local acceptance complete, PR review pending.**
 Consumer-bound delegation V2, configured callbacks, the persisted policy guard,
 consumer-filtered AccessSnapshot V3 and Kernel's durable consumer/P/R coherence
 are implemented. Generated OpenAPI documents actual routes, security, schemas,
@@ -31,7 +31,8 @@ It is an isolated protocol example, not the real Document Summary product or
 approval to register, contact or implement another team's service. Step 10
 validates configured product ownership and guards its policy digest; Step 11
 routes technical reads by that ownership. Step 12 filters snapshot authority by
-the configured product scope and verifies each included allowance's retained owner.
+the configured product scope; the corrected reader verifies every included
+grant's saved purchase owner, even without an allowance, and each allowance's owner.
 
 Operator configuration defines a small explicit consumer set. The following is
 a **logical configuration**. The implemented server environment format is
@@ -116,7 +117,9 @@ Safe synthetic example (one entry; add the independent second identity in tests)
 ```
 
 Real entries must include the full intended Kernel product scope. Configure
-P=1 for the initial migrated Kernel policy. The registry accepts an empty product
+P=1 only for a fresh installation. Existing installations upgrading to the expanded
+digest require P above every configured consumer's persisted value with Portal
+API/workers stopped; follow the paired cutover procedure above. The registry accepts an empty product
 scope at a higher P and retains the guard's monotonic history. Step 12 filters
 products in V3 and fences cached authority/admission against every request's
 current introspected P; a policy reduction does not require changing paid R.
@@ -135,7 +138,7 @@ The persisted key is consumer/tenant/region. Rows retain P/digest and, since
 Step 13, `snapshot_delivery_enabled` for installed snapshot-recipient membership.
 Startup derives membership from the complete configured registry and each entry's
 `access-snapshot:read` permission. This flag selects delivery recipients without
-changing P/digest semantics or adding policy to Core owners, replay partitions
+changing paid R or adding policy to Core owners, replay partitions
 or usage buckets. No service secrets or callbacks are persisted in this table.
 Introspection also requires `PAID_ACCESS_CLOCK_SKEW_SECONDS`; configure 5 for the
 selected local clock budget. Missing configuration returns `503`; deployed
@@ -153,9 +156,13 @@ Kernel launch host; it no longer owns authorization callback selection.
 
 Kernel continues to use `ANYTOOLAI_PORTAL_BASE_URL` plus
 `ANYTOOLAI_PORTAL_ACCESS_SERVICE_TOKEN`; set `ANYTOOLAI_PORTAL_CONSUMER_ID` to
-`platform-kernel` (the default). Configure its web
-`NEXT_PUBLIC_PORTAL_AUTHORIZE_URL` as the localized `/backend/authorize` URL.
-The host sends `consumer_id=platform-kernel` and accepts only its own V2 response.
+`platform-kernel` by default, or the same configured ID in Portal, API and frontend
+build. Kernel Next configuration derives the public `NEXT_PUBLIC_PORTAL_CONSUMER_ID`
+from that single input; do not configure a second public audience independently.
+Configure `NEXT_PUBLIC_PORTAL_AUTHORIZE_URL` as the localized `/backend/authorize`
+URL. Launch, exchange and V2 storage reads require that exact consumer. Runtime
+environment changes do not recompile an existing frontend image. A foreign-audience
+session requires authorization; failed installation leaves private recovery intact.
 Its local `/v1/portal-session/exchange` and `/portal-session/*` paths remain.
 
 Stop old local APIs/workers before the synchronized cutover. Apply forward Portal
@@ -417,26 +424,38 @@ A same-P/R content conflict refuses installation; it is not an empty entitlement
 Persist P/digest in a small consumer-scoped configuration guard owned by Portal
 settings/composition (implemented in Step 10; absent in Step 8). Policy digest is
 `sha256:<lowercase hex>` of UTF-8 JSON with sorted keys, compact separators and
-ASCII escaping over `consumer_id`, `tenant_id`, `region`, `allowed_products`;
-the last is a sorted distinct list. Product/snapshot-scope changes require a
-higher configured P; changed digest at reused P and rollback are refused.
+ASCII escaping over `consumer_id`, `tenant_id`, `region`, `allowed_products`,
+`permissions` and `technical_source_id`. Products and the complete permission set
+are sorted distinct lists. Within a consumer/tenant/region, changing products,
+permissions or technical source requires a higher configured P; changed digest at
+reused P and rollback are refused. A new consumer ID creates a separate policy
+identity and cannot acquire another consumer's historical purchases or delivery.
 A higher P may retain the same digest. Secret rotation/callback changes are
-outside this digest; operation permissions are checked on every call. Configuration
+outside this digest, as is the backend instance address. Operation permissions are
+checked on every call. Installing a new policy and recipient activity is one
+transaction; a failed guard rolls both back. Configuration
 must be validated before serving, never silently replaced by the persisted old
 policy. This is a guard, not an editable policy service.
 
 Backend cache identity includes consumer and scoped user; its existing coherence
 lock serializes monotonic policy/access floor observation, install, invalidation
-and admission. A candidate must match current introspected P, not be below either
-floor, and carry R at/above the durable R floor. Policy change without paid
-transition is valid and never lowers R. An old-P response racing a new observation
+and admission. After successful introspection, the runtime identity dependency
+commits observed P before any handler, including historical reads, usage, replay
+and requests that later return 404/409. A lower in-flight P retains identity-only
+read/replay rights without fetching a snapshot or requiring grants, but cannot
+lower the floor or authorize a new start. A candidate must match current
+introspected P, not be below either floor, and carry R at/above the durable R floor.
+Policy change without paid transition is valid and never lowers R. An old-P response racing a new observation
 cannot restore old authority. Eviction deletes only the cached document.
 
 Filter authorized products **and supporting provenance/deadlines before**
 completeness/expiry checks. An unrelated overdue product cannot deny this consumer;
 an included overdue fact returns `503` until the existing writer commits reduction.
-Each included allowance's saved technical source and backend owner must match the
-authenticated consumer. Historical terms use the compatible Kernel ownership view;
+Every included grant is checked through its primary subscription and saved
+PurchaseIntent using `AcceptedPurchase.ownership`, even when it has no allowance.
+Missing or unproven purchase evidence returns `503 paid_access_state_pending`.
+Each included allowance's saved technical source and backend owner must also match
+the authenticated consumer. Historical terms use the compatible Kernel ownership view;
 their stored documents remain unchanged. A conflict refuses the entire snapshot
 with `503 paid_access_owner_conflict`, preserving the allowance, R and usage history.
 Raising P or moving a product into another scope cannot transfer old authority;
@@ -557,7 +576,7 @@ ignore old-generation responses and never fall back to a guest in paid mode.
 
 ## Bounded replacement and migration inventory
 
-This inventory records current owners and the remaining work. Items 1–2 were
+This inventory records implemented owners and integration boundaries. Items 1–2 were
 implemented in Step 10, item 3 in Step 11, item 4 in Step 12 and item 5 in
 Step 13. Item 6's usage/exhaustion is implemented in Step 14; its cabinet
 composition is implemented in Step 15. Step 9 itself changed only the specification.
@@ -604,8 +623,10 @@ Existing Kernel execution/product behavior is preserved.
    without policy writes or peer calls and serves V3, including known empty R0.
    Kernel `paid_access.py` validates consumer/scope/P/R; Core
    `quotas/access_coherence.py` owns one lock per consumer/scoped user and independent
-   durable P/R floors. A new introspected P is committed before HTTP, evicts only
-   cached authority and never lowers R. Installs/admission require matching P;
+   durable P/R floors. Every authenticated runtime request commits observed P before
+   its handler, including reads/replay; higher P evicts only cached authority and
+   never lowers R. Historical access needs no snapshot/grants, while new
+   installs/admission require matching P;
    stale P/R cannot replace newer authority. Same-P/R semantics remain immutable
    across eviction. Post-wait expiry/floor checks remain in both acceptance paths.
    Migration `0020` forward-binds old rows to platform-kernel/P1, retains R and
@@ -656,7 +677,8 @@ required. Exclude old delegation/snapshot/outbox binaries and old purchased-term
 readers from installation/recovery even when a migration head happens to match.
 Keep retained data, original purchases/digests, pending browser starts, allowance
 IDs, usage, floors and undelivered work. No owner transfer or bulk JSON rewrite.
-Step 17 must specify the reviewed pair and compatible recovery procedure.
+The [paired installation runbook](../../architecture/deployment.md#paired-compatibility-and-synchronized-cutover)
+specifies the corrected pair, required higher P and compatible recovery procedure.
 
 ## OpenAPI and handoff checkpoint
 
@@ -667,7 +689,7 @@ those standard FastAPI routes are enabled. These are locations, not a claim of
 an available external server. Step 10 regenerated the schema with common V2
 identity routes, PortalUserBearer/BackendServiceBearer and identity operation
 security/descriptions/examples/errors. Introspection documents the secret user
-body token separately from the service Authorization header. Step 12 regenerates the consumer-filtered V3 snapshot schema with its named
+body token separately from the service Authorization header. Step 12 regenerated the consumer-filtered V3 snapshot schema with its named
 BackendServiceBearer security, example, finite authority and enforcement duties.
 Swagger retains internal browser restrictions. Reverse backend endpoints remain
 owned/documented by their backends, not invented Portal OpenAPI operations.
@@ -687,8 +709,10 @@ For the 2026-11-13 working checkpoint, deliver guide, generated schema/Swagger
 location, implemented versions and actual local auth/access evidence for both
 identities. Label delivery/usage runtime status honestly. Missing external server,
 real purchase, registry or third-party acceptance does not block that checkpoint.
-Missing local identity/access behavior does. Remaining full-check/install,
-commercial and operational gates stay in the plan.
+Missing local identity/access behavior does. The guide and schema are implemented;
+focused joint HTTP/browser checks and isolated image rehearsals have passed.
+The broader matrix, remote installation, commercial and live-service gates remain
+deferred as recorded in the plan.
 
 
 ## Step 12 local auth/access checkpoint
@@ -714,15 +738,11 @@ purchased ceiling, not available capacity. A backend must atomically reserve,
 finalize or release under its durable execution/replay rules, preserve both floors
 on eviction/restart and reject expired or mismatching authority after lock waits.
 
-For synchronized local cutover, stop both APIs/workers, retain backups, migrate
-Kernel to `0020`, configure the matching consumer registry/service credentials and
-start only the paired V3-capable binaries. Portal needs the Step 11 purchased-term
-reader even though its migration head is unchanged. Old V2 readers are excluded;
-there is no concurrent translation route. Do not downgrade the consumer-scoped
-coherence schema; recover with a compatible retained backup and matching binaries.
-Step 13 now partitions the existing invalidation sender by recipient; the Kernel
-V1 receiver remains compatible. The later Step 14 checkpoint below adds
-generic usage/exhaustion; cabinet usage is implemented in Step 15.
+This is historical auth/access evidence, not today's installation target. Use the
+current paired cutover procedure above (Portal `20261111_0011`, Kernel `0021`
+and the expanded-digest P requirement). Old V2 readers are excluded; there is no
+translation route. Recover with compatible retained backups and binaries.
+Step 13 partitions invalidations; Steps 14/15 implement usage/exhaustion and cabinet usage.
 
 The focused local regression targets are Portal
 `test_access_snapshot_postgres.py`, `test_kernel_session_delegation.py`,
@@ -742,9 +762,9 @@ third-party adoption or deployed acceptance.
 ## Implemented Step 13 recipient delivery
 
 Portal migration `20261111_0010` partitions outbox/work by recipient/scoped user
-and preserves Kernel's queued history. Stop both local APIs/workers before the
-forward migration and registry installation; start only Step 13-capable Portal
-binaries and the compatible Kernel V3/P/R receiver (`0020`). Pending, parked,
+and preserves Kernel's queued history. Its historical minimum Kernel receiver was
+`0020`; current installation uses the paired cutover procedure above. Stop both
+APIs/workers before forward migration and registry installation. Pending, parked,
 in-flight and N+1 migration are tested on disposable PostgreSQL. Old claims
 cannot settle migrated or repaired work. Recovery requires compatible backups
 and binaries; downgrade is refused when non-Kernel recipient history exists.
@@ -756,7 +776,15 @@ no-ops preserve retry backoff and enqueue generations. A `204` acknowledges
 only that recipient's captured N, preserving N+1 and every other recipient.
 Each configured recipient has independent bounded HTTP admission, cleanup and
 DB thread slots. Missing/completed scheduling is repaired; parking and unresolved
-history survive restart. Removed entries retain history and receive no new R.
+history survive restart. `BackendConsumerPolicy.snapshot_delivery_enabled` is the
+source of recipient activity. Removed entries and entries without snapshot-read
+permission retain outboxes, queue history, leases and diagnostics; neither material
+R changes nor writer no-ops schedule new work for them. Repair filters active scoped
+recipients before its batch limit and rechecks activity under the user lock.
+Inactive history is excluded from active backlog counts but remains inspectable.
+Explicit retry returns `409 invalidation_recipient_inactive` until reactivation.
+Returning recipients recover their saved undelivered N through existing repair,
+claim and exact-N ACK; parked faults still require an explicit operator retry.
 
 Use `--recipient-id <consumer-id>` with `inspect-invalidation` or
 `retry-invalidation`; the [runbook](../../engineering/billing-background-operations.md#any-766-step-7--durable-kernel-invalidations)

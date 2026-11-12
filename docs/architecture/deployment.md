@@ -1,7 +1,7 @@
 # Deployment Architecture
 
 Status: authoritative current deployment plus target contour isolation
-Last source review: 2026-11-10; deployment acceptance remains separate.
+Last source review: 2026-11-12; deployment acceptance remains separate.
 
 ## Current `ru` deployment
 
@@ -280,8 +280,8 @@ never repair failure by downgrading, stamping or rewriting purchase history.
 The concrete supported pair is the current ANY-766 Portal and Kernel reader set:
 Portal migration head `20261111_0011`, Kernel head `0021`, consumer identity V2,
 AccessSnapshot V3, manifest/invalidation/usage/exhaustion V1. Source baselines are
-Portal `0b1cbfa310c02aee182a75aaf7608fc587266a67` and Kernel
-`88da001f0595a4bc8e4729423acd2340bf7b73ca`, plus the reviewed Step 17 diff.
+Portal `c41428de013e69c982386acbb9edda05e1dc9014` and Kernel
+`82f1b155b5d9fbc9af8e5b6bd51364d640434495`, plus the local PR correction diff.
 Record final reviewed source SHAs, actual image IDs/digests and all frontend
 build inputs with the selected environment. Equal source labels or Alembic heads
 alone do not establish application/peer compatibility.
@@ -294,6 +294,16 @@ No image-only rollback to them is supported. Historical documents/digests,
 allowance IDs and quantities remain unchanged. The old Kernel-only delegation
 API and snapshot V2 binaries are also excluded; there is no rolling mixed-wire
 mode for this cutover.
+
+This pair expands the policy digest to include permissions and technical source without
+a DB migration or wire-version change. For an existing installation, stop Portal
+API/workers and configure P **above the persisted P for every configured consumer**
+before the first corrected startup. A fresh database may use P=1. Do not manually
+edit policy rows, decrease P, or restart the old Portal binary against the expanded
+digest merely because the migration head is unchanged. This changes P, not R,
+purchase ownership, allowance IDs or usage. A consumer-ID change never transfers
+historical purchases or delivery history. Keep that ID identical in the Portal
+registry, Kernel API environment and Kernel frontend build.
 
 Before installing this pair over the Step 8 baseline:
 
@@ -323,8 +333,13 @@ Before installing this pair over the Step 8 baseline:
    pending frozen starts and keys. Policy-only changes advance P, never reset R
    or usage. Restore a matching verified backup pair on incompatible rollback.
 
+### Historical Step 17 image rehearsal — 2026-11-11
+
 Local Linux builds on 2026-11-11 used Docker Engine 28.1.1 / Compose 2.35.1.
-The selected pre-review images have no registry digest; their actual local IDs are:
+Their source baselines were Portal `0b1cbfa310c02aee182a75aaf7608fc587266a67`
+and Kernel `88da001f0595a4bc8e4729423acd2340bf7b73ca`, plus the then-local Step 17
+diff. These pre-review images do not contain the later PR corrections and are
+not the corrected installation selection. Their local IDs (no registry digest) were:
 
 - `any766-step17/portal-api:local` — `sha256:50a2e49078d1c1d4689a4178b67799669eaefa2e0cba493108f506e2ae7450fe`.
 - `any766-step17/portal-web:install-verified` — `sha256:b369e48d7c2943603d7d3f7eb428baeaa6c06a002365453d62b048ca354f4bfe`.
@@ -352,8 +367,10 @@ networks and volumes were removed. This packaging rehearsal uses synthetic data
 and reuses Step 16's paid HTTP/browser proof for unchanged runtime sources.
 
 Registry publication, remote installation, live LBX/SMTP/provider and the full
-real-service journey remain ANY-767 acceptance; Step 16's focused local proof is
-reused where runtime sources are unchanged.
+real-service journey remain ANY-767 acceptance. The subsequent correction pass
+verified the affected joint policy/delivery/usage scenarios and custom-consumer
+browser authorization through an isolated Caddy web replacement; see the
+[Kernel correction rehearsal](https://github.com/gushinets/anytoolai-platform/blob/main/infra/deployment/README.md#pr-correction-web-update-rehearsal--2026-11-12).
 
 ## Local worktree deployment
 
