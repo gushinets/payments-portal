@@ -156,7 +156,9 @@ async def test_billing_worker_disabled_creates_no_resources() -> None:
         assert worker is None
 
 
-async def test_billing_worker_health_named_schema_and_readiness(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_billing_worker_health_named_schema_and_readiness(
+    monkeypatch: pytest.MonkeyPatch, lifespan_database: None
+) -> None:
     monkeypatch.setattr(health, "database_is_ready", lambda: True)
     app = create_app()
     with TestClient(app) as client:

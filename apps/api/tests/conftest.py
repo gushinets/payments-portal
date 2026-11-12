@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine, URL, make_url
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from .support.postgres import (
     create_test_database,
@@ -52,6 +53,25 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     for item in items:
         if _POSTGRES_FIXTURES.intersection(item.fixturenames):
             item.add_marker(postgres_marker)
+
+
+@pytest.fixture
+def lifespan_database(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Give application startup its own initialized, thread-shared SQLite DB."""
+    from app import main
+    from app.core.database import Base
+
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    try:
+        Base.metadata.create_all(engine)
+        monkeypatch.setattr(main, "SessionLocal", sessionmaker(bind=engine, autoflush=False, autocommit=False))
+        yield
+    finally:
+        engine.dispose()
 
 
 @pytest.fixture(scope="session")
