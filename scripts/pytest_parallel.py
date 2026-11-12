@@ -88,9 +88,9 @@ def run_parallel(
 ) -> int:
     if workers < 1:
         raise ValueError("workers must be positive")
+    # pytest handles --version before parsing the option terminator.
+    test_path = str((root / test_path).resolve())
     artifacts.mkdir(parents=True)
-    if junitxml is not None:
-        junitxml.unlink(missing_ok=True)
     common = [
         sys.executable,
         "-m",
@@ -102,7 +102,7 @@ def run_parallel(
         "-q",
         f"--rootdir={root}",
     ]
-    selection = ["-m", marker] if marker else []
+    selection = [f"-m={marker}"] if marker else []
     manifest = artifacts / "collection.json"
     with (artifacts / "collection.log").open("w", encoding="utf-8") as output:
         collection = subprocess.run(
@@ -112,6 +112,7 @@ def run_parallel(
                 "--collect-only",
                 f"--collection-manifest={manifest}",
                 f"--junitxml={artifacts / 'collection.xml'}",
+                "--",
                 test_path,
             ],
             cwd=root,
@@ -120,8 +121,11 @@ def run_parallel(
             check=False,
         )
     if collection.returncode:
-        if junitxml is not None and (artifacts / "collection.xml").exists():
-            merge_junit([artifacts / "collection.xml"], junitxml)
+        if junitxml is not None:
+            collection_report = artifacts / "collection.xml"
+            merge_junit(
+                [collection_report] if collection_report.exists() else [], junitxml
+            )
         print((artifacts / "collection.log").read_text(encoding="utf-8"), flush=True)
         return collection.returncode
     expected = read_manifest(manifest)
@@ -146,6 +150,7 @@ def run_parallel(
                             f"--basetemp={artifacts / f'tmp-{index}'}",
                             f"--collection-manifest={artifacts / f'worker-{index}.json'}",
                             f"--junitxml={artifacts / f'worker-{index}.xml'}",
+                            "--",
                             *files,
                         ],
                         cwd=root,

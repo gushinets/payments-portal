@@ -15,18 +15,23 @@ def test_partition_keeps_modules_whole_and_assigns_every_file_once() -> None:
 
 
 @pytest.mark.parametrize("failure", [False, True])
-def test_parallel_reports_preserve_all_cases_and_failures(tmp_path: Path, failure: bool) -> None:
+@pytest.mark.parametrize("marker", [None, "not excluded"])
+def test_parallel_reports_preserve_all_cases_and_failures(tmp_path: Path, failure: bool, marker: str | None) -> None:
     suite = tmp_path / "suite"
     suite.mkdir()
     (suite / "test_a.py").write_text(
         "import pytest\n@pytest.mark.parametrize('value', [0, 1])\ndef test_a(value): assert value < 2\n"
     )
     (suite / "test_b.py").write_text(f"def test_b(): assert {not failure}\n")
+    if marker:
+        (suite / "test_excluded.py").write_text(
+            "import pytest\n@pytest.mark.excluded\ndef test_excluded(): assert False\n"
+        )
     report = tmp_path / "combined.xml"
     result = run_parallel(
         root=Path.cwd(),
         test_path=str(suite),
-        marker=None,
+        marker=marker,
         workers=2,
         artifacts=tmp_path / "artifacts",
         junitxml=report,
@@ -81,3 +86,37 @@ def test_cancellation_reaps_running_worker() -> None:
     process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], stderr=subprocess.DEVNULL)
     stop_workers([process])
     assert process.poll() is not None
+
+
+def test_option_like_test_path_is_not_executed_as_a_pytest_option(tmp_path: Path) -> None:
+    report = tmp_path / "combined.xml"
+    result = run_parallel(
+        root=Path.cwd(),
+        test_path="--version",
+        marker=None,
+        workers=2,
+        artifacts=tmp_path / "artifacts",
+        junitxml=report,
+    )
+    assert result == pytest.ExitCode.USAGE_ERROR
+    assert report.exists()
+
+
+def test_collection_interruption_preserves_previous_report(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    report = tmp_path / "combined.xml"
+    report.write_text("previous report")
+
+    def interrupt(*args: object, **kwargs: object) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(subprocess, "run", interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        run_parallel(
+            root=Path.cwd(),
+            test_path=str(tmp_path),
+            marker=None,
+            workers=2,
+            artifacts=tmp_path / "artifacts",
+            junitxml=report,
+        )
+    assert report.read_text() == "previous report"
