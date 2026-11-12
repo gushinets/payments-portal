@@ -5,7 +5,11 @@ from uuid import UUID
 
 from app.domains.billing.contracts import CustomerOpen
 from app.domains.billing.discovery import ProductDiscovery
-from app.domains.billing.reconciliation_contracts import ReconciliationResult, SubscriptionProof
+from app.domains.billing.reconciliation_contracts import (
+    ReconciliationResult,
+    SubscriptionProof,
+    SubscriptionRelationship,
+)
 from app.domains.purchases.contracts import Purchase, PurchaseInventoryIncomplete, PurchaseRefused
 
 
@@ -21,6 +25,14 @@ class InventoryCandidateProof:
 
 
 @dataclass(frozen=True)
+class InventoryPointHistory:
+    purchase_id: UUID
+    subscription_id: UUID
+    point_observation_id: UUID | None
+    relationships: tuple[SubscriptionRelationship, ...]
+
+
+@dataclass(frozen=True)
 class InventoryResult:
     customer: CustomerOpen
     purchases: tuple[Purchase, ...]
@@ -30,6 +42,7 @@ class InventoryResult:
     products: tuple[ProductDiscovery, ...] = ()
     sources: tuple[ReconciliationResult, ...] = ()
     discovery_ids: tuple[UUID, ...] = ()
+    point_history: tuple[InventoryPointHistory, ...] = ()
 
     def require_clear(self, purchase: Purchase, *, original: bool = False, primary: bool = False) -> None:
         if purchase.id in self.conflicts:
