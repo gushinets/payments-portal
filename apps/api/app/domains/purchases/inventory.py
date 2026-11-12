@@ -28,6 +28,8 @@ def same_purchase(current: Purchase, expected: Purchase) -> bool:
 
 def validate_inventory(db: Session, result: InventoryResult) -> None:
     """Caller holds the existing user lock; never refresh the attempt's subject."""
+    from app.domains.billing.inventory_history import verify_inventory_point_history
+
     customer = lock_customer(db, result.customer.customer_id)
     operation = customer_operation(db, customer.customer_id)
     if operation is not None:
@@ -55,6 +57,7 @@ def validate_inventory(db: Session, result: InventoryResult) -> None:
         if not same_purchase(service._snapshot(db, row), expected):
             raise InventoryStale()
         service._verify_original_consent(db, row, expected.accepted)
+    verify_inventory_point_history(db, result)
 
 
 def invalidate_unsent(db: Session, purchase: Purchase) -> bool:

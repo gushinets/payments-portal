@@ -13,12 +13,14 @@ from app.core.settings import Settings
 from app.domains.billing.discovery import DiscoveredCandidate, ProductDiscovery, scope_versions
 from app.domains.billing.paid_policy import CandidateConclusion as Conclusion, PaidDecision, paid_decision
 from app.domains.billing.background_recovery import customer_snapshot
+from app.domains.billing.inventory_history import complete_owned_point, retained_subscription_relationships
 from app.domains.billing.contracts import CustomerOpen
 from app.domains.billing.customer_conflicts import record_customer_conflict
 from app.domains.billing.reconciliation_contracts import (
     CommercialProof,
     IdentityProof,
     SubscriptionCandidateSubject,
+    SubscriptionProof,
 )
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.catalog.publication import SessionFactory
@@ -80,6 +82,7 @@ async def collect_inventory(
     candidates = {purchase.accepted.selection.product_id: [] for purchase in initial}
     product_complete = dict.fromkeys(candidates, True)
     sources = []
+    point_history = []
     conflicts, pending = set(), set()
     complete = True
     conflicting_bindings: set[str] = set()
@@ -116,9 +119,9 @@ async def collect_inventory(
     for provider_id, purchase in bindings.items():
         product = purchase.accepted.selection.product_id
         agreement_id = next(op.bound_id for op in purchase.operations if op.kind == Kind.AGREEMENT)
-        affected = implicated_products(provider_id, agreement_id, purchase.accepted.selection.tariff_id)
         conclusion = Conclusion.INCOMPLETE
         committed = None
+        proof: SubscriptionProof | None = None
         if reuse is not None and purchase.id == reuse.purchase.id:
             assert reuse.proof is not None
             proof = reuse.proof
@@ -142,23 +145,34 @@ async def collect_inventory(
                 proof = result.proof
             except AppError:
                 complete = False
-                for product_id in affected:
-                    product_complete[product_id] = False
-                candidates[product].append(
-                    DiscoveredCandidate(
-                        identity=provider_id,
-                        agreement_id=next(op.bound_id for op in purchase.operations if op.kind == Kind.AGREEMENT),
-                        purchase_id=purchase.id,
-                        conclusion=conclusion,
-                    )
+        # Read retained facts after this attempt, including a failed/busy claim.
+        # A complete owned point already supersedes older history; incomplete
+        # proof must include point facts other readers may just have committed.
+        retained = ()
+        if proof is None or not complete_owned_point(proof):
+            history = await delegate(retained_subscription_relationships, factory, purchase)
+            point_history.append(history)
+            retained = history.relationships
+        for relationship in retained:
+            implicated_products(provider_id, relationship.agreement_id, relationship.tariff_id)
+        affected = implicated_products(provider_id, agreement_id, purchase.accepted.selection.tariff_id)
+        if proof is None:
+            for product_id in affected:
+                product_complete[product_id] = False
+            candidates[product].append(
+                DiscoveredCandidate(
+                    identity=provider_id,
+                    agreement_id=agreement_id,
+                    purchase_id=purchase.id,
+                    conclusion=conclusion,
                 )
-                continue
+            )
+            continue
         relationship = proof.point_relationship
-        disagreement = relationship is not None and (relationship.agreement_id, relationship.tariff_id) != (
-            agreement_id,
-            purchase.accepted.selection.tariff_id,
-        )
+        expected_relationship = (agreement_id, purchase.accepted.selection.tariff_id)
+        disagreement = any((item.agreement_id, item.tariff_id) != expected_relationship for item in retained)
         if relationship is not None:
+            disagreement |= (relationship.agreement_id, relationship.tariff_id) != expected_relationship
             affected.update(implicated_products(provider_id, relationship.agreement_id, relationship.tariff_id))
         if disagreement:
             complete = False
@@ -449,6 +463,7 @@ async def collect_inventory(
         complete,
         products=products,
         sources=tuple(sources),
+        point_history=tuple(point_history),
     )
 
 

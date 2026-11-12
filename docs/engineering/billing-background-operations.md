@@ -564,6 +564,20 @@ is new-operation admission, not historical access revocation.
   incomplete and do not skip final discovery verification. Shared budget,
   authorization/scope and discovery failures remain global; any incomplete
   candidate still prevents customer-wide financial CREATE admission.
+  Bound subscriptions also retain point relationships from permanently scoped
+  reconciliation history across inventory passes. Read the newest complete
+  owned point and any newer incomplete point evidence, not only the subscription's
+  `latest_observation_id`. Failed/missing point reads, old-tariff listings and
+  omissions cannot erase those implications; a closed-agreement negative without
+  a point relationship cannot release another implicated product. A new complete
+  owned point supersedes earlier history before the current scan accumulates
+  discovery/point contradictions. Unrelated products remain independent; this
+  history neither changes bindings nor authorizes financial replay.
+  Inventory carries the retained point-history head through the final locked
+  admission/selection check, including observations outside `latest_observation_id`.
+  A newer point observation makes the attempt stale; a fresh inventory must
+  reconsider its implications. Complete canonical source receipts are likewise
+  rechecked across products. Automatic and audited selection share this guard.
 - [Paid writer](../../apps/api/app/domains/billing/paid_access.py)
   `commit_paid_state()` is the sole whole-user semantic writer. Callers acquire
   the canonical user lock first, then customer/original purchase/operations and

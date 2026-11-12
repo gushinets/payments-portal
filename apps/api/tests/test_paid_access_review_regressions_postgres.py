@@ -15,7 +15,7 @@ from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
 from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from app.infrastructure.queries import billing_reconciliation
-from app.integrations.lbx.errors import LbxAuthenticationFailed, LbxResponseInvalid
+from app.integrations.lbx.errors import LbxAuthenticationFailed, LbxResponseInvalid, LbxUnavailable
 from app.integrations.lbx.financial import Agreement, Subscription
 from app.models import (
     AccessInvalidationOutbox,
@@ -95,6 +95,55 @@ async def test_bound_point_tariff_refuses_audited_primary_selection(
             for case in db.scalars(select(ManualReviewCase))
         )
     assert len(listings) == 2 and listings[0] == listings[1]
+    assert all(req.method == "GET" for req in transport.requests)
+
+
+@pytest.mark.parametrize("bound_point_relationship_scenario", [True], indirect=True)
+async def test_retained_point_relationship_refuses_later_audited_selection(
+    bound_point_relationship_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport, sources, first, second, _, _ = bound_point_relationship_scenario
+    factory, config = postgres_session_factory, step1_settings(paid_access_clock_skew_seconds=10)
+    identity = service.linked_subscription_id(factory, second)
+    scenario = Scenario(factory, config, transport, sources, identity)
+    with factory() as db:
+        db.add(
+            BillingProductAccessScope(
+                user_id=second.user_id, product_id="brief_decoder", primary_retired_at=datetime.now(UTC)
+            )
+        )
+        db.commit()
+    transport.subscriptions[0]["tariff_id"] = 701
+    await run_inventory(scenario)  # Establish B's audited-primary review.
+    transport.subscriptions[0]["tariff_id"] = 702
+    await run_inventory(scenario)  # Persist the contradictory A -> B point.
+    read = sources.require_lbx().get_subscription
+
+    async def unavailable(*, subscription_id: int, budget: PreflightBudget) -> Subscription:
+        if subscription_id == 567:
+            raise LbxUnavailable()
+        return await read(subscription_id=subscription_id, budget=budget)
+
+    monkeypatch.setattr(sources.require_lbx(), "get_subscription", unavailable)
+    target = service.read_purchase(factory, second.user_id, second.id)
+    request = resolution_request(target, inspect_evidence(factory, config, target.user_id, target.id)).model_copy(
+        update={"resolution": "select-primary"}
+    )
+    with pytest.raises(AppError, match="purchase_inventory_incomplete"):
+        await resolve_review(sources, config, factory=factory, request=request, principal="os-euid:1000")
+    with factory() as db:
+        case = db.get(ManualReviewCase, request.case_id)
+        assert case.case_state == "open" and case.resolution_document is None
+        assert (
+            db.scalar(
+                select(BillingProductAccessScope.primary_subscription_id).where(
+                    BillingProductAccessScope.product_id == "brief_decoder"
+                )
+            )
+            is None
+        )
     assert all(req.method == "GET" for req in transport.requests)
 
 
