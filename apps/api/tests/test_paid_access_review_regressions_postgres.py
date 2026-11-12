@@ -34,6 +34,9 @@ from apps.api.tests.test_billing_background_recovery_postgres import (
     synthetic_prepare,
 )
 from apps.api.tests.test_billing_worker_postgres import historical_link
+from apps.api.tests.test_billing_scoped_inventory_postgres import (
+    bound_point_relationship_scenario as bound_point_relationship_scenario,
+)
 from apps.api.tests.test_paid_access_rebase_postgres import effective, run_inventory
 from apps.api.tests.test_paid_access_reconciliation_postgres import (
     Scenario,
@@ -48,6 +51,51 @@ pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+@pytest.mark.parametrize("bound_point_relationship_scenario", [False, True], indirect=True, ids=["old", "omitted"])
+async def test_bound_point_tariff_refuses_audited_primary_selection(
+    bound_point_relationship_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    transport, sources, first, second, third, listings = bound_point_relationship_scenario
+    factory, config = postgres_session_factory, step1_settings(paid_access_clock_skew_seconds=10)
+    with factory() as db:
+        identity = db.scalar(
+            select(ExternalSubscription.subscription_id).where(ExternalSubscription.purchase_intent_id == second.id)
+        )
+        db.add(
+            BillingProductAccessScope(
+                user_id=second.user_id,
+                product_id=second.accepted.selection.product_id,
+                primary_retired_at=datetime.now(UTC),
+            )
+        )
+        db.commit()
+    # Establish the existing audited-selection review while inventory is
+    # healthy; incomplete later discovery must leave that review open.
+    transport.subscriptions[0]["tariff_id"] = 701
+    await run_inventory(Scenario(factory, config, transport, sources, identity))
+    transport.subscriptions[0]["tariff_id"] = 702
+    listings.clear()
+    target = service.read_purchase(factory, second.user_id, second.id)
+    request = resolution_request(target, inspect_evidence(factory, config, target.user_id, target.id)).model_copy(
+        update={"resolution": "select-primary"}
+    )
+    with pytest.raises(AppError, match="purchase_inventory_incomplete"):
+        await resolve_review(sources, config, factory=factory, request=request, principal="os-euid:1000")
+    with factory() as db:
+        case = db.get(ManualReviewCase, request.case_id)
+        assert case.case_state == "open" and case.resolution_document is None
+        scopes = {scope.product_id: scope for scope in db.scalars(select(BillingProductAccessScope))}
+        assert scopes[second.accepted.selection.product_id].primary_subscription_id is None
+        assert scopes[third.accepted.selection.product_id].primary_subscription_id is not None
+        assert any(
+            case.reason_code == "subscription_commercial_mismatch" and case.case_state == "open"
+            for case in db.scalars(select(ManualReviewCase))
+        )
+    assert len(listings) == 2 and listings[0] == listings[1]
+    assert all(req.method == "GET" for req in transport.requests)
 
 
 @pytest.mark.parametrize("less_precise", ["date", "naive", "missing"])

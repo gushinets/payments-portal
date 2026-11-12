@@ -55,6 +55,14 @@ class ReconciliationSubject:
 
 
 @dataclass(frozen=True)
+class SubscriptionRelationship:
+    """Observed point relationships; never authority to replace accepted bindings."""
+
+    agreement_id: str
+    tariff_id: int
+
+
+@dataclass(frozen=True)
 class SubscriptionProof:
     read_started_at: datetime
     read_finished_at: datetime
@@ -70,6 +78,7 @@ class SubscriptionProof:
     reads: tuple[str, ...]
     cycle: CalendarEvidence | None = None
     access_end_at: datetime | None = None
+    point_relationship: SubscriptionRelationship | None = None
 
     def document(self) -> dict[str, object]:
         """Redacted JSON evidence shared by preparation and authoritative apply."""

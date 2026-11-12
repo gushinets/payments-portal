@@ -96,6 +96,8 @@ async def collect_inventory(
         if operation.kind == Kind.AGREEMENT and operation.bound_id is not None
     }
 
+    observed_products: dict[str, set[str]] = {}
+
     def implicated_products(provider_id: str, agreement_id: str | None, tariff_id: int | None) -> set[str]:
         bound = bindings.get(provider_id)
         owner = agreements.get(agreement_id)
@@ -103,7 +105,9 @@ async def collect_inventory(
             item.accepted.selection.product_id for item in initial if item.accepted.selection.tariff_id == tariff_id
         }
         products.update(item.accepted.selection.product_id for item in (bound, owner) if item is not None)
-        return products
+        accumulated = observed_products.setdefault(provider_id, set())
+        accumulated.update(products)
+        return set(accumulated)
 
     if len(bindings) > MAX_RELEVANT_SUBSCRIPTIONS:
         return InventoryResult(current, initial, (), (), False)
@@ -111,6 +115,8 @@ async def collect_inventory(
     # discovery or already in review. Commit timely negatives before later I/O.
     for provider_id, purchase in bindings.items():
         product = purchase.accepted.selection.product_id
+        agreement_id = next(op.bound_id for op in purchase.operations if op.kind == Kind.AGREEMENT)
+        affected = implicated_products(provider_id, agreement_id, purchase.accepted.selection.tariff_id)
         conclusion = Conclusion.INCOMPLETE
         committed = None
         if reuse is not None and purchase.id == reuse.purchase.id:
@@ -136,9 +142,8 @@ async def collect_inventory(
                 proof = result.proof
             except AppError:
                 complete = False
-                agreement_id = next(op.bound_id for op in purchase.operations if op.kind == Kind.AGREEMENT)
-                for affected in implicated_products(provider_id, agreement_id, purchase.accepted.selection.tariff_id):
-                    product_complete[affected] = False
+                for product_id in affected:
+                    product_complete[product_id] = False
                 candidates[product].append(
                     DiscoveredCandidate(
                         identity=provider_id,
@@ -148,6 +153,15 @@ async def collect_inventory(
                     )
                 )
                 continue
+        relationship = proof.point_relationship
+        disagreement = relationship is not None and (relationship.agreement_id, relationship.tariff_id) != (
+            agreement_id,
+            purchase.accepted.selection.tariff_id,
+        )
+        if relationship is not None:
+            affected.update(implicated_products(provider_id, relationship.agreement_id, relationship.tariff_id))
+        if disagreement:
+            complete = False
         if proof.identity == IdentityProof.CONFLICT and "subscription_identity_conflict" in proof.reasons:
             conflicting_bindings.add(provider_id)
         # Reused operator proof contributes completeness but supplies no committed
@@ -156,10 +170,9 @@ async def collect_inventory(
             conclusion = Conclusion.ELIGIBLE if paid_decision(proof) == PaidDecision.GRANT else Conclusion.INELIGIBLE
         elif proof.identity == IdentityProof.MATCH and proof.lifecycle == Lifecycle.ENDED:
             conclusion = Conclusion.INELIGIBLE
-        if conclusion == Conclusion.INCOMPLETE:
-            agreement_id = next(op.bound_id for op in purchase.operations if op.kind == Kind.AGREEMENT)
-            for affected in implicated_products(provider_id, agreement_id, purchase.accepted.selection.tariff_id):
-                product_complete[affected] = False
+        if disagreement or conclusion == Conclusion.INCOMPLETE:
+            for product_id in affected:
+                product_complete[product_id] = False
         candidates[product].append(
             DiscoveredCandidate(
                 identity=provider_id,
@@ -304,6 +317,11 @@ async def collect_inventory(
                     else:
                         proof = None
                     if proof is not None:
+                        # Retain the actual point facts even when terms/policy
+                        # cannot be proven. Reuse never needs another point GET.
+                        include_candidate(str(candidate.agreement_id), owner.accepted.selection.tariff_id)
+                        if proof.point_relationship is not None:
+                            include_candidate(proof.point_relationship.agreement_id, proof.point_relationship.tariff_id)
                         if (
                             "customer_identity_conflict" in proof.reasons
                             or "customer_original_key_mismatch" in proof.reasons
@@ -341,14 +359,6 @@ async def collect_inventory(
                             if proof.identity == IdentityProof.CONFLICT or proof.commercial == CommercialProof.MISMATCH:
                                 conflicts.add(owner.id)
                             complete = False
-                            # An unresolved original proof cannot establish its
-                            # point relationships. Keep all newly observed sides
-                            # incomplete without adopting or binding the object.
-                            point = await _candidate_point(
-                                lambda: client.get_subscription(subscription_id=int(provider_id), budget=budget), budget
-                            )
-                            if point is not None:
-                                include_candidate(str(point.agreement_id), point.tariff_id)
                         continue
             point = await _candidate_point(
                 lambda: client.get_subscription(subscription_id=int(provider_id), budget=budget), budget
@@ -357,6 +367,12 @@ async def collect_inventory(
                 complete = False
                 continue
             include_candidate(str(point.agreement_id), point.tariff_id)
+            if known is not None:
+                # This bound object already contradicted its canonical proof or
+                # discovery ownership. A later terminal read cannot clear any
+                # newly implicated product's uncertainty.
+                for product in affected:
+                    product_complete[product] = False
             if candidate is not None and (point.agreement_id, point.tariff_id) != (
                 candidate.agreement_id,
                 candidate.tariff_id,

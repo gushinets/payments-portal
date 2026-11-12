@@ -12,6 +12,7 @@ from app.domains.billing.reconciliation_contracts import (
     ReconciliationSubject,
     SubscriptionCandidateSubject,
     SubscriptionProof,
+    SubscriptionRelationship,
 )
 from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from app.integrations.lbx.client import LbxServerClient
@@ -277,6 +278,9 @@ def normalize_subscription(
         if calendar_complete
         else None,
         access_end_at=normalize_access_end(calendar.get("subscription_end_date")),
+        point_relationship=SubscriptionRelationship(str(subscription.agreement_id), subscription.tariff_id)
+        if subscription is not None
+        else None,
     )
 
 

@@ -1,12 +1,13 @@
 """SIMULATED source proof; one inventory owner across admission and operator exits."""
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 
@@ -16,9 +17,10 @@ from app.composition.sources import SourceResources
 from app.domains.catalog.publication import SessionFactory
 from app.domains.billing.discovery import apply_inventory, persist_discoveries
 from app.domains.billing.paid_policy import CandidateConclusion as Conclusion
+from app.domains.billing.reconciliation_contracts import RECONCILIATION_SCHEMA
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.purchases.contracts import Purchase
-from app.domains.purchases.inventory_contracts import InventoryResult
+from app.domains.purchases.inventory_contracts import InventoryCandidateProof, InventoryResult
 from app.integrations.lbx.errors import LbxResponseInvalid, LbxScopeMismatch
 from app.integrations.lbx.financial import Agreement, Subscription
 from app.jobs.billing import BillingWorker
@@ -35,6 +37,7 @@ from app.domains.purchases.inventory import validate_inventory
 from app.infrastructure.preflight import PreflightBudget
 from app.models import (
     BillingProductAccessScope,
+    BillingStateObservation,
     ExternalBillingCustomer,
     ExternalBillingCustomerBindingState as Binding,
     ExternalCreateOperationKind as Kind,
@@ -79,6 +82,225 @@ async def inventory(
             work_claim=claim,
             delegate=delegate,
         )
+
+
+@pytest.fixture
+async def bound_point_relationship_scenario(
+    background_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> tuple[PurchaseTransport, SourceResources, Purchase, Purchase, Purchase, list[tuple[Subscription, ...]]]:
+    transport, sources, purchase = background_scenario
+    factory = postgres_session_factory
+    first = synthetic_prepare(factory, transport, purchase, uncertain=False)
+    second = historical_link(factory, first, transport, "brief_decoder", 1, tariff_id=702)
+    third = historical_link(factory, first, transport, "acceptance_builder", 2, tariff_id=703)
+    for point in transport.subscriptions:
+        point.update(state=2, last_tariffication_period_start="2026-10-01", last_tariffication_period_end="2026-10-31")
+    transport.subscriptions[0]["tariff_id"] = 702
+    discover = sources.require_lbx().discover_subscriptions
+    listings: list[tuple[Subscription, ...]] = []
+
+    async def listing(*, user_id: int, budget: PreflightBudget) -> tuple[Subscription, ...]:
+        rows = await discover(user_id=user_id, budget=budget)
+        rows = tuple(
+            row.model_copy(update={"tariff_id": 701}) if row.subscription_id == 567 else row
+            for row in rows
+            if not request.param or row.subscription_id != 567
+        )
+        listings.append(rows)
+        return rows
+
+    monkeypatch.setattr(sources.require_lbx(), "discover_subscriptions", listing)
+    return transport, sources, first, second, third, listings
+
+
+@pytest.mark.parametrize("bound_point_relationship_scenario", [False, True], indirect=True, ids=["old", "omitted"])
+@pytest.mark.parametrize("condition", ["active", "policy-unavailable", "ended", "closed"])
+async def test_bound_point_tariff_blocks_implicated_primary_write(
+    bound_point_relationship_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    condition: str,
+) -> None:
+    transport, sources, first, second, third, listings = bound_point_relationship_scenario
+    factory = postgres_session_factory
+    if condition == "ended":
+        transport.subscriptions[0]["state"] = 3
+    if condition == "closed":
+        transport.agreements[0]["close_date"] = "2026-11-05"
+    if condition == "policy-unavailable":
+        read = sources.require_lbx().get_tariff
+
+        async def tariff(*, tariff_id: int, budget: PreflightBudget) -> Any:
+            if tariff_id == 701:
+                raise LbxResponseInvalid()
+            return await read(tariff_id=tariff_id, budget=budget)
+
+        monkeypatch.setattr(sources.require_lbx(), "get_tariff", tariff)
+    recovery.repair_batch(factory, step1_settings())
+    claim = work.claim_work(factory, step1_settings(), WorkLane.NORMAL)
+    assert claim and claim.kind == recovery.INVENTORY
+    result = await inventory(sources, factory, first, claim=claim)
+    result = persist_discoveries(factory, claim, result)
+    apply_inventory(factory, claim, result, "inventory_incomplete", clock_skew_seconds=10)
+    with factory() as db:
+        selected = {
+            row.product_id for row in db.scalars(select(BillingProductAccessScope)) if row.primary_subscription_id
+        }
+        assert selected == {third.accepted.selection.product_id}
+        if condition != "policy-unavailable":
+            assert service.read_purchase(factory, first.user_id, first.id).state == "manual_review"
+            assert any(
+                case.reason_code == "subscription_commercial_mismatch" for case in db.scalars(select(ManualReviewCase))
+            )
+    canonical = next(source for source in result.sources if source.purchase.id == first.id)
+    assert canonical.proof.point_relationship.agreement_id == "456"
+    assert canonical.proof.point_relationship.tariff_id == 702
+    if condition == "policy-unavailable":
+        assert canonical.proof.commercial == "INCOMPLETE"
+    assert len(listings) == 2 and listings[0] == listings[1]
+    for target in (first, second):
+        product = next(item for item in result.products if item.product_id == target.accepted.selection.product_id)
+        assert not product.complete
+        with pytest.raises(PurchaseRefused, match="purchase_inventory_incomplete"):
+            result.require_clear(target, primary=True)
+    result.require_clear(third, primary=True)
+    with pytest.raises(PurchaseRefused):
+        result.require_clear(third)  # Financial CREATE keeps its customer-wide boundary.
+    assert sum(req.url.path.endswith("/subscriptions/567") for req in transport.requests) == 1
+    assert all(req.method == "GET" for req in transport.requests)
+
+
+@pytest.mark.parametrize("bound_point_relationship_scenario", [False], indirect=True)
+async def test_later_terminal_point_preserves_all_bound_relationship_implications(
+    bound_point_relationship_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport, sources, first, _, _, _ = bound_point_relationship_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    client = sources.require_lbx()
+    read, discover = client.get_subscription, client.discover_subscriptions
+    point_reads = 0
+
+    async def changing_point(*, subscription_id: int, budget: PreflightBudget) -> Subscription:
+        nonlocal point_reads
+        point = await read(subscription_id=subscription_id, budget=budget)
+        if subscription_id == 567:
+            point_reads += 1
+            point = point.model_copy(
+                update={
+                    "agreement_id": 457 if point_reads == 1 else 458,
+                    "tariff_id": 702 if point_reads == 1 else 703,
+                    "state": 2 if point_reads == 1 else 3,
+                }
+            )
+        return point
+
+    async def listing(*, user_id: int, budget: PreflightBudget) -> tuple[Subscription, ...]:
+        rows = await discover(user_id=user_id, budget=budget)
+        return tuple(
+            row.model_copy(update={"agreement_id": 458, "tariff_id": 703, "state": 3})
+            if row.subscription_id == 567
+            else row
+            for row in rows
+        )
+
+    monkeypatch.setattr(client, "get_subscription", changing_point)
+    monkeypatch.setattr(client, "discover_subscriptions", listing)
+    recovery.repair_batch(factory, config)
+    claim = work.claim_work(factory, config, WorkLane.NORMAL)
+    assert claim and claim.kind == recovery.INVENTORY
+    result = await inventory(sources, factory, first, claim=claim)
+    result = persist_discoveries(factory, claim, result)
+    apply_inventory(factory, claim, result, "inventory_incomplete", clock_skew_seconds=10)
+    with factory() as db:
+        assert not any(scope.primary_subscription_id for scope in db.scalars(select(BillingProductAccessScope)))
+        assert any(
+            case.reason_code == "subscription_identity_conflict" for case in db.scalars(select(ManualReviewCase))
+        )
+    assert all(not product.complete for product in result.products)
+    assert point_reads == 2
+
+
+@pytest.mark.parametrize("bound_point_relationship_scenario", [False, True], indirect=True, ids=["old", "omitted"])
+async def test_reused_bound_point_relationship_blocks_implicated_product(
+    bound_point_relationship_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    from app.composition.reconciliation import reconcile_subscription
+
+    transport, sources, first, second, third, _ = bound_point_relationship_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    source = await reconcile_subscription(
+        sources.require_lbx(),
+        sources.billing,
+        config,
+        factory=factory,
+        subscription_id=service.linked_subscription_id(factory, first),
+    )
+    with factory() as db:
+        observation = db.get(BillingStateObservation, source.observation_id)
+        assert observation.evidence_document["point_relationship"] == {"agreement_id": "456", "tariff_id": 702}
+    async with sources.billing.operation(bound_scope=False) as budget:
+        result = await collect_inventory(
+            sources.require_lbx(),
+            sources.billing,
+            config,
+            factory=factory,
+            customer=source.subject.customer,
+            budget=budget,
+            reuse=InventoryCandidateProof(source.purchase, "567", source.proof),
+        )
+    with pytest.raises(PurchaseRefused, match="purchase_inventory_incomplete"):
+        result.require_clear(second, primary=True)
+    result.require_clear(third, primary=True)
+    assert sum(req.url.path.endswith("/subscriptions/567") for req in transport.requests) == 1
+    assert service.read_purchase(factory, first.user_id, first.id).state == "manual_review"
+
+
+async def test_retained_source_without_optional_relationship_can_select_primary(
+    background_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    transport, sources, purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    purchase = synthetic_prepare(factory, transport, purchase, uncertain=False)
+    transport.subscriptions[0].update(
+        state=2, last_tariffication_period_start="2026-10-01", last_tariffication_period_end="2026-10-31"
+    )
+    recovery.repair_batch(factory, config)
+    claim = work.claim_work(factory, config, WorkLane.NORMAL)
+    assert claim and claim.kind == recovery.INVENTORY
+
+    def retain_legacy_document(db: Session, flush_context: object, instances: object) -> None:
+        for row in db.new:
+            if isinstance(row, BillingStateObservation) and row.evidence_schema_version == RECONCILIATION_SCHEMA:
+                document = dict(row.evidence_document)
+                document.pop("point_relationship", None)
+                row.evidence_document = document
+
+    event.listen(Session, "before_flush", retain_legacy_document)
+    try:
+        result = await inventory(sources, factory, purchase, claim=claim)
+    finally:
+        event.remove(Session, "before_flush", retain_legacy_document)
+    result = replace(
+        result,
+        sources=tuple(
+            replace(source, proof=replace(source.proof, point_relationship=None)) for source in result.sources
+        ),
+    )
+    result = persist_discoveries(factory, claim, result)
+    apply_inventory(factory, claim, result, None, clock_skew_seconds=10)
+    with factory() as db:
+        assert db.scalar(select(BillingProductAccessScope.primary_subscription_id)) == service.linked_subscription_id(
+            factory, purchase
+        )
+        for source in result.sources:
+            assert "point_relationship" not in db.get(BillingStateObservation, source.observation_id).evidence_document
 
 
 async def conflict_case(

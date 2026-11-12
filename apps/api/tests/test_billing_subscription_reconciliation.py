@@ -1,6 +1,7 @@
 """SIMULATED lifecycle/term proof; these tests never call real LBX."""
 
 from dataclasses import replace
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -94,6 +95,37 @@ def test_billing_subscription_reconciliation_commercial(change: dict, classifica
     )
     assert proof.commercial == classification
     assert proof.identity == IdentityProof.MATCH
+
+
+@pytest.mark.parametrize("case", ["match", "mismatch", "incomplete", "conflict", "absent"])
+def test_point_relationship_survives_normalization_and_serialization(case: str) -> None:
+    subject = subject_factory()
+    point = subscription_factory()
+    if case in {"mismatch", "incomplete"}:
+        point = point.model_copy(update={"tariff_id": 702})
+    if case == "conflict":
+        point = point.model_copy(update={"agreement_id": 999})
+    if case == "absent":
+        point = None
+    proof = normalize_subscription(
+        subject,
+        step1_settings(),
+        user=user_factory(),
+        agreement=agreement_factory(),
+        tariff=None if case == "incomplete" else tariff_factory(subject),
+        subscription=point,
+    )
+    expected = None if point is None else {"agreement_id": str(point.agreement_id), "tariff_id": point.tariff_id}
+    assert json.loads(json.dumps(proof.document()))["point_relationship"] == expected
+    if point is None:
+        assert proof.point_relationship is None
+    else:
+        assert proof.point_relationship.agreement_id == str(point.agreement_id)
+        assert proof.point_relationship.tariff_id == point.tariff_id
+    if case == "mismatch":
+        assert proof.commercial == CommercialProof.MISMATCH
+    if case in {"incomplete", "absent"}:
+        assert proof.commercial == CommercialProof.INCOMPLETE
 
 
 @pytest.mark.parametrize("same_origin", [False, True])
@@ -536,6 +568,7 @@ async def test_billing_subscription_reconciliation_timely_negative_precedes_poli
     assert not proof.complete and proof.identity != IdentityProof.CONFLICT
     assert proof.financial == ("blocked" if late == "tariff" else None)
     assert "read_budget_exhausted" in proof.reasons
+    assert (proof.point_relationship is None) is (late == "subscription")
 
 
 @pytest.mark.parametrize("policy", ["tariff", "agreement"])
