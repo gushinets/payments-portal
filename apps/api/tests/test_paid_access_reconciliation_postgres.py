@@ -60,8 +60,13 @@ async def paid_source(
     factory = postgres_session_factory
     config = step1_settings(purchase_test_terms_enabled=True, paid_access_clock_skew_seconds=10)
     transport = setup_purchase(factory)
-    if getattr(request, "param", None) == "calendar_month":
+    period_kind = getattr(request, "param", None)
+    if period_kind in {"calendar_month", "annual_calendar_month"}:
         transport.offer.replace("tariff", '"float_period":1', '"float_period":0')
+    if period_kind == "annual_calendar_month":
+        transport.offer.replace("periods", '"period_type":3', '"period_type":4')
+        transport.offer.replace("prices", '"period_type":3', '"period_type":4')
+        transport.period_type = 4
     async with source_resources(
         config,
         kernel_transport=httpx.MockTransport(transport.kernel),
@@ -381,6 +386,188 @@ async def test_paid_writer_stale_active_cannot_restore_committed_negative(paid_s
         apply_reconciliation(scenario.factory, subject, active, clock_skew_seconds=10)
     assert persisted(scenario.factory) == negative
     assert negative[2] == (2, {"grants": [], "allowances": []})
+
+
+@pytest.mark.parametrize(
+    "paid_source,activation,offset",
+    [
+        ("annual_calendar_month", "2026-11-11T12:34:56+03:00", "+03:00"),
+        ("annual_calendar_month", "2026-11-11T12:34:56-04:00", "-04:00"),
+        ("annual_calendar_month", "2026-11-01T00:30:00+03:00", "+03:00"),
+        ("annual_calendar_month", "2026-11-30T23:30:00-04:00", "-04:00"),
+        ("annual_calendar_month", "2026-11-01T00:00:00+03:00", "+03:00"),
+        ("annual_calendar_month", "2026-11-11", None),
+        ("calendar_month", "2026-11-11T12:34:56+03:00", "+03:00"),
+    ],
+    indirect=["paid_source"],
+)
+async def test_paid_writer_first_calendar_cycle_through_http_and_annual_acceptance(
+    paid_source: Scenario, monkeypatch: pytest.MonkeyPatch, activation: str, offset: str | None
+) -> None:
+    from app.infrastructure.queries import billing_reconciliation
+    from app.integrations.lbx import reconciliation as integration
+
+    scenario = paid_source
+    annual = scenario.transport.period_type == 4
+    clock = {"now": datetime(2026, 12 if activation.startswith("2026-11-30") else 11, 30, 12, tzinfo=UTC)}
+    monkeypatch.setattr(billing_reconciliation, "database_now", lambda db: clock["now"])
+    monkeypatch.setattr(integration, "utc_now", lambda: clock["now"])
+    start = f"2026-11-01T00:00:00{offset}" if offset else "2026-11-01"
+    end = (f"2027-11-01T00:00:00{offset}" if annual else f"2026-12-01T00:00:00{offset}") if offset else "2027-10-31"
+    point = scenario.transport.subscriptions[0]
+    point.update(
+        subscription_start_date=activation,
+        subscription_instance_start_date=activation,
+        last_tariffication_period_start=start,
+        last_tariffication_period_end=end,
+    )
+    first = await reconcile(scenario)
+    period = first.subject.purchase.accepted.offer.period
+    assert (period.unit, period.length, period.anchor) == ("year" if annual else "month", 1, "calendar_month")
+    assert first.subject.purchase.accepted.technical_terms.offer.quantity == 100
+    assert first.subject.established_calendar is None
+    assert first.proof.complete and first.proof.calendar_complete and first.proof.cycle is not None
+    precision = "timestamp" if offset else "date"
+    assert first.proof.cycle.precision == precision
+    assert first.proof.cycle.anchor == start
+    before = persisted(scenario.factory)
+    assert len(before[2][1]["allowances"]) == 1
+    with scenario.factory() as db:
+        frozen = db.execute(select(PurchasedAllowance.__table__)).one()
+        frozen_outbox = db.execute(select(AccessInvalidationOutbox.__table__)).one()
+        assert frozen.quantity == 100 and frozen.provider_cycle_key == f"{precision}:{start}:{end}"
+        if offset:
+            assert frozen.period_start == datetime.fromisoformat(start) + timedelta(seconds=10)
+            assert frozen.period_end == datetime.fromisoformat(end) - timedelta(seconds=10)
+        else:
+            assert frozen.period_start is None and frozen.period_end is None
+            assert frozen.provider_cycle_start is None and frozen.provider_cycle_end is None
+
+    # Each reconciliation reclaims in fresh sessions. Equivalent UTC spellings
+    # must use the issued frame even when activation crosses a month in UTC.
+    fields = (
+        "subscription_start_date",
+        "subscription_instance_start_date",
+        "last_tariffication_period_start",
+        "last_tariffication_period_end",
+    )
+    if offset:
+        for field in fields:
+            point[field] = datetime.fromisoformat(point[field]).astimezone(UTC).isoformat().replace("+00:00", "Z")
+    clock["now"] += timedelta(minutes=1)
+    same = await reconcile(scenario)
+    assert same.subject.established_calendar == first.proof.cycle
+    assert same.proof.cycle.anchor == start
+    after = persisted(scenario.factory)
+    assert after[2:5] == before[2:5]
+    assert after[0][3] > before[0][3] and after[0][5] != before[0][5]
+    with scenario.factory() as db:
+        assert db.execute(select(PurchasedAllowance.__table__)).one() == frozen
+        assert db.execute(select(AccessInvalidationOutbox.__table__)).one() == frozen_outbox
+        observation = db.get(BillingStateObservation, same.observation_id)
+        assert observation.resulting_access_revision is None
+        assert all(observation.evidence_document["calendar"][field] == point[field] for field in fields)
+
+    next_start = end if offset else "2027-11-01"
+    next_end = (
+        (f"2028-11-01T00:00:00{offset}" if annual else f"2027-01-01T00:00:00{offset}") if offset else "2028-10-31"
+    )
+    clock["now"] = datetime(2027 if annual else 2026, 11 if annual else 12, 12, tzinfo=UTC)
+    point.update(last_tariffication_period_start=next_start, last_tariffication_period_end=next_end)
+    if offset:
+        for field in fields:
+            point[field] = datetime.fromisoformat(point[field]).astimezone(UTC).isoformat().replace("+00:00", "Z")
+    later = await reconcile(scenario)
+    assert later.subject.established_calendar == first.proof.cycle
+    assert later.proof.cycle.anchor == start
+    with scenario.factory() as db:
+        rows = db.execute(select(PurchasedAllowance.__table__).order_by(PurchasedAllowance.provider_cycle_key)).all()
+        assert len(rows) == 2 and rows[0] == frozen
+        assert rows[1].allowance_id != frozen.allowance_id and rows[1].quantity == frozen.quantity
+        assert rows[1].calendar_document["anchor"] == start
+        assert rows[1].provider_cycle_key == f"{precision}:{next_start}:{next_end}"
+    await reconcile(scenario)
+    with scenario.factory() as db:
+        assert db.scalar(select(func.count()).select_from(PurchasedAllowance)) == 2
+
+
+@pytest.mark.parametrize("paid_source", ["annual_calendar_month"], indirect=True)
+@pytest.mark.parametrize("change", ["boundary", "duration", "phase", "naive_dates"])
+async def test_paid_writer_first_annual_calendar_conflicts_never_rewrite_history(
+    paid_source: Scenario, monkeypatch: pytest.MonkeyPatch, change: str
+) -> None:
+    from app.infrastructure.queries import billing_reconciliation
+    from app.integrations.lbx import reconciliation as integration
+
+    scenario = paid_source
+    clock = {"now": datetime(2026, 11, 30, 12, tzinfo=UTC)}
+    monkeypatch.setattr(billing_reconciliation, "database_now", lambda db: clock["now"])
+    monkeypatch.setattr(integration, "utc_now", lambda: clock["now"])
+    point = scenario.transport.subscriptions[0]
+    point.update(
+        subscription_start_date="2026-11-11T12:34:56+03:00",
+        subscription_instance_start_date="2026-11-11T12:34:56+03:00",
+        last_tariffication_period_start="2026-11-01T00:00:00+03:00",
+        last_tariffication_period_end="2027-11-01T00:00:00+03:00",
+    )
+    first = await reconcile(scenario)
+    with scenario.factory() as db:
+        frozen = db.execute(select(PurchasedAllowance.__table__)).one()
+    if change == "boundary":
+        point["last_tariffication_period_start"] = "2026-11-02T00:00:00+03:00"
+    elif change == "duration":
+        point["last_tariffication_period_end"] = "2028-11-01T00:00:00+03:00"
+    elif change == "phase":
+        point.update(
+            last_tariffication_period_start="2027-01-01T00:00:00+03:00",
+            last_tariffication_period_end="2028-01-01T00:00:00+03:00",
+        )
+    else:
+        point.update(
+            subscription_start_date="2026-11-11T12:34:56",
+            subscription_instance_start_date="2026-11-11T12:34:56",
+            last_tariffication_period_start="2026-11-01",
+            last_tariffication_period_end="2027-10-31",
+        )
+    clock["now"] += timedelta(minutes=1)
+    result = await reconcile(scenario)
+    assert result.subject.established_calendar == first.proof.cycle
+    assert result.proof.complete and result.proof.financial == "allowed"
+    if change in {"boundary", "naive_dates"}:
+        assert not result.proof.calendar_complete and result.proof.cycle is None
+    else:
+        assert result.proof.calendar_complete and result.proof.cycle is not None
+    assert persisted(scenario.factory)[2][1]["allowances"] == []
+    with scenario.factory() as db:
+        assert db.execute(select(PurchasedAllowance.__table__)).one() == frozen
+        review = db.scalar(select(ManualReviewCase).where(ManualReviewCase.scope_kind == "subscription_metric"))
+        assert review.reason_code == "allowance_cycle_conflict" and review.case_state == "open"
+
+
+@pytest.mark.parametrize("paid_source", ["annual_calendar_month"], indirect=True)
+@pytest.mark.parametrize("activation", ["2026-10-11T12:34:56", "2026-11-11T12:34:56"])
+async def test_paid_writer_first_naive_activation_with_dates_never_acquires_utc_bounds(
+    paid_source: Scenario, monkeypatch: pytest.MonkeyPatch, activation: str
+) -> None:
+    from app.infrastructure.queries import billing_reconciliation
+    from app.integrations.lbx import reconciliation as integration
+
+    now = datetime(2026, 11, 30, 12, tzinfo=UTC)
+    monkeypatch.setattr(billing_reconciliation, "database_now", lambda db: now)
+    monkeypatch.setattr(integration, "utc_now", lambda: now)
+    paid_source.transport.subscriptions[0].update(
+        subscription_start_date=activation,
+        subscription_instance_start_date=activation,
+        last_tariffication_period_start="2026-11-01",
+        last_tariffication_period_end="2027-10-31",
+    )
+    result = await reconcile(paid_source)
+    assert result.subject.established_calendar is None
+    assert result.proof.complete and result.proof.financial == "allowed"
+    assert result.proof.cycle is None or result.proof.cycle.precision == "unresolved"
+    assert persisted(paid_source.factory)[2][1]["allowances"] == []
+    with paid_source.factory() as db:
+        assert db.scalar(select(func.count()).select_from(PurchasedAllowance)) == 0
 
 
 @pytest.mark.parametrize("paid_source", ["calendar_month"], indirect=True)

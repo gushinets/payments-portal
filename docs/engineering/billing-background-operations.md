@@ -624,8 +624,10 @@ bounds using the clock budget at issuance. A changed budget never rewrites
 those tuples. `legacy-utc:v1` remains historical UTC evidence; it cannot prove
 a calendar anchor or authorize an inferred replacement allowance.
 For supported calendar-month timestamp evidence, Integration normalizes activation
-to the first day at midnight in its explicit offset. Date-only evidence remains
-date-only; naive/mixed timestamps acquire no invented zone or UTC deadline.
+to the first day at midnight in the proven offset of the first issued calendar
+for the same subscription, service component and metric; without suitable history,
+it uses activation's explicit offset. Date-only evidence remains date-only;
+naive/mixed timestamps acquire no invented zone or UTC deadline.
 
 ### Revision, outbox and remaining B10 work
 

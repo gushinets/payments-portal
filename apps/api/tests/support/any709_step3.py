@@ -28,6 +28,7 @@ class PurchaseTransport:
         self.pool: Any = None
         self.before_offer: Any = None
         self.period_lengths = {901: 1}
+        self.period_type = 3
 
     def kernel(self, request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=manifest_fixture())
@@ -67,7 +68,7 @@ class PurchaseTransport:
                         "agreement_id": body["agreement_id"],
                         "tariff_id": body["tariff_id"],
                         "period_id": body["period_id"],
-                        "period_type": 3,
+                        "period_type": self.period_type,
                         "period_length": self.period_lengths[body["period_id"]],
                         "state": -2,
                         "current_blocking": 0,

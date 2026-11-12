@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
+from app.domains.billing.paid_cycles import CalendarPrecision, CycleKind, classify_cycle
 from app.domains.billing.reconciliation_contracts import (
     CommercialProof,
     IdentityProof,
@@ -699,3 +700,135 @@ def test_billing_subscription_reconciliation_inclusive_dates_and_mixed_zones(
         assert proof.cycle.start == start and proof.cycle.end == end and proof.cycle.anchor == anchor
     else:
         assert proof.cycle is None
+
+
+@pytest.mark.parametrize("unit", ["month", "year"])
+@pytest.mark.parametrize("offset", ["+03:00", "-04:00"])
+@pytest.mark.parametrize("anchor_kind", ["calendar_month", "instance_start", "first_instance_start"])
+def test_first_timestamp_calendar_boundary_is_specific_to_calendar_month(
+    unit: str, offset: str, anchor_kind: str
+) -> None:
+    subject = subject_factory()
+    accepted = subject.purchase.accepted
+    period = replace(accepted.offer.period, unit=unit, anchor=anchor_kind)
+    subject = replace(
+        subject,
+        purchase=replace(
+            subject.purchase, accepted=accepted.model_copy(update={"offer": replace(accepted.offer, period=period)})
+        ),
+    )
+    tariff = tariff_factory(subject)
+    tariff = replace(
+        tariff,
+        value=tariff.value.model_copy(
+            update={"float_period": {"calendar_month": 0, "instance_start": 1, "first_instance_start": 2}[anchor_kind]}
+        ),
+    )
+    raw = subscription_factory().model_dump()
+    raw.update(
+        period_type=4 if unit == "year" else 3,
+        subscription_start_date=f"2026-11-11T12:34:56{offset}",
+        subscription_instance_start_date=f"2026-11-11T12:34:56{offset}",
+        last_tariffication_period_start=f"2026-11-01T00:00:00{offset}",
+        last_tariffication_period_end=f"2027-11-01T00:00:00{offset}"
+        if unit == "year"
+        else f"2026-12-01T00:00:00{offset}",
+    )
+    proof = normalize_subscription(
+        subject,
+        step1_settings(),
+        user=user_factory(),
+        agreement=agreement_factory(),
+        tariff=tariff,
+        subscription=Subscription.model_validate(raw),
+    )
+    assert proof.complete and proof.commercial == CommercialProof.MATCH
+    assert proof.calendar_complete is (anchor_kind == "calendar_month")
+    assert classify_cycle(proof.cycle, period).kind == (
+        CycleKind.FIRST if anchor_kind == "calendar_month" else CycleKind.AMBIGUOUS
+    )
+    if proof.cycle is not None:
+        assert proof.cycle.anchor == raw["last_tariffication_period_start"]
+        assert proof.cycle.precision == CalendarPrecision.TIMESTAMP
+
+
+@pytest.mark.parametrize(
+    "change,complete,precision",
+    [
+        ({"last_tariffication_period_start": "2026-10-01T00:00:00+03:00"}, False, None),
+        ({"last_tariffication_period_start": "2026-11-02T00:00:00+03:00"}, False, None),
+        ({"subscription_instance_start_date": "2026-12-11T12:34:56+03:00"}, False, None),
+        ({"last_tariffication_period_end": "2026-10-01T00:00:00+03:00"}, False, None),
+        ({"subscription_end_date": "2027-10-31T23:59:59+03:00"}, False, None),
+        ({"subscription_instance_end_date": "2027-10-31T23:59:59+03:00"}, False, None),
+        ({"subscription_start_date": "2026-11-11T12:34:56"}, False, None),
+        ({"last_tariffication_period_start": "2026-11-01T00:00:00"}, False, None),
+        (
+            {
+                "subscription_start_date": "2026-11-11T12:34:56",
+                "subscription_instance_start_date": "2026-11-11T12:34:56",
+                "last_tariffication_period_start": "2026-11-01",
+                "last_tariffication_period_end": "2027-10-31",
+            },
+            False,
+            None,
+        ),
+        (
+            {
+                "subscription_start_date": "2026-10-11T12:34:56",
+                "subscription_instance_start_date": "2026-10-11T12:34:56",
+                "last_tariffication_period_start": "2026-11-01",
+                "last_tariffication_period_end": "2027-10-31",
+            },
+            True,
+            CalendarPrecision.UNRESOLVED,
+        ),
+        ({"last_tariffication_period_end": "2028-11-01T00:00:00+03:00"}, True, CalendarPrecision.TIMESTAMP),
+        (
+            {
+                "last_tariffication_period_start": "2027-01-01T00:00:00+03:00",
+                "last_tariffication_period_end": "2028-01-01T00:00:00+03:00",
+            },
+            True,
+            CalendarPrecision.TIMESTAMP,
+        ),
+    ],
+)
+def test_first_calendar_boundary_retains_containment_precision_and_classifier_rules(
+    change: dict[str, str | None], complete: bool, precision: CalendarPrecision | None
+) -> None:
+    subject = subject_factory()
+    accepted = subject.purchase.accepted
+    period = replace(accepted.offer.period, unit="year", anchor="calendar_month")
+    subject = replace(
+        subject,
+        purchase=replace(
+            subject.purchase, accepted=accepted.model_copy(update={"offer": replace(accepted.offer, period=period)})
+        ),
+    )
+    tariff = tariff_factory(subject)
+    tariff = replace(tariff, value=tariff.value.model_copy(update={"float_period": 0}))
+    raw = subscription_factory().model_dump()
+    raw.update(
+        period_type=4,
+        subscription_start_date="2026-11-11T12:34:56+03:00",
+        subscription_instance_start_date="2026-11-11T12:34:56+03:00",
+        last_tariffication_period_start="2026-11-01T00:00:00+03:00",
+        last_tariffication_period_end="2027-11-01T00:00:00+03:00",
+    )
+    raw.update(change)
+    proof = normalize_subscription(
+        subject,
+        step1_settings(),
+        user=user_factory(),
+        agreement=agreement_factory(),
+        tariff=tariff,
+        subscription=Subscription.model_validate(raw),
+    )
+    assert proof.complete and proof.commercial == CommercialProof.MATCH and proof.financial == "allowed"
+    assert proof.calendar_complete is complete
+    if precision is None:
+        assert proof.cycle is None
+    else:
+        assert proof.cycle.precision == precision
+    assert classify_cycle(proof.cycle, period).kind == CycleKind.AMBIGUOUS
