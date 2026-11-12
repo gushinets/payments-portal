@@ -81,6 +81,31 @@ monitoring such as HetrixTools. The supported health surface is limited to
 these two endpoints; `/health`, `/health/live`, and `/health/ready` are removed
 and return HTTP 404.
 
+## Portal API ingress
+
+The standalone dev/production Caddyfiles forward `/api/*` and the implemented
+backend service endpoints to API using Compose service DNS `api:8000`:
+`/internal/v1/backend-sessions/exchange`,
+`/internal/v1/backend-sessions/introspect`, `/internal/v1/access-snapshots/*`
+and `/internal/v1/allowance-exhaustions`. `/docs`, `/docs/*` and `/openapi.json`
+also reach API. Paths/query strings are preserved; all other paths reach web.
+Changing the Compose project name does not change these upstreams.
+
+Service routes retain their receiver-owned Bearer permissions, scope checks,
+browser-Origin refusal and no-store responses. Verified HTTPS is required for
+production service calls. Swagger documents the protocol; it does not bypass
+the browser restriction or make service credentials browser-safe.
+
+On a shared VPS, ANY-164's shared edge owns ports 80/443. Do not start this
+stack's standalone `caddy` service there. Attach only API/web to the operator's
+edge network and reproduce the path routing above with environment-scoped
+aliases (for example `payments-staging-api` and `payments-staging-web`). Keep
+databases private and staging aliases/hostnames separate from production.
+The infrastructure owner supplies the actual network, aliases and verified
+TLS endpoints; ANY-767 verifies them on the installed pair. A direct API
+healthcheck does not prove edge routing. Smoke-test service refusals, actual
+exchange/snapshot calls, Swagger and ordinary web routes through the edge.
+
 ## Target contour deployments
 
 Each production contour is its own data plane: web, API, PostgreSQL and configured
@@ -230,7 +255,7 @@ LOCK=/operator/portal/locks/deployment.lock
 # Frontend-only: existing compatible backend, migration and volumes are untouched.
 ./.venv/bin/python scripts/repo.py image-up --env-file "$ENV_FILE" \
   --project "$PROJECT" --lock-file "$LOCK" --frontend-only
-# Existing ingress is operator-owned; on first installation start it separately.
+# Standalone host only: shared VPS installations use their operator-owned edge.
 docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" \
   -f docker-compose.prod.yml -f deploy/compose.images.yml \
   up -d --no-deps --no-build --pull never caddy
