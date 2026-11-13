@@ -251,6 +251,7 @@ def test_direct_pytest_fixture_uses_worktree_runtime_when_no_explicit_input(monk
             "POSTGRES_USER": "synthetic",
             "POSTGRES_PASSWORD": "synthetic",
             "POSTGRES_PORT": "5433",
+            "POSTGRES_PORT_TEST": "15433",
             "POSTGRES_DB": "worktree",
         },
     )
@@ -258,3 +259,4 @@ def test_direct_pytest_fixture_uses_worktree_runtime_when_no_explicit_input(monk
     with patch.dict(os.environ, {}, clear=True):
         resolved = database_test_url.__wrapped__()
         assert resolved.database == "worktree_tests" and resolved.host == "127.0.0.1"
+        assert resolved.port == 15433

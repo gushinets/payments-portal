@@ -1,6 +1,6 @@
 # ANY-822 — Rebuild test execution acceleration from main
 
-Status: **IN PROGRESS — Steps 1–2 complete; Steps 3–9 pending**
+Status: **IN PROGRESS — Steps 1–3 complete; Steps 4–9 pending**
 Created: 2026-11-13
 Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
 Execution branch: `ANY-822`
@@ -100,14 +100,14 @@ remove the environment contamination observed during the previous research.
 
 ### B. Introduce a dedicated RAM-backed test server
 
-- [ ] Port the separate test Compose project, worktree-scoped loopback port
+- [x] Port the separate test Compose project, worktree-scoped loopback port
   and runtime `POSTGRES_PORT_TEST` configuration from ANY-766.
-- [ ] Use the repository's existing pinned PostgreSQL image and a 2 GiB tmpfs
+- [x] Use the repository's existing pinned PostgreSQL image and a 2 GiB tmpfs
   mounted at `/var/lib/postgresql`. Preserve normal PostgreSQL durability
   settings. Keep the development server and its persistent volume separate.
-- [ ] Route `test-db up/stop` to this test server. Stale runtime configuration
+- [x] Route `test-db up/stop` to this test server. Stale runtime configuration
   must explain that `test-db up` is required.
-- [ ] Continue supporting explicitly configured test servers. The standard
+- [x] Continue supporting explicitly configured test servers. The standard
   acceptance environment uses tmpfs; document RAM requirements and that
   stopping this disposable server loses its test state.
 
@@ -278,9 +278,10 @@ Relevant primary references for these rules:
 Step 1 is complete: the original serial baseline and canonical fast verification
 are recorded against unchanged execution code at
 `2d278f62f0a2f7c4b40fb322618b268580de2301`. Step 2 settings isolation and its
-verification are complete below. Steps 3–9 remain pending; RAM-backed
-storage, templates, parallel execution and coverage changes have not started,
-and neither final absolute runtime target has been verified.
+verification are complete below. Step 3 RAM-backed storage, focused runtime
+verification and canonical fast verification are complete. Steps 4–9
+remain pending; templates, parallel execution and coverage changes have not
+started, and neither final absolute runtime target has been verified.
 
 Preparation verification on 2026-11-13: `npm run docs:check` passed;
 `git diff --check` and the new plan's whitespace check passed. At preparation
@@ -449,4 +450,18 @@ retained scenario overrides, database precedence and normal runtime dotenv behav
 Verification: `npm run check:fast` passed (1,886 API-fast + 414 component tests,
 129.235 s); 26 PostgreSQL/CLI cases, docs and diff checks passed. Added 15 settings
 regressions; all previous test IDs retained. Evidence: `.harness/any822-step2-20261113/`.
-Full PostgreSQL/check, coverage, browsers and CI remain deferred. Steps 3–9 not started.
+Full PostgreSQL/check, coverage, browsers and CI remained deferred at that
+handoff; Steps 3–9 had not started.
+
+#### Step 3 — dedicated RAM-backed PostgreSQL server (2026-11-13)
+
+Completed: dedicated PostgreSQL 18.4 Compose project with a 2 GiB tmpfs,
+worktree-scoped loopback port and `test-db up/stop` lifecycle. Normal durability,
+development storage and explicit test-server configuration are preserved.
+Stale runtime guidance and Compose credential/port precedence are covered.
+
+Verification: `npm run check:fast` passed (1,892 API-fast + 414 component tests,
+146.716 s); 28 focused settings/server and 29 PostgreSQL/CLI cases passed.
+Real tmpfs, restart, development isolation and owned-resource cleanup verified;
+docs and diff checks passed. Evidence: `.harness/any822-step3-20261113/`.
+Full PostgreSQL/check, coverage, browsers and CI remain deferred. Step 4 not started.

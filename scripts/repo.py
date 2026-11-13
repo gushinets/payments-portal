@@ -113,6 +113,10 @@ class RuntimeConfig:
     def kernel_mock_port(self) -> int:
         return self.api_port + 9000
 
+    @property
+    def postgres_test_port(self) -> int:
+        return self.postgres_port + 10000
+
 
 @dataclass(frozen=True)
 class TrivyGateSummary:
@@ -448,6 +452,7 @@ def write_runtime(config: RuntimeConfig) -> None:
         "POSTGRES_PASSWORD": "anytoolai-local-only",
         "POSTGRES_HOST": "postgres",
         "POSTGRES_PORT": str(config.postgres_port),
+        "POSTGRES_PORT_TEST": str(config.postgres_test_port),
         "DATABASE_URL": (
             f"postgresql+psycopg://anytoolai:anytoolai-local-only@postgres:5432/"
             f"{config.database_name}"
@@ -568,6 +573,19 @@ def compose_command(config: RuntimeConfig) -> list[str]:
     if kernel_mock_enabled():
         command.extend(["-f", str(ROOT / "docker-compose.kernel-mock.dev.yml")])
     return command
+
+
+def test_compose_command(config: RuntimeConfig) -> list[str]:
+    return [
+        tool("docker"),
+        "compose",
+        "--project-name",
+        f"{config.compose_project}-tests",
+        "--env-file",
+        str(RUNTIME_ENV),
+        "-f",
+        str(ROOT / "docker-compose.test.yml"),
+    ]
 
 
 def cmd_doctor(_: argparse.Namespace) -> None:
@@ -718,10 +736,17 @@ def cmd_down(_: argparse.Namespace) -> None:
 def cmd_test_db(args: argparse.Namespace) -> None:
     config = load_runtime()
     write_runtime(config)
+    runtime_env = read_runtime_env()
+    # Compose gives shell variables precedence over --env-file. Keep the
+    # disposable server at exactly the endpoint/credentials used by pytest.
+    environment = {
+        **os.environ,
+        **{name: runtime_env[name] for name in ("POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT_TEST")},
+    }
     if args.action == "up":
-        run([*compose_command(config), "up", "-d", "--no-deps", "--wait", "postgres"])
+        run([*test_compose_command(config), "up", "-d", "--pull", "never", "--wait", "postgres"], env=environment)
         return
-    run([*compose_command(config), "stop", "postgres"])
+    run([*test_compose_command(config), "down"], env=environment)
 
 
 def cmd_reset(args: argparse.Namespace) -> None:
@@ -3398,14 +3423,16 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
         return environment
 
     runtime_env = read_runtime_env()
-    runtime_names = ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT")
+    runtime_names = ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT_TEST")
     missing_runtime_names = [name for name in runtime_names if not runtime_env.get(name)]
     if missing_runtime_names:
         raise HarnessError(
             "Cannot derive local PostgreSQL test configuration; runtime.env is missing: "
             + ", ".join(missing_runtime_names)
+            + ". Refresh the dedicated test server configuration with:\n"
+            "  python scripts/repo.py test-db up"
         )
-    if port_is_free(int(runtime_env["POSTGRES_PORT"])):
+    if port_is_free(int(runtime_env["POSTGRES_PORT_TEST"])):
         raise HarnessError(
             "Local test PostgreSQL server is not running. Start it with:\n"
             "  python scripts/repo.py test-db up\n"
@@ -3415,6 +3442,7 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
 
     database_environment = {
         **runtime_env,
+        "POSTGRES_PORT": runtime_env["POSTGRES_PORT_TEST"],
         "POSTGRES_DB": f"{runtime_env['POSTGRES_DB']}_tests",
     }
     environment[test_database_url_name] = host_database_url_from_runtime(database_environment)

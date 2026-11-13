@@ -1,0 +1,20 @@
+# Disposable test-only server. Keep the development volume in docker-compose.yml.
+services:
+  postgres:
+    image: postgres:18.4-alpine3.22@sha256:774521500f4c22761b25a6bdb772a0a3c2e8dd32468210bdad9231c5752ea398
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: ${POSTGRES_USER:?Run python scripts/repo.py test-db up}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run python scripts/repo.py test-db up}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT_TEST:?Run python scripts/repo.py test-db up}:5432"
+    tmpfs:
+      - /var/lib/postgresql:size=2g
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d postgres"]
+      interval: 1s
+      timeout: 5s
+      retries: 30

@@ -1346,7 +1346,7 @@ def test_repository_parser_accepts_api_tooling_commands(argv: list[str], expecte
     assert parsed.command == expected if expected != "api" else parsed.target == expected
 
 
-def test_test_db_commands_target_only_postgres(monkeypatch) -> None:
+def test_test_db_commands_target_only_postgres(monkeypatch: pytest.MonkeyPatch) -> None:
     config = repo.RuntimeConfig(
         worktree_id="test",
         compose_project="payments-test",
@@ -1364,15 +1364,31 @@ def test_test_db_commands_target_only_postgres(monkeypatch) -> None:
     invocations: list[list[str]] = []
     monkeypatch.setattr(repo, "load_runtime", lambda: config)
     monkeypatch.setattr(repo, "write_runtime", lambda _: None)
-    monkeypatch.setattr(repo, "compose_command", lambda _: ["docker", "compose"])
+    monkeypatch.setattr(
+        repo,
+        "read_runtime_env",
+        lambda: {"POSTGRES_USER": "test-user", "POSTGRES_PASSWORD": "synthetic", "POSTGRES_PORT_TEST": "15432"},
+    )
+    monkeypatch.setattr(repo, "tool", lambda name: name)
+    monkeypatch.setattr(repo, "compose_command", lambda _: pytest.fail("Development stack must stay untouched"))
     monkeypatch.setattr(repo, "run", lambda command, **_: invocations.append(command))
 
     repo.cmd_test_db(argparse.Namespace(action="up"))
     repo.cmd_test_db(argparse.Namespace(action="stop"))
 
+    test_compose = [
+        "docker",
+        "compose",
+        "--project-name",
+        "payments-test-tests",
+        "--env-file",
+        str(repo.RUNTIME_ENV),
+        "-f",
+        str(repo.ROOT / "docker-compose.test.yml"),
+    ]
     assert invocations == [
-        ["docker", "compose", "up", "-d", "--no-deps", "--wait", "postgres"],
-        ["docker", "compose", "stop", "postgres"],
+        [*test_compose, "up", "-d", "--pull", "never", "--wait", "postgres"],
+        [*test_compose, "down"],
     ]
 
 
@@ -1407,30 +1423,34 @@ def test_api_test_environment_rejects_partial_explicit_postgres_configuration() 
         api_test_environment("api-postgres", {"POSTGRES_USER_TEST": "test-user"})
 
 
-def test_api_test_environment_derives_worktree_test_database_url(monkeypatch) -> None:
+def test_api_test_environment_derives_worktree_test_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
     runtime_env = {
         "POSTGRES_DB": "payments_worktree",
         "POSTGRES_USER": "anytoolai",
         "POSTGRES_PASSWORD": "local-password",
         "POSTGRES_PORT": "32053",
+        "POSTGRES_PORT_TEST": "42053",
     }
     monkeypatch.setattr(repo, "read_runtime_env", lambda: runtime_env)
-    monkeypatch.setattr(repo, "port_is_free", lambda _: False)
+    probed_ports: list[int] = []
+    monkeypatch.setattr(repo, "port_is_free", lambda port: probed_ports.append(port) or False)
     environment: dict[str, str] = {}
 
     result = api_test_environment("api", environment)
 
     assert result["TEST_POSTGRES_DATABASE_URL"] == (
-        "postgresql+psycopg://anytoolai:local-password@127.0.0.1:32053/payments_worktree_tests"
+        "postgresql+psycopg://anytoolai:local-password@127.0.0.1:42053/payments_worktree_tests"
     )
+    assert probed_ports == [42053]
 
 
-def test_api_test_environment_ignores_empty_explicit_url(monkeypatch) -> None:
+def test_api_test_environment_ignores_empty_explicit_url(monkeypatch: pytest.MonkeyPatch) -> None:
     runtime_env = {
         "POSTGRES_DB": "payments_worktree",
         "POSTGRES_USER": "anytoolai",
         "POSTGRES_PASSWORD": "local-password",
         "POSTGRES_PORT": "32053",
+        "POSTGRES_PORT_TEST": "42053",
     }
     monkeypatch.setattr(repo, "read_runtime_env", lambda: runtime_env)
     monkeypatch.setattr(repo, "port_is_free", lambda _: False)

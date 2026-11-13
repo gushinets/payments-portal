@@ -138,15 +138,21 @@ make test_db_stop
 ```
 
 The cross-platform equivalents are `python scripts/repo.py test-db up` and
-`python scripts/repo.py test-db stop`. Compose and `repo.py` own the server
-container; pytest creates, migrates, resets, and drops the disposable
-`_tests` database. Developers must not manually create or drop that database.
+`python scripts/repo.py test-db stop`. This starts a dedicated test Compose
+project with a worktree-scoped loopback `POSTGRES_PORT_TEST`, separate from the
+development server and volume. It needs up to **2 GiB RAM** for its tmpfs plus
+PostgreSQL/test-process memory; stopping it loses all disposable test state.
+The pinned PostgreSQL image must already be installed (no automatic pull).
+See the [Testing Strategy](docs/engineering/TESTING.md) for lifecycle details.
+Compose and `repo.py` own the server container; pytest creates, migrates,
+resets, and drops the disposable `_tests` database. Developers must not manually
+create or drop that database.
 
 Test database configuration takes precedence in this order: an explicit
 `TEST_POSTGRES_DATABASE_URL`; a complete explicit `POSTGRES_*_TEST`
 configuration (partial configuration fails clearly); then the current
-worktree runtime configuration, with the mapped host port and an automatically
-derived database name ending in `_tests`.
+worktree runtime configuration, with the dedicated test-server port and an
+automatically derived database name ending in `_tests`.
 
 ## Runtime baseline
 

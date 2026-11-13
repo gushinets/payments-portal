@@ -1,7 +1,7 @@
 # Testing Strategy
 
 Status: authoritative
-Last verified: 2026-11-03
+Last verified: 2026-11-13
 
 ## Layers
 
@@ -41,18 +41,35 @@ make test_db_stop
 ```
 
 The cross-platform equivalents are `python scripts/repo.py test-db up` and
-`python scripts/repo.py test-db stop`. Compose owns the PostgreSQL
-server/container, `repo.py` owns worktree-specific server orchestration, and
-pytest owns creation, migration, schema reset, and teardown of the disposable
-`_tests` database. Developers must not manually create or drop the physical
-test database.
+`python scripts/repo.py test-db stop`. The dedicated `docker-compose.test.yml`
+project (`payments-<worktree-id>-tests`) exposes only a worktree-scoped loopback
+port, recorded as `POSTGRES_PORT_TEST` in `.harness/runtime.env`. It uses the
+same pinned PostgreSQL image as development, which must already be installed;
+`test-db up` does not pull images. Development keeps its separate Compose
+project, port and persistent volume.
+The test-server launcher pins its Compose credentials and port to the written
+runtime values so inherited shell variables cannot redirect this local server.
+
+The standard test server stores `/var/lib/postgresql` in a **2 GiB tmpfs**;
+allow that much available RAM in addition to PostgreSQL and test-process memory.
+PostgreSQL durability settings remain at their normal defaults. `test-db stop`
+removes only this dedicated server/project and **loses all of its disposable
+test state**; restarting initializes a fresh cluster. An old runtime file without
+the dedicated test port fails with instructions to run `test-db up` rather than
+falling back to the development server.
+
+Compose owns the PostgreSQL server/container, `repo.py` owns worktree-specific
+server orchestration, and pytest owns creation, migration, schema reset, and
+teardown of the disposable `_tests` database. Developers must not manually
+create or drop the physical test database.
 
 Test database configuration is resolved in this order: an explicit
 `TEST_POSTGRES_DATABASE_URL`; a complete explicit `POSTGRES_*_TEST`
 configuration (partial configuration is rejected); then the current worktree
-runtime configuration, using its mapped host port and a derived database name
-ending in `_tests`. Credentials remain environment-provided and are not shown
-in documentation.
+runtime configuration, using its dedicated test-server port and a derived
+database name ending in `_tests`. Explicit test servers remain supported and
+need not use tmpfs; the standard performance acceptance environment uses tmpfs.
+Credentials remain environment-provided and are not shown in documentation.
 
 ## Test fixtures
 
