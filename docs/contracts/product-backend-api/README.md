@@ -180,7 +180,17 @@ all parent links, hashes, challenges, deadlines and single-use state. A historic
 row with an audience other than platform-kernel refuses migration before changes;
 no foreign credential is automatically adopted. Configure and initialize the
 policy guard before serving identity. No Kernel schema change
-is needed in Step 10. Old binaries are incompatible and excluded.
+is needed in Step 10. Old binaries are incompatible and excluded. Downgrade across
+`0009` refuses any retained consumer policy or non-Kernel delegation before changing
+the schema, preserving the monotonic policy guard and consumer ownership.
+
+Code issuance prunes expired unexchanged codes and delegations of expired or revoked
+parent sessions for the same scoped user and consumer, including earlier sessions.
+Cleanup and the new code commit together under User → AuthSession → delegation locks.
+Exchanged credentials remain while their parent is valid, even after token expiry:
+their hashes distinguish ordinary expiry from invalid parent authority and preserve
+Kernel's pending-work recovery. Cleanup runs on the next issuance, without a
+background sweep or a new issuance rate limit.
 
 The stable tab key `anytoolai.portal_session.v1` now contains a version-2 envelope
 with consumer/P. Version-1 envelopes fail closed and require authorization; the

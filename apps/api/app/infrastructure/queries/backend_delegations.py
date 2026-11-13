@@ -34,6 +34,18 @@ def lock_parent_session(db: Session, session_id: UUID) -> AuthSession | None:
     return db.query(AuthSession).filter(AuthSession.id == session_id).populate_existing().with_for_update().first()
 
 
+def lock_user_sessions(db: Session, *, user_id: UUID, tenant_id: str, region: str) -> list[AuthSession]:
+    """Caller holds User; lock parents before pruning their delegation rows."""
+    return (
+        db.query(AuthSession)
+        .filter(AuthSession.user_id == user_id, AuthSession.tenant_id == tenant_id, AuthSession.region == region)
+        .order_by(AuthSession.id)
+        .populate_existing()
+        .with_for_update()
+        .all()
+    )
+
+
 def lock_delegation(db: Session, delegation_id: UUID) -> BackendSessionDelegation | None:
     return (
         db.query(BackendSessionDelegation)

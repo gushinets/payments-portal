@@ -35,7 +35,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Generic consumers cannot be interpreted by an old Kernel-only binary.
+    bind = op.get_bind()
+    if bind.scalar(sa.text("SELECT EXISTS (SELECT 1 FROM backend_consumer_policies)")):
+        raise RuntimeError("Consumer policy history downgrade is unsafe; retain the monotonic policy guard")
+    if bind.scalar(sa.text(
+        "SELECT EXISTS (SELECT 1 FROM backend_session_delegations WHERE consumer_id <> 'platform-kernel')"
+    )):
+        raise RuntimeError("Consumer delegation history downgrade is unsafe; the old reader is Kernel-only")
     op.drop_table("backend_consumer_policies")
     op.execute("ALTER TABLE backend_session_delegations RENAME CONSTRAINT ck_backend_delegation_exchange_shape TO ck_kernel_delegation_exchange_shape")
     op.execute("ALTER INDEX ix_backend_session_delegations_auth_session_id RENAME TO ix_kernel_session_delegations_auth_session_id")
