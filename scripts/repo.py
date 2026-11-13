@@ -3473,54 +3473,31 @@ def cmd_test(
     *,
     environment: dict[str, str] | None = None,
 ) -> None:
-    check_env = api_test_environment(
-        args.target,
-        canonical_check_environment() if environment is None else environment,
-    )
+    from scripts.api_test_runner import DEFAULT_POSTGRES_WORKERS, RunnerError, run_api_tests
+
     workers = getattr(args, "workers", None)
     if workers is None:
-        workers = 1 if args.target == "api-fast" else 4
-    if workers < 1:
-        raise HarnessError("--workers must be positive")
-    if args.target == "api":
-        sys.path.insert(0, str(ROOT))
-        from scripts.pytest_parallel import merge_junit
-
-        reports_dir = HARNESS_DIR / "test-runs" / uuid.uuid4().hex
-        reports_dir.mkdir(parents=True)
-        reports = [reports_dir / "fast.xml", reports_dir / "postgres.xml"]
-        failure: subprocess.CalledProcessError | None = None
-        for target, count, report in zip(("api-fast", "api-postgres"), (1, workers), reports):
-            try:
-                cmd_test(
-                    argparse.Namespace(target=target, workers=count, junitxml=str(report)),
-                    environment=check_env,
-                )
-            except subprocess.CalledProcessError as exc:
-                failure = exc
-        available = [report for report in reports if report.exists()]
-        if args.junitxml:
-            merge_junit(available, Path(args.junitxml))
-        if failure is not None:
-            raise failure
-        if len(available) != len(reports):
-            raise HarnessError("Incomplete API test reports")
-        return
-    if args.target == "api-fast" and workers != 1:
-        raise HarnessError("api-fast runs serially; --workers applies to the PostgreSQL partition")
-    if workers > 1:
-        command = [sys.executable, "-m", "scripts.pytest_parallel", "--workers", str(workers)]
-        marker_args = api_test_marker_args(args.target)
-        if marker_args:
-            command.extend(["--marker", marker_args[1]])
-        if args.junitxml:
-            command.extend(["--junitxml", args.junitxml])
-        run([*command, API_TEST_PATH], env=check_env)
-        return
-    command = api_pytest_command(*api_test_marker_args(args.target))
-    if args.junitxml:
-        command.insert(-1, f"--junitxml={args.junitxml}")
-    run(command, env=check_env)
+        workers = 1 if args.target == "api-fast" else DEFAULT_POSTGRES_WORKERS
+    try:
+        if not 1 <= workers <= DEFAULT_POSTGRES_WORKERS or (args.target == "api-fast" and workers != 1):
+            raise RunnerError("Workers must be 1–4; api-fast supports only --workers 1")
+        check_env = api_test_environment(
+            args.target,
+            canonical_check_environment() if environment is None else environment,
+        )
+        result = run_api_tests(
+            root=ROOT,
+            artifacts=HARNESS_DIR / "api-tests",
+            target=args.target,
+            workers=workers,
+            environment=check_env,
+            arguments=getattr(args, "pytest_args", ()),
+            junitxml=Path(args.junitxml).resolve() if args.junitxml else None,
+        )
+    except RunnerError as exc:
+        raise HarnessError(str(exc)) from exc
+    if result.returncode:
+        raise SystemExit(result.returncode)
 
 
 def api_coverage_xml_path() -> Path:
@@ -3634,7 +3611,9 @@ def build_parser() -> argparse.ArgumentParser:
     test = sub.add_parser("test")
     test.add_argument("target", choices=("api-fast", "api-postgres", "api"))
     test.add_argument("--junitxml")
-    test.add_argument("--workers", type=int, help="pytest processes (default: 4, api-fast: 1); use 1 for debugging")
+    test.add_argument("--workers", type=int, choices=range(1, 5))
+    test.add_argument("--pytest-args", nargs=argparse.REMAINDER, default=[],
+                      help="Selectors and diagnostic pytest options (must be last)")
     test.set_defaults(func=cmd_test)
     coverage = sub.add_parser("coverage")
     coverage.add_argument("target", choices=("api", "api-fast"))
@@ -3730,6 +3709,10 @@ def reexec_in_repository_venv_if_required() -> None:
         return
     if Path(sys.prefix).resolve() == REPOSITORY_VENV.resolve():
         return
+    if sys.argv[1] in {"test", "check"}:
+        # Replace the waiting shim so it cannot kill the runner during cleanup.
+        os.chdir(ROOT)
+        os.execv(str(python), [str(python), str(Path(__file__).resolve()), *sys.argv[1:]])
     result = subprocess.run(
         [str(python), str(Path(__file__).resolve()), *sys.argv[1:]],
         cwd=ROOT,

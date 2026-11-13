@@ -1,6 +1,6 @@
 import argparse
+import os
 from pathlib import Path
-import subprocess
 import xml.etree.ElementTree as ET
 
 import pytest
@@ -14,37 +14,32 @@ def test_complete_api_keeps_fast_serial_and_preserves_partition_reports(
     tmp_path: Path,
     postgres_fails: bool,
 ) -> None:
-    commands: list[list[str]] = []
+    tests = tmp_path / "apps/api/tests"
+    tests.mkdir(parents=True)
+    (tmp_path / "pytest.ini").write_text("[pytest]\nmarkers =\n    postgres: database partition\n")
+    (tests / "test_fast.py").write_text("def test_fast():\n    assert True\n")
+    (tests / "test_postgres.py").write_text(
+        f"import pytest\npytestmark = pytest.mark.postgres\ndef test_postgres():\n    assert {not postgres_fails}\n"
+    )
+    source_root = repo.ROOT
+    monkeypatch.setattr(repo, "ROOT", tmp_path)
     monkeypatch.setattr(repo, "HARNESS_DIR", tmp_path / "harness")
-
-    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        commands.append(command)
-        is_postgres = "scripts.pytest_parallel" in command
-        destination = (
-            command[command.index("--junitxml") + 1]
-            if is_postgres
-            else next(arg.split("=", 1)[1] for arg in command if arg.startswith("--junitxml="))
-        )
-        failure = "<failure/>" if is_postgres and postgres_fails else ""
-        Path(destination).write_text(
-            f'<testsuites><testsuite><testcase name="{is_postgres}">{failure}</testcase></testsuite></testsuites>'
-        )
-        if failure:
-            raise subprocess.CalledProcessError(1, command)
-        return subprocess.CompletedProcess(command, 0)
-
-    monkeypatch.setattr(repo, "run", run)
     report = tmp_path / "combined.xml"
     args = argparse.Namespace(target="api", workers=None, junitxml=str(report))
-    environment = {"TEST_POSTGRES_DATABASE_URL": "postgresql+psycopg://owner@localhost/configured_tests"}
+    environment = {
+        **os.environ,
+        "PYTHONPATH": str(source_root),
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "TEST_POSTGRES_DATABASE_URL": "postgresql+psycopg://owner@localhost/configured_tests",
+    }
     if postgres_fails:
-        with pytest.raises(subprocess.CalledProcessError):
+        with pytest.raises(SystemExit) as caught:
             repo.cmd_test(args, environment=environment)
+        assert caught.value.code == 1
     else:
         repo.cmd_test(args, environment=environment)
-    assert commands[0][1:3] == ["-m", "pytest"]
-    assert "not postgres" in commands[0]
-    assert commands[1][1:5] == ["-m", "scripts.pytest_parallel", "--workers", "4"]
-    assert "postgres" in commands[1]
     assert len(ET.parse(report).findall(".//testcase")) == 2
     assert len(ET.parse(report).findall(".//failure")) == int(postgres_fails)
+    assert not ET.parse(report).findall(".//error")
+    assert len(list((tmp_path / "harness").glob("api-tests/*/fast/worker-*/junit.xml"))) == 1
+    assert len(list((tmp_path / "harness").glob("api-tests/*/postgres/worker-*/junit.xml"))) == 1
