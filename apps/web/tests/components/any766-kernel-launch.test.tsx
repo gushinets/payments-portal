@@ -128,8 +128,9 @@ it("rejects caller callback tampering before issuing a code", () => {
   expect(navigate).not.toHaveBeenCalled();
 });
 
-it("projects only registered public callbacks from server configuration", () => {
-  expect(parseBackendCallbacks(JSON.stringify([{ consumer_id: "synthetic-summary", callback_url: "https://summary.invalid/callback", backend_to_portal_current_secret: "must-stay-server-side" }]))).toEqual([{ consumerId: "synthetic-summary", callbackUrl: "https://summary.invalid/callback" }]);
+it("accepts registered public callbacks and rejects private server configuration", () => {
+  expect(parseBackendCallbacks(JSON.stringify([{ consumer_id: "synthetic-summary", callback_url: "https://summary.invalid/callback" }]))).toEqual([{ consumerId: "synthetic-summary", callbackUrl: "https://summary.invalid/callback" }]);
+  expect(() => parseBackendCallbacks(JSON.stringify([{ consumer_id: "synthetic-summary", callback_url: "https://summary.invalid/callback", backend_to_portal_current_secret: "must-stay-server-side" }]))).toThrow(/^backend_configuration_invalid$/);
   expect(() => parseBackendCallbacks('[{"consumer_id":"bad","callback_url":"https://user:secret@evil.invalid"}]')).toThrow();
   expect(() => parseBackendCallbacks('[{"consumer_id":"bad","callback_url":"http://evil.invalid"}]')).toThrow();
 });

@@ -13,7 +13,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -30,7 +30,7 @@ from app.http import backend_auth
 from app.http.dependencies import get_session_factory
 from app.jobs.billing import BillingWorker
 from app.main import create_app
-from app.models import BillingWorkItem, BillingWorkKind, BillingWorkState, ExternalSubscription, PurchasedAllowance
+from app.models import BillingWorkItem, BillingWorkKind, BillingWorkScope, BillingWorkState, ExternalSubscription, PurchasedAllowance
 from apps.api.tests.factories.paid_runtime import reconcile
 from apps.api.tests.factories.purchase_terms import reviewed_meaning
 from apps.api.tests.support.any709_step1 import link_selection
@@ -134,10 +134,61 @@ async def test_commit_ack_duplicate_after_completion_never_revives_or_mutates(
     from apps.api.tests.support.postgres import alembic_test_config
 
     with alembic_test_config(factory.kw["bind"].url) as migration:
-        with pytest.raises(RuntimeError, match="Exhaustion history downgrade is unsafe"):
+        # Normal reconciliation now retains V2/activation evidence, so 0012
+        # refuses before the older exhaustion-history guard can be reached.
+        with pytest.raises(RuntimeError, match="Activation/V2 evidence requires the new reader"):
             command.downgrade(migration, "20261111_0010")
+    with factory() as db:
+        assert db.scalar(text("SELECT version_num FROM alembic_version")) == "20261113_0012"
+    assert hint(factory).payload_document == body
     assert hint(factory).work_state == BillingWorkState.COMPLETED
     assert hint(factory).enqueue_generation == done.enqueue_generation
+
+
+def test_exhaustion_history_blocks_downgrade_at_0011(migrated_database: Engine) -> None:
+    from alembic import command
+    from apps.api.tests.support.postgres import alembic_test_config
+
+    now = datetime.now(UTC)
+    event = exhaustion.AllowanceExhaustion(
+        schema_version=1,
+        event_type="allowance_exhausted",
+        tenant_id="anytoolai",
+        region="ru",
+        user_id=str(uuid4()),
+        allowance_id=str(uuid4()),
+        product_id="retained-product",
+        metric_key="retained.metric",
+        unit="run",
+        quantity=1,
+        occurred_at=now.isoformat(),
+    )
+    identity = uuid4()
+    retained = text("SELECT to_jsonb(w) FROM billing_work_items w WHERE work_item_id = :id")
+    with alembic_test_config(migrated_database.url) as migration:
+        # An empty database can cross 0012. Seed only the retained queue row at
+        # the actual 0011 boundary, without deleting immutable billing evidence.
+        command.downgrade(migration, "20261111_0011")
+        with Session(migrated_database) as db:
+            db.add(BillingWorkItem(
+                work_item_id=identity,
+                work_kind=BillingWorkKind.ALLOWANCE_EXHAUSTION,
+                scope_kind=BillingWorkScope.ALLOWANCE,
+                scope_reference=event.allowance_id,
+                coalescing_key=f"{event.tenant_id}:{event.region}:{event.user_id}:{event.allowance_id}:{event.event_type}",
+                payload_schema_version="allowance-exhaustion:v1",
+                payload_document=event.model_dump(mode="json"),
+                next_attempt_at=now,
+                work_state=BillingWorkState.COMPLETED,
+            ))
+            db.commit()
+            before = db.scalar(retained, {"id": identity})
+            assert before is not None
+        with pytest.raises(RuntimeError, match="Exhaustion history downgrade is unsafe"):
+            command.downgrade(migration, "20261111_0010")
+        with migrated_database.connect() as connection:
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20261111_0011"
+            assert connection.scalar(retained, {"id": identity}) == before
 
 
 @pytest.mark.parametrize(
