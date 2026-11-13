@@ -1508,6 +1508,15 @@ def test_registration_acceptance_generator_rejects_nonliteral_text(
 def test_fast_check_passes_the_scoped_environment_to_every_subprocess(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from scripts import api_test_runner
+
+    runner_calls: list[dict[str, object]] = []
+
+    def capture_runner(**kwargs: object) -> api_test_runner.RunnerResult:
+        runner_calls.append(kwargs)
+        return api_test_runner.RunnerResult(0, repo.HARNESS_DIR)
+
+    monkeypatch.setattr(api_test_runner, "run_api_tests", capture_runner)
     check_environment = {"TEMP": "worktree-temp"}
     invocations: list[tuple[list[str], dict[str, str] | None]] = []
 
@@ -1524,21 +1533,29 @@ def test_fast_check_passes_the_scoped_environment_to_every_subprocess(
 
     repo.cmd_check(argparse.Namespace(fast=True))
 
-    assert len(invocations) == 6
-    assert all(
-        environment
-        == (isolated_api_environment(environ=check_environment) if "pytest" in command else check_environment)
-        for command, environment in invocations
-    )
+    assert len(invocations) == 5
+    assert len(runner_calls) == 1
+    assert runner_calls[0]["environment"] == isolated_api_environment(environ=check_environment)
+    assert runner_calls[0]["target"] == "api-fast"
+    assert runner_calls[0]["workers"] == 1
+    assert all(environment == check_environment for command, environment in invocations)
     assert any(command[-3:] == ["ruff", "check", "."] for command, _ in invocations)
     assert any(command[-4:] == ["ruff", "format", "--check", "."] for command, _ in invocations)
     assert any("test:components" in command for command, _ in invocations)
-    assert any(command[-3:] == ["-m", "not postgres", "apps/api/tests"] for command, _ in invocations)
 
 
 def test_full_check_runs_explicit_postgres_partition(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from scripts import api_test_runner
+
+    runner_calls: list[dict[str, object]] = []
+
+    def capture_runner(**kwargs: object) -> api_test_runner.RunnerResult:
+        runner_calls.append(kwargs)
+        return api_test_runner.RunnerResult(0, repo.HARNESS_DIR)
+
+    monkeypatch.setattr(api_test_runner, "run_api_tests", capture_runner)
     check_environment = {
         "POSTGRES_USER_TEST": "test-user",
         "POSTGRES_PASSWORD_TEST": "test-password",
@@ -1580,26 +1597,9 @@ def test_full_check_runs_explicit_postgres_partition(
     ]
     assert e2e_invocations == [(["npm", "run", "test:e2e"], check_environment)]
 
-    postgres_invocations = [
-        (command, environment)
-        for command, environment in invocations
-        if command[-3:] == ["-m", "postgres", "apps/api/tests"]
-    ]
-    assert postgres_invocations == [
-        (
-            [
-                repo.sys.executable,
-                "-m",
-                "pytest",
-                "-p",
-                "no:cacheprovider",
-                "-m",
-                "postgres",
-                "apps/api/tests",
-            ],
-            api_test_environment("api-postgres", check_environment),
-        )
-    ]
+    assert [call["target"] for call in runner_calls] == ["api-fast", "api-postgres"]
+    assert [call["workers"] for call in runner_calls] == [1, 4]
+    assert runner_calls[1]["environment"] == api_test_environment("api-postgres", check_environment)
 
 
 def test_api_coverage_writes_xml_to_stable_harness_path(

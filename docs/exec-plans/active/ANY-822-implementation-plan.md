@@ -1,6 +1,6 @@
 # ANY-822 — Rebuild test execution acceleration from main
 
-Status: **IN PROGRESS — Steps 1–4 complete; Steps 5–9 pending**
+Status: **IN PROGRESS — Steps 1–5 complete; Steps 6–9 pending**
 Created: 2026-11-13
 Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
 Execution branch: `ANY-822`
@@ -136,23 +136,24 @@ constraints, triggers, independent connections and real commit behavior.
 
 ### D. Port bounded PostgreSQL parallelism
 
-- [ ] Port the standard-library subprocess runner and all three source commits'
-  relevant fixes. Add no dependency on xdist or another scheduler.
-- [ ] Default to four PostgreSQL processes, keeping fast API tests serial.
+- [x] Implement the stdlib subprocess runner and the three source commits'
+  documented argument/report-lifecycle and marker-partition fixes. Add no
+  dependency on xdist or another scheduler.
+- [x] Default to four PostgreSQL processes, keeping fast API tests serial.
   Partition whole modules greedily by collected case count, preserving order
   within modules. Each process owns separate database resources and artifacts.
-- [ ] Support `test api-postgres --workers N` and `test api --workers N` for
+- [x] Support `test api-postgres --workers N` and `test api --workers N` for
   1–4 workers; one worker is the serial diagnostic mode. For `api-fast`, allow
   only a serial worker setting. Keep existing npm aliases working.
-- [ ] `test api` runs the fast and PostgreSQL partitions and retains outcomes
+- [x] `test api` runs the fast and PostgreSQL partitions and retains outcomes
   from both, including when the fast partition fails.
-- [ ] Retain per-run manifests/logs/JUnit, expected-versus-worker node-ID
+- [x] Retain per-run manifests/logs/JUnit, expected-versus-worker node-ID
   checks, merged JUnit, strict supported marker partitions and safe path/argument
   handling. Fix nondeterministic parameter IDs only where collection requires it.
-- [ ] Fail on collection errors, worker failures, missing reports or mismatched
+- [x] Fail on collection errors, worker failures, missing reports or mismatched
   collections. Preserve failures and skips in reports; a previous report must
   never be presented as the current run's success.
-- [ ] On interruption, stop/join children and allow fixture cleanup before
+- [x] On interruption, stop/join children and allow fixture cleanup before
   forced process termination. Return a nonzero result. Do not sweep resources
   from previous runs; any hard-kill leftovers remain confined to disposable
   test storage and must be reported rather than silently ignored.
@@ -244,12 +245,12 @@ Relevant primary references for these rules:
 - [x] Settings/child-process isolation and explicit configuration precedence.
 - [x] Fresh state across tests/separate pytest processes, migration seeds and mixed
   ordinary/migration ordering; real independent-commit and locking scenarios.
-  Concurrent worker verification remains Step 5 work.
+  Concurrent worker verification passed in Step 5.
 - [x] Unsafe-target rejection, collision preservation, connection-leak failure
   and cleanup of owned resources after failed setup/test execution.
-- [ ] Module partition completeness, one-versus-four-worker equivalence on a
+- [x] Module partition completeness, one-versus-four-worker equivalence on a
   small real sample, and the mixed API dispatcher on a small controlled sample.
-- [ ] Collection failure, failed/crashed worker, missing/mismatched manifests
+- [x] Collection failure, failed/crashed worker, missing/mismatched manifests
   or JUnit, skips, and interruption; validate return codes and reports.
 - [ ] Single API-fast/component execution with coverage, unchanged standalone
   coverage scope and compatible npm aliases.
@@ -276,15 +277,8 @@ Relevant primary references for these rules:
 
 ### Current execution evidence
 
-Step 1 is complete: the original serial baseline and canonical fast verification
-are recorded against unchanged execution code at
-`2d278f62f0a2f7c4b40fb322618b268580de2301`. Step 2 settings isolation and its
-verification are complete below. Step 3 RAM-backed storage, focused runtime
-verification and canonical fast verification are complete. Step 4 template
-lifecycle, focused verification, canonical fast verification and the full serial
-PostgreSQL partition are complete. Steps 5–9 remain pending. Parallel execution
-and coverage changes have not started; final accelerated runtime acceptance
-remains Step 9 work.
+Steps 1–5 are complete; Steps 6–9 remain pending. Evidence is recorded below.
+Final runtime and stability acceptance remains Step 9 work.
 
 Preparation verification on 2026-11-13: `npm run docs:check` passed;
 `git diff --check` and the new plan's whitespace check passed. At preparation
@@ -484,3 +478,22 @@ Limitations: full `check` was interrupted before the font-dependent web build.
 Timings overlapped other checks and are diagnostic. The ANY-766 source commit
 was unavailable locally; implementation follows this plan's contract.
 Parallelism, coverage, browsers, CI and final acceptance remain Steps 5–9 work.
+
+#### Step 5 — bounded PostgreSQL subprocess runner (2026-11-13)
+
+Completed: four PostgreSQL processes by default, serial API-fast, whole-module
+partitioning and `--workers 1–4`. Collection/JUnit accounting, mixed API failure
+handling and child-process cleanup are covered; npm aliases are preserved.
+
+Verification: `npm run check:fast` passed (1,941 API-fast + 414 component tests,
+134.075 s); full parallel PostgreSQL passed (1,003 tests, 418.608 s). All 33 new
+runner regressions passed; the same 29 real cases passed with one/four workers.
+All previous test IDs are retained; resource cleanup, docs and diff checks passed.
+Evidence: `.harness/any822-step5-20261113/` and `.harness/api-tests/`.
+
+Limitations: the first full run had two SQL statement timeouts, not reproduced
+in diagnostics or the final run. Their cause remains unexplained; retain this
+stability risk for Step 9. No deadlines were increased, retries added or assertions weakened.
+ANY-766 source objects were unavailable locally; exact port parity is unverified.
+Windows, full `check`, coverage, browsers and CI were not run. Timings are
+diagnostic; Steps 6–9 have not started.
