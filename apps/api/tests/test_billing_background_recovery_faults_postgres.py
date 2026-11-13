@@ -26,7 +26,9 @@ from app.models import (
     ExternalCreateOperationKind as Kind,
     ExternalCreateOperationState as State,
     ExternalSubscription,
+    ExternalSubscriptionCommercialAccessStatus as Commercial,
     ManualReviewCase,
+    PurchaseIntentState,
     User,
 )
 from apps.api.tests.support.any709_step1 import step1_settings
@@ -186,7 +188,7 @@ async def test_billing_background_recovery_inventory_checks_all_affected_product
         await worker.aclose()
 
 
-@pytest.mark.parametrize("stale", ["operation", "claim"])
+@pytest.mark.parametrize("stale", ["operation", "first-operation", "claim"])
 async def test_inventory_defers_stale_products_and_rolls_back_a_lost_claim(
     background_scenario: tuple,
     postgres_session_factory: sessionmaker[Session],
@@ -205,8 +207,9 @@ async def test_inventory_defers_stale_products_and_rolls_back_a_lost_claim(
     result = await inventory(sources, factory, first, claim=claim)
     assert set(result.conflicts) == {first.id, second.id}
     with factory() as db:
-        if stale == "operation":
-            op = next(op for op in second.operations if op.kind == Kind.SUBSCRIPTION)
+        if stale != "claim":
+            target = first if stale == "first-operation" else second
+            op = next(op for op in target.operations if op.kind == Kind.SUBSCRIPTION)
             db.get(ExternalCreateOperation, op.id).send_fence = uuid4()
         else:
             db.get(BillingWorkItem, claim.id).lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
@@ -218,22 +221,51 @@ async def test_inventory_defers_stale_products_and_rolls_back_a_lost_claim(
         apply_inventory(factory, claim, result, "inventory_conflict")
         queue = job(factory, recovery.INVENTORY, first.customer_id)
         assert queue.work_state == "pending" and queue.last_error_classification == "inventory_incomplete"
+    # The extra candidate belongs to the first agreement and implicates both
+    # products. A stale first operation invalidates both decisions; a stale
+    # second operation leaves the first product's conflict applicable.
+    first_conflict_applied = stale == "operation"
     with factory() as db:
-        assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
-        assert (
-            db.scalar(
-                select(func.count())
-                .select_from(BillingStateObservation)
-                .where(BillingStateObservation.evidence_schema_version == "customer-inventory:v1")
+        cases = list(db.scalars(select(ManualReviewCase)))
+        observations = list(
+            db.scalars(
+                select(BillingStateObservation).where(
+                    BillingStateObservation.evidence_schema_version == "customer-inventory:v1"
+                )
             )
-            == 0
         )
-        assert all(sub.commercial_access_status == "eligible" for sub in db.scalars(select(ExternalSubscription)))
+        if first_conflict_applied:
+            first_operation = next(op for op in first.operations if op.kind == Kind.SUBSCRIPTION)
+            assert len(cases) == len(observations) == 1
+            assert cases[0].reason_code == "customer_inventory_conflict"
+            assert (cases[0].scope_kind, cases[0].scope_reference) == (
+                "create_operation",
+                str(first_operation.id),
+            )
+            assert cases[0].evidence_document["purchase_intent_id"] == str(first.id)
+            assert observations[0].product_id == first.accepted.selection.product_id
+            assert observations[0].evidence_document["purchase_intent_id"] == str(first.id)
+        else:
+            assert cases == observations == []
+        for sub in db.scalars(select(ExternalSubscription)):
+            assert sub.commercial_access_status == (
+                Commercial.INELIGIBLE
+                if first_conflict_applied and sub.purchase_intent_id == first.id
+                else Commercial.ELIGIBLE
+            )
         assert db.scalar(select(func.count()).select_from(BillingPurchaseScopeHold)) == 2
         assert db.get(BillingWorkItem, claim.id).work_state == ("running" if stale == "claim" else "pending")
     for expected in (first, second):
         saved = service.read_purchase(factory, first.user_id, expected.id)
-        assert all(op.state == State.BOUND for op in saved.operations)
+        reviewed = first_conflict_applied and expected.id == first.id
+        assert saved.state == (PurchaseIntentState.MANUAL_REVIEW if reviewed else expected.state)
+        assert tuple((op.id, op.bound_id, op.key) for op in saved.operations) == tuple(
+            (op.id, op.bound_id, op.key) for op in expected.operations
+        )
+        assert all(
+            op.state == (State.MANUAL_REVIEW if reviewed and op.kind == Kind.SUBSCRIPTION else State.BOUND)
+            for op in saved.operations
+        )
 
 
 async def test_billing_background_recovery_expired_claim_late_io_cannot_apply(

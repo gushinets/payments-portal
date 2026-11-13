@@ -6,8 +6,8 @@ Issue: [ANY-832](https://linear.app/paveldik/issue/ANY-832/fix-deferred-pr-164-i
 Predecessor: [PR #164](https://github.com/gushinets/payments-portal/pull/164).
 Branch: `ANY-832`; PR base: `main`.
 
-This completed implementation plan records the branch changes and uncommitted
-follow-up on HEAD `187fe133b71fe24ceb9b0464aec29fe3c97facde`, with merge base
+This completed implementation plan records the branch changes through HEAD
+`07cee6e2` and the local REV-8 correction, with merge base
 `2d278f62f0a2f7c4b40fb322618b268580de2301`. It describes implemented behavior and
 verification limits, not instructions to repeat the implementation or merge approval.
 Billing authority remains [ADR 0005](../../architecture/decisions/0005-external-billing-boundary.md)
@@ -117,13 +117,22 @@ When integrating, preserve the following at the overlapping composition,
 
 ## Verification record
 
-The following results were recorded on 2026-11-13. The final code correction
+The following results were recorded on 2026-11-13. The earlier code correction
 covered REV-6 (ordinary read lost after refused apply) and REV-7 (strict admission
 accepted a stale source receipt). Earlier REV-3/4/5 and PLAN-1/2 regressions remain
-in the affected suites. This documentation cleanup does not constitute a new
-runtime test run.
+in the affected suites.
 
-### Final local correction
+### REV-8 local correction
+
+REV-8 separates source completeness from local review. A conclusively bound
+sibling sharing a tariff no longer blocks another product's primary; its own
+review remains open and prevents automatic selection.
+
+Regression: **2 failed / 4 passed** before the fix, **6 passed** after it.
+**137 PostgreSQL cases**, `check:fast`, `docs:check` and `git diff --check` passed.
+Full `check`, web build, E2E and combined ANY-766 acceptance were not rerun.
+
+### Earlier REV-6/REV-7 correction
 
 - **198 distinct PostgreSQL cases passed on the ANY-832 working tree:** nine
   [admission regressions](../../../apps/api/tests/test_billing_inventory_admission_postgres.py)
@@ -157,12 +166,10 @@ identity/counters/revisions/outbox, block/restore, execution/replay, future-peri
 non-activation, retained storage and policy cutover. The deselected test covers
 the separate SMTP/browser identity journey.
 
-Those HTTP results predate the final correction and do not certify it. Full
-`npm run check` has no successful complete result: earlier broad PostgreSQL runs
-stopped on superseded expectations and resource-related timeouts; affected
-failures were corrected or rerun, but the unrelated tail remains unverified.
-The full suite, web production build and joint HTTP runtime were not rerun after
-REV-6/REV-7. No current remote CI, live-provider or production acceptance is claimed.
+Those HTTP results predate REV-6/REV-7 and REV-8 and do not certify them.
+The latest local changes have focused verification only; full `npm run check`
+and joint HTTP acceptance were not rerun. No live-provider or production
+acceptance is claimed.
 
 For documentation-only edits, use `npm run docs:check` and `git diff --check`.
 Existing runtime evidence remains scoped to the implementation and revisions
