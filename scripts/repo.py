@@ -3691,8 +3691,9 @@ def reexec_in_repository_venv_if_required() -> None:
         return
     if sys.argv[1] in {"test", "check"}:
         # Replace the waiting shim so it cannot kill the runner during cleanup.
+        # End interpreter options before the fixed script and its CLI arguments.
         os.chdir(ROOT)
-        os.execv(str(python), [str(python), str(Path(__file__).resolve()), *sys.argv[1:]])
+        os.execv(str(python), [str(python), "--", str(Path(__file__).resolve()), *sys.argv[1:]])
     result = subprocess.run(
         [str(python), str(Path(__file__).resolve()), *sys.argv[1:]],
         cwd=ROOT,

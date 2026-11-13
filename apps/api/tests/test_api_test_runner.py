@@ -569,15 +569,22 @@ def test_hard_termination_is_reported_and_process_is_joined(monkeypatch: pytest.
             process.wait()
 
 
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["test", "api-fast", "--pytest-args", "-k", "one or two"],
+        ["check", "--fast", "--coverage"],
+    ],
+)
 def test_test_launcher_replaces_venv_shim_so_signals_reach_runner(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, arguments: list[str]
 ) -> None:
     venv = tmp_path / "venv"
     python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     python.parent.mkdir(parents=True)
     python.touch()
     monkeypatch.setattr(repo, "REPOSITORY_VENV", venv)
-    monkeypatch.setattr(sys, "argv", ["repo.py", "test", "api-postgres"])
+    monkeypatch.setattr(sys, "argv", ["repo.py", *arguments])
     calls: list[tuple[str, list[str]]] = []
     directories: list[Path] = []
     monkeypatch.setattr(os, "chdir", directories.append)
@@ -595,7 +602,7 @@ def test_test_launcher_replaces_venv_shim_so_signals_reach_runner(
     assert calls == [
         (
             str(python),
-            [str(python), str(Path(repo.__file__).resolve()), "test", "api-postgres"],
+            [str(python), "--", str(Path(repo.__file__).resolve()), *arguments],
         )
     ]
 
