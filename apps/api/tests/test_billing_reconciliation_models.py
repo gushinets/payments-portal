@@ -416,6 +416,7 @@ def test_step_4_safe_checks_are_exact() -> None:
     }
     assert _check_names(BillingStateObservation) == {
         "ck_billing_observations_revision_positive",
+        "ck_billing_observations_activation_shape",
         "ck_billing_state_observations_provenance_exclusive",
         "ck_billing_state_observations_subject_shape",
         "ck_billing_state_observations_kind",
@@ -490,6 +491,7 @@ def test_lookup_indexes_cover_the_fixed_contract() -> None:
     assert purchase_index.dialect_options["postgresql"]["where"] is not None
 
     assert _indexes(BillingStateObservation) == {
+        "uq_billing_observations_allowance_activation": ("evidence_document",),
         "ix_billing_state_observations_kind_time": ("observation_kind", "observed_at"),
         "ix_billing_state_observations_account_kind_time": (
             "external_billing_account_id",
