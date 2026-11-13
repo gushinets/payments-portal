@@ -1,6 +1,6 @@
 # ANY-822 — Rebuild test execution acceleration from main
 
-Status: **IN PROGRESS — Steps 1–3 complete; Steps 4–9 pending**
+Status: **IN PROGRESS — Steps 1–4 complete; Steps 5–9 pending**
 Created: 2026-11-13
 Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
 Execution branch: `ANY-822`
@@ -116,18 +116,18 @@ parallel execution during ANY-766 experiments.
 
 ### C. Clone a migrated database template per scenario
 
-- [ ] Give each pytest process unique session-owned scenario/template database
+- [x] Give each pytest process unique session-owned scenario/template database
   names. Build its template once through real Alembic `upgrade head`, including
   migration seeds, and close template connections before cloning.
-- [ ] Replace repeated migrations for `migrated_database` with a fresh database
+- [x] Replace repeated migrations for `migrated_database` with a fresh database
   clone before each dependent test. Keep business data, mutable fixtures and
   clients function-scoped; do not cache prepared purchase/reconciliation state.
-- [ ] Keep migration tests' explicit schema resets and upgrade/downgrade
+- [x] Keep migration tests' explicit schema resets and upgrade/downgrade
   transitions. Ordinary tests following them must still receive a fresh clone.
-- [ ] Validate destructive targets before connecting/executing SQL. Use one
+- [x] Validate destructive targets before connecting/executing SQL. Use one
   fixture owner, track successful creation, fail on name collisions, and clean
   up only resources created by the current run.
-- [ ] Dispose pools and reject checked-out connections before replacement.
+- [x] Dispose pools and reject checked-out connections before replacement.
   Do not pre-drop a colliding database or use `DROP ... FORCE`. Connection
   leaks must remain visible as failures.
 
@@ -242,9 +242,10 @@ Relevant primary references for these rules:
 ### Focused verification during implementation
 
 - [x] Settings/child-process isolation and explicit configuration precedence.
-- [ ] Fresh state across tests/workers, migration seeds and mixed
+- [x] Fresh state across tests/separate pytest processes, migration seeds and mixed
   ordinary/migration ordering; real independent-commit and locking scenarios.
-- [ ] Unsafe-target rejection, collision preservation, connection-leak failure
+  Concurrent worker verification remains Step 5 work.
+- [x] Unsafe-target rejection, collision preservation, connection-leak failure
   and cleanup of owned resources after failed setup/test execution.
 - [ ] Module partition completeness, one-versus-four-worker equivalence on a
   small real sample, and the mixed API dispatcher on a small controlled sample.
@@ -279,9 +280,11 @@ Step 1 is complete: the original serial baseline and canonical fast verification
 are recorded against unchanged execution code at
 `2d278f62f0a2f7c4b40fb322618b268580de2301`. Step 2 settings isolation and its
 verification are complete below. Step 3 RAM-backed storage, focused runtime
-verification and canonical fast verification are complete. Steps 4–9
-remain pending; templates, parallel execution and coverage changes have not
-started, and neither final absolute runtime target has been verified.
+verification and canonical fast verification are complete. Step 4 template
+lifecycle, focused verification, canonical fast verification and the full serial
+PostgreSQL partition are complete. Steps 5–9 remain pending. Parallel execution
+and coverage changes have not started; final accelerated runtime acceptance
+remains Step 9 work.
 
 Preparation verification on 2026-11-13: `npm run docs:check` passed;
 `git diff --check` and the new plan's whitespace check passed. At preparation
@@ -465,3 +468,19 @@ Verification: `npm run check:fast` passed (1,892 API-fast + 414 component tests,
 Real tmpfs, restart, development isolation and owned-resource cleanup verified;
 docs and diff checks passed. Evidence: `.harness/any822-step3-20261113/`.
 Full PostgreSQL/check, coverage, browsers and CI remain deferred. Step 4 not started.
+
+#### Step 4 — migrated database template (2026-11-13)
+
+Completed: one migrated template per pytest process and fresh scenario clones.
+Migration transitions and per-test business state are preserved; collisions,
+connection leaks and cleanup of owned resources are covered.
+
+Verification: `npm run check:fast` passed (1,908 API-fast + 414 component tests,
+229.539 s); full serial PostgreSQL passed (1,003 tests, 25m24s); final focused
+verification passed (62 tests). Previous test IDs are retained; resource cleanup,
+docs and diff checks passed. Evidence: `.harness/any822-step4-20261113/`.
+
+Limitations: full `check` was interrupted before the font-dependent web build.
+Timings overlapped other checks and are diagnostic. The ANY-766 source commit
+was unavailable locally; implementation follows this plan's contract.
+Parallelism, coverage, browsers, CI and final acceptance remain Steps 5–9 work.
