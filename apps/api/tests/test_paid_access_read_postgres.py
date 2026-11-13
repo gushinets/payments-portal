@@ -2,12 +2,15 @@
 
 import asyncio
 from collections.abc import AsyncIterator
-from datetime import timedelta
+from datetime import date, timedelta
 from threading import Event
+from time import monotonic
+from uuid import uuid4
 
 import httpx
 import pytest
 from sqlalchemy import select
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.composition.paid_reads import paid_read_resources
@@ -16,11 +19,26 @@ from app.core.database import Base
 from app.domains.billing import paid_router as routes, paid_read
 from app.domains.billing.customers import lock_user
 from app.domains.billing.paid_access import commit_paid_state
+from app.domains.billing.paid_contracts import EFFECTIVE_SCHEMA, EffectiveAllowance, EffectiveState, PaidGrant
+from app.domains.billing.paid_cycles import CalendarEvidence, CalendarPrecision
+from app.domains.catalog.link_publication import publish_product_link
 from app.domains.identity.services.auth import as_utc
+from app.domains.purchases.technical_terms import bind_test_terms
 from app.main import create_app
-from app.models import BillingProductAccessScope
+from app.models import (
+    BillingProductAccessScope,
+    ExternalBillingCustomer,
+    ExternalBillingCustomerBindingState,
+    ExternalSubscription,
+    ExternalSubscriptionCommercialAccessStatus as Commercial,
+    ExternalSubscriptionFinancialAccessStatus as Financial,
+    ExternalSubscriptionLifecycleStatus as Lifecycle,
+    PaidAccessState,
+    PurchasedAllowance,
+)
 from apps.api.tests.factories.paid_access import reader_identity
-from apps.api.tests.support.any709_step1 import step1_settings
+from apps.api.tests.factories.purchase_terms import technical_manifest, test_terms_source as terms_source
+from apps.api.tests.support.any709_step1 import link_document, step1_settings
 from apps.api.tests.test_any709_step2_postgres import TOKEN
 from apps.api.tests.factories.paid_runtime import (
     paid_source as paid_source,
@@ -30,6 +48,7 @@ from apps.api.tests.factories.paid_runtime import (
 )
 
 pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
+BOUNDED_READER_TOKEN = "synthetic-bounded-reader"
 
 
 @pytest.fixture
@@ -207,25 +226,137 @@ async def test_paid_read_does_not_mix_inflight_revision_document_and_deadline(
         await writer
 
 
+@pytest.fixture
+def bounded_reader_state(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+) -> EffectiveState:
+    """Persist reader inputs only; other tests retain purchase/reconciliation wiring."""
+    factory = postgres_session_factory
+    link = publish_product_link(
+        factory,
+        evaluation=link_document(),
+        expected_previous_revision=0,
+        deadline=monotonic() + 5,
+        lock_timeout_seconds=1,
+    ).stored
+    account = link.document.scope.external_billing_account_id
+    terms = bind_test_terms(
+        terms_source(),
+        technical_manifest(),
+        account_id=account,
+        revision_id=link.mapping_revision_id,
+        selection=link.document.selection,
+        commercial_fingerprint="sha256:" + "2" * 64,
+    )
+    cycle = CalendarEvidence(
+        precision=CalendarPrecision.DATE, start="2026-10-31", end="2026-11-29", anchor="2026-01-31"
+    )
+    now = utc_now()
+    with factory() as db:
+        user, session = reader_identity(BOUNDED_READER_TOKEN)
+        db.add(user)
+        db.flush()
+        db.add(session)
+        customer = ExternalBillingCustomer(
+            user_id=user.id,
+            external_billing_account_id=account,
+            billing_customer_key="synthetic-bounded-customer",
+            binding_state=ExternalBillingCustomerBindingState.BOUND,
+            provider_customer_id="123",
+        )
+        db.add(customer)
+        db.flush()
+        subscription = ExternalSubscription(
+            user_id=user.id,
+            customer_id=customer.customer_id,
+            external_billing_account_id=account,
+            product_id=terms.offer.product_id,
+            mapping_revision_id=link.mapping_revision_id,
+            external_subscription_id="567",
+            lifecycle_status=Lifecycle.ACTIVE,
+            financial_access_status=Financial.ALLOWED,
+            commercial_access_status=Commercial.ELIGIBLE,
+            last_authoritative_read_at=now,
+            projection_valid_until=now + timedelta(days=1),
+        )
+        db.add(subscription)
+        db.flush()
+        allowance_id = uuid4()
+        allowance = EffectiveAllowance(
+            allowance_id=str(allowance_id),
+            product_id=terms.offer.product_id,
+            metric_key=terms.offer.metric_key,
+            unit=terms.offer.unit,
+            quantity=terms.offer.quantity,
+            cycle=cycle,
+        )
+        document = EffectiveState(grants=(PaidGrant(product_id=terms.offer.product_id),), allowances=(allowance,))
+        db.add(
+            PurchasedAllowance(
+                allowance_id=allowance_id,
+                subscription_id=subscription.subscription_id,
+                source_component_id=str(terms.selection.tariff_service_id),
+                product_id=allowance.product_id,
+                metric_key=allowance.metric_key,
+                quantity=allowance.quantity,
+                unit=allowance.unit,
+                cycle_schema_version="calendar:v1",
+                provider_cycle_key=f"date:{cycle.start}:{cycle.end}",
+                cycle_date_start=date.fromisoformat(cycle.start),
+                cycle_date_end=date.fromisoformat(cycle.end),
+                calendar_document=cycle.model_dump(mode="json"),
+                terms_document={"technical_terms": terms.model_dump(mode="json")},
+            )
+        )
+        db.add(
+            PaidAccessState(
+                user_id=user.id,
+                tenant_id=user.tenant_id,
+                region=user.region,
+                access_revision=1,
+                effective_state_schema_version=EFFECTIVE_SCHEMA,
+                effective_state_document=document.model_dump(mode="json"),
+                committed_at=now,
+            )
+        )
+        db.add(
+            BillingProductAccessScope(
+                user_id=user.id,
+                product_id=terms.offer.product_id,
+                primary_subscription_id=subscription.subscription_id,
+                effective_access_document=document.model_dump(mode="json"),
+                effective_access_until=now + timedelta(days=1),
+            )
+        )
+        # Put the paid product beyond the display cap to detect accidental
+        # filtering of the independent complete grant/allowance contents.
+        db.add_all(
+            BillingProductAccessScope(user_id=user.id, product_id=f"aaa_synthetic_{index:03}") for index in range(101)
+        )
+        db.commit()
+    return document
+
+
 async def test_paid_read_bounds_display_evidence_without_truncating_effective_contents(
-    paid_scenario: tuple,
+    bounded_reader_state: EffectiveState,
     postgres_session_factory: sessionmaker[Session],
     paid_client: httpx.AsyncClient,
 ) -> None:
     factory = postgres_session_factory
-    await reconcile(paid_scenario, factory)
-    with factory() as db:
-        db.add_all(
-            BillingProductAccessScope(user_id=paid_scenario[4], product_id=f"synthetic_{index:03}")
-            for index in range(101)
-        )
-        db.commit()
     before = billing_snapshot(factory)
-    response = await paid_client.get("/api/paid-access", headers=headers())
+    response = await paid_client.get("/api/paid-access", headers=headers(BOUNDED_READER_TOKEN))
     assert response.status_code == 200
     body = response.json()
     assert len(body["products"]) == 100 and not body["evidence_complete"]
-    assert body["grants"] == effective(factory)[1]["grants"] and len(body["allowances"]) == 1
+    assert body["access_revision"] == 1
+    assert bounded_reader_state.grants[0].product_id not in {item["product_id"] for item in body["products"]}
+    assert body["grants"] == effective(factory)[1]["grants"] == bounded_reader_state.model_dump(mode="json")["grants"]
+    assert len(body["allowances"]) == 1
+    assert body["allowances"] == [
+        {**item.model_dump(exclude={"cycle", "period_start", "period_end"}), "provenance": "SIMULATED"}
+        for item in bounded_reader_state.allowances
+    ]
     assert billing_snapshot(factory) == before
 
 
