@@ -1,6 +1,6 @@
 # ANY-822 — Rebuild test execution acceleration from main
 
-Status: **IN PROGRESS — Steps 1–7 complete; Steps 8–9 pending**
+Status: **IN PROGRESS — Steps 1–8 complete; Step 9 pending**
 Created: 2026-11-13
 Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
 Execution branch: `ANY-822`
@@ -39,7 +39,8 @@ Preparation completed at the owner's request:
   files in a separately verified Git stash.
 - [x] Create a new `ANY-822` from that main in the existing working directory.
   No additional worktree is required.
-- [x] Record this replacement plan. All implementation steps below are pending.
+- [x] Record this replacement plan; all implementation steps were pending at
+  preparation time.
 
 The old branch is historical research, not an implementation baseline. Its
 double-reset ordinary/schema lifecycle and unfinished xdist implementation
@@ -213,23 +214,23 @@ RAM, templates and bounded workers remain the main performance intervention.
 
 ### Documentation changes
 
-- [ ] Update the existing Testing Strategy as the single detailed authority;
+- [x] Update the existing Testing Strategy as the single detailed authority;
   reconcile README/development/AGENTS command references and links.
-- [ ] Document test-server lifecycle, configuration precedence, memory needs,
+- [x] Document test-server lifecycle, configuration precedence, memory needs,
   default workers, serial diagnosis, interruption behavior and ownership.
-- [ ] Require the cheapest test level that protects the actual invariant.
+- [x] Require the cheapest test level that protects the actual invariant.
   Keep PostgreSQL for migrations, constraints, independent commits, locks and
   recovery; use fast matrices for calculation variants and representative
   integration paths for wiring.
-- [ ] Distinguish fixture resource ownership from factory data shapes; keep
+- [x] Distinguish fixture resource ownership from factory data shapes; keep
   mutable business setup per test. For new/materially changed test helpers,
   avoid imports from another `test_*.py`; extract only justified shared setup.
-- [ ] Require controlled clocks for calendar calculations and observable
+- [x] Require controlled clocks for calendar calculations and observable
   readiness in browser tests, while preserving real timeout/cancellation/lock
   scenarios. Do not treat retries or increased deadlines as repairs.
-- [ ] Extend Agent Workflow with focused iteration, final broad verification,
+- [x] Extend Agent Workflow with focused iteration, final broad verification,
   reuse of still-valid evidence, and an assertion/guarantee map for consolidation.
-- [ ] Record compact timings and conclusions in this plan or a short results
+- [x] Record compact timings and conclusions in this plan or a short results
   document. Keep detailed logs/manifests/JUnit in `.harness` or CI artifacts;
   do not copy the previous branch's large reports into this rebuild.
 
@@ -277,7 +278,7 @@ Relevant primary references for these rules:
 
 ### Current execution evidence
 
-Steps 1–7 are complete; Steps 8–9 remain pending. Evidence is recorded below.
+Steps 1–8 are complete; Step 9 remains pending. Evidence is recorded below.
 Final runtime and stability acceptance remains Step 9 work.
 
 Preparation verification on 2026-11-13: `npm run docs:check` passed;
@@ -536,3 +537,16 @@ The frozen 24-case control is retained. Evidence: `.harness/any822-step7-2026111
 Limitations: browser verification used existing Manrope files served locally
 through Next's test hook because Google Fonts was unavailable. Final full-suite,
 coverage and timing acceptance remains Step 9; Steps 8–9 have not started.
+
+#### Step 8 — durable testing documentation (2026-11-13)
+
+Completed: updated Testing Strategy, README, Development, AGENTS and Agent
+Workflow with execution/ownership rules, test-level selection and verification
+guidance. Only documentation changed.
+
+Verification: 353 focused tooling tests passed (15.184 s); 16 command examples
+validated without dispatching database commands. Docs and diff checks passed.
+Evidence: `.harness/any822-step8-20261113/` and `.harness/api-tests/`.
+
+Limitations: full check, browsers, final measurements and stability acceptance
+remain Step 9, not started. Remote CI was not run.
