@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from threading import Barrier
+from uuid import UUID
 
 import httpx
 import pytest
@@ -55,7 +56,14 @@ def pending(migrated_database: Engine, postgres_session_factory: sessionmaker[Se
         lbx_server_username=SecretStr(""),
         lbx_server_password=SecretStr(""),
     )
-    with postgres_session_factory() as db:
+    identity = _create_pending_history(postgres_session_factory)
+    initialize_backend_consumers(config, postgres_session_factory)
+    return postgres_session_factory, config, identity
+
+
+def _create_pending_history(factory: sessionmaker[Session]) -> UUID:
+    """Create retained work independently of consumer-policy installation."""
+    with factory() as db:
         user, _ = reader_identity("synthetic-delivery")
         db.add(user)
         db.flush()
@@ -73,8 +81,7 @@ def pending(migrated_database: Engine, postgres_session_factory: sessionmaker[Se
         )
         delivery.schedule_delivery(db, identity, datetime.now(UTC), recipient_id="platform-kernel")
         db.commit()
-    initialize_backend_consumers(config, postgres_session_factory)
-    return postgres_session_factory, config, identity
+    return identity
 
 
 def saved(factory: sessionmaker[Session]) -> tuple[int, int, str, int, str | None]:
@@ -397,8 +404,12 @@ async def test_paid_commit_atomic_and_saturated_delivery_preserves_local_expiry(
         await client.aclose()
 
 
-def test_forward_index_migration_preserves_pending_history(pending: tuple, database_test_url: URL) -> None:
-    factory, _, _ = pending
+def test_forward_index_migration_preserves_pending_history(
+    migrated_database: Engine, postgres_session_factory: sessionmaker[Session], database_test_url: URL
+) -> None:
+    factory = postgres_session_factory
+    # Exercise the old index migration before installing the monotonic policy guard.
+    _create_pending_history(factory)
     before = saved(factory)
     with alembic_test_config(database_test_url) as config:
         command.downgrade(config, "20261110_0007")

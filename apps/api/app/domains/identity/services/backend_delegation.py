@@ -19,7 +19,10 @@ from app.infrastructure.queries.identity import lock_active_user_by_id_and_scope
 from app.infrastructure.persistence.backend_delegations import delegation_storage_errors, prune_expired_delegations
 from app.infrastructure.persistence.backend_delegations import DelegationUnavailableError as DelegationUnavailableError
 from app.infrastructure.queries.backend_delegations import (
-    lock_delegation, lock_parent_session, lock_user_sessions, read_delegation,
+    lock_delegation,
+    lock_parent_session,
+    lock_user_sessions,
+    read_delegation,
 )
 from app.models import AuthSession, BackendSessionDelegation, User, UserStatus
 
@@ -98,7 +101,12 @@ def issue_code(
         _require_parent(user, parent, tenant_id, region)
         now = utc_now()
         prune_expired_delegations(
-            db, user_id=user.id, tenant_id=tenant_id, region=region, consumer_id=consumer_id, now=now,
+            db,
+            user_id=user.id,
+            tenant_id=tenant_id,
+            region=region,
+            consumer_id=consumer_id,
+            now=now,
         )
         code = secrets.token_urlsafe(32)
         expires_at = min(now + timedelta(seconds=CODE_TTL_SECONDS), as_utc(parent.expires_at))

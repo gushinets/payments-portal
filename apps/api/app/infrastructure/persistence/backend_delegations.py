@@ -13,7 +13,13 @@ from app.models import AuthSession, BackendSessionDelegation
 
 
 def prune_expired_delegations(
-    db: Session, *, user_id: UUID, tenant_id: str, region: str, consumer_id: str, now: datetime,
+    db: Session,
+    *,
+    user_id: UUID,
+    tenant_id: str,
+    region: str,
+    consumer_id: str,
+    now: datetime,
 ) -> None:
     """Caller holds User and parent locks; keep token-expiry evidence for valid parents."""
     parents = select(AuthSession.id).where(

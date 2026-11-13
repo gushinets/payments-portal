@@ -173,8 +173,12 @@ def test_repeated_issuance_prunes_expired_unexchanged_codes(monkeypatch: pytest.
         monkeypatch.setattr(delegation, "utc_now", lambda: now)
         with SessionLocal() as db:
             result = delegation.issue_code(
-                db, token=auth["token"], tenant_id="anytoolai", region="ru",
-                code_challenge=delegation.pkce_challenge(VERIFIER), consumer_id="platform-kernel",
+                db,
+                token=auth["token"],
+                tenant_id="anytoolai",
+                region="ru",
+                code_challenge=delegation.pkce_challenge(VERIFIER),
+                consumer_id="platform-kernel",
             )
             rows = db.query(BackendSessionDelegation).all()
             assert len(rows) == 1
@@ -195,8 +199,11 @@ def test_issuance_cleanup_rolls_back_when_new_code_cannot_be_saved() -> None:
     try:
         response = client.post(
             "/api/backend-session-codes",
-            json={"consumer_id": "platform-kernel", "code_challenge": delegation.pkce_challenge(VERIFIER),
-                  "code_challenge_method": "S256"},
+            json={
+                "consumer_id": "platform-kernel",
+                "code_challenge": delegation.pkce_challenge(VERIFIER),
+                "code_challenge_method": "S256",
+            },
             headers={"Authorization": "Bearer " + auth["token"]},
         )
     finally:
@@ -218,7 +225,9 @@ def test_issuance_cleanup_preserves_live_credentials_expiry_evidence_and_other_o
         old_parents = []
         for state in ("active", "expired", "revoked"):
             old = AuthSession(
-                user_id=user.id, tenant_id=user.tenant_id, region=user.region,
+                user_id=user.id,
+                tenant_id=user.tenant_id,
+                region=user.region,
                 token_hash=delegation.credential_hash("synthetic-parent-" + state),
                 expires_at=now + timedelta(hours=-1 if state == "expired" else 1),
                 revoked_at=now if state == "revoked" else None,
@@ -228,12 +237,18 @@ def test_issuance_cleanup_preserves_live_credentials_expiry_evidence_and_other_o
         db.flush()
 
         def add_row(
-            owner: AuthSession, label: str, *, exchanged: bool = False, expired: bool = False,
-            consumer_id: str = "platform-kernel", retain: bool = False,
+            owner: AuthSession,
+            label: str,
+            *,
+            exchanged: bool = False,
+            expired: bool = False,
+            consumer_id: str = "platform-kernel",
+            retain: bool = False,
         ) -> str:
             token = "synthetic-token-" + label
             row = BackendSessionDelegation(
-                auth_session_id=owner.id, consumer_id=consumer_id,
+                auth_session_id=owner.id,
+                consumer_id=consumer_id,
                 code_hash=delegation.credential_hash("synthetic-code-" + label),
                 code_challenge=delegation.pkce_challenge(VERIFIER),
                 code_expires_at=now + timedelta(seconds=-1 if expired or exchanged else 60),
@@ -260,15 +275,23 @@ def test_issuance_cleanup_preserves_live_credentials_expiry_evidence_and_other_o
         db.commit()
         parent_state = {row.id: (row.expires_at, row.revoked_at) for row in db.query(AuthSession).all()}
         result = delegation.issue_code(
-            db, token=auth["token"], tenant_id="anytoolai", region="ru",
-            code_challenge=delegation.pkce_challenge(VERIFIER), consumer_id="platform-kernel",
+            db,
+            token=auth["token"],
+            tenant_id="anytoolai",
+            region="ru",
+            code_challenge=delegation.pkce_challenge(VERIFIER),
+            consumer_id="platform-kernel",
         )
         rows = db.query(BackendSessionDelegation).all()
         retained_ids.add(next(row.id for row in rows if row.code_hash == delegation.credential_hash(result.code)))
         assert {row.id for row in rows} == retained_ids
         assert {row.id: (row.expires_at, row.revoked_at) for row in db.query(AuthSession).all()} == parent_state
         identity = delegation.introspect_token(
-            db, token=live_token, tenant_id="anytoolai", region="ru", clock_skew_seconds=5,
+            db,
+            token=live_token,
+            tenant_id="anytoolai",
+            region="ru",
+            clock_skew_seconds=5,
             consumer_id="platform-kernel",
         )
         assert identity.user_id == user.id
@@ -278,7 +301,11 @@ def test_issuance_cleanup_preserves_live_credentials_expiry_evidence_and_other_o
         ):
             with pytest.raises(delegation.InvalidDelegationError) as refusal:
                 delegation.introspect_token(
-                    db, token=token, tenant_id="anytoolai", region="ru", clock_skew_seconds=5,
+                    db,
+                    token=token,
+                    tenant_id="anytoolai",
+                    region="ru",
+                    clock_skew_seconds=5,
                     consumer_id="platform-kernel",
                 )
             assert refusal.value.code == expected
