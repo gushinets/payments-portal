@@ -1,6 +1,6 @@
 # ANY-822 — Rebuild test execution acceleration from main
 
-Status: **IN PROGRESS — Steps 1–5 complete; Steps 6–9 pending**
+Status: **IN PROGRESS — Steps 1–6 complete; Steps 7–9 pending**
 Created: 2026-11-13
 Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
 Execution branch: `ANY-822`
@@ -163,14 +163,14 @@ method already exercised in ANY-766, with complete outcome accounting.
 
 ### E. Execute coverage once and wire CI
 
-- [ ] Adapt `4c0e71d` to add `check --coverage`, including `--fast --coverage`.
+- [x] Adapt `4c0e71d` to add `check --coverage`, including `--fast --coverage`.
   Run API-fast and frontend components once each with coverage enabled.
-- [ ] Change CI quality to `check --fast --coverage`, remove the two standalone
+- [x] Change CI quality to `check --fast --coverage`, remove the two standalone
   duplicate coverage executions, and preserve artifact publication.
-- [ ] Run PostgreSQL uninstrumented and parallel in a complete `check`.
+- [x] Run PostgreSQL uninstrumented and parallel in a complete `check`.
   Preserve standalone `coverage api` and `coverage api-fast` behavior and
   scope, using serial execution; do not introduce parallel coverage merging.
-- [ ] Add tmpfs to the CI PostgreSQL service and use the same four-process
+- [x] Add tmpfs to the CI PostgreSQL service and use the same four-process
   runner. Preserve existing CI checks and failure diagnostics.
 
 Expected effect: eliminate duplicate API-fast/component work in quality CI
@@ -252,7 +252,7 @@ Relevant primary references for these rules:
   small real sample, and the mixed API dispatcher on a small controlled sample.
 - [x] Collection failure, failed/crashed worker, missing/mismatched manifests
   or JUnit, skips, and interruption; validate return codes and reports.
-- [ ] Single API-fast/component execution with coverage, unchanged standalone
+- [x] Single API-fast/component execution with coverage, unchanged standalone
   coverage scope and compatible npm aliases.
 - [ ] The changed backend/component/browser tests and their guarantee map.
 
@@ -277,7 +277,7 @@ Relevant primary references for these rules:
 
 ### Current execution evidence
 
-Steps 1–5 are complete; Steps 6–9 remain pending. Evidence is recorded below.
+Steps 1–6 are complete; Steps 7–9 remain pending. Evidence is recorded below.
 Final runtime and stability acceptance remains Step 9 work.
 
 Preparation verification on 2026-11-13: `npm run docs:check` passed;
@@ -497,3 +497,18 @@ stability risk for Step 9. No deadlines were increased, retries added or asserti
 ANY-766 source objects were unavailable locally; exact port parity is unverified.
 Windows, full `check`, coverage, browsers and CI were not run. Timings are
 diagnostic; Steps 6–9 have not started.
+
+#### Step 6 — single-pass coverage and CI (2026-11-13)
+
+Completed: `check --coverage` runs API-fast and components once each; standalone
+coverage remains serial. CI uses this path, a 2 GiB PostgreSQL tmpfs and four
+workers, preserving coverage and failure artifacts.
+
+Verification: `npm run check:fast -- --coverage` passed (1,953 API-fast + 414
+component tests, 177.381 s); 342 focused checks and 27 PostgreSQL cases with
+four workers passed. CI configuration, resource cleanup, docs and diff checks
+passed. Evidence: `.harness/any822-step6-20261113/` and `.harness/api-tests/`.
+
+Limitations: complete-check routing and standalone coverage scope were checked
+by regressions; full `check`, full instrumented API, browsers and remote CI were
+not run. Final runtime/stability acceptance remains Step 9. Steps 7–9 not started.

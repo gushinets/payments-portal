@@ -3221,6 +3221,7 @@ def cmd_trivy(args: argparse.Namespace) -> None:
 
 
 def cmd_check(args: argparse.Namespace) -> None:
+    coverage = getattr(args, "coverage", False)
     check_env = canonical_check_environment()
     cmd_docs(argparse.Namespace())
     cmd_generate(argparse.Namespace(check=True))
@@ -3228,11 +3229,12 @@ def cmd_check(args: argparse.Namespace) -> None:
     cmd_lint(argparse.Namespace(target="api"))
     run([tool("npm"), "run", "test:boundaries:web"], env=check_env)
     run(
-        [tool("npm"), "--workspace", "@anytoolai/web", "run", "test:components"],
+        [tool("npm"), "--workspace", "@anytoolai/web", "run",
+         "test:components:coverage" if coverage else "test:components"],
         env=check_env,
     )
     run([tool("npm"), "run", "lint:web"], env=check_env)
-    cmd_test(
+    (cmd_coverage if coverage else cmd_test)(
         argparse.Namespace(target="api-fast", junitxml=None),
         environment=check_env,
     )
@@ -3485,8 +3487,16 @@ def api_coverage_xml_path() -> Path:
     return ROOT / ".harness" / "coverage" / "api" / "coverage.xml"
 
 
-def cmd_coverage(args: argparse.Namespace) -> None:
-    check_env = api_test_environment(args.target, canonical_check_environment())
+def cmd_coverage(
+    args: argparse.Namespace,
+    *,
+    environment: dict[str, str] | None = None,
+) -> None:
+    # Coverage stays serial, including the standalone complete-API command.
+    check_env = api_test_environment(
+        args.target,
+        canonical_check_environment() if environment is None else environment,
+    )
     coverage_xml = api_coverage_xml_path()
     coverage_xml.parent.mkdir(parents=True, exist_ok=True)
     run(
@@ -3590,6 +3600,7 @@ def build_parser() -> argparse.ArgumentParser:
     coverage.set_defaults(func=cmd_coverage)
     check = sub.add_parser("check")
     check.add_argument("--fast", action="store_true")
+    check.add_argument("--coverage", action="store_true", help="Collect API-fast and component coverage in their test runs")
     check.set_defaults(func=cmd_check)
     sub.add_parser("dev-api").set_defaults(func=cmd_dev_api)
     customer = sub.add_parser(

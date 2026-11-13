@@ -159,6 +159,45 @@ def test_dockerignore_excludes_nested_virtualenvs() -> None:
     assert "**/.venv" in patterns
 
 
+def test_quality_job_collects_coverage_without_repeating_suites() -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["quality"]["steps"]
+    checks = [step for step in steps if "check:fast" in step.get("run", "")]
+    assert len(checks) == 1
+    assert checks[0]["run"] == "npm run check:fast -- --coverage"
+    assert "continue-on-error" not in checks[0]
+    assert not any("coverage api" in step.get("run", "") for step in steps)
+    assert not any("test:components" in step.get("run", "") for step in steps)
+    for name, path in (
+        ("api-coverage", ".harness/coverage/api/"),
+        ("frontend-component-coverage", ".harness/coverage/web-components/"),
+    ):
+        upload = next(step for step in steps if step.get("with", {}).get("path") == path)
+        assert steps.index(upload) > steps.index(checks[0])
+        assert upload["if"] == "always()"
+        assert upload["with"]["name"] == name + "-${{ github.run_id }}-${{ github.run_attempt }}"
+        assert upload["with"]["if-no-files-found"] == "warn"
+        assert upload["with"]["retention-days"] == 7
+        assert upload["with"]["include-hidden-files"] is True
+
+
+def test_ci_postgres_uses_ram_and_retains_parallel_runner_diagnostics() -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    gate = workflow["jobs"]["production-gate"]
+    options = gate["services"]["postgres"]["options"]
+    assert "--tmpfs /var/lib/postgresql:rw,size=2g" in options
+    assert "--health-cmd" in options
+    postgres_step = next(step for step in gate["steps"] if step.get("name") == "Run PostgreSQL migration cycle")
+    assert "python scripts/repo.py test api-postgres --workers 4" in postgres_step["run"]
+    assert '--junitxml="$CI_ARTIFACTS/postgres-junit.xml"' in postgres_step["run"]
+    assert "--cov" not in postgres_step["run"]
+    assert "continue-on-error" not in postgres_step
+    diagnostics = next(step for step in gate["steps"] if step.get("name") == "Upload failure diagnostics")
+    assert diagnostics["if"] == "failure()"
+    assert diagnostics["with"]["include-hidden-files"] is True
+    assert set(diagnostics["with"]["path"].splitlines()) == {".harness/ci/", ".harness/api-tests/"}
+
+
 def test_browser_evidence_upload_persists_only_playwright_artifacts() -> None:
     workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
     steps = workflow["jobs"]["browser"]["steps"]
