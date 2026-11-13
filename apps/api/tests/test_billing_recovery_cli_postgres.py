@@ -310,7 +310,17 @@ async def test_billing_recovery_cli_atomic_audit_rollback(
     assert before == after
     with factory() as db:
         assert db.get(ManualReviewCase, request.case_id).case_state == "open"
-        assert db.scalar(select(func.count()).select_from(BillingStateObservation)) == observations
+        # Obtained operator point facts survive failure of the final audit.
+        # They are inventory restrictions, never a committed source/paid write.
+        retained = list(
+            db.scalars(
+                select(BillingStateObservation).where(
+                    BillingStateObservation.evidence_schema_version == "inventory-subscription-relationship:v2"
+                )
+            )
+        )
+        assert len(retained) == (1 if mode == "restore" else 0)
+        assert db.scalar(select(func.count()).select_from(BillingStateObservation)) == observations + len(retained)
     unchanged_authority(factory, purchase)
 
 

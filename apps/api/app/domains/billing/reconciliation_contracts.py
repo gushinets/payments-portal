@@ -17,6 +17,14 @@ RECONCILIATION_SCHEMA = "subscription-reconciliation:v2"
 RECONCILIATION_READ_SCHEMAS = ("subscription-reconciliation:v1", RECONCILIATION_SCHEMA)
 
 
+@dataclass(frozen=True)
+class ReadInterval:
+    """Database-clock bounds for the actual source I/O, independent of claims."""
+
+    started_at: datetime
+    finished_at: datetime
+
+
 class CommercialProof(StrEnum):
     MATCH = "COMPLETE_MATCH"
     MISMATCH = "COMPLETE_MISMATCH"

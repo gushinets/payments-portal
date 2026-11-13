@@ -28,7 +28,7 @@ class InventoryCandidateProof:
 class InventoryPointHistory:
     purchase_id: UUID
     subscription_id: UUID
-    point_observation_id: UUID | None
+    fence: int
     relationships: tuple[SubscriptionRelationship, ...]
 
 

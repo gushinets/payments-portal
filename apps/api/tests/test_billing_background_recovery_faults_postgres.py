@@ -187,18 +187,23 @@ async def test_billing_background_recovery_inventory_checks_all_affected_product
 
 
 @pytest.mark.parametrize("stale", ["operation", "claim"])
-async def test_billing_background_recovery_inventory_batch_rejects_stale_apply_atomically(
+async def test_inventory_defers_stale_products_and_rolls_back_a_lost_claim(
     background_scenario: tuple,
     postgres_session_factory: sessionmaker[Session],
     stale: str,
 ) -> None:
-    transport, _, purchase = background_scenario
+    transport, sources, purchase = background_scenario
     factory = postgres_session_factory
     first = synthetic_prepare(factory, transport, purchase, uncertain=False)
     second = historical_link(factory, first, transport, "brief_decoder", 1)
+    from apps.api.tests.test_billing_scoped_inventory_postgres import inventory
+
+    transport.subscriptions.append({**transport.subscriptions[0], "subscription_id": 9999, "state": 2})
     recovery.repair_batch(factory, step1_settings())
     claim = work.claim_work(factory, step1_settings(), WorkLane.NORMAL)
     assert claim is not None and claim.kind == recovery.INVENTORY
+    result = await inventory(sources, factory, first, claim=claim)
+    assert set(result.conflicts) == {first.id, second.id}
     with factory() as db:
         if stale == "operation":
             op = next(op for op in second.operations if op.kind == Kind.SUBSCRIPTION)
@@ -206,16 +211,13 @@ async def test_billing_background_recovery_inventory_batch_rejects_stale_apply_a
         else:
             db.get(BillingWorkItem, claim.id).lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
         db.commit()
-    with pytest.raises(BillingRefused, match="billing_work_stale|purchase_inventory_incomplete"):
-        from app.domains.purchases.inventory_contracts import InventoryResult
-
-        customer = service.customer_for_purchase(factory, step1_settings(), first)
-        apply_inventory(
-            factory,
-            claim,
-            InventoryResult(customer, (first, second), (first.id, second.id), (), True),
-            "inventory_conflict",
-        )
+    if stale == "claim":
+        with pytest.raises(BillingRefused, match="billing_work_stale"):
+            apply_inventory(factory, claim, result, "inventory_conflict")
+    else:
+        apply_inventory(factory, claim, result, "inventory_conflict")
+        queue = job(factory, recovery.INVENTORY, first.customer_id)
+        assert queue.work_state == "pending" and queue.last_error_classification == "inventory_incomplete"
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
         assert (
@@ -228,7 +230,7 @@ async def test_billing_background_recovery_inventory_batch_rejects_stale_apply_a
         )
         assert all(sub.commercial_access_status == "eligible" for sub in db.scalars(select(ExternalSubscription)))
         assert db.scalar(select(func.count()).select_from(BillingPurchaseScopeHold)) == 2
-        assert db.get(BillingWorkItem, claim.id).work_state == "running"
+        assert db.get(BillingWorkItem, claim.id).work_state == ("running" if stale == "claim" else "pending")
     for expected in (first, second):
         saved = service.read_purchase(factory, first.user_id, expected.id)
         assert all(op.state == State.BOUND for op in saved.operations)
