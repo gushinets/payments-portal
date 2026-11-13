@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 import scripts.repo as repo
+from apps.api.tests.support.settings import api_test_environment as isolated_api_environment
 from scripts.repo import (
     canonical_check_environment,
     check_canonical_persisted_model_layer,
@@ -1377,14 +1378,16 @@ def test_test_db_commands_target_only_disposable_test_server(monkeypatch: pytest
     assert invocations[1][-2:] == ["stop", "postgres"]
 
 
-def test_api_test_environment_preserves_explicit_url(monkeypatch) -> None:
+def test_api_test_environment_preserves_explicit_url(monkeypatch: pytest.MonkeyPatch) -> None:
     environment = {"TEST_POSTGRES_DATABASE_URL": "postgresql+psycopg://explicit/db_tests"}
     monkeypatch.setattr(repo, "read_runtime_env", lambda: (_ for _ in ()).throw(AssertionError()))
 
-    assert api_test_environment("api-postgres", environment) is environment
+    assert api_test_environment("api-postgres", environment) == isolated_api_environment(environ=environment)
 
 
-def test_api_test_environment_preserves_complete_explicit_postgres_configuration(monkeypatch) -> None:
+def test_api_test_environment_preserves_complete_explicit_postgres_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     environment = {
         "POSTGRES_USER_TEST": "test-user",
         "POSTGRES_PASSWORD_TEST": "test-password",
@@ -1394,7 +1397,11 @@ def test_api_test_environment_preserves_complete_explicit_postgres_configuration
     }
     monkeypatch.setattr(repo, "read_runtime_env", lambda: (_ for _ in ()).throw(AssertionError()))
 
-    assert api_test_environment("api", environment) is environment
+    result = api_test_environment("api", environment)
+    assert result == {
+        **isolated_api_environment(environ=environment),
+        "TEST_POSTGRES_DATABASE_URL": "postgresql+psycopg://test-user:test-password@localhost:5432/payments_test",
+    }
 
 
 def test_api_test_environment_rejects_partial_explicit_postgres_configuration() -> None:
@@ -1439,11 +1446,11 @@ def test_api_test_environment_ignores_empty_explicit_url(monkeypatch) -> None:
     assert result["TEST_POSTGRES_DATABASE_URL"].endswith("/payments_worktree_tests")
 
 
-def test_api_fast_test_environment_does_not_require_postgres(monkeypatch) -> None:
+def test_api_fast_test_environment_does_not_require_postgres(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(repo, "read_runtime_env", lambda: (_ for _ in ()).throw(AssertionError()))
     monkeypatch.setattr(repo, "port_is_free", lambda _: (_ for _ in ()).throw(AssertionError()))
 
-    assert api_test_environment("api-fast", {}) == {}
+    assert api_test_environment("api-fast", {}) == isolated_api_environment(environ={})
 
 
 def test_makefile_contains_only_documented_local_shortcuts() -> None:
@@ -1483,7 +1490,7 @@ def test_registration_acceptance_generator_rejects_nonliteral_text(
 
 
 def test_fast_check_passes_the_scoped_environment_to_every_subprocess(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     check_environment = {"TEMP": "worktree-temp"}
     invocations: list[tuple[list[str], dict[str, str] | None]] = []
@@ -1502,7 +1509,11 @@ def test_fast_check_passes_the_scoped_environment_to_every_subprocess(
     repo.cmd_check(argparse.Namespace(fast=True))
 
     assert len(invocations) == 6
-    assert all(environment is check_environment for _, environment in invocations)
+    assert all(
+        environment
+        == (isolated_api_environment(environ=check_environment) if "pytest" in command else check_environment)
+        for command, environment in invocations
+    )
     assert any(command[-3:] == ["ruff", "check", "."] for command, _ in invocations)
     assert any(command[-4:] == ["ruff", "format", "--check", "."] for command, _ in invocations)
     assert any("test:components" in command for command, _ in invocations)
@@ -1570,13 +1581,13 @@ def test_full_check_runs_explicit_postgres_partition(
                 "postgres",
                 "apps/api/tests",
             ],
-            check_environment,
+            api_test_environment("api-postgres", check_environment),
         )
     ]
 
 
 def test_api_coverage_writes_xml_to_stable_harness_path(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     check_environment = {"TEMP": "worktree-temp"}
@@ -1609,7 +1620,7 @@ def test_api_coverage_writes_xml_to_stable_harness_path(
                 f"--cov-report=xml:{coverage_xml}",
                 "apps/api/tests",
             ],
-            check_environment,
+            isolated_api_environment(environ=check_environment),
         )
     ]
 

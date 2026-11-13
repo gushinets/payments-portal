@@ -1,6 +1,6 @@
 # ANY-822 — Rebuild test execution acceleration from main
 
-Status: **IN PROGRESS — Step 1 complete; Steps 2–9 pending**
+Status: **IN PROGRESS — Steps 1–2 complete; Steps 3–9 pending**
 Created: 2026-11-13
 Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
 Execution branch: `ANY-822`
@@ -85,14 +85,14 @@ run is not required; final absolute runtime targets remain mandatory.
 
 ### A. Isolate test configuration
 
-- [ ] Adapt `1a58bfe`: establish safe test settings before application imports;
+- [x] Adapt `1a58bfe`: establish safe test settings before application imports;
   test processes must not consume the personal dotenv file.
-- [ ] Preserve explicit scenario overrides and apply the same environment to
+- [x] Preserve explicit scenario overrides and apply the same environment to
   pytest workers, CLI tests and other child processes.
-- [ ] Keep database configuration precedence: explicit
+- [x] Keep database configuration precedence: explicit
   `TEST_POSTGRES_DATABASE_URL`, then complete explicit `POSTGRES_*_TEST`, then
   worktree runtime configuration. Reject partial configuration.
-- [ ] Keep production settings semantics unchanged and add focused regressions
+- [x] Keep production settings semantics unchanged and add focused regressions
   for contamination, override precedence and child-process propagation.
 
 Expected effect: reproducible tests independent of developer configuration;
@@ -241,7 +241,7 @@ Relevant primary references for these rules:
 
 ### Focused verification during implementation
 
-- [ ] Settings/child-process isolation and explicit configuration precedence.
+- [x] Settings/child-process isolation and explicit configuration precedence.
 - [ ] Fresh state across tests/workers, migration seeds and mixed
   ordinary/migration ordering; real independent-commit and locking scenarios.
 - [ ] Unsafe-target rejection, collision preservation, connection-leak failure
@@ -277,9 +277,10 @@ Relevant primary references for these rules:
 
 Step 1 is complete: the original serial baseline and canonical fast verification
 are recorded against unchanged execution code at
-`2d278f62f0a2f7c4b40fb322618b268580de2301`. Steps 2–9 remain pending; no
-acceleration code or test changes have been implemented, and neither final
-absolute runtime target has been verified.
+`2d278f62f0a2f7c4b40fb322618b268580de2301`. Step 2 settings isolation and its
+verification are complete below. Steps 3–9 remain pending; RAM-backed
+storage, templates, parallel execution and coverage changes have not started,
+and neither final absolute runtime target has been verified.
 
 Preparation verification on 2026-11-13: `npm run docs:check` passed;
 `git diff --check` and the new plan's whitespace check passed. At preparation
@@ -439,3 +440,13 @@ explicitly. The complete PostgreSQL suite, complete `check`, coverage,
 browser suites and remote CI were not run in this measurement step. Full
 before/after suite measurement is not required by this plan; final absolute
 runtime targets remain Step 9 work.
+
+#### Step 2 — isolate test configuration (2026-11-13)
+
+Completed: isolated test settings and child processes from personal configuration;
+retained scenario overrides, database precedence and normal runtime dotenv behavior.
+
+Verification: `npm run check:fast` passed (1,886 API-fast + 414 component tests,
+129.235 s); 26 PostgreSQL/CLI cases, docs and diff checks passed. Added 15 settings
+regressions; all previous test IDs retained. Evidence: `.harness/any822-step2-20261113/`.
+Full PostgreSQL/check, coverage, browsers and CI remain deferred. Steps 3–9 not started.
