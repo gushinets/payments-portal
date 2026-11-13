@@ -594,6 +594,19 @@ def compose_command(config: RuntimeConfig) -> list[str]:
     return command
 
 
+def test_compose_command(config: RuntimeConfig) -> list[str]:
+    return [
+        tool("docker"),
+        "compose",
+        "--project-name",
+        f"{config.compose_project}-tests",
+        "--env-file",
+        str(RUNTIME_ENV),
+        "-f",
+        str(ROOT / "docker-compose.test.yml"),
+    ]
+
+
 def cmd_doctor(_: argparse.Namespace) -> None:
     failures: list[str] = []
     commands = (
@@ -742,14 +755,17 @@ def cmd_down(_: argparse.Namespace) -> None:
 def cmd_test_db(args: argparse.Namespace) -> None:
     config = load_runtime()
     write_runtime(config)
-    command = [
-        tool("docker"), "compose", "--project-name", f"{config.compose_project}-tests",
-        "--env-file", str(RUNTIME_ENV), "-f", str(ROOT / "docker-compose.test.yml"),
-    ]
+    runtime_env = read_runtime_env()
+    # Compose gives shell variables precedence over --env-file. Keep the
+    # disposable server at exactly the endpoint/credentials used by pytest.
+    environment = {
+        **os.environ,
+        **{name: runtime_env[name] for name in ("POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT_TEST")},
+    }
     if args.action == "up":
-        run([*command, "up", "-d", "--no-deps", "--wait", "postgres"])
+        run([*test_compose_command(config), "up", "-d", "--pull", "never", "--wait", "postgres"], env=environment)
         return
-    run([*command, "stop", "postgres"])
+    run([*test_compose_command(config), "down"], env=environment)
 
 
 def cmd_reset(args: argparse.Namespace) -> None:
@@ -3432,7 +3448,8 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
         raise HarnessError(
             "Cannot derive local PostgreSQL test configuration; runtime.env is missing: "
             + ", ".join(missing_runtime_names)
-            + ". Run python scripts/repo.py test-db up to refresh it."
+            + ". Refresh the dedicated test server configuration with:\n"
+            "  python scripts/repo.py test-db up"
         )
     if port_is_free(int(runtime_env["POSTGRES_PORT_TEST"])):
         raise HarnessError(
@@ -3444,8 +3461,8 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
 
     database_environment = {
         **runtime_env,
-        "POSTGRES_DB": f"{runtime_env['POSTGRES_DB']}_tests",
         "POSTGRES_PORT": runtime_env["POSTGRES_PORT_TEST"],
+        "POSTGRES_DB": f"{runtime_env['POSTGRES_DB']}_tests",
     }
     environment[test_database_url_name] = host_database_url_from_runtime(database_environment)
     return environment
