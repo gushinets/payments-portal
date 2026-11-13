@@ -1,6 +1,6 @@
 # ANY-822 — Rebuild test execution acceleration from main
 
-Status: **IN PROGRESS — Steps 1–8 complete; Step 9 pending**
+Status: **COMPLETE — local review fixes and acceptance passed; remote CI not run**
 Created: 2026-11-13
 Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
 Execution branch: `ANY-822`
@@ -259,27 +259,27 @@ Relevant primary references for these rules:
 
 ### Final acceptance on the implementation revision
 
-- [ ] Run `npm run check -- --coverage` once on the final source state and
+- [x] Run `npm run check -- --coverage` once on the final source state and
   measure its PostgreSQL stage and complete non-browser wall time.
-- [ ] Run `npm run typecheck:web` and the complete Playwright suite because
+- [x] Run `npm run typecheck:web` and the complete Playwright suite because
   browser tests change. Reuse valid checks unless affected code or conditions
   change; do not routinely run full fast/API partitions again before `check`.
-- [ ] Include collection, database creation/cloning, tests and cleanup in
+- [x] Include collection, database creation/cloning, tests and cleanup in
   runtime figures. Report server startup separately. Use installed dependencies
   and available browsers, retain caches consistently, and state machine/load,
   tools, storage, process count, SHA, commands, outcomes and exclusions.
-- [ ] Confirm PostgreSQL <=10 minutes and complete non-browser `check`
+- [x] Confirm PostgreSQL <=10 minutes and complete non-browser `check`
   <=15 minutes. If either target fails, profile and correct the measured
   bottleneck within scope; do not declare completion from a successful port.
-- [ ] Inspect the final diff, generated-file status and all new files. Record
+- [x] Inspect the final diff, generated-file status and all new files. Record
   each check as passed/failed/blocked/skipped with its actual revision.
-- [ ] Validate CI configuration locally; record actual remote CI separately
+- [x] Validate CI configuration locally; record actual remote CI separately
   after normal authorized publication. Local checks do not imply a CI PASS.
 
 ### Current execution evidence
 
-Steps 1–8 are complete; Step 9 remains pending. Evidence is recorded below.
-Final runtime and stability acceptance remains Step 9 work.
+Steps 1–9 and local review fixes are complete; current acceptance is summarized
+in Step 9. Earlier entries retain the status at their own handoffs.
 
 Preparation verification on 2026-11-13: `npm run docs:check` passed;
 `git diff --check` and the new plan's whitespace check passed. At preparation
@@ -550,3 +550,48 @@ Evidence: `.harness/any822-step8-20261113/` and `.harness/api-tests/`.
 
 Limitations: full check, browsers, final measurements and stability acceptance
 remain Step 9, not started. Remote CI was not run.
+
+#### Step 9 — final acceptance and review fixes (2026-11-13)
+
+Verified on `8496803c50d9b5153444290bfbcdedbcd4cfd351` plus the local review
+fixes. Implementation and local acceptance are complete; remote CI was not run.
+
+Review fixes: invalidate stale JUnit before startup checks, retain completed
+worker results after launch failures, avoid duplicate reports on interruption,
+and document test-server startup. Inventory tests now establish queue order
+explicitly; recovery tests use an isolated Kernel transport. Assertions,
+production deadlines and retries were not weakened.
+
+- **PASSED:** latest `npm run check -- --coverage`, **622.442 s**:
+  **1,967 API-fast**, **414 components**, documentation, generation,
+  architecture, lint/format and web build. Coverage ran once per applicable suite.
+- **PASSED:** PostgreSQL within that check, **997 tests**, four workers,
+  **407.486 s**, exact expected/JUnit IDs and no failures or skips.
+  Both absolute performance targets were met.
+- **PASSED:** regressions reproduced the runner and inventory defects before
+  fixes; afterwards **47 runner tests** and **33 affected PostgreSQL tests** passed.
+- **REUSED PASS:** web typecheck; Playwright **244 passed, 2 existing opt-in
+  skips**, plus **4 React runtime tests**, without retries. UI/browser sources
+  are unchanged by the review fixes. CI YAML/workflow contracts and shell syntax
+  were checked locally.
+- Frozen 24-case control: excluded warm-up **13.188 s**; measured runs
+  **13.334 / 13.373 / 13.243 s**, median **13.334 s**, versus the original
+  **73.228 s** median. Inputs/tools were retained; disk/serial changed to
+  tmpfs/templates/two actual workers. The noisy baseline does not establish
+  a stable speedup factor.
+
+An intermediate full check failed on inventory ordering and HTTP cleanup.
+The final check passed after the fixes above; the isolated cleanup timeout's
+original cause remains unestablished.
+
+Verification used isolated PostgreSQL 18.4 servers with a 2 GiB tmpfs and normal
+durability settings. Timings include collection and fixture cleanup, excluding
+server startup. Owned databases/containers were cleaned; existing resources
+were preserved. Builds/browser tests used cached Manrope fonts.
+Remote CI, Windows, live-source opt-in journeys, production-image/network checks
+and full serial API coverage remain unverified.
+
+Detailed results, source/environment fingerprints and startup timings remain in
+`.harness/any822-step9-20261113/`,
+`.harness/any822-review-fixes-81411570eab5/` and
+`.harness/any822-strong-fixes-6747e01dd3d5/`.

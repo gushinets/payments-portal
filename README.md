@@ -86,9 +86,13 @@ design system, using navy/amber, flat dark panels and compact styling.
 6. Run the canonical checks:
 
    ```bash
-   npm run check:fast
+   python scripts/repo.py test-db up
    npm run check
+   python scripts/repo.py test-db stop
    ```
+
+   Use `npm run check:fast` for PostgreSQL-free feedback. Stop the dedicated
+   test server only after its tests finish.
 
 Runtime state and test evidence are written to the ignored `.harness/`
 directory. Each Git worktree receives an isolated Compose project, database,

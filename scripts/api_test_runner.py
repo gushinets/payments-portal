@@ -358,17 +358,22 @@ def run_api_tests(
     arguments: Sequence[str] = (),
     junitxml: Path | None = None,
 ) -> RunnerResult:
-    if not 1 <= workers <= DEFAULT_POSTGRES_WORKERS or (
-        target == "api-fast" and workers != 1
-    ):
-        raise RunnerError("Workers must be 1–4; api-fast supports only --workers 1")
-    arguments = validate_arguments(arguments, target, root)
     directory = artifacts / f"{target}-{uuid.uuid4().hex}"
-    directory.mkdir(parents=True)
-    print(f"API test artifacts: {directory}", flush=True)
     if junitxml is not None:
         # A hard-killed parent must not leave an older success at the requested path.
         merge_junit([], junitxml, [f"API test run has not completed: {directory}"])
+    try:
+        if not 1 <= workers <= DEFAULT_POSTGRES_WORKERS or (
+            target == "api-fast" and workers != 1
+        ):
+            raise RunnerError("Workers must be 1–4; api-fast supports only --workers 1")
+        arguments = validate_arguments(arguments, target, root)
+        directory.mkdir(parents=True)
+    except (OSError, RunnerError) as exc:
+        if junitxml is not None:
+            merge_junit([], junitxml, [f"API test startup failed: {exc}"])
+        raise
+    print(f"API test artifacts: {directory}", flush=True)
     # Clear ambient addopts so -n/--lf/report overrides cannot silently change this run.
     environment = {**environment, "PYTEST_ADDOPTS": ""}
     partitions = (
@@ -377,7 +382,7 @@ def run_api_tests(
         else [Partition.POSTGRES if target == "api-postgres" else Partition.FAST]
     )
     errors: list[str] = []
-    roots: list[ET.Element] = []
+    reports: dict[Path, ET.Element] = {}
     returncodes: list[int] = []
     interrupted = False
     worker_failed = False
@@ -451,8 +456,9 @@ def run_api_tests(
                         invocations, assignments, codes, strict=True
                     ):
                         try:
-                            report = read_junit(invocation.directory / "junit.xml")
-                            roots.append(report)
+                            report_path = invocation.directory / "junit.xml"
+                            report = read_junit(report_path)
+                            reports[report_path] = report
                             actual = read_manifest(
                                 invocation.directory / "manifest.json", code
                             )["nodeids"]
@@ -470,19 +476,23 @@ def run_api_tests(
                             errors.append(str(exc))
                 except RunnerError as exc:
                     errors.append(str(exc))
-    except KeyboardInterrupt:
-        interrupted = True
+    except (KeyboardInterrupt, OSError) as exc:
+        interrupted = isinstance(exc, KeyboardInterrupt)
+        # execute() has stopped and joined every child it started. Preserve
+        # their completed/partial reports, including after a later spawn fails.
         for invocation in invocations:
-            if (invocation.directory / "junit.xml").is_file():
+            report_path = invocation.directory / "junit.xml"
+            if report_path not in reports and report_path.is_file():
                 try:
-                    roots.append(read_junit(invocation.directory / "junit.xml"))
-                except RunnerError as exc:
-                    errors.append(str(exc))
+                    reports[report_path] = read_junit(report_path)
+                except RunnerError as report_error:
+                    errors.append(str(report_error))
         errors.append(
             "API test run interrupted; children stopped and joined. Inspect interrupted.json for forced termination."
+            if interrupted
+            else f"Cannot execute test process: {exc}"
         )
-    except OSError as exc:
-        errors.append(f"Cannot execute test process: {exc}")
+    roots = list(reports.values())
     if not roots and not errors:
         errors.append("No API tests selected")
     merge_junit(roots, directory / "junit.xml", errors)

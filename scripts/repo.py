@@ -3456,18 +3456,28 @@ def cmd_test(
     *,
     environment: dict[str, str] | None = None,
 ) -> None:
-    from scripts.api_test_runner import DEFAULT_POSTGRES_WORKERS, RunnerError, run_api_tests
+    from scripts.api_test_runner import DEFAULT_POSTGRES_WORKERS, RunnerError, merge_junit, run_api_tests
 
-    workers = getattr(args, "workers", None)
-    if workers is None:
-        workers = 1 if args.target == "api-fast" else DEFAULT_POSTGRES_WORKERS
+    junitxml = Path(args.junitxml).resolve() if args.junitxml else None
+    if junitxml is not None:
+        merge_junit([], junitxml, [f"API test run has not completed: preparing {args.target}"])
     try:
+        workers = getattr(args, "workers", None)
+        if workers is None:
+            workers = 1 if args.target == "api-fast" else DEFAULT_POSTGRES_WORKERS
         if not 1 <= workers <= DEFAULT_POSTGRES_WORKERS or (args.target == "api-fast" and workers != 1):
             raise RunnerError("Workers must be 1–4; api-fast supports only --workers 1")
         check_env = api_test_environment(
             args.target,
             canonical_check_environment() if environment is None else environment,
         )
+    except (HarnessError, OSError, RunnerError) as exc:
+        if junitxml is not None:
+            merge_junit([], junitxml, [f"API test startup failed: {exc}"])
+        if isinstance(exc, RunnerError):
+            raise HarnessError(str(exc)) from exc
+        raise
+    try:
         result = run_api_tests(
             root=ROOT,
             artifacts=HARNESS_DIR / "api-tests",
@@ -3475,7 +3485,7 @@ def cmd_test(
             workers=workers,
             environment=check_env,
             arguments=getattr(args, "pytest_args", ()),
-            junitxml=Path(args.junitxml).resolve() if args.junitxml else None,
+            junitxml=junitxml,
         )
     except RunnerError as exc:
         raise HarnessError(str(exc)) from exc
