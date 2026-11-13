@@ -2,6 +2,7 @@ version: 2
 
 updates:
   - package-ecosystem: "npm"
+    open-pull-requests-limit: 0
     directory: "/"
     schedule:
       interval: "weekly"
@@ -15,6 +16,7 @@ updates:
       prefix: "ANY-84 -"
 
   - package-ecosystem: "uv"
+    open-pull-requests-limit: 0
     directory: "/apps/api"
     schedule:
       interval: "weekly"
@@ -28,6 +30,7 @@ updates:
       prefix: "ANY-84 -"
 
   - package-ecosystem: "docker"
+    open-pull-requests-limit: 0
     directories:
       - "/apps/api"
       - "/apps/web"
@@ -43,6 +46,7 @@ updates:
       prefix: "ANY-84 -"
 
   - package-ecosystem: "docker-compose"
+    open-pull-requests-limit: 0
     directory: "/"
     schedule:
       interval: "weekly"
@@ -56,6 +60,7 @@ updates:
       prefix: "ANY-84 -"
 
   - package-ecosystem: "github-actions"
+    open-pull-requests-limit: 0
     directory: "/"
     schedule:
       interval: "weekly"
