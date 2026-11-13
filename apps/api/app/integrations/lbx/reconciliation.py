@@ -20,7 +20,13 @@ from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.calendar import normalize_access_end, normalize_calendar
 from app.integrations.lbx.customer import LbxUser
 from app.integrations.lbx.dto import LbxRead, LbxTariff
-from app.integrations.lbx.errors import LbxError, LbxResponseInvalid, LbxScopeMismatch
+from app.integrations.lbx.errors import (
+    LbxAuthenticationFailed,
+    LbxError,
+    LbxResponseInvalid,
+    LbxScopeForbidden,
+    LbxScopeMismatch,
+)
 from app.integrations.lbx.financial import (
     EMPTY_CALENDAR,
     Agreement,
@@ -315,6 +321,12 @@ async def timely_point[T](read: Callable[[], Awaitable[T]], budget: PreflightBud
         raise
     budget.check()
     return value
+
+
+def source_scope_unproven(proof: SubscriptionProof) -> bool:
+    """Recognize retained read failures at the owner of their diagnostic encoding."""
+    codes = {LbxAuthenticationFailed().code, LbxScopeForbidden().code}
+    return any(reason.rsplit(":", 1)[-1] in codes for reason in proof.reasons)
 
 
 async def _agreement_has_competitor(

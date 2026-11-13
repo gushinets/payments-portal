@@ -14,6 +14,15 @@ from app.models import (
 )
 
 RECONCILIATION_SCHEMA = "subscription-reconciliation:v1"
+RECONCILIATION_READ_SCHEMAS = (RECONCILIATION_SCHEMA,)
+
+
+@dataclass(frozen=True)
+class ReadInterval:
+    """Database-clock bounds for the actual source I/O, independent of claims."""
+
+    started_at: datetime
+    finished_at: datetime
 
 
 class CommercialProof(StrEnum):

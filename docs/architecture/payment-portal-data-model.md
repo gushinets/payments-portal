@@ -1,7 +1,7 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-11-10 (ANY-765 accepted terms and paid-access schema; ANY-812 policy clarification)
+Last updated: 2026-11-13 (ANY-832 retained inventory evidence; physical schema unchanged)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
@@ -324,6 +324,23 @@ not apply those source facts again. A `primary-selection:v1` observation links
 the chosen source to its discovery; selection, paid state, causal revision and
 outbox share the final inventory transaction. Later inventory failures cannot
 roll back earlier authoritative source/paid transactions.
+`inventory-subscription-relationship:v2` uses `target_product_discovery` with
+both access-scope and subscription provenance. Append-only observations retain
+normalized bound agreement/tariff relationships from discovery, supplemental
+point reads and ordinary/operator canonical reads independently of later apply.
+They carry permanent provenance and the actual database-clock read interval;
+`observed_at` is the read's finish time. Ordinary supplements are restriction-only.
+An operator supplement can establish a resolving cutoff only after the shared
+source-claim validator accepts the original complete owned proof. Cutoffs exclude
+only facts whose reads finished strictly before the resolving read began.
+Legacy v1 supplements without intervals use `observed_at` as a conservative time
+upper bound and cannot establish resolving cutoffs. Claim fences retain ownership
+meaning, not chronological ordering. These observations never update canonical
+source receipts, paid state, bindings or review resolution. This evidence format
+requires no table or migration. The
+[inventory runbook](../engineering/billing-background-operations.md#inventory-history-and-admission)
+defines retention, product applicability and strict financial admission.
+
 Customer and financial restrictions retain their existing fence/lease
 invalidation and reduce paid state in the same caller transaction. Customer
 conflicts affect all dependent products; product restrictions preserve independent

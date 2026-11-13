@@ -1,193 +1,169 @@
-# ANY-832 implementation plan
+# ANY-832 implementation record
 
-Status: **COMPLETE** — steps 1–5 implemented and locally verified; production gates unchanged.
-Issue: [ANY-832](https://linear.app/paveldik/issue/ANY-832/fix-deferred-pr-164-inventory-completeness-and-calendar-allowance-edge)
-Predecessor: [PR #164](https://github.com/gushinets/payments-portal/pull/164)
-Execution branch: `ANY-832`.
+Status: **IMPLEMENTED LOCALLY; focused verification passed; full-suite verification incomplete.**
+Updated: 2026-11-13.
+Issue: [ANY-832](https://linear.app/paveldik/issue/ANY-832/fix-deferred-pr-164-inventory-completeness-and-calendar-allowance-edge).
+Predecessor: [PR #164](https://github.com/gushinets/payments-portal/pull/164).
+Branch: `ANY-832`; PR base: `main`.
 
-## Goal and boundaries
+This completed implementation plan records the branch changes and uncommitted
+follow-up on HEAD `187fe133b71fe24ceb9b0464aec29fe3c97facde`, with merge base
+`2d278f62f0a2f7c4b40fb322618b268580de2301`. It describes implemented behavior and
+verification limits, not instructions to repeat the implementation or merge approval.
+Billing authority remains [ADR 0005](../../architecture/decisions/0005-external-billing-boundary.md)
+and its accepted specifications and dated decisions.
 
-Prevent primary selection when inventory is incomplete for any implicated
-product. Support coherent annual calendar cycles outside January, including
-first allowance issuance through the full normalizer. Preserve established
-allowances across equivalent timestamp encodings.
+## Implemented outcome and scope
 
-Follow the [root guide](../../../AGENTS.md),
-[API guide](../../../apps/api/AGENTS.md),
-[coding conventions](../../engineering/CODING_CONVENTIONS.md) and billing
-authority in [ADR 0005](../../architecture/decisions/0005-external-billing-boundary.md).
+ANY-832 preserves unresolved cross-product inventory contradictions, allows
+independently proven product decisions and corrects supported calendar allowance
+edge cases. Public HTTP/Kernel contracts, permanent bindings, accepted terms,
+finite source trust and production enablement gates are unchanged. No new table,
+migration, dependency, catalog mirror, background process or durable decision-attempt
+subsystem was introduced. ANY-766 remains a separate integration; it is not a
+prerequisite for implementing ANY-832.
 
-Keep public APIs, Kernel contracts, persisted calendar formats and issued
-allowances unchanged. No migration or Kernel implementation is required.
-Preserve accepted purchase terms, permanent bindings, finite source trust,
-leases/fences, authoritative negatives and production-enablement gates.
-No live provider writes or production enablement are part of this plan.
+### Inventory collection and history
 
-## Implementation steps
+[Composition](../../../apps/api/app/composition/purchase_inventory.py) owns bounded
+source I/O and database-clock read intervals. The shared
+[fact reducer](../../../apps/api/app/domains/purchases/inventory_facts.py) combines
+permanent bindings, agreement ownership, accepted tariff matches and observed
+relationships into product implications. Candidate-local failures preserve every
+already implicated product as incomplete; authorization/scope, discovery and
+shared-budget failures remain global.
 
-### 1. Include every implicated product in inventory completeness
+[Retained history](../../../apps/api/app/domains/billing/inventory_history.py)
+keeps contradictory bound relationships across scans, including when the source
+later disappears from listings and its point read fails. Actual read intervals
+order facts; an earlier claim fence cannot hide a later contradiction. Ordinary
+canonical reads retain restrictions independently before apply, so an expired
+work/source lease cannot discard an obtained contradiction. Such a supplemental
+write cannot clear history; resolving evidence requires committed canonical apply
+or an operator proof accepted by the shared source-claim validator.
 
-- [x] Add failing PostgreSQL regressions before changing the collector.
-- [x] In [purchase_inventory.py](../../../apps/api/app/composition/purchase_inventory.py),
-  calculate implicated products as the union of permanent subscription binding,
-  agreement ownership and matching accepted tariffs.
-- [x] Accumulate discovery and point relationships before early exits. Failed
-  reads and list/point contradictions leave every implicated product incomplete,
-  even when initial and final listings agree.
-- [x] Use the same relationship rule for final discovery verification. Preserve
-  unrelated-product independence, original recovery, consistent ended/closed
-  controls and stricter customer-wide financial CREATE admission. Shared
-  authentication, scope, deadline and cleanup failures remain customer-wide.
+The [storage reference](../../architecture/payment-portal-data-model.md#reconciliation-and-access-tables)
+defines supplemental v2 provenance and legacy v1 handling. The
+[runbook](../../engineering/billing-background-operations.md#inventory-history-and-admission)
+defines interval ordering, product applicability and admission rules.
 
-**Acceptance:** automatic and audited primary selection reject unresolved
-candidates for every implicated product; healthy unrelated products remain
-selectable. Cover failed subscription/agreement GETs, cross-product ownership
-and tariffs, list/point disagreements, conflicts and terminal controls in the
-scoped-inventory and paid-access review-regression suites.
+### Validation and application
 
-### 2. Support annual calendar cycles outside January
+[Inventory validation](../../../apps/api/app/domains/purchases/inventory.py)
+separates common structural checks, product applicability and strict customer-wide
+admission. A review or tariff change on A leaves B applicable only when B's decision
+is unaffected. Selected-source and participating-source receipts remain exact.
+Financial CREATE, admission blocking and `restore-original` additionally check
+all used source receipts/fences, even when relationship sets have not changed.
+The shared [claim/receipt validator](../../../apps/api/app/domains/billing/reconciliation_validation.py)
+is read-only and grants no access by itself.
 
-- [x] Add failing date-only and explicitly zoned annual regressions.
-- [x] In [paid_cycles.py](../../../apps/api/app/domains/billing/paid_cycles.py),
-  remove only the January requirement for `year / calendar_month`.
-- [x] Preserve the first day of the activation month, accepted period length,
-  calendar arithmetic and frozen original anchor. Reject changed phase, including
-  October activation followed by a January annual start.
+[Final application](../../../apps/api/app/domains/billing/discovery.py) preflights
+all product actions under the user lock before writes. Stale products are deferred
+through the existing customer job; applicable products, paid revision and outbox
+commit together. A newer enqueue hint remains pending. Lost work ownership rolls
+back the entire final apply. Audited `select-primary` retains its command, case,
+own-source and target-product checks; refusal leaves the review open.
 
-**Acceptance:** coherent non-January cycles classify as FIRST, equivalent repeats
-as SAME with unchanged key/allowance ID, and the next full period as LATER.
-Cover November/January, leap years, multi-year lengths and invalid lengths/phases
-in policy and PostgreSQL allowance-history tests. Preserve monthly behavior,
-inclusive date-only ends, half-open timestamp ends and precision safeguards.
+### Calendar allowances
 
-### 3. Preserve the established calendar frame across equivalent rereads
+- Annual `calendar_month` periods start in the activation month, including
+  non-January starts, with the accepted duration and original phase preserved.
+- A first supported timestamp cycle may begin at the proven first-day month
+  boundary before mid-month activation. Arbitrary earlier starts remain invalid.
+- Equivalent timestamp offsets use the established frame for the same
+  subscription/component/metric. SAME preserves the entire frozen allowance
+  row and ID; LATER creates exactly one new allowance for that metric/cycle.
+  Equivalent rereads with unchanged semantics and unexpired deadlines do not
+  create extra paid revisions or outbox updates; finite trust may renew.
+- Date-only inclusive and explicitly zoned timestamp half-open semantics remain
+  distinct. Naive/mixed input gains no invented timezone. Changed duration or
+  phase omits the affected allowance without rewriting history.
 
-- [x] Add a failing PostgreSQL regression through the real normalizer, persisted
-  allowance history and shared source apply.
-- [x] Add `established_calendar: CalendarEvidence | None = None` to
-  `ReconciliationSubject`. During `claim_reconciliation`, after provenance checks,
-  load the first issued calendar for the exact subscription, service component
-  and metric using the ordered allowance-history query.
-- [x] Pass that immutable context to
-  [calendar.py](../../../apps/api/app/integrations/lbx/calendar.py). For
-  `calendar_month` with a proven historical offset, convert explicitly zoned
-  activation into that offset before deriving month start. Compute the anchor;
-  do not substitute the historical anchor.
-- [x] Normalize before saving `SubscriptionProof`; retain original source
-  strings. Keep the shared HTTP/worker/inventory/operator path database-free in
-  Integration and preserve current-history and fencing checks during apply.
-- [x] Retain initial behavior without suitable history, including unbound
-  candidates, purchases without technical terms and legacy rows. Do not infer
-  timezones for naive or mixed-precision input.
+The [cycle runbook](../../engineering/billing-background-operations.md#cycle-and-immutable-allowance-identity)
+owns operational semantics. Classification remains in
+[paid_cycles.py](../../../apps/api/app/domains/billing/paid_cycles.py), with source
+normalization and retained history feeding the existing allowance writer.
 
-**Acceptance:** equivalent `+03:00`/`Z` rereads preserve the complete frozen
-allowance row, ID, key and quantity. With unchanged semantics and unexpired
-deadlines, effective paid state, revision and outbox remain unchanged; source
-trust renewal is allowed. Use fresh sessions and cover positive/negative offsets,
-month crossings, a valid next cycle, genuine changes and unrelated history.
+## ANY-766 integration handoff
 
-### 4. Preserve bound point-read product relationships — REV-1
+Combined checks used these exact inspected revisions:
 
-- [x] Add PostgreSQL regressions with distinct accepted tariffs for A and B:
-  A's canonical subscription/agreement IDs remain bound, but its point read
-  returns B's tariff. Cover unchanged old-tariff listings and omission from both
-  listings through real acceptance, reconciliation and primary writes.
-- [x] In [reconciliation_contracts.py](../../../apps/api/app/domains/billing/reconciliation_contracts.py),
-  retain point agreement/tariff relationships in a small provider-neutral
-  structure. Populate it at the validated Integration boundary for every timely
-  successful point read, including MISMATCH/INCOMPLETE results. Failed or absent
-  reads supply none. Keep point-URL resource selection without self-ID comparison.
-- [x] Carry the optional relationship through shared read/apply, serialization,
-  stored observation comparison, operator `reuse` and original recovery.
-  Preserve compatibility with observations lacking it; absence proves no
-  candidate irrelevant.
-- [x] In [purchase_inventory.py](../../../apps/api/app/composition/purchase_inventory.py),
-  accumulate permanent, accepted, discovery and all point implications before
-  fast paths or mismatch/omission handling. Later observations cannot erase
-  earlier implications or contradictions, including after a terminal read.
-- [x] Preserve committed negatives, leases/fences, unrelated-product independence
-  and customer-wide financial admission. Relationships do not authorize rebind,
-  adoption, accepted-term changes or another financial CREATE. Add no catalog
-  mirror or extra provider reread to recover already obtained facts.
+- [Portal PR #167](https://github.com/gushinets/payments-portal/pull/167):
+  `ec10983ef174fb59ecbf3dcf714a2f75647f8de1`.
+- [Kernel PR #267](https://github.com/gushinets/anytoolai-platform/pull/267):
+  `9c00d812a5077455a351a352b190cd58c383ea97`.
 
-**Acceptance:** B remains incomplete; automatic primary stays unset;
-`require_clear(..., primary=True)` refuses selection; attempted audited selection
-leaves its review open. Proven A conflicts remain durable; unrelated C remains
-selectable. Preserve consistent ended/closed controls.
+These are verification pins, not a claim about the latest PR state. The temporary
+combination preserved both implementations; the independent ANY-832 branch does
+not contain ANY-766's runtime or migration changes.
 
-**Checks:** extend [scoped inventory](../../../apps/api/tests/test_billing_scoped_inventory_postgres.py)
-and [paid-access review regressions](../../../apps/api/tests/test_paid_access_review_regressions_postgres.py).
-Cover successful point followed by unavailable tariff policy, operator reuse,
-serialization and absent optional relationships. Use existing source/operator
-fixtures; do not mock the collector or writer.
+When integrating, preserve the following at the overlapping composition,
+`billing/discovery.py`, `billing/reconciliation.py` and
+`billing/reconciliation_contracts.py` boundaries:
 
-### 5. Admit the first supported calendar timestamp cycle end to end — REV-2
+- ANY-832's read intervals, `established_calendar`, `point_relationship`,
+  supplemental history, shared claim/receipt validation, product preflight and
+  queue-hint handling. Ordinary read/refused-apply retention and strict
+  CREATE/restore receipts must survive the merge.
+- ANY-766's `MeteringPolicy` at paid-writer calls, v2 canonical and
+  primary-selection writers, activation receipts and immutable observation guards.
+  ANY-832 writes canonical v1; after integration, history and receipt readers use
+  the owner's `RECONCILIATION_READ_SCHEMAS` vocabulary accepting v1 and v2.
+  Supplemental relationship v2 is a separate schema from canonical v2.
+- The sole paid-state writer, frozen technical ownership, AccessSnapshot V3,
+  P/R separation and recipient-specific delivery. Kernel remains the authority
+  for used/reserved quantities; inventory admission does not consume usage.
 
-For `year / calendar_month`, activation `2026-11-11T12:34:56+03:00` and cycle
-`[2026-11-01T00:00:00+03:00, 2027-11-01T00:00:00+03:00)`,
-before the fix `_calendar_complete()` rejected the cycle because its start
-preceded activation. The classifier supported it, but the full normalizer
-returned `cycle=None`.
+## Verification record
 
-- [x] Reproduce the failure through simulated LBX HTTP, the actual parser,
-  `normalize_subscription()`, shared source apply and PostgreSQL allowance
-  issuance. Accept an annual offer through the real local acceptance path;
-  do not edit a monthly accepted snapshot or inject prepared `CalendarEvidence`.
-- [x] In [LBX reconciliation](../../../apps/api/app/integrations/lbx/reconciliation.py),
-  make start containment respect `calendar_month`: the first period may start
-  at the proven first-day boundary of the activation month before activation.
-  Use the same explicit frame as
-  [calendar normalization](../../../apps/api/app/integrations/lbx/calendar.py),
-  including established history. Reject arbitrary earlier starts.
-- [x] Keep [cycle classification](../../../apps/api/app/domains/billing/paid_cycles.py)
-  responsible for accepted duration, phase, frozen anchor, SAME/LATER and no
-  backfill. Preserve ordering, finite ends, instance-based anchors and
-  naive/mixed-precision safeguards. Cover both monthly and annual
-  `calendar_month`; do not infer a provider timezone.
-- [x] Commit the first allowance, reopen sessions, claim and reread SAME, then
-  apply a coherent next annual cycle. SAME preserves the full frozen row,
-  ID/key/quantity and, without other semantic changes or expired deadlines,
-  effective state/revision/outbox. Trust renewal is allowed. LATER creates
-  exactly one allowance and retains the original frame. Keep clocks consistent
-  with cycles, source-read deadlines and leases.
-- [x] Cover positive/negative offsets, exact-boundary activation, date-only
-  input, monthly behavior and an instance-based cycle starting before activation.
-  Wrong boundaries, duration or phase must omit the metric allowance without
-  rewriting history. Retain step 3's equivalent-offset controls.
+The following results were recorded on 2026-11-13. The final code correction
+covered REV-6 (ordinary read lost after refused apply) and REV-7 (strict admission
+accepted a stale source receipt). Earlier REV-3/4/5 and PLAN-1/2 regressions remain
+in the affected suites. This documentation cleanup does not constitute a new
+runtime test run.
 
-**Acceptance:** supported annual timestamp input produces the first allowance
-through the full normalizer and shared writer; SAME/LATER satisfy the guarantees
-above. Naive activation combined with date-only bounds remains unresolved and
-must not acquire UTC bounds.
+### Final local correction
 
-**Checks:** extend [subscription normalization](../../../apps/api/tests/test_billing_subscription_reconciliation.py),
-[paid reconciliation](../../../apps/api/tests/test_paid_access_reconciliation_postgres.py)
-and, where needed, [policy tests](../../../apps/api/tests/test_paid_access_policy.py).
-Reuse history tests for arithmetic/immutability; add the missing input-to-writer
-path rather than duplicating the full matrix.
+- **198 distinct PostgreSQL cases passed on the ANY-832 working tree:** nine
+  [admission regressions](../../../apps/api/tests/test_billing_inventory_admission_postgres.py)
+  and 189 cases across scoped inventory, inventory refactoring/history, recovery
+  CLI/review and paid-access inventory-failure suites. The nine new cases first
+  reproduced five failures with four passing controls. They cover timely reads
+  followed by lease refusal, omitted/unavailable sources, strict CREATE/restore
+  refusal and successful independent-product controls. Four lease scenarios were
+  rerun after making their timing precondition explicit; they are included in
+  198, not additional cases. Application timeouts were unchanged.
+- **`npm run check:fast` passed:** 1940 API, 414 web component and 38 boundary
+  tests, plus generated contracts, architecture, docs, Ruff/format and web lint.
+  The run explicitly used `KERNEL_MOCK_ENABLED=0`.
+- **41 distinct combined PostgreSQL cases passed** with the ANY-766 pins above:
+  the nine new admission cases, all 30 `test_paid_usage_postgres.py` cases and
+  two legacy canonical/supplemental history cases. These exercise v1/v2 readers
+  and immutable observations as well as strict admission.
+- `git diff --check` passed. Follow-up changes remained unstaged and uncommitted.
 
-## Verification and completion
+### Earlier evidence and remaining limits
 
-- [x] Establish the step 5 regression before the fix, then run its focused
-  normalization/policy and PostgreSQL suites.
-- [x] Recheck automatic/audited primary selection, first issuance, SAME/LATER,
-  unrelated-product independence, finite trust, immutable history and fencing.
-- [x] Run `npm run check:fast`, `npm run docs:check` and `git diff --check` after
-  step 5. Reuse valid results when code, environment and coverage still match.
-- [x] Inspect the final diff and new files for unrelated changes.
+Before REV-6/REV-7, related normalization/history/policy unit tests passed
+**205 cases**, and the pinned combination passed **110 PostgreSQL cases**.
+Combined HTTP acceptance passed **2 tests, 1 deselected** in ANY-766's
+`tools/joint_paid_runtime/tests/test_paid_runtime.py`:
+`test_real_joint_paid_execution_replay_lifecycle_and_retained_storage` and
+`test_review_policy_cutover_preserves_accepted_work_and_recipient_history`.
+These used real Portal/Kernel HTTP, authentication and PostgreSQL, with external
+LBX/AI and the second backend simulated. They covered equivalent-offset allowance
+identity/counters/revisions/outbox, block/restore, execution/replay, future-period
+non-activation, retained storage and policy cutover. The deselected test covers
+the separate SMTP/browser identity journey.
 
-Use only the isolated worktree test PostgreSQL through the repository harness;
-pytest owns its disposable database. A full PostgreSQL rerun and `npm run check`
-are not required for this scoped correction. No live acceptance is required.
+Those HTTP results predate the final correction and do not certify it. Full
+`npm run check` has no successful complete result: earlier broad PostgreSQL runs
+stopped on superseded expectations and resource-related timeouts; affected
+failures were corrected or rerun, but the unrelated tail remains unverified.
+The full suite, web production build and joint HTTP runtime were not rerun after
+REV-6/REV-7. No current remote CI, live-provider or production acceptance is claimed.
 
-## Final verification — 2026-11-12
-
-Before-fix regression: five timestamp cases failed with `cycle=None`.
-
-**PASS:** normalization/policy (200), scoped PostgreSQL (198), `check:fast`
-(1935 API tests), `docs:check`, `git diff --check`.
-`check:fast` used `KERNEL_MOCK_ENABLED=0 KERNEL_BASE_URL= KERNEL_SERVICE_TOKEN=`
-to isolate local Kernel settings.
-
-Sources were simulated; PostgreSQL was worktree-isolated. Full `check` and live
-acceptance were not run.
+For documentation-only edits, use `npm run docs:check` and `git diff --check`.
+Existing runtime evidence remains scoped to the implementation and revisions
+above; later code or integration changes require checks of their affected paths.

@@ -11,6 +11,7 @@ from app.domains.billing.paid_policy import PaidDecision, paid_decision
 from app.domains.billing.paid_cycles import CalendarEvidence
 from app.domains.billing.customers import lock_customer, lock_user, mark_customer_identity_conflict
 from app.domains.billing.customer_scope import connection_account
+from app.domains.billing.reconciliation_validation import lock_source_claim
 from app.domains.billing.reconciliation_contracts import (
     RECONCILIATION_SCHEMA,
     CommercialProof,
@@ -187,61 +188,10 @@ def apply_reconciliation(
     """Recheck permanent provenance and current fences before any fact changes."""
     with factory() as db:
         purchase = subject.purchase
-        user = lock_user(db, purchase.user_id)
-        customer = lock_customer(db, purchase.customer_id)
-        customer_op = customer_operation(db, customer.customer_id)
-        row = service._locked(db, purchase)
-        operations = purchases.operations(db, purchase.id, lock=True)
-        scope = queries.scope(db, purchase.user_id, purchase.accepted.selection.product_id)
-        current = queries.subscription(db, subject.subscription_id, lock=True)
-        now = as_utc(queries.database_now(db))
-        if (
-            current is None
-            or scope is None
-            or current.reconciliation_lease_owner != subject.owner
-            or current.reconciliation_fencing_token != subject.fence
-            or current.reconciliation_lease_expires_at is None
-            or as_utc(current.reconciliation_lease_expires_at) <= now
-            or proof.read_started_at > proof.read_finished_at
-            or proof.read_started_at < subject.claimed_at
-            or proof.read_finished_at > now
-            or proof.read_finished_at >= subject.lease_expires_at
-        ):
-            raise BillingRefused("subscription_reconciliation_stale", 409)
-        if (
-            current.purchase_intent_id != purchase.id
-            or current.user_id != purchase.user_id
-            or current.product_id != purchase.accepted.selection.product_id
-            or current.customer_id != purchase.customer_id
-            or current.mapping_revision_id != purchase.accepted.meaning.revision_id
-            or current.external_billing_account_id != purchase.account_id
-            or current.external_subscription_id != subject.provider_subscription_id
-            or current.external_agreement_id != subject.agreement_id
-            or service.accepted(row) != purchase.accepted
-            or customer.binding_state != Binding.BOUND
-            or customer.provider_customer_id != subject.customer.provider_id
-            or customer.billing_customer_key != subject.customer.outer_key
-            or customer.provider_origin != purchase.accepted.provider_origin
-            or customer_op is None
-            or customer_op.create_operation_id != subject.customer.operation_id
-            or customer_op.request_correlation_key != subject.customer.outer_key
-            or customer_op.send_fence != subject.customer.fence
-            or customer_op.operation_state != State.BOUND
-            or customer_op.bound_external_object_id != subject.customer.provider_id
-            or {
-                (
-                    op.create_operation_id,
-                    op.operation_kind,
-                    op.request_correlation_key,
-                    op.bound_external_object_id,
-                    op.send_fence,
-                    op.operation_state,
-                )
-                for op in operations
-            }
-            != {(op.id, op.kind, op.key, op.bound_id, op.fence, op.state) for op in purchase.operations}
-        ):
-            raise BillingRefused("subscription_provenance_changed", 409)
+        claimed = lock_source_claim(db, subject, proof)
+        user, customer, row = claimed.user, claimed.customer, claimed.row
+        customer_op = claimed.customer_operation
+        operations, scope, current, now = claimed.operations, claimed.scope, claimed.subscription, claimed.now
         subscription_claim = None
         if work_claim is not None:
             if work_claim.kind == RECONCILIATION and work_claim.reference == str(current.subscription_id):
@@ -254,12 +204,6 @@ def apply_reconciliation(
                 and queue_row.coalescing_key != f"{purchase.account_id}:{purchase.customer_id}"
             ):
                 raise BillingRefused("billing_work_stale", 409)
-        latest = (
-            db.get(BillingStateObservation, current.latest_observation_id) if current.latest_observation_id else None
-        )
-        if latest is not None and as_utc(latest.observed_at) > proof.read_started_at:
-            raise BillingRefused("subscription_reconciliation_stale", 409)
-        service._verify_original_consent(db, row, purchase.accepted)
         due = effective_deadline(scope)
         if due is not None and due <= now:
             # Preserve the expired revision before new proof can replace its

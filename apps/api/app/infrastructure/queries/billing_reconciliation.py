@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import JSON, BigInteger, ScalarResult, Select, func, select
+from sqlalchemy import JSON, ScalarResult, Select, and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -65,39 +65,31 @@ def subscription_point_history(
     db: Session,
     sub: ExternalSubscription,
     *,
-    schema: str,
+    schemas: tuple[str, ...],
+    inventory_schema: str,
+    legacy_inventory_schema: str,
     provider_origin: str,
     accepted_fingerprint: str,
 ) -> ScalarResult[BillingStateObservation]:
-    """Stream permanent-source history in claim order, including incomplete reads."""
+    """Stream permanent-source facts by their read-finish upper bound."""
     return db.scalars(
         _point_history_statement(
-            sub, schema=schema, provider_origin=provider_origin, accepted_fingerprint=accepted_fingerprint
+            sub,
+            schemas=schemas,
+            inventory_schema=inventory_schema,
+            legacy_inventory_schema=legacy_inventory_schema,
+            provider_origin=provider_origin,
+            accepted_fingerprint=accepted_fingerprint,
         ).execution_options(yield_per=POINT_HISTORY_BATCH_SIZE)
-    )
-
-
-def latest_subscription_point_observation(
-    db: Session,
-    sub: ExternalSubscription,
-    *,
-    schema: str,
-    provider_origin: str,
-    accepted_fingerprint: str,
-) -> UUID | None:
-    return db.scalar(
-        _point_history_statement(
-            sub, schema=schema, provider_origin=provider_origin, accepted_fingerprint=accepted_fingerprint
-        )
-        .with_only_columns(BillingStateObservation.observation_id)
-        .limit(1)
     )
 
 
 def _point_history_statement(
     sub: ExternalSubscription,
     *,
-    schema: str,
+    schemas: tuple[str, ...],
+    inventory_schema: str,
+    legacy_inventory_schema: str,
     provider_origin: str,
     accepted_fingerprint: str,
 ) -> Select[tuple[BillingStateObservation]]:
@@ -105,12 +97,21 @@ def _point_history_statement(
     return (
         select(BillingStateObservation)
         .where(
-            BillingStateObservation.observation_kind == BillingStateObservationKind.AUTHORITATIVE_SUBSCRIPTION_READ,
+            or_(
+                and_(
+                    BillingStateObservation.observation_kind
+                    == BillingStateObservationKind.AUTHORITATIVE_SUBSCRIPTION_READ,
+                    BillingStateObservation.evidence_schema_version.in_(schemas),
+                ),
+                and_(
+                    BillingStateObservation.observation_kind == BillingStateObservationKind.TARGET_PRODUCT_DISCOVERY,
+                    BillingStateObservation.evidence_schema_version.in_((inventory_schema, legacy_inventory_schema)),
+                ),
+            ),
             BillingStateObservation.subscription_id == sub.subscription_id,
             BillingStateObservation.external_billing_account_id == sub.external_billing_account_id,
             BillingStateObservation.user_id == sub.user_id,
             BillingStateObservation.product_id == sub.product_id,
-            BillingStateObservation.evidence_schema_version == schema,
             BillingStateObservation.evidence_document["point_relationship"] != JSON.NULL,
             provenance["purchase_intent_id"].as_string() == str(sub.purchase_intent_id),
             provenance["mapping_revision_id"].as_string() == str(sub.mapping_revision_id),
@@ -119,5 +120,5 @@ def _point_history_statement(
             provenance["provider_origin"].as_string() == provider_origin,
             provenance["accepted_fingerprint"].as_string() == accepted_fingerprint,
         )
-        .order_by(provenance["fence"].as_string().cast(BigInteger).desc())
+        .order_by(BillingStateObservation.observed_at.desc(), BillingStateObservation.observation_id.desc())
     )

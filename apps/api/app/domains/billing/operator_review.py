@@ -257,14 +257,17 @@ def authorize_resolution(
     restoring: bool,
 ) -> ManualReviewCase:
     """Called only inside the shared writer, after its normal provenance locks."""
-    from app.domains.purchases.inventory import validate_inventory
+    from app.domains.purchases.inventory import validate_inventory, validate_inventory_product
 
     if resolution.inventory is None:
         raise PurchaseRefused("billing_review_proof_incomplete", 409)
     resolution.inventory.require_clear(
         resolution.purchase, original=True, primary=resolution.request.resolution == "select-primary"
     )
-    validate_inventory(db, resolution.inventory)
+    if resolution.request.resolution == "select-primary":
+        validate_inventory_product(db, resolution.inventory, resolution.purchase.accepted.selection.product_id)
+    else:
+        validate_inventory(db, resolution.inventory)
     request = resolution.request
     now = as_utc(billing_reconciliation.database_now(db))
     if (
