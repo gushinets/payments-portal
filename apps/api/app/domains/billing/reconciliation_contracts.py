@@ -14,6 +14,15 @@ from app.models import (
 )
 
 RECONCILIATION_SCHEMA = "subscription-reconciliation:v1"
+RECONCILIATION_READ_SCHEMAS = (RECONCILIATION_SCHEMA,)
+
+
+@dataclass(frozen=True)
+class ReadInterval:
+    """Database-clock bounds for the actual source I/O, independent of claims."""
+
+    started_at: datetime
+    finished_at: datetime
 
 
 class CommercialProof(StrEnum):
@@ -51,6 +60,15 @@ class ReconciliationSubject:
     fence: int
     lease_expires_at: datetime
     claimed_at: datetime
+    established_calendar: CalendarEvidence | None = None
+
+
+@dataclass(frozen=True)
+class SubscriptionRelationship:
+    """Observed point relationships; never authority to replace accepted bindings."""
+
+    agreement_id: str
+    tariff_id: int
 
 
 @dataclass(frozen=True)
@@ -69,6 +87,7 @@ class SubscriptionProof:
     reads: tuple[str, ...]
     cycle: CalendarEvidence | None = None
     access_end_at: datetime | None = None
+    point_relationship: SubscriptionRelationship | None = None
 
     def document(self) -> dict[str, object]:
         """Redacted JSON evidence shared by preparation and authoritative apply."""

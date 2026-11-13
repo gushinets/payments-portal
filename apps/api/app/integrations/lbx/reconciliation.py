@@ -6,19 +6,27 @@ from collections.abc import Awaitable, Callable
 
 from app.core.settings import Settings
 from app.core.time import utc_now
+from app.domains.billing.paid_cycles import CalendarEvidence, CalendarPrecision
 from app.domains.billing.reconciliation_contracts import (
     CommercialProof,
     IdentityProof,
     ReconciliationSubject,
     SubscriptionCandidateSubject,
     SubscriptionProof,
+    SubscriptionRelationship,
 )
 from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.calendar import normalize_access_end, normalize_calendar
 from app.integrations.lbx.customer import LbxUser
 from app.integrations.lbx.dto import LbxRead, LbxTariff
-from app.integrations.lbx.errors import LbxError, LbxResponseInvalid, LbxScopeMismatch
+from app.integrations.lbx.errors import (
+    LbxAuthenticationFailed,
+    LbxError,
+    LbxResponseInvalid,
+    LbxScopeForbidden,
+    LbxScopeMismatch,
+)
 from app.integrations.lbx.financial import (
     EMPTY_CALENDAR,
     Agreement,
@@ -58,8 +66,8 @@ def _calendar_ordered(left: date | datetime, right: date | datetime, *, strict: 
     return left_day < right_day
 
 
-def _calendar_complete(calendar: dict[str, str | None]) -> bool:
-    """Calendar evidence only: no UTC conversion, settlement or cycle identity."""
+def _calendar_complete(calendar: dict[str, str | None], *, anchor_kind: str, cycle: CalendarEvidence | None) -> bool:
+    """Check containment in the normalized frame, without deciding cycle identity."""
     parsed: dict[str, date | datetime] = {}
     try:
         for key, value in calendar.items():
@@ -81,8 +89,27 @@ def _calendar_complete(calendar: dict[str, str | None]) -> bool:
             return False
     cycle_start = parsed["last_tariffication_period_start"]
     cycle_end = parsed["last_tariffication_period_end"]
+    month_anchor = (
+        datetime.fromisoformat(cycle.anchor)
+        if anchor_kind == "calendar_month"
+        and cycle is not None
+        and cycle.precision == CalendarPrecision.TIMESTAMP
+        and cycle.anchor is not None
+        else None
+    )
     for prefix in ("subscription", "subscription_instance"):
         start, end = parsed.get(prefix + "_start_date"), parsed.get(prefix + "_end_date")
+        if (
+            month_anchor is not None
+            and isinstance(start, datetime)
+            and start.utcoffset() is not None
+            and cycle_start == month_anchor
+            and start.astimezone(month_anchor.tzinfo).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            == month_anchor
+        ):
+            # Only the proven first-day boundary may precede activation. The
+            # normalizer supplies the same explicit offset as issued history.
+            start = month_anchor
         # Calendar dates may straddle activation/termination. Only explicit
         # timestamps support a more precise containment check.
         if (
@@ -230,7 +257,14 @@ def normalize_subscription(
 
     lifecycle, financial = None, None
     calendar = {field: getattr(subscription, field) for field in CALENDAR_FIELDS} if subscription else {}
-    calendar_complete = bool(calendar) and _calendar_complete(calendar)
+    cycle = normalize_calendar(
+        calendar,
+        accepted.offer.period.anchor,
+        established_calendar=subject.established_calendar if isinstance(subject, ReconciliationSubject) else None,
+    )
+    calendar_complete = bool(calendar) and _calendar_complete(
+        calendar, anchor_kind=accepted.offer.period.anchor, cycle=cycle
+    )
     if identity == IdentityProof.MATCH:
         if subscription is not None:
             try:
@@ -269,8 +303,11 @@ def normalize_subscription(
         complete,
         tuple(reasons),
         (),
-        cycle=normalize_calendar(calendar, accepted.offer.period.anchor) if calendar_complete else None,
+        cycle=cycle if calendar_complete else None,
         access_end_at=normalize_access_end(calendar.get("subscription_end_date")),
+        point_relationship=SubscriptionRelationship(str(subscription.agreement_id), subscription.tariff_id)
+        if subscription is not None
+        else None,
     )
 
 
@@ -284,6 +321,12 @@ async def timely_point[T](read: Callable[[], Awaitable[T]], budget: PreflightBud
         raise
     budget.check()
     return value
+
+
+def source_scope_unproven(proof: SubscriptionProof) -> bool:
+    """Recognize retained read failures at the owner of their diagnostic encoding."""
+    codes = {LbxAuthenticationFailed().code, LbxScopeForbidden().code}
+    return any(reason.rsplit(":", 1)[-1] in codes for reason in proof.reasons)
 
 
 async def _agreement_has_competitor(

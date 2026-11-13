@@ -14,6 +14,7 @@ from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.reconciliation import apply_reconciliation, claim_reconciliation, read_source_time
 from app.domains.billing.reconciliation_contracts import (
     CommercialProof,
+    ReadInterval,
     IdentityProof,
     SubscriptionProof,
     ReconciliationResult,
@@ -92,6 +93,24 @@ async def reconcile_subscription(
                 delegate=delegate,
                 check_agreement_inventory=check_agreement_inventory,
             )
+            if proof.point_relationship is not None:
+                from app.domains.billing.inventory_history import retain_inventory_relationship
+
+                # A later refused/rolled-back apply must not lose an obtained
+                # restriction. Ordinary reads can clear older restrictions only
+                # through canonical apply. Operator inventory also needs its
+                # reused complete point, under the original source-claim checks.
+                await delegate(
+                    retain_inventory_relationship,
+                    factory,
+                    subject.purchase,
+                    subject.subscription_id,
+                    subject.fence,
+                    proof.point_relationship,
+                    proof=proof,
+                    subject=subject if resolution is not None else None,
+                    interval=ReadInterval(proof.read_started_at, proof.read_finished_at),
+                )
             if resolution is not None:
                 if "customer_identity_conflict" in proof.reasons:
                     # Keep canonical owner/fence/time checks before any negative write.

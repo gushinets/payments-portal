@@ -15,7 +15,7 @@ from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
 from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from app.infrastructure.queries import billing_reconciliation
-from app.integrations.lbx.errors import LbxAuthenticationFailed, LbxResponseInvalid
+from app.integrations.lbx.errors import LbxAuthenticationFailed, LbxResponseInvalid, LbxUnavailable
 from app.integrations.lbx.financial import Agreement, Subscription
 from app.models import (
     AccessInvalidationOutbox,
@@ -34,6 +34,9 @@ from apps.api.tests.test_billing_background_recovery_postgres import (
     synthetic_prepare,
 )
 from apps.api.tests.test_billing_worker_postgres import historical_link
+from apps.api.tests.test_billing_scoped_inventory_postgres import (
+    bound_point_relationship_scenario as bound_point_relationship_scenario,
+)
 from apps.api.tests.test_paid_access_rebase_postgres import effective, run_inventory
 from apps.api.tests.test_paid_access_reconciliation_postgres import (
     Scenario,
@@ -48,6 +51,100 @@ pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+@pytest.mark.parametrize("bound_point_relationship_scenario", [False, True], indirect=True, ids=["old", "omitted"])
+async def test_bound_point_tariff_refuses_audited_primary_selection(
+    bound_point_relationship_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    transport, sources, first, second, third, listings = bound_point_relationship_scenario
+    factory, config = postgres_session_factory, step1_settings(paid_access_clock_skew_seconds=10)
+    with factory() as db:
+        identity = db.scalar(
+            select(ExternalSubscription.subscription_id).where(ExternalSubscription.purchase_intent_id == second.id)
+        )
+        db.add(
+            BillingProductAccessScope(
+                user_id=second.user_id,
+                product_id=second.accepted.selection.product_id,
+                primary_retired_at=datetime.now(UTC),
+            )
+        )
+        db.commit()
+    # Establish the existing audited-selection review while inventory is
+    # healthy; incomplete later discovery must leave that review open.
+    transport.subscriptions[0]["tariff_id"] = 701
+    await run_inventory(Scenario(factory, config, transport, sources, identity))
+    transport.subscriptions[0]["tariff_id"] = 702
+    listings.clear()
+    target = service.read_purchase(factory, second.user_id, second.id)
+    request = resolution_request(target, inspect_evidence(factory, config, target.user_id, target.id)).model_copy(
+        update={"resolution": "select-primary"}
+    )
+    with pytest.raises(AppError, match="purchase_inventory_incomplete"):
+        await resolve_review(sources, config, factory=factory, request=request, principal="os-euid:1000")
+    with factory() as db:
+        case = db.get(ManualReviewCase, request.case_id)
+        assert case.case_state == "open" and case.resolution_document is None
+        scopes = {scope.product_id: scope for scope in db.scalars(select(BillingProductAccessScope))}
+        assert scopes[second.accepted.selection.product_id].primary_subscription_id is None
+        assert scopes[third.accepted.selection.product_id].primary_subscription_id is not None
+        assert any(
+            case.reason_code == "subscription_commercial_mismatch" and case.case_state == "open"
+            for case in db.scalars(select(ManualReviewCase))
+        )
+    assert len(listings) == 2 and listings[0] == listings[1]
+    assert all(req.method == "GET" for req in transport.requests)
+
+
+@pytest.mark.parametrize("bound_point_relationship_scenario", [True], indirect=True)
+async def test_retained_point_relationship_refuses_later_audited_selection(
+    bound_point_relationship_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport, sources, first, second, _, _ = bound_point_relationship_scenario
+    factory, config = postgres_session_factory, step1_settings(paid_access_clock_skew_seconds=10)
+    identity = service.linked_subscription_id(factory, second)
+    scenario = Scenario(factory, config, transport, sources, identity)
+    with factory() as db:
+        db.add(
+            BillingProductAccessScope(
+                user_id=second.user_id, product_id="brief_decoder", primary_retired_at=datetime.now(UTC)
+            )
+        )
+        db.commit()
+    transport.subscriptions[0]["tariff_id"] = 701
+    await run_inventory(scenario)  # Establish B's audited-primary review.
+    transport.subscriptions[0]["tariff_id"] = 702
+    await run_inventory(scenario)  # Persist the contradictory A -> B point.
+    read = sources.require_lbx().get_subscription
+
+    async def unavailable(*, subscription_id: int, budget: PreflightBudget) -> Subscription:
+        if subscription_id == 567:
+            raise LbxUnavailable()
+        return await read(subscription_id=subscription_id, budget=budget)
+
+    monkeypatch.setattr(sources.require_lbx(), "get_subscription", unavailable)
+    target = service.read_purchase(factory, second.user_id, second.id)
+    request = resolution_request(target, inspect_evidence(factory, config, target.user_id, target.id)).model_copy(
+        update={"resolution": "select-primary"}
+    )
+    with pytest.raises(AppError, match="purchase_inventory_incomplete"):
+        await resolve_review(sources, config, factory=factory, request=request, principal="os-euid:1000")
+    with factory() as db:
+        case = db.get(ManualReviewCase, request.case_id)
+        assert case.case_state == "open" and case.resolution_document is None
+        assert (
+            db.scalar(
+                select(BillingProductAccessScope.primary_subscription_id).where(
+                    BillingProductAccessScope.product_id == "brief_decoder"
+                )
+            )
+            is None
+        )
+    assert all(req.method == "GET" for req in transport.requests)
 
 
 @pytest.mark.parametrize("less_precise", ["date", "naive", "missing"])
@@ -209,17 +306,19 @@ async def test_failure_after_overdue_reduction_rolls_back_both_phases(
 
 @pytest.mark.parametrize("failure", ["none", "subscription", "agreement", "budget", "auth"])
 @pytest.mark.parametrize("mode", ["first_primary", "operator"])
+@pytest.mark.parametrize("matching_tariff", [False, True], ids=["unrelated", "implicated"])
 async def test_candidate_point_failure_is_scoped_to_its_product(
     background_scenario: tuple,
     postgres_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
     failure: str,
     mode: str,
+    matching_tariff: bool,
 ) -> None:
     transport, sources, purchase = background_scenario
     factory = postgres_session_factory
     first = synthetic_prepare(factory, transport, purchase, uncertain=False)
-    historical_link(factory, first, transport, "brief_decoder", 1)
+    historical_link(factory, first, transport, "brief_decoder", 1, tariff_id=702)
     for point in transport.subscriptions:
         point.update(state=2, last_tariffication_period_start="2026-10-01", last_tariffication_period_end="2026-10-31")
     config = step1_settings(paid_access_clock_skew_seconds=10)
@@ -237,10 +336,12 @@ async def test_candidate_point_failure_is_scoped_to_its_product(
     scenario = Scenario(factory, config, transport, sources, identity)
     if mode == "operator":
         await run_inventory(scenario)
-    # The permanently bound Brief Decoder agreement establishes product scope,
-    # even though these historical test purchases share an accepted tariff.
+    # An agreement owner and every accepted tariff match are implicated. A
+    # different tariff leaves Proposal AI genuinely unrelated to this candidate.
     extra = copy.deepcopy(transport.subscriptions[1])
-    extra.update(subscription_id=9999, state=3, outer_id="synthetic-extra-brief")
+    extra.update(
+        subscription_id=9999, tariff_id=701 if matching_tariff else 999, state=3, outer_id="synthetic-extra-brief"
+    )
     transport.subscriptions.append(extra)
     client, final_lists = sources.require_lbx(), []
     read, discover, agreement = client.get_subscription, client.discover_subscriptions, client.get_agreement
@@ -270,13 +371,17 @@ async def test_candidate_point_failure_is_scoped_to_its_product(
     monkeypatch.setattr(client, "get_subscription", read_candidate)
     monkeypatch.setattr(client, "get_agreement", read_agreement)
     monkeypatch.setattr(client, "discover_subscriptions", record_listing)
+    blocked = failure in {"budget", "auth"} or (matching_tariff and failure in {"subscription", "agreement"})
     if mode == "operator":
         saved = service.read_purchase(factory, first.user_id, first.id)
         evidence = inspect_evidence(factory, config, first.user_id, first.id)
         request = resolution_request(saved, evidence).model_copy(update={"resolution": "select-primary"})
-        if failure in {"budget", "auth"}:
+        if blocked:
             with pytest.raises(AppError, match="purchase_inventory_incomplete"):
                 await resolve_review(sources, config, factory=factory, request=request, principal="os-euid:1000")
+            with factory() as db:
+                case = db.get(ManualReviewCase, request.case_id)
+                assert case.case_state == "open" and case.resolution_document is None
         else:
             result = await resolve_review(sources, config, factory=factory, request=request, principal="os-euid:1000")
             assert result["outcome"] == "resolved"
@@ -287,7 +392,12 @@ async def test_candidate_point_failure_is_scoped_to_its_product(
         await run_inventory(scenario)
     assert len(final_lists) == (1 if failure in {"budget", "auth"} else 2)
     granted = {grant["product_id"] for grant in effective(factory)[1]["grants"]}
-    assert ("proposal_ai" in granted) is (failure not in {"budget", "auth"})
+    assert ("proposal_ai" in granted) is not blocked
+    with factory() as db:
+        scope = db.scalar(
+            select(BillingProductAccessScope).where(BillingProductAccessScope.product_id == "proposal_ai")
+        )
+        assert (scope.primary_subscription_id is not None) is not blocked
 
 
 async def test_less_precise_proof_cannot_restore_past_finite_end(

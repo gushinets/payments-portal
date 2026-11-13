@@ -16,7 +16,7 @@ from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.customers import lock_user
 from app.domains.billing.paid_access import apply_paid_source, resolve_access_end
 from app.domains.billing.paid_policy import CandidateConclusion, PrimaryCandidate, first_primary
-from app.domains.billing.reconciliation_contracts import RECONCILIATION_SCHEMA, ReconciliationResult
+from app.domains.billing.reconciliation_validation import source_receipt_current
 from app.domains.billing.work import verify_claim
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.catalog.publication import SessionFactory
@@ -78,13 +78,13 @@ def scope_versions(factory: SessionFactory, purchase: Purchase) -> dict[str, tup
 
 def persist_discoveries(factory: SessionFactory, claim: WorkClaim, result: InventoryResult) -> InventoryResult:
     """Persist evidence before the final decision; it never applies source facts."""
-    from app.domains.purchases.inventory import validate_inventory
+    from app.domains.purchases.inventory import validate_inventory_structure
 
     with factory() as db:
         if not result.purchases:
             return result
         lock_user(db, result.purchases[0].user_id)
-        validate_inventory(db, result)
+        validate_inventory_structure(db, result)
         identities = []
         for product in result.products:
             purchase = next(
@@ -120,24 +120,51 @@ def persist_discoveries(factory: SessionFactory, claim: WorkClaim, result: Inven
         return replace(result, discovery_ids=tuple(identities))
 
 
-def _source_current(db: Session, source: ReconciliationResult, sub: ExternalSubscription) -> bool:
-    observation = paid_access.observation(db, source.observation_id)
-    document = source.proof.document()
-    document.update(reads=list(source.proof.reads), reasons=list(source.proof.reasons))
-    return (
-        sub.latest_observation_id == source.observation_id
-        and sub.reconciliation_fencing_token == source.subject.fence
-        and sub.external_subscription_id == source.subject.provider_subscription_id
-        and sub.external_agreement_id == source.subject.agreement_id
-        and sub.purchase_intent_id == source.purchase.id
-        and observation is not None
-        and observation.evidence_schema_version == RECONCILIATION_SCHEMA
-        and observation.subscription_id == sub.subscription_id
-        and observation.user_id == source.purchase.user_id
-        and observation.product_id == sub.product_id
-        and observation.external_billing_account_id == source.purchase.account_id
-        and all(observation.evidence_document.get(key) == value for key, value in document.items())
-    )
+def _validate_product_discovery(
+    db: Session,
+    result: InventoryResult,
+    claim: WorkClaim,
+    product: ProductDiscovery,
+    identity: UUID | None,
+    now: datetime,
+) -> None:
+    """Validate every decision receipt before any product in this apply is changed."""
+    from app.domains.purchases.inventory_contracts import InventoryStale
+
+    if not claim.started_at <= product.read_started_at <= product.read_finished_at <= now or (
+        product.read_finished_at >= claim.expires_at
+    ):
+        raise InventoryStale()
+    if identity is not None:
+        cause = paid_access.observation(db, identity)
+        if cause is None or (
+            cause.evidence_schema_version != DISCOVERY_SCHEMA
+            or cause.work_item_id != claim.id
+            or cause.evidence_document
+            != {
+                **product.model_dump(mode="json"),
+                "generation": claim.generation,
+                "customer_id": str(result.customer.customer_id),
+            }
+        ):
+            raise InventoryStale()
+    for source in result.sources:
+        candidate = next(
+            (item for item in product.candidates if item.subscription_id == source.subject.subscription_id), None
+        )
+        if source.purchase.accepted.selection.product_id != product.product_id and candidate is None:
+            continue
+        sub = purchases.linked_subscription(db, source.purchase.id)
+        if (
+            sub is None
+            or candidate is None
+            or (
+                (candidate.observation_id, candidate.fence, candidate.purchase_id)
+                != (source.observation_id, source.subject.fence, source.purchase.id)
+                or not source_receipt_current(db, source, sub, require_latest=source.proof.complete)
+            )
+        ):
+            raise InventoryStale()
 
 
 def primary_review(db: Session, subscription: ExternalSubscription) -> None:
@@ -162,33 +189,16 @@ def select_primaries(
     *,
     clock_skew_seconds: int | None,
     allow_simulated_metering: bool,
+    applicable_products: frozenset[str],
 ) -> tuple[BillingStateObservation, ...]:
     """Caller holds user/purchase locks. Reuse committed receipts, never reapply facts."""
-    from app.domains.purchases.inventory_contracts import InventoryStale
-
     causes = []
     for identity, product in zip(result.discovery_ids, result.products, strict=True):
+        if product.product_id not in applicable_products:
+            continue
         cause = paid_access.observation(db, identity)
-        if cause is None or (
-            cause.evidence_schema_version != DISCOVERY_SCHEMA
-            or cause.work_item_id != claim.id
-            or cause.evidence_document
-            != {
-                **product.model_dump(mode="json"),
-                "generation": claim.generation,
-                "customer_id": str(result.customer.customer_id),
-            }
-            or not claim.started_at <= product.read_started_at <= product.read_finished_at <= now
-            or product.read_finished_at >= claim.expires_at
-        ):
-            raise InventoryStale()
         scope = billing_reconciliation.scope(db, cause.user_id, product.product_id)
         local = paid_access.subscriptions(db, cause.user_id, product.product_id)
-        if (scope.primary_subscription_id, scope.primary_retired_at) != (
-            product.primary_subscription_id,
-            product.primary_retired_at,
-        ):
-            continue  # A concurrent choice/retirement cannot become first admission.
         if not product.complete:
             continue
         sources = {
@@ -199,16 +209,6 @@ def select_primaries(
         candidates = {item.identity: PrimaryCandidate(item.identity, item.conclusion) for item in product.candidates}
         for sub in local:
             source = sources.get(sub.subscription_id)
-            if source is not None:
-                candidate = next(
-                    (item for item in product.candidates if item.subscription_id == sub.subscription_id), None
-                )
-                if candidate is None or (
-                    (candidate.observation_id, candidate.fence, candidate.purchase_id)
-                    != (source.observation_id, source.subject.fence, source.purchase.id)
-                    or not _source_current(db, source, sub)
-                ):
-                    raise InventoryStale()
             if sub.lifecycle_status != Lifecycle.ENDED and source is None:
                 candidates[sub.external_subscription_id] = PrimaryCandidate(
                     sub.external_subscription_id, CandidateConclusion.INCOMPLETE
@@ -299,7 +299,11 @@ def apply_inventory(
     allow_simulated_metering: bool = True,
 ) -> None:
     """Validate all original versions, then finish the customer job once."""
-    from app.domains.purchases.inventory import invalidate_unsent, validate_inventory
+    from app.domains.purchases.inventory import (
+        invalidate_unsent,
+        validate_inventory_structure,
+        validate_inventory_product,
+    )
     from app.domains.purchases.inventory_contracts import InventoryStale
 
     with factory() as db:
@@ -307,10 +311,26 @@ def apply_inventory(
         if claim.kind != INVENTORY or customer is None or customer.customer_id != result.customer.customer_id:
             raise BillingRefused("billing_work_stale", 409)
         user = lock_user(db, customer.user_id)
-        validate_inventory(db, result)
+        current = validate_inventory_structure(db, result)
+        now = as_utc(billing_reconciliation.database_now(db))
+        applicable: set[str] = set()
+        deferred: set[str] = set()
+        identities = (
+            dict(zip((item.product_id for item in result.products), result.discovery_ids, strict=True))
+            if result.discovery_ids
+            else {}
+        )
+        for product in result.products:
+            try:
+                validate_inventory_product(db, result, product.product_id, current=current)
+                _validate_product_discovery(db, result, claim, product, identities.get(product.product_id), now)
+            except InventoryStale:
+                deferred.add(product.product_id)
+            else:
+                applicable.add(product.product_id)
         locked = []
         for purchase in sorted(result.purchases, key=lambda item: (item.accepted.selection.product_id, str(item.id))):
-            if purchase.id not in result.conflicts:
+            if purchase.id not in result.conflicts or purchase.accepted.selection.product_id not in applicable:
                 continue
             row = service._locked(db, purchase)
             operations = purchases.operations(db, row.purchase_intent_id, lock=True)
@@ -334,6 +354,7 @@ def apply_inventory(
                     now,
                     clock_skew_seconds=clock_skew_seconds,
                     allow_simulated_metering=allow_simulated_metering,
+                    applicable_products=frozenset(applicable),
                 )
             )
             if result.discovery_ids
@@ -402,8 +423,8 @@ def apply_inventory(
         queue = work.verify_claim(db, claim)  # Queue ownership last; stale completion rolls back every decision.
         if queue.coalescing_key != f"{customer.external_billing_account_id}:{customer.customer_id}":
             raise BillingRefused("billing_work_stale", 409)
-        if result.discovery_ids and queue.enqueue_generation != claim.generation:
-            raise InventoryStale()
+        if deferred or (reason is None and (not result.complete or result.pending)):
+            reason = "inventory_incomplete"
         interval = work.URGENT_SECONDS if reason else INVENTORY_SECONDS
         work.finish(
             db,

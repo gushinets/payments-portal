@@ -18,6 +18,7 @@ class PurchaseTransport:
         for name in ("services", "prices"):
             self.offer.replace(name, "100.01", "100")
             self.offer.replace(name, "7.03", "0")
+        self.offers = {self.offer.tariff_id: self.offer}
         self.customer: dict[str, Any] | None = None
         self.agreements: list[dict[str, Any]] = []
         self.subscriptions: list[dict[str, Any]] = []
@@ -27,6 +28,7 @@ class PurchaseTransport:
         self.pool: Any = None
         self.before_offer: Any = None
         self.period_lengths = {901: 1}
+        self.period_type = 3
 
     def kernel(self, request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=manifest_fixture())
@@ -44,7 +46,8 @@ class PurchaseTransport:
             if self.before_offer and path.startswith("/tariffs"):
                 callback, self.before_offer = self.before_offer, None
                 callback()
-            return self.offer.respond(request)
+            offer = self.offer if path == "/auth" else self.offers[int(path.split("/")[2])]
+            return offer.respond(request)
         if request.method == "POST":
             if path == "/users":
                 self.customer = {"user_id": 345, "outer_id": body["outer_id"]}
@@ -65,7 +68,7 @@ class PurchaseTransport:
                         "agreement_id": body["agreement_id"],
                         "tariff_id": body["tariff_id"],
                         "period_id": body["period_id"],
-                        "period_type": 3,
+                        "period_type": self.period_type,
                         "period_length": self.period_lengths[body["period_id"]],
                         "state": -2,
                         "current_blocking": 0,

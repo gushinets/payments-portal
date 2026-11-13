@@ -15,7 +15,7 @@ from app.domains.billing.discovery import apply_inventory
 from app.domains.billing import background_recovery as recovery, work
 from app.domains.billing.discovery import DISCOVERY_SCHEMA, persist_discoveries
 from app.domains.billing.work_contracts import WorkClaim, WorkLane
-from app.domains.purchases.inventory_contracts import InventoryResult, InventoryStale
+from app.domains.purchases.inventory_contracts import InventoryResult
 from app.models import (
     AccessInvalidationOutbox,
     BillingProductAccessScope,
@@ -252,9 +252,11 @@ async def test_newer_source_fence_rejects_persisted_selection_receipt(inventory_
         subscription_id=scenario.subscription_id,
         work_claim=claim,
     )
-    with pytest.raises(InventoryStale):
-        apply_inventory(scenario.factory, claim, result, None, clock_skew_seconds=10)
+    apply_inventory(scenario.factory, claim, result, None, clock_skew_seconds=10)
     assert effective(scenario.factory)[0] == 0
+    with scenario.factory() as db:
+        queue = db.get(BillingWorkItem, claim.id)
+        assert queue.work_state == "pending" and queue.last_error_classification == "inventory_incomplete"
 
 
 async def test_primary_change_during_inventory_cannot_become_fresh_selection(inventory_scenario: Scenario) -> None:
@@ -275,7 +277,7 @@ async def test_other_product_binding_in_review_does_not_compete_for_eligible_pro
     transport, sources, purchase = background_scenario
     factory = postgres_session_factory
     first = synthetic_prepare(factory, transport, purchase, uncertain=False)
-    historical_link(factory, first, transport, "brief_decoder", 1)
+    historical_link(factory, first, transport, "brief_decoder", 1, tariff_id=702)
     transport.subscriptions[0]["services"][0]["price"] = 15
     transport.subscriptions[1].update(
         state=2, last_tariffication_period_start="2026-10-01", last_tariffication_period_end="2026-10-31"

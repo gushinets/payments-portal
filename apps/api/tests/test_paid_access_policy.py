@@ -1,7 +1,7 @@
 """Provider-neutral policy and calendar proofs, without mocked persistence."""
 
 from dataclasses import replace
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from pydantic import ValidationError
@@ -15,7 +15,12 @@ from app.domains.billing.paid_policy import (
     paid_decision,
 )
 from app.domains.billing.paid_contracts import EffectiveState, canonical_state
-from app.domains.billing.reconciliation_contracts import CommercialProof, IdentityProof, SubscriptionProof
+from app.domains.billing.reconciliation_contracts import (
+    CommercialProof,
+    IdentityProof,
+    SubscriptionCandidateSubject,
+    SubscriptionProof,
+)
 from app.domains.catalog.commercial_offer import CommercialPeriod
 from apps.api.tests.factories.reconciliation import subject_factory
 from apps.api.tests.support.any709_step1 import step1_settings
@@ -256,7 +261,8 @@ def test_paid_access_calendar_anchor_keeps_provider_meaning(
 
 
 @pytest.mark.parametrize("offset", ["+03:00", "-04:00"])
-def test_calendar_month_zoned_activation_normalizes_to_calendar_boundary(offset: str) -> None:
+@pytest.mark.parametrize("bound", [False, True])
+def test_calendar_month_zoned_activation_normalizes_to_calendar_boundary(offset: str, bound: bool) -> None:
     from apps.api.tests.factories.reconciliation import (
         agreement_factory,
         subscription_factory,
@@ -271,6 +277,14 @@ def test_calendar_month_zoned_activation_normalizes_to_calendar_boundary(offset:
         update={"offer": replace(subject.purchase.accepted.offer, period=monthly)}
     )
     subject = replace(subject, purchase=replace(subject.purchase, accepted=accepted))
+    if not bound:
+        subject = SubscriptionCandidateSubject(
+            subject.purchase,
+            subject.customer,
+            subject.agreement_id,
+            subject.agreement_key,
+            subject.provider_subscription_id,
+        )
     tariff = tariff_factory(subject)
     proof = normalize_subscription(
         subject,
@@ -297,6 +311,165 @@ def test_calendar_month_zoned_activation_normalizes_to_calendar_boundary(offset:
         }
     )
     assert classify_cycle(following, monthly, first=proof.cycle, latest=proof.cycle).kind == CycleKind.LATER
+
+
+@pytest.mark.parametrize("offset", [None, "+03:00", "-04:00"])
+@pytest.mark.parametrize(
+    "start,end,later_start,later_end,length",
+    [
+        ("2026-11-01", "2027-11-01", "2027-11-01", "2028-11-01", 1),
+        ("2027-01-01", "2028-01-01", "2028-01-01", "2029-01-01", 1),
+        ("2023-11-01", "2024-11-01", "2024-11-01", "2025-11-01", 1),
+        ("2023-11-01", "2025-11-01", "2025-11-01", "2027-11-01", 2),
+    ],
+)
+def test_calendar_month_annual_cycles_keep_activation_phase(
+    start: str, end: str, later_start: str, later_end: str, length: int, offset: str | None
+) -> None:
+    from app.integrations.lbx.calendar import normalize_calendar
+
+    annual = period("year", length, "calendar_month")
+    activation = f"{start[:8]}11" + (f"T12:34:56.123456{offset}" if offset else "")
+
+    def evidence(start: str, end: str) -> CalendarEvidence:
+        normalized = normalize_calendar(
+            {
+                "subscription_start_date": activation,
+                "last_tariffication_period_start": f"{start}T00:00:00{offset}" if offset else start,
+                "last_tariffication_period_end": (
+                    f"{end}T00:00:00{offset}" if offset else (date.fromisoformat(end) - timedelta(days=1)).isoformat()
+                ),
+            },
+            annual.anchor,
+        )
+        assert normalized is not None
+        return normalized
+
+    first = evidence(start, end)
+    assert first.anchor == (f"{start}T00:00:00{offset}" if offset else start)
+    initial = classify_cycle(first, annual)
+    assert initial.kind == CycleKind.FIRST
+    assert initial.key == f"{first.precision}:{first.start}:{first.end}"
+    repeated = classify_cycle(evidence(start, end), annual, first=first, latest=first)
+    assert repeated.kind == CycleKind.SAME and repeated.key == initial.key
+    later = evidence(later_start, later_end)
+    assert later.anchor == first.anchor
+    following = classify_cycle(later, annual, first=first, latest=first)
+    assert following.kind == CycleKind.LATER and following.key != initial.key
+
+
+@pytest.mark.parametrize("offset", [None, "+03:00"])
+@pytest.mark.parametrize(
+    "start,end,anchor,length",
+    [
+        ("2027-01-01", "2028-01-01", "2026-10-01", 1),  # October activation is not a January phase.
+        ("2026-11-02", "2027-11-02", "2026-11-02", 1),  # Calendar anchor must be the first day.
+        ("2026-11-01", "2027-10-01", "2026-11-01", 1),  # Too short.
+        ("2026-11-01", "2028-11-01", "2026-11-01", 1),  # Two years cannot satisfy one year.
+        ("2026-11-01", "2027-11-01", "2026-11-01", 2),  # Accepted multi-year length still applies.
+    ],
+)
+def test_calendar_month_annual_cycles_reject_inconsistent_evidence(
+    start: str, end: str, anchor: str, length: int, offset: str | None
+) -> None:
+    if offset:
+        current = calendar(*(f"{value}T00:00:00{offset}" for value in (start, end, anchor)), precision="timestamp")
+    else:
+        current = calendar(start, (date.fromisoformat(end) - timedelta(days=1)).isoformat(), anchor)
+    assert classify_cycle(current, period("year", length, "calendar_month")).kind == CycleKind.AMBIGUOUS
+
+
+@pytest.mark.parametrize("precision", ["date", "timestamp"])
+def test_calendar_month_annual_history_rejects_changed_phase_and_end_precision(precision: str) -> None:
+    suffix = "T00:00:00+03:00" if precision == "timestamp" else ""
+    first = calendar(
+        f"2026-11-01{suffix}",
+        f"2027-11-01{suffix}" if suffix else "2027-10-31",
+        f"2026-11-01{suffix}",
+        precision,
+    )
+    annual = period("year", anchor="calendar_month")
+    changed = calendar(
+        f"2028-01-01{suffix}",
+        f"2029-01-01{suffix}" if suffix else "2028-12-31",
+        f"2027-01-01{suffix}",
+        precision,
+    )
+    assert classify_cycle(changed, annual).kind == CycleKind.FIRST
+    assert classify_cycle(changed, annual, first=first, latest=first).kind == CycleKind.AMBIGUOUS
+    incorrect_end = first.model_copy(update={"end": f"2027-10-31{suffix}" if suffix else "2027-11-01"})
+    assert classify_cycle(incorrect_end, annual).kind == CycleKind.AMBIGUOUS
+
+
+@pytest.mark.parametrize(
+    "activation,start,end",
+    [
+        ("2026-11-11T12:00:00", "2026-11-01", "2027-10-31"),
+        ("2026-11-11T12:00:00", "2026-11-01T00:00:00", "2027-11-01T00:00:00"),
+        ("2026-11-11T12:00:00+03:00", "2026-11-01", "2027-11-01T00:00:00+03:00"),
+    ],
+)
+def test_calendar_month_annual_unresolved_precision_never_acquires_a_zone(
+    activation: str, start: str, end: str
+) -> None:
+    from app.integrations.lbx.calendar import normalize_calendar
+
+    current = normalize_calendar(
+        {
+            "subscription_start_date": activation,
+            "last_tariffication_period_start": start,
+            "last_tariffication_period_end": end,
+        },
+        "calendar_month",
+    )
+    assert current is not None and current.precision == "unresolved"
+    assert classify_cycle(current, period("year", anchor="calendar_month")).kind == CycleKind.AMBIGUOUS
+
+
+@pytest.mark.parametrize(
+    "history",
+    [
+        None,
+        calendar("2026-10-01", "2026-10-31", "2026-10-01"),
+        calendar("2026-10-01T00:00:00", "2026-11-01T00:00:00", "2026-10-01T00:00:00", "unresolved"),
+        calendar("2026-10-01T00:00:00+03:00", "2026-11-01T00:00:00+03:00", None, "timestamp"),
+    ],
+)
+def test_calendar_month_without_proven_historical_offset_keeps_initial_frame(history: CalendarEvidence | None) -> None:
+    from app.integrations.lbx.calendar import normalize_calendar
+
+    result = normalize_calendar(
+        {
+            "subscription_start_date": "2026-09-30T21:30:00Z",
+            "last_tariffication_period_start": "2026-10-01T00:00:00Z",
+            "last_tariffication_period_end": "2026-11-01T00:00:00Z",
+        },
+        "calendar_month",
+        established_calendar=history,
+    )
+    assert result.anchor == "2026-09-01T00:00:00+00:00"
+    assert result.precision == "timestamp"
+
+
+@pytest.mark.parametrize("anchor_kind", ["instance_start", "first_instance_start"])
+def test_instance_anchors_do_not_use_established_calendar_offset(anchor_kind: str) -> None:
+    from app.integrations.lbx.calendar import normalize_calendar
+
+    result = normalize_calendar(
+        {
+            "subscription_start_date": "2026-09-30T21:30:00Z",
+            "subscription_instance_start_date": "2026-10-31T21:30:00Z",
+            "last_tariffication_period_start": "2026-10-31T21:30:00Z",
+            "last_tariffication_period_end": "2026-11-30T21:30:00Z",
+        },
+        anchor_kind,
+        established_calendar=calendar(
+            "2026-10-01T00:00:00+03:00", "2026-11-01T00:00:00+03:00", "2026-10-01T00:00:00+03:00", "timestamp"
+        ),
+    )
+    assert result.anchor == (
+        "2026-09-30T21:30:00Z" if anchor_kind == "first_instance_start" else "2026-10-31T21:30:00Z"
+    )
 
 
 def test_paid_access_proof_document_serializes_lossless_cycle_and_finite_end() -> None:

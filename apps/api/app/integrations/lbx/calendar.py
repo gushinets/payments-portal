@@ -2,7 +2,7 @@
 
 from datetime import UTC, date, datetime
 
-from app.domains.billing.paid_cycles import CalendarEvidence
+from app.domains.billing.paid_cycles import CalendarEvidence, CalendarPrecision
 
 from app.integrations.lbx.financial import EMPTY_CALENDAR
 
@@ -18,7 +18,12 @@ def normalize_access_end(value: str | None) -> datetime | None:
     return parsed.astimezone(UTC) if parsed.utcoffset() is not None else None
 
 
-def normalize_calendar(calendar: dict[str, str | None], anchor_kind: str) -> CalendarEvidence | None:
+def normalize_calendar(
+    calendar: dict[str, str | None],
+    anchor_kind: str,
+    *,
+    established_calendar: CalendarEvidence | None = None,
+) -> CalendarEvidence | None:
     start = calendar.get("last_tariffication_period_start")
     end = calendar.get("last_tariffication_period_end")
     anchor = calendar.get(
@@ -34,6 +39,16 @@ def normalize_calendar(calendar: dict[str, str | None], anchor_kind: str) -> Cal
                 else:
                     parsed = datetime.fromisoformat(anchor)
                     if parsed.utcoffset() is not None:
+                        if (
+                            established_calendar is not None
+                            and established_calendar.precision == CalendarPrecision.TIMESTAMP
+                            and established_calendar.anchor is not None
+                        ):
+                            established = datetime.fromisoformat(established_calendar.anchor)
+                            if established.utcoffset() is not None:
+                                # Derive the current month in the issued frame; a
+                                # genuinely changed activation must still be detected.
+                                parsed = parsed.astimezone(established.tzinfo)
                         anchor = parsed.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
             except ValueError:
                 return None
