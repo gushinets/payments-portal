@@ -235,10 +235,21 @@ def test_direct_pytest_fixture_uses_canonical_database_precedence(monkeypatch: p
         resolved = database_test_url.__wrapped__()
         assert resolved.host == "localhost" and resolved.port == 5433
         assert resolved.username == "synthetic/user" and resolved.password == "synthetic password"
-        assert resolved.database == "scenario_tests"
+        assert resolved.database.endswith("_tests") and resolved.database != "scenario_tests"
         os.environ["TEST_POSTGRES_DATABASE_URL"] = "postgresql+psycopg://localhost/url_wins_tests"
         del os.environ["POSTGRES_PASSWORD_TEST"]
-        assert database_test_url.__wrapped__().database == "url_wins_tests"
+        explicit = database_test_url.__wrapped__()
+        assert explicit.database != resolved.database
+        assert explicit.database.endswith("_tests") and explicit.database != "url_wins_tests"
+        assert explicit.set(database="url_wins_tests").render_as_string() == os.environ["TEST_POSTGRES_DATABASE_URL"]
+        os.environ["TEST_POSTGRES_DATABASE_URL"] = "postgresql+psycopg://localhost/production"
+        with pytest.raises(ValueError, match="Refusing destructive test operations"):
+            database_test_url.__wrapped__()
+        del os.environ["TEST_POSTGRES_DATABASE_URL"]
+        os.environ["POSTGRES_PASSWORD_TEST"] = "synthetic password"
+        os.environ["POSTGRES_DB_TEST"] = "production"
+        with pytest.raises(ValueError, match="Refusing destructive test operations"):
+            database_test_url.__wrapped__()
 
 
 def test_direct_pytest_fixture_uses_worktree_runtime_when_no_explicit_input(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -258,5 +269,7 @@ def test_direct_pytest_fixture_uses_worktree_runtime_when_no_explicit_input(monk
     monkeypatch.setattr(repo, "port_is_free", lambda port: False)
     with patch.dict(os.environ, {}, clear=True):
         resolved = database_test_url.__wrapped__()
-        assert resolved.database == "worktree_tests" and resolved.host == "127.0.0.1"
+        assert resolved.database.endswith("_tests") and resolved.database != "worktree_tests"
+        assert resolved.host == "127.0.0.1"
         assert resolved.port == 15433
+        assert resolved.username == resolved.password == "synthetic"

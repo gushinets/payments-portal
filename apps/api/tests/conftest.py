@@ -12,11 +12,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from .support.postgres import (
-    create_test_database,
-    drop_test_database,
-    restore_test_database,
-    run_migrations,
-    unique_test_database_url,
+    PostgresTestDatabase,
+    postgres_test_database,
+    session_test_database_url,
 )
 from .support.settings import configure_api_test_environment
 
@@ -31,6 +29,7 @@ _POSTGRES_FIXTURES = frozenset(
     {
         "database_test_url",
         "database_admin_url",
+        "postgres_database",
         "postgres_engine",
         "postgres_session_factory",
         "migrated_database",
@@ -84,7 +83,7 @@ def database_test_url() -> URL:
     from scripts.repo import api_test_environment
 
     environment = api_test_environment("api-postgres", dict(os.environ))
-    return unique_test_database_url(make_url(environment["TEST_POSTGRES_DATABASE_URL"]))
+    return session_test_database_url(make_url(environment["TEST_POSTGRES_DATABASE_URL"]))
 
 
 @pytest.fixture(scope="session")
@@ -98,25 +97,19 @@ def database_admin_url(database_test_url: URL) -> URL:
 
 
 @pytest.fixture(scope="session")
-def postgres_engine(
+def postgres_database(
     database_test_url: URL,
     database_admin_url: URL,
-) -> Iterator[Engine]:
-    """Own one uniquely named PostgreSQL database and engine for this process.
+) -> Iterator[PostgresTestDatabase]:
+    """Own unique scenario/template databases and the session's shared engine."""
+    with postgres_test_database(database_test_url, database_admin_url) as database:
+        yield database
 
-    Request this fixture indirectly through ``migrated_database`` or
-    ``db_session``. Schema restoration reuses the engine after disposing its
-    connections; session teardown removes the process-owned database.
-    """
-    create_test_database(database_test_url, database_admin_url)
-    engine = create_engine(database_test_url, pool_pre_ping=True)
 
-    try:
-        yield engine
-    finally:
-        # Dispose pooled connections before PostgreSQL drops the physical DB.
-        engine.dispose()
-        drop_test_database(database_test_url, database_admin_url)
+@pytest.fixture(scope="session")
+def postgres_engine(postgres_database: PostgresTestDatabase) -> Engine:
+    """Provide the owned engine; schema tests retain explicit migration control."""
+    return postgres_database.engine
 
 
 @pytest.fixture(scope="session")
@@ -131,28 +124,11 @@ def postgres_session_factory(postgres_engine: Engine) -> sessionmaker[Session]:
 
 @pytest.fixture
 def migrated_database(
-    postgres_engine: Engine,
-    migrated_template: URL,
+    postgres_database: PostgresTestDatabase,
 ) -> Iterator[Engine]:
-    """Provide a fresh copy of the production-migrated schema for one test.
-
-    Business fixtures and transactions remain function-scoped. Migration tests
-    still execute their own upgrade/downgrade paths against the disposable copy.
-    """
-    restore_test_database(postgres_engine, migrated_template)
-    yield postgres_engine
-
-
-@pytest.fixture(scope="session")
-def migrated_template(database_test_url: URL, database_admin_url: URL) -> Iterator[URL]:
-    """Build one schema/seed template per process; never cache business scenarios."""
-    template_url = unique_test_database_url(database_test_url)
-    create_test_database(template_url, database_admin_url)
-    try:
-        run_migrations(template_url)
-        yield template_url
-    finally:
-        drop_test_database(template_url, database_admin_url)
+    """Clone the real migrated template, retaining per-test mutable state."""
+    postgres_database.restore()
+    yield postgres_database.engine
 
 
 @pytest.fixture
