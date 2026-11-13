@@ -151,20 +151,29 @@ target environment, and record the pre-reset application/database pairing.
 Stop every pre-Step-4 API, web, worker, and scheduler process that can access
 the database and verify that it cannot restart against the clean database.
 
-For the repository-managed local harness, read `worktree_id` from
+For the repository-managed local harness, read `worktree_id` and `compose_project` from
 `.harness/runtime.json` or from the JSON previously printed by
-`python scripts/repo.py up`, then run exactly:
+`python scripts/repo.py up`. Keep the matching `.harness/runtime.env` and run
+from the repository root, without process-level `DATABASE_URL` or `POSTGRES_*`
+overrides from another environment:
 
 ```bash
 python scripts/repo.py reset --confirm <worktree_id>
-python scripts/repo.py test-db up
+docker compose --project-name <compose_project> --env-file .harness/runtime.env \
+  -f docker-compose.yml -f docker-compose.agent.yml \
+  up -d --no-deps --no-build --pull never --wait postgres
 python scripts/repo.py migrate-api
 ```
 
 `reset` executes the harness-scoped Compose
-`down --volumes --remove-orphans`; it is the supported destructive local reset.
-`test-db up` starts only PostgreSQL. `migrate-api` applies `alembic upgrade head`
-to that harness database.
+`down --volumes --remove-orphans`, deleting the application's local volumes and
+data while retaining the runtime metadata. This is a destructive local reset,
+not a normal upgrade. The explicit Compose command starts only the application
+PostgreSQL server; `migrate-api` applies `alembic upgrade head` to that harness
+database. The healthcheck waits for TCP readiness, excluding the socket-only
+temporary server used during cold initialization.
+`test-db up` targets a separate disposable test project and port; it
+does not start the application server and cannot replace this step.
 
 The clean baseline migration owns schema creation and configured-contour/legal
 bootstrap; subsequent revisions apply through the same `upgrade head`. The
@@ -189,8 +198,13 @@ guard. Old Kernel-only identity binaries are not a supported rollback.
 After verification succeeds, start only the matching application stack:
 
 ```bash
-python scripts/repo.py up --reuse
+python scripts/repo.py up --reuse --port-offset <original_port_offset>
 ```
+
+Use the original `up` port offset (`0` if none was supplied), so runtime metadata
+continues to identify the same application server. If needed, recover it as
+the saved `postgres_port` minus `runtime_config().postgres_port` from
+`scripts.repo` in this checkout.
 
 The Compose `migrate` service runs the same `alembic upgrade head` before API
 startup. The API legal seed remains an idempotent, fail-closed runtime check of
@@ -260,6 +274,47 @@ docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" \
   -f docker-compose.prod.yml -f deploy/compose.images.yml \
   up -d --no-deps --no-build --pull never caddy
 ```
+
+For a shared VPS, the operator supplies a network-only overlay such as
+`/operator/portal/network.yml` and sets its environment-scoped names in the same
+`ENV_FILE` (`PORTAL_EDGE_NETWORK`, `PORTAL_API_ALIAS`, `PORTAL_WEB_ALIAS`):
+
+```yaml
+services:
+  api:
+    networks:
+      edge:
+        aliases: ["${PORTAL_API_ALIAS:?set the environment-scoped API alias}"]
+  web:
+    networks:
+      edge:
+        aliases: ["${PORTAL_WEB_ALIAS:?set the environment-scoped web alias}"]
+networks:
+  edge:
+    external: true
+    name: ${PORTAL_EDGE_NETWORK:?select the existing shared edge network}
+```
+
+Only API/web join the existing shared edge; PostgreSQL and `migrate` retain the
+private backend network. Do not start standalone Caddy on this path. Supply the
+same overlay for the initial installation and **every** full or frontend-only
+update, retaining the existing project and lock:
+
+```bash
+NETWORK_OVERLAY=/operator/portal/network.yml
+./.venv/bin/python scripts/repo.py image-up --env-file "$ENV_FILE" \
+  --project "$PROJECT" --lock-file "$LOCK" --network-overlay "$NETWORK_OVERLAY"
+./.venv/bin/python scripts/repo.py image-up --env-file "$ENV_FILE" \
+  --project "$PROJECT" --lock-file "$LOCK" --network-overlay "$NETWORK_OVERLAY" \
+  --frontend-only
+```
+
+The optional overlay path is relative to the caller's working directory.
+Configuration validation and all update commands use the same file order:
+production Compose, operator network overlay, then image selection. Omitting
+the flag retains the standalone configuration; `COMPOSE_FILE` does not add
+files to this explicit selection. A missing or invalid overlay fails at
+`compose config` before any service is stopped.
 
 `image-up` holds the deployment lock throughout: stop the API (including its
 embedded worker), wait for retained PostgreSQL, run a fresh migration container

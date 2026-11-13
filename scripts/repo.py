@@ -3638,6 +3638,7 @@ def build_parser() -> argparse.ArgumentParser:
     image_up.add_argument("--env-file", type=Path, required=True)
     image_up.add_argument("--project", required=True)
     image_up.add_argument("--lock-file", type=Path, required=True)
+    image_up.add_argument("--network-overlay", type=Path, help="operator Compose overlay for shared edge networks")
     image_up.add_argument("--frontend-only", action="store_true")
     image_up.set_defaults(func=cmd_image_up)
     metadata = sub.add_parser("pr-metadata")

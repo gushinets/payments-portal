@@ -39,9 +39,10 @@ def deploy(args: argparse.Namespace) -> None:
             str(args.env_file.resolve()),
             "-f",
             str(ROOT / "docker-compose.prod.yml"),
-            "-f",
-            str(ROOT / "deploy/compose.images.yml"),
         ]
+        if args.network_overlay is not None:
+            compose.extend(["-f", str(args.network_overlay.resolve())])
+        compose.extend(["-f", str(ROOT / "deploy/compose.images.yml")])
         model = json.loads(
             subprocess.run(
                 [*compose, "config", "--format", "json"],

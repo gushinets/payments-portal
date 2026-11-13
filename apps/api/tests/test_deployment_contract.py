@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -51,6 +52,17 @@ def test_migration_service_gates_api_startup(path: str) -> None:
     ]
     assert migrate["environment"] == api["environment"]
     assert api["depends_on"]["migrate"]["condition"] == "service_completed_successfully"
+
+
+@pytest.mark.parametrize("path", ["docker-compose.yml", "docker-compose.prod.yml"])
+def test_postgres_healthcheck_requires_tcp_before_migration(path: str) -> None:
+    check = load_compose(path)["services"]["postgres"]["healthcheck"]["test"]
+    assert check[0] == "CMD-SHELL"
+    command = shlex.split(check[1])
+    # The image's temporary initialization server accepts Unix sockets before TCP.
+    assert command[0] == "pg_isready"
+    assert "-h" in command
+    assert command[command.index("-h") + 1] == "127.0.0.1"
 
 
 def test_production_sentry_configuration_is_optional_and_minimal() -> None:

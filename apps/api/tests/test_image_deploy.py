@@ -3,13 +3,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 import yaml
 
-from scripts import image_deploy
+from scripts import image_deploy, repo
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="Linux image installation commands")
 
@@ -22,7 +23,107 @@ def selection(tmp_path: Path) -> argparse.Namespace:
         project="any766-disposable",
         lock_file=tmp_path / "deploy.lock",
         frontend_only=False,
+        network_overlay=None,
     )
+
+
+@pytest.fixture
+def real_compose_config(
+    monkeypatch: pytest.MonkeyPatch, selection: argparse.Namespace
+) -> tuple[list[list[str]], list[str]]:
+    if shutil.which("docker") is None:
+        pytest.skip("Docker Compose is required for configuration-only regressions")
+    selection.env_file.write_text(
+        "INSTANCE_TENANT_ID=anytoolai\nINSTANCE_REGION=ru\n"
+        "POSTGRES_DB=synthetic\nPOSTGRES_USER=synthetic\nPOSTGRES_PASSWORD=synthetic\n"
+        "CORS_ALLOW_ORIGINS=http://portal.invalid\nAPP_PUBLIC_BASE_URL=http://portal.invalid\n"
+        "NEXT_PUBLIC_API_BASE_URL=http://portal.invalid/api\nCADDY_DOMAIN=portal.invalid\n"
+        "PORTAL_API_IMAGE=portal-api:reviewed\nPORTAL_WEB_IMAGE=portal-web:reviewed\n"
+    )
+    run_config = subprocess.run
+    calls: list[list[str]] = []
+    configs: list[str] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if "config" in command:
+            result = run_config(
+                command,
+                env={"PATH": os.environ["PATH"], "DOCKER_HOST": "unix:///nonexistent/any766.sock"},
+                **kwargs,
+            )
+            configs.append(result.stdout)
+            return result
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(image_deploy.subprocess, "run", run)
+    return calls, configs
+
+
+@pytest.mark.parametrize("frontend_only", [False, True])
+@pytest.mark.parametrize("shared_edge", [False, True])
+def test_image_update_keeps_selected_networks(
+    monkeypatch: pytest.MonkeyPatch,
+    selection: argparse.Namespace,
+    real_compose_config: tuple[list[list[str]], list[str]],
+    frontend_only: bool,
+    shared_edge: bool,
+) -> None:
+    monkeypatch.chdir(selection.env_file.parent)
+    selection.frontend_only = frontend_only
+    files = [str(image_deploy.ROOT / "docker-compose.prod.yml")]
+    if shared_edge:
+        selection.network_overlay = Path("operator network.yml")
+        selection.network_overlay.write_text(
+            "services:\n"
+            "  api:\n    networks:\n      edge:\n        aliases: [review-api]\n"
+            "  web:\n    networks:\n      edge:\n        aliases: [review-web]\n"
+            "networks:\n  edge:\n    external: true\n    name: review-edge\n"
+        )
+        files.append(str(selection.network_overlay.resolve()))
+    files.append(str(image_deploy.ROOT / "deploy/compose.images.yml"))
+    image_deploy.deploy(selection)
+    calls, configs = real_compose_config
+    model = json.loads(configs[0])
+    assert model["networks"]["edge"].get("external", False) is shared_edge
+    assert model["networks"]["edge"]["name"] == ("review-edge" if shared_edge else "any766-disposable_edge")
+    for service in ("api", "web"):
+        assert model["services"][service]["networks"]["edge"] == (
+            {"aliases": [f"review-{service}"]} if shared_edge else None
+        )
+        assert "build" not in model["services"][service]
+        assert model["services"][service]["pull_policy"] == "never"
+    for service in ("postgres", "migrate"):
+        assert set(model["services"][service]["networks"]) == {"backend"}
+    assert not model["networks"]["backend"].get("external", False)
+    assert [calls[0][i + 1] for i, value in enumerate(calls[0]) if value == "-f"] == files
+    assert all(call[: len(calls[0]) - 3] == calls[0][:-3] for call in calls[1:])
+    assert [call[-1] for call in calls[1:]] == (
+        ["web"] if frontend_only else ["api", "postgres", "migrate", "api", "web"]
+    )
+
+
+@pytest.mark.parametrize("contents", [None, "services: [invalid]"])
+def test_invalid_network_overlay_stops_before_service_changes(
+    selection: argparse.Namespace,
+    real_compose_config: tuple[list[list[str]], list[str]],
+    contents: str | None,
+) -> None:
+    selection.network_overlay = selection.env_file.parent / "invalid.yml"
+    if contents is not None:
+        selection.network_overlay.write_text(contents)
+    with pytest.raises(subprocess.CalledProcessError):
+        image_deploy.deploy(selection)
+    calls, _ = real_compose_config
+    assert len(calls) == 1
+    assert calls[0][-3:] == ["config", "--format", "json"]
+
+
+def test_image_up_parser_accepts_optional_network_overlay() -> None:
+    parser = repo.build_parser()
+    command = ["image-up", "--env-file", "images.env", "--project", "review", "--lock-file", "/private/lock"]
+    assert parser.parse_args(command).network_overlay is None
+    assert parser.parse_args([*command, "--network-overlay", "operator.yml"]).network_overlay == Path("operator.yml")
 
 
 def fake_compose(
