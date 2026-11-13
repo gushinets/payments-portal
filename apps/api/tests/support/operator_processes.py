@@ -21,7 +21,7 @@ from apps.api.tests.support.kernel import TOKEN as KERNEL_TOKEN
 from apps.api.tests.support.kernel import manifest_fixture
 from apps.api.tests.support.lbx import ACCOUNT, PASSWORD, USERNAME
 from apps.api.tests.support.lbx_selected_offer import SelectedOfferRecording, simulated_inputs
-from apps.api.tests.support.settings import DEFAULT_API_TEST_ENV
+from apps.api.tests.support.settings import api_test_environment
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -117,13 +117,7 @@ def processes(tmp_path: Path) -> Iterator[OperatorProcesses]:
         thread = Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         thread.start()
         origin = f"http://127.0.0.1:{server.server_port}"
-        environment = {
-            name: value
-            for name, value in os.environ.items()
-            if not name.startswith(("MAPPING_", "KERNEL_", "LBX_", "PREFLIGHT_"))
-        }
-        environment.update(
-            **DEFAULT_API_TEST_ENV,
+        environment = api_test_environment(
             PYTHONPATH=".:apps/api",
             MAPPING_OPERATOR_UIDS=json.dumps([os.geteuid()]),
             MAPPING_ACCOUNT_ID=ACCOUNT,

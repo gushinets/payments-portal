@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -374,6 +375,10 @@ class Settings(BaseSettings):
 
 
 def _load_settings_env_file(settings_file: Path | str = Path(__file__)) -> str | None:
+    # Pydantic's dotenv source must honor the same process opt-out as
+    # python-dotenv; disabling environment injection alone still reads the file.
+    if os.getenv("PYTHON_DOTENV_DISABLED", "").lower() in {"1", "true", "t", "yes", "y"}:
+        return None
     search_root = Path(settings_file).resolve().parent
     for directory in (search_root, *search_root.parents):
         dotenv_file = directory / ".env"

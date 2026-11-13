@@ -267,7 +267,11 @@ def dotenv_value(value: str, line_number: int) -> str:
     return re.sub(escape_pattern, lambda item: escapes[item[1]], match[1])
 
 
-def read_dotenv(path: Path = ROOT / ".env") -> dict[str, str]:
+def read_dotenv(path: Path | None = None) -> dict[str, str]:
+    if path is None:
+        if os.getenv("PYTHON_DOTENV_DISABLED", "").lower() in {"1", "true", "t", "yes", "y"}:
+            return {}
+        path = ROOT / ".env"
     if not path.exists():
         return {}
 
@@ -949,18 +953,9 @@ def import_api() -> tuple[object, object]:
     api_root = str(ROOT / "apps" / "api")
     if api_root not in sys.path:
         sys.path.insert(0, api_root)
-    os.environ.setdefault("APP_ENV", "test")
-    os.environ["INSTANCE_TENANT_ID"] = LOCAL_INSTANCE_TENANT_ID
-    os.environ["INSTANCE_REGION"] = LOCAL_INSTANCE_REGION
-    os.environ.setdefault("APP_PUBLIC_BASE_URL", "http://localhost:3000")
-    os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
-    os.environ.setdefault("POSTGRES_DB", "anytoolai")
-    os.environ.setdefault("POSTGRES_USER", "anytoolai")
-    os.environ.setdefault("POSTGRES_PASSWORD", "anytoolai")
-    os.environ.setdefault("POSTGRES_HOST", "postgres")
-    os.environ.setdefault("POSTGRES_PORT", "5432")
-    os.environ.setdefault("CORS_ALLOW_ORIGINS", "http://localhost:3000")
-    os.environ.setdefault("SKIP_LEGAL_SEED", "true")
+    from apps.api.tests.support.settings import configure_api_test_environment
+
+    configure_api_test_environment()
     from app.core.database import Base  # type: ignore
     from app.main import app as fastapi_app  # type: ignore
     importlib.import_module("app.models")
@@ -3362,6 +3357,9 @@ def api_test_marker_args(target: str) -> list[str]:
 
 
 def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, str]:
+    from apps.api.tests.support.settings import api_test_environment as isolated_environment
+
+    environment = isolated_environment(environ=environment)
     if target == "api-fast":
         return environment
 
@@ -3387,6 +3385,16 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
                 + " together, missing: "
                 + ", ".join(missing_names)
             )
+        from sqlalchemy.engine import URL
+
+        environment[test_database_url_name] = URL.create(
+            "postgresql+psycopg",
+            username=environment["POSTGRES_USER_TEST"],
+            password=environment["POSTGRES_PASSWORD_TEST"],
+            host=environment.get("POSTGRES_HOST_TEST", "localhost"),
+            port=int(environment["POSTGRES_PORT_TEST"]),
+            database=environment["POSTGRES_DB_TEST"],
+        ).render_as_string(hide_password=False)
         return environment
 
     runtime_env = read_runtime_env()
@@ -3623,6 +3631,10 @@ def reexec_in_repository_venv_if_required() -> None:
 def main() -> int:
     try:
         reexec_in_repository_venv_if_required()
+        # Script execution starts with scripts/ on sys.path; shared test
+        # configuration is repository-owned and also used by module callers.
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
         args = build_parser().parse_args()
         args.func(args)
     except (HarnessError, subprocess.CalledProcessError, OSError) as exc:
