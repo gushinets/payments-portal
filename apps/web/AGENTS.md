@@ -145,7 +145,14 @@ own canonical source and generation path.
 
 ## Checks
 
+Follow the [Testing Strategy](../../docs/engineering/TESTING.md) for test-level
+selection, controlled clocks, browser readiness and coverage. Keep pure
+calculation/text matrices in Vitest and representative user journeys in
+Playwright; preserve effects, font readiness and accessibility assertions.
+
 ```bash
+npm --workspace @anytoolai/web run test:components
+npm run typecheck:web
 npm run lint:web
 npm run build:web
 npm run test:e2e
