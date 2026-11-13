@@ -1,6 +1,6 @@
 # ANY-822 — Rebuild test execution acceleration from main
 
-Status: **IN PROGRESS — Steps 1–6 complete; Steps 7–9 pending**
+Status: **IN PROGRESS — Steps 1–7 complete; Steps 8–9 pending**
 Created: 2026-11-13
 Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
 Execution branch: `ANY-822`
@@ -182,13 +182,13 @@ For each consolidation, record the old guarantee and its retained test owner.
 Preserve assertions before removing cases; do not use test-count reduction as
 the success metric.
 
-- [ ] In `test_expiration_never_appends_or_changes_latest_revision`, reduce the
+- [x] In `test_expiration_never_appends_or_changes_latest_revision`, reduce the
   3x3 PostgreSQL matrix to the three stages `before_database`, `after_history`
   and `after_flush`, using the common account-day boundary. Keep all three
   deadline sources (account day, policy, price) in the existing fast
   `test_evaluation_carries_exclusive_account_calendar_boundary` matrix. Retain
   rollback/history assertions and the separate real PostgreSQL lock-wait test.
-- [ ] For
+- [x] For
   `test_paid_read_bounds_display_evidence_without_truncating_effective_contents`
   only, replace full purchase/reconciliation setup with a module-local fixture
   for valid persisted reader state. Retain real FK-valid provenance records,
@@ -196,12 +196,12 @@ the success metric.
   request, 100-product cap, complete grants/allowances, and before/after billing
   snapshot assertions. Other paid-read scenarios keep their full business path.
   Do not introduce a general billing fixture framework.
-- [ ] Move the pure subscription-state regex guard test from Playwright to
+- [x] Move the pure subscription-state regex guard test from Playwright to
   Vitest. Extract one test-only TypeScript helper shared with the real browser
   assertions; preserve its positive/negative input cases and page coverage.
-- [ ] Remove the weaker synchronous unverified-email component duplicate,
+- [x] Remove the weaker synchronous unverified-email component duplicate,
   retaining the stronger test that checks after React effects have executed.
-- [ ] Adapt `ad586d5` only in public-route tests: replace `networkidle` with
+- [x] Adapt `ad586d5` only in public-route tests: replace `networkidle` with
   the relevant response and visible-ready-state waits. Await fonts and required
   effects before accessibility assertions; retain desktop/mobile coverage.
 
@@ -254,7 +254,7 @@ Relevant primary references for these rules:
   or JUnit, skips, and interruption; validate return codes and reports.
 - [x] Single API-fast/component execution with coverage, unchanged standalone
   coverage scope and compatible npm aliases.
-- [ ] The changed backend/component/browser tests and their guarantee map.
+- [x] The changed backend/component/browser tests and their guarantee map.
 
 ### Final acceptance on the implementation revision
 
@@ -277,7 +277,7 @@ Relevant primary references for these rules:
 
 ### Current execution evidence
 
-Steps 1–6 are complete; Steps 7–9 remain pending. Evidence is recorded below.
+Steps 1–7 are complete; Steps 8–9 remain pending. Evidence is recorded below.
 Final runtime and stability acceptance remains Step 9 work.
 
 Preparation verification on 2026-11-13: `npm run docs:check` passed;
@@ -512,3 +512,27 @@ passed. Evidence: `.harness/any822-step6-20261113/` and `.harness/api-tests/`.
 Limitations: complete-check routing and standalone coverage scope were checked
 by regressions; full `check`, full instrumented API, browsers and remote CI were
 not run. Final runtime/stability acceptance remains Step 9. Steps 7–9 not started.
+
+#### Step 7 — bounded test improvements (2026-11-13)
+
+Completed: all five bounded improvements in Section 4. The paid-reader test
+uses module-local persisted state and also checks grants/allowances beyond the
+display cap; other paid-read scenarios retain their business setup.
+
+Retained guarantee owners:
+
+- Expiry sources: existing fast calendar matrix; PostgreSQL retains three
+  publication stages, rollback/history assertions and the separate real lock wait.
+- Subscription wording: `SubscriptionStateGuard.test.ts` retains all original
+  inputs; real browser assertions share the unchanged regex.
+- Unverified email: `does not request paid access before email verification`
+  checks after React effects and also asserts that refresh is absent.
+
+Verification: `npm run check:fast` passed (1,953 API-fast + 414 components);
+15 PostgreSQL, 24 calendar and 54 desktop/mobile browser cases passed, including
+accessibility checks. Web typecheck, docs, lint/format and diff checks passed.
+The frozen 24-case control is retained. Evidence: `.harness/any822-step7-20261113/`.
+
+Limitations: browser verification used existing Manrope files served locally
+through Next's test hook because Google Fonts was unavailable. Final full-suite,
+coverage and timing acceptance remains Step 9; Steps 8–9 have not started.
