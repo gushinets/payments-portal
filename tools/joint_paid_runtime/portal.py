@@ -119,7 +119,7 @@ async def seed() -> None:
         products = tuple(
             item
             for item in products
-            if item[0] in {"brief_decoder", "synthetic_summary"}
+            if item[0] in {"brief_decoder", "client_update_writer", "synthetic_summary"}
         )
     async with (
         source_resources(settings) as sources,

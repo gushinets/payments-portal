@@ -100,6 +100,7 @@ def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
         "target_product_discovery",
         "primary_selection",
         "deterministic_access_boundary",
+        "allowance_activation",
     }
     assert _values(WebhookDeliveryState) == {"pending", "processed", "ignored"}
     assert _values(BillingWorkKind) == {

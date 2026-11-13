@@ -140,7 +140,9 @@ def access_end_observation(db: Session, sub: ExternalSubscription) -> BillingSta
             BillingStateObservation.external_billing_account_id == sub.external_billing_account_id,
             BillingStateObservation.user_id == sub.user_id,
             BillingStateObservation.product_id == sub.product_id,
-            BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v1",
+            BillingStateObservation.evidence_schema_version.in_(
+                ("subscription-reconciliation:v1", "subscription-reconciliation:v2")
+            ),
             BillingStateObservation.completeness_classification == "complete",
             BillingStateObservation.result_classification == "COMPLETE_MATCH",
             evidence["access_end_at"].as_string().is_not(None),

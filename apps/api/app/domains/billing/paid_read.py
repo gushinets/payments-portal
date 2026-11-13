@@ -14,7 +14,7 @@ from app.domains.billing.customers import authenticate
 from app.domains.billing.paid_contracts import EffectiveState
 from app.domains.billing.paid_deadlines import effective_deadline
 from app.domains.billing.paid_policy import MeteringPolicy
-from app.domains.billing.reconciliation_contracts import RECONCILIATION_SCHEMA, IdentityProof, CommercialProof
+from app.domains.billing.reconciliation_contracts import RECONCILIATION_READ_SCHEMAS, IdentityProof, CommercialProof
 from app.domains.billing.reconciliation import SOURCE_TRUST
 from app.domains.catalog.publication import SessionFactory
 from app.domains.catalog.contracts import SourceProvenance
@@ -168,7 +168,7 @@ def read_access_snapshot(
 
 
 def _negative(observation: BillingStateObservation | None, now: datetime) -> bool:
-    if observation is None or observation.evidence_schema_version != RECONCILIATION_SCHEMA:
+    if observation is None or observation.evidence_schema_version not in RECONCILIATION_READ_SCHEMAS:
         return False
     proof = observation.evidence_document
     return (

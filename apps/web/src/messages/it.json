@@ -144,7 +144,9 @@
       "signOutAction": "Esci",
       "emailLabel": "Email",
       "emailVerified": "Email verificata",
-      "emailUnverified": "Email non verificata"
+      "emailUnverified": "Email non verificata",
+      "verificationRequired": "Conferma la tua email prima di autorizzare l’accesso al prodotto.",
+      "checkVerificationAction": "Ho confermato la mia email"
     },
     "products": {
       "title": "I miei prodotti",

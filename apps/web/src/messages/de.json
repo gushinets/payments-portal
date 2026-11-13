@@ -144,7 +144,9 @@
       "signOutAction": "Abmelden",
       "emailLabel": "E-Mail",
       "emailVerified": "E-Mail bestätigt",
-      "emailUnverified": "E-Mail nicht bestätigt"
+      "emailUnverified": "E-Mail nicht bestätigt",
+      "verificationRequired": "Bestätigen Sie Ihre E-Mail-Adresse, bevor Sie den Zugriff auf das Produkt erlauben.",
+      "checkVerificationAction": "Ich habe meine E-Mail-Adresse bestätigt"
     },
     "products": {
       "title": "Meine Produkte",

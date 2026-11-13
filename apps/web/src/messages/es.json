@@ -144,7 +144,9 @@
       "signOutAction": "Cerrar sesión",
       "emailLabel": "Correo electrónico",
       "emailVerified": "Correo electrónico verificado",
-      "emailUnverified": "Correo electrónico sin verificar"
+      "emailUnverified": "Correo electrónico sin verificar",
+      "verificationRequired": "Verifica tu correo electrónico antes de autorizar el acceso al producto.",
+      "checkVerificationAction": "Ya he verificado mi correo"
     },
     "products": {
       "title": "Mis productos",

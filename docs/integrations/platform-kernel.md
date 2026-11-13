@@ -1,7 +1,7 @@
 # Platform Kernel integration map
 
 Status: navigation and implementation snapshot; normative contracts are delegated below.
-Last source inspection: 2026-11-12; local source state, not a deployment check.
+Last source inspection: 2026-11-13; local source state, not a deployment check.
 
 ## Ownership and sources
 
@@ -31,12 +31,13 @@ plans do not override accepted sources.
 
 ## Observed implementation
 
-Current source baselines: Portal `c41428de013e69c982386acbb9edda05e1dc9014`
-and Kernel `82f1b155b5d9fbc9af8e5b6bd51364d640434495`, plus the local PR correction
+Current source baselines: Portal `65079f4e50867b9582a951a62a62cb6706dc0e0f`
+and Kernel `c8e867bfc25f4158b0bc36b76892e670a32cbb12`, plus the local remaining-corrections
 diff. The dated checkpoints below retain historical evidence, not current setup
-instructions. The corrected pair covers the complete policy digest, saved grant
-ownership without allowances, inactive delivery scheduling, frontend/API consumer
-alignment and web-update ingress retention; focused local acceptance passed.
+instructions. Corrections through 2026-11-13 cover policy digest, saved ownership,
+inactive delivery, consumer alignment, ingress retention, web credential isolation,
+verified delegation, historical activation and paid form/mode recovery. Focused
+local verification passed; earlier image rehearsals do not verify the new sources.
 The [active plan](../exec-plans/active/ANY-766-implementation-plan.md) records
 completed Steps 1–17 in the agreed local scope: common identity V2, configured
 consumer callbacks and the policy guard, consumer-filtered V3 paid admission with independent durable P/R
@@ -59,7 +60,7 @@ Portal's enabled embedded worker now selects each snapshot recipient's origin
 and outgoing credential from `BACKEND_CONSUMERS`; legacy Kernel connection
 settings no longer select delivery destinations. Step 13 adds independent
 bounded delivery lanes and exact-N ACK/repair per recipient. Stop affected
-APIs/workers before migrating the Step 14 pair to Portal `20261111_0011` and
+APIs/workers before migrating the current pair to Portal `20261113_0012` and
 Kernel `0021`. The historical Step 13 heads were Portal `20261111_0010` and
 Kernel `0020`. Configure the compatible invalidation receiver and its permission first; the
 [delivery runbook](../engineering/billing-background-operations.md#any-766-step-7--durable-kernel-invalidations)
@@ -163,7 +164,7 @@ retain whole-user guarantees. Production metering
 requires accepted `CONFIGURED_SOURCE` terms; SIMULATED history stays labelled
 and can supply no production allowance. See the [as-built serving rules](../engineering/billing-background-operations.md#any-766-step-5--production-allowances-and-snapshot-serving).
 Use the [paired cutover procedure](../architecture/deployment.md#paired-compatibility-and-synchronized-cutover):
-Portal `20261111_0011`, Kernel `0021`, compatible readers and a higher P for every
+Portal `20261113_0012`, Kernel `0021`, compatible readers and a higher P for every
 existing configured consumer when installing the expanded digest. Old V2 readers
 are excluded. Local acceptance changes no commercial flags or deployed configuration.
 
@@ -326,3 +327,12 @@ main paid journeys, including desktop/mobile launch/result/usage and accessibili
 checks on Portal surfaces. The synchronized plan owns the actual completion
 status and deferred matrix. This is not real third-party adoption or a live
 payment/deployed acceptance. Build/install preparation remains Step 17.
+
+
+The 2026-11-13 remaining-review correction adds exact immutable allowance
+activation observations and V2 internal reconciliation/selection evidence while
+retaining V1 readers. Portal head is `20261113_0012`; stop API/workers for migration
+and do not downgrade once new evidence exists. Historical usage reads never
+repair missing proof. Web receives public `BACKEND_CALLBACKS`, not the private
+registry. Code issue, exchange and introspection all require verified email;
+the authorization page can recheck confirmation without replacing its PKCE query.

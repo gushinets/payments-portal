@@ -432,3 +432,13 @@ def test_caddy_routes_service_api_and_swagger_without_rewriting_paths(path: str)
     assert "reverse_proxy @portal_service_api api:8000" in caddyfile
     assert "handle_path" not in caddyfile
     assert "payments-portal-prod-api-1" not in caddyfile
+
+
+@pytest.mark.parametrize("path", ["docker-compose.prod.yml", "docker-compose.agent.yml"])
+def test_web_receives_only_public_backend_callbacks(path: str) -> None:
+    services = load_compose(path)["services"]
+    public = services["web"]["environment"]
+    assert "BACKEND_CONSUMERS" not in public
+    assert "BACKEND_CALLBACKS" in public
+    assert "BACKEND_CONSUMERS" not in public["BACKEND_CALLBACKS"]
+    assert "BACKEND_CONSUMERS" in services["api"]["environment"]

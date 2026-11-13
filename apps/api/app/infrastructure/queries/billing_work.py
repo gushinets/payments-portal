@@ -36,7 +36,9 @@ def trust_observation(db: Session, subscription_id: UUID, read_started_at: datet
         select(BillingStateObservation)
         .where(
             BillingStateObservation.subscription_id == subscription_id,
-            BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v1",
+            BillingStateObservation.evidence_schema_version.in_(
+                ("subscription-reconciliation:v1", "subscription-reconciliation:v2")
+            ),
             BillingStateObservation.completeness_classification == "complete",
             BillingStateObservation.result_classification == "COMPLETE_MATCH",
             BillingStateObservation.evidence_document["read_started_at"].as_string().cast(DateTime(timezone=True))
@@ -319,7 +321,7 @@ def missing_deadlines(db: Session, tenant: str, region: str, limit: int) -> list
                 User.tenant_id == tenant,
                 User.region == region,
                 BillingStateObservation.evidence_schema_version.in_(
-                    ("subscription-reconciliation:v1", "bound-source-negative:v1")
+                    ("subscription-reconciliation:v1", "subscription-reconciliation:v2", "bound-source-negative:v1")
                 ),
                 BillingStateObservation.access_scope_id.is_not(None),
                 ExternalSubscription.projection_valid_until > ExternalSubscription.last_authoritative_read_at,

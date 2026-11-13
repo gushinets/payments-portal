@@ -5,6 +5,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.domains.billing.allowance_activation import retain_activations
 from app.domains.billing.paid_allowances import materialize_allowance
 from app.domains.billing.paid_deadlines import schedule_deadline
 from app.domains.billing.paid_contracts import EFFECTIVE_SCHEMA, EffectiveState, PaidGrant, canonical_state
@@ -213,6 +214,17 @@ def commit_paid_state(
         deadlines.append((primary, scope))
     effective = canonical_state(states).model_dump(mode="json")
     row = queries.state(db, user.id)
+    if row is not None:
+        # The previous committed set proves activation even when this first
+        # post-upgrade write removes an expired or newly blocked subscription.
+        retain_activations(
+            db,
+            user,
+            EffectiveState.model_validate(row.effective_state_document),
+            row.access_revision,
+            as_utc(row.committed_at),
+            now,
+        )
     outboxes = {item.recipient_id: item for item in queries.outboxes(db, user.id)}
     recipients = set(queries.snapshot_recipients(db, user.tenant_id, user.region))
     if (row.effective_state_document if row else EffectiveState().model_dump(mode="json")) == effective:
@@ -239,6 +251,7 @@ def commit_paid_state(
         row.access_revision = revision
         row.effective_state_document = effective
         row.committed_at = now
+    retain_activations(db, user, EffectiveState.model_validate(effective), revision, now, now)
     if cause is None:
         if not reductions:
             raise ValueError("material access change requires causal evidence")

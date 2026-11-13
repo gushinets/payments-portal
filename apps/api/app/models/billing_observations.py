@@ -18,6 +18,7 @@ from app.models._shared import (
     mapped_column,
     uuid,
     uuid_type,
+    text,
 )
 from app.models.enums import BillingStateObservationKind
 
@@ -91,7 +92,7 @@ class BillingStateObservation(Base):
         ),
         CheckConstraint(
             "observation_kind IN ('authoritative_subscription_read', 'target_product_discovery', "
-            "'primary_selection', 'deterministic_access_boundary')",
+            "'primary_selection', 'deterministic_access_boundary', 'allowance_activation')",
             name="ck_billing_state_observations_kind",
         ),
         CheckConstraint(
@@ -104,6 +105,13 @@ class BillingStateObservation(Base):
             "AND (observation_kind <> 'deterministic_access_boundary' OR "
             "(access_scope_id IS NOT NULL AND subscription_id IS NOT NULL AND effective_at IS NOT NULL))",
             name="ck_billing_state_observations_kind_shape",
+        ),
+        CheckConstraint(
+            "observation_kind <> 'allowance_activation' OR "
+            "(access_scope_id IS NOT NULL AND subscription_id IS NOT NULL "
+            "AND resulting_access_revision IS NOT NULL AND effective_at IS NOT NULL "
+            "AND evidence_schema_version = 'allowance-activation:v1')",
+            name="ck_billing_observations_activation_shape",
         ),
         CheckConstraint(
             "trim(evidence_schema_version) <> ''",
@@ -180,3 +188,12 @@ class BillingStateObservation(Base):
     result_classification: Mapped[str] = mapped_column(Text, nullable=False)
     resulting_access_revision: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+Index(
+    "uq_billing_observations_allowance_activation",
+    BillingStateObservation.evidence_document["allowance_id"].as_string(),
+    unique=True,
+    postgresql_where=text("observation_kind = 'allowance_activation'"),
+    sqlite_where=text("observation_kind = 'allowance_activation'"),
+)

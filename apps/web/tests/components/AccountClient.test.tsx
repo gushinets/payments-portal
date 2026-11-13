@@ -82,6 +82,23 @@ describe("direct account authentication and session", () => {
     vi.unstubAllGlobals();
   });
 
+  it("gates authorization until email is rechecked without losing the request URL", async () => {
+    window.localStorage.setItem(sessionStorageKey, "parent-token");
+    window.history.replaceState({}, "", "/ru/backend/authorize?state=pending-pkce");
+    fetchMock.mockResolvedValueOnce(jsonResponse({ authenticated: true, user: { ...accountUser, email_verified: false } }));
+    renderWithIntl(<AccountClient languageTag="ru" requireVerifiedEmailForChildren><button>Authorize product</button></AccountClient>, {
+      locale: "ru", messages: ruMessages,
+    });
+    const recheck = await screen.findByRole("button", { name: ruMessages.Account.authenticated.checkVerificationAction });
+    expect(screen.queryByRole("button", { name: "Authorize product" })).not.toBeInTheDocument();
+    fetchMock.mockResolvedValueOnce(sessionResponse());
+    fireEvent.click(recheck);
+    expect(await screen.findByRole("button", { name: "Authorize product" })).toBeVisible();
+    expect(window.location.search).toBe("?state=pending-pkce");
+    expect(window.localStorage.getItem(sessionStorageKey)).toBe("parent-token");
+    window.history.replaceState({}, "", "/");
+  });
+
   it("renders direct login and registration without loading commerce APIs", async () => {
     renderAccountClient();
 

@@ -43,6 +43,11 @@ def isolated_delegation_settings() -> Iterator[None]:
 
 def issue(consumer_id: str = "platform-kernel") -> tuple[dict[str, Any], str]:
     token = register_test_user(email=consumer_id + "@example.com")
+    with SessionLocal() as db:
+        db.query(User).filter(
+            User.email_normalized == consumer_id + "@example.com"
+        ).one().email_verified_at = datetime.now(UTC)
+        db.commit()
     auth = {
         "token": token,
         "user": client.get("/api/auth/session", headers={"Authorization": "Bearer " + token}).json()["user"],
@@ -488,3 +493,27 @@ def test_second_consumer_cannot_read_snapshot_without_explicit_permission() -> N
         )
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "access_snapshot_forbidden"
+
+
+@pytest.mark.parametrize("stage", ["issue", "exchange", "introspect"])
+def test_unverified_parent_cannot_delegate_identity(stage: str) -> None:
+    if stage == "issue":
+        token = register_test_user(email="unverified@example.com")
+        response = client.post(
+            "/api/backend-session-codes",
+            json={
+                "consumer_id": "platform-kernel",
+                "code_challenge": delegation.pkce_challenge(VERIFIER),
+                "code_challenge_method": "S256",
+            },
+            headers={"Authorization": "Bearer " + token},
+        )
+    else:
+        _, code = issue()
+        access_token = exchange(code).json()["access_token"] if stage == "introspect" else None
+        with SessionLocal() as db:
+            db.query(User).one().email_verified_at = None
+            db.commit()
+        response = exchange(code) if stage == "exchange" else introspect(access_token)
+    assert response.status_code == 401, response.text
+    assert response.json()["detail"]["code"] == "backend_parent_authority_invalid"

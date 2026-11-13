@@ -144,7 +144,9 @@
       "signOutAction": "Выйти",
       "emailLabel": "Email",
       "emailVerified": "Email подтверждён",
-      "emailUnverified": "Email не подтверждён"
+      "emailUnverified": "Email не подтверждён",
+      "verificationRequired": "Подтвердите email, чтобы разрешить доступ к продукту.",
+      "checkVerificationAction": "Я подтвердил email"
     },
     "products": {
       "title": "Мои продукты",

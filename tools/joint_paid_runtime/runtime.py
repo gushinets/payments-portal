@@ -77,6 +77,7 @@ class JointRuntime:
                 "kernel_web",
                 "kernel_peer",
                 "summary",
+                "smtp",
             )
         }
         self.origins = {
@@ -329,6 +330,9 @@ class JointRuntime:
                     "portal_to_backend_current_secret"
                 ],
                 "BACKEND_CONSUMERS": json.dumps(consumers),
+                "SMTP_HOST": "127.0.0.1",
+                "SMTP_PORT": str(self.ports["smtp"]),
+                "SMTP_USE_TLS": "false",
                 "LBX_BASE_URL": self.origins["lbx"],
                 "LBX_SERVER_USERNAME": "synthetic-user",
                 "LBX_SERVER_PASSWORD": "synthetic-password",
@@ -390,6 +394,17 @@ class JointRuntime:
                 env=self.portal_env,
                 name="portal-migrate",
             )
+            self.start(
+                "smtp",
+                [str(PORTAL / ".venv/bin/python"), str(TOOLS / "smtp.py")],
+                PORTAL,
+                self.portal_env,
+            )
+            deadline = monotonic() + 10
+            while not (self.run / "smtp.ready").exists():
+                if self.processes["smtp"].poll() is not None or monotonic() >= deadline:
+                    raise RuntimeError("Local SMTP sink did not become ready")
+                sleep(0.05)
             self.start("lbx", self.portal_command("lbx"), PORTAL, self.portal_env)
             self.wait(self.origins["lbx"] + "/openapi.json", name="lbx")
             self.start(
@@ -460,7 +475,17 @@ class JointRuntime:
             timeout=10,
         )
         portal_env = {
-            **self.portal_env,
+            **self.env,
+            "APP_PUBLIC_BASE_URL": self.origins["portal_web"],
+            "BACKEND_CALLBACKS": json.dumps(
+                [
+                    {
+                        "consumer_id": item["consumer_id"],
+                        "callback_url": item["callback_url"],
+                    }
+                    for item in self.consumers
+                ]
+            ),
             "NEXT_PUBLIC_API_BASE_URL": self.origins["portal_api"],
             "NEXT_PUBLIC_KERNEL_WEB_BASE_URL": self.origins["kernel_peer"],
             "NEXT_TELEMETRY_DISABLED": "1",

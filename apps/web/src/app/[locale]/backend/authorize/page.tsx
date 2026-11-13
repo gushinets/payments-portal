@@ -14,8 +14,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function BackendAuthorizePage() {
   const [messages, locale] = await Promise.all([getMessages(), getCurrentRouteLocale()]);
-  const callbacks = parseBackendCallbacks(process.env.BACKEND_CONSUMERS);
+  const callbacks = parseBackendCallbacks(process.env.BACKEND_CALLBACKS);
   return <NextIntlClientProvider messages={{ Auth: messages.Auth, Account: messages.Account, EmailVerification: messages.EmailVerification, BackendSession: messages.BackendSession }}>
-    <AccountClient languageTag={LANGUAGE_TAG_BY_ROUTE_LOCALE[locale]}><BackendAuthorization callbacks={callbacks} /></AccountClient>
+    <AccountClient languageTag={LANGUAGE_TAG_BY_ROUTE_LOCALE[locale]} requireVerifiedEmailForChildren><BackendAuthorization callbacks={callbacks} /></AccountClient>
   </NextIntlClientProvider>;
 }

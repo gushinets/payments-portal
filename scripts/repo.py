@@ -478,11 +478,11 @@ def write_runtime(config: RuntimeConfig) -> None:
         "OTEL_EXPORTER_OTLP_ENDPOINT": "http://observability:4318",
         "OTEL_SERVICE_NAME": "payment-portal-api",
     }
-    # Normal private connection values pass through independently of the mock.
-    # Keep them out of runtime.json/doctor/stdout and the public web environment.
+    # Runtime settings pass through independently of the mock. Keep private values
+    # out of runtime.json/doctor/stdout and web; BACKEND_CALLBACKS is the public projection.
     for name in (
         "KERNEL_BASE_URL", "KERNEL_SERVICE_TOKEN", "PURCHASE_TEST_TERMS_ENABLED", "PAID_ACCESS_CLOCK_SKEW_SECONDS",
-        "BACKEND_CONSUMERS",
+        "BACKEND_CONSUMERS", "BACKEND_CALLBACKS",
         "PREFLIGHT_TOTAL_TIMEOUT_SECONDS",
         "LBX_BASE_URL", "LBX_SERVER_USERNAME", "LBX_SERVER_PASSWORD",
         "LBX_WIDGET_SIGNING_SECRET", "LBX_SELLER_ORGANIZATION_ID",

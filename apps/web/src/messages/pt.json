@@ -144,7 +144,9 @@
       "signOutAction": "Sair",
       "emailLabel": "E-mail",
       "emailVerified": "E-mail verificado",
-      "emailUnverified": "E-mail não verificado"
+      "emailUnverified": "E-mail não verificado",
+      "verificationRequired": "Confirme seu email antes de autorizar o acesso ao produto.",
+      "checkVerificationAction": "Já confirmei meu email"
     },
     "products": {
       "title": "Meus produtos",

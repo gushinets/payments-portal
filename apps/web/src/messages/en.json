@@ -144,7 +144,9 @@
       "signOutAction": "Sign out",
       "emailLabel": "Email",
       "emailVerified": "Email verified",
-      "emailUnverified": "Email not verified"
+      "emailUnverified": "Email not verified",
+      "verificationRequired": "Verify your email before authorizing access to the product.",
+      "checkVerificationAction": "I have verified my email"
     },
     "products": {
       "title": "My products",

@@ -2,11 +2,13 @@
 
 from uuid import UUID
 
-from sqlalchemy import String, and_, cast, or_, select
+from sqlalchemy import Row, String, and_, cast, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.models import (
     BillingStateObservation,
+    BillingStateObservationKind,
+    BillingProductAccessScope,
     ExternalSubscription,
     PurchasedAllowance,
     ExternalSubscriptionFinancialAccessStatus as Financial,
@@ -25,7 +27,7 @@ def allowances(db: Session, user_id: UUID) -> list[PurchasedAllowance]:
     )
 
 
-def activated(
+def legacy_activation_candidates(
     db: Session,
     row: PurchasedAllowance,
     *,
@@ -33,7 +35,7 @@ def activated(
     selection_schema: str,
     identity: str,
     commercial: str,
-) -> bool:
+) -> list[BillingStateObservation]:
     # Issuance before a timestamp start does not activate a bucket, even after
     # that start passes. A material authoritative apply for this exact cycle
     # at/after its conservative start supplies the retained reconciliation proof.
@@ -50,10 +52,9 @@ def activated(
         )
         .exists()
     )
-    return (
-        db.scalar(
-            select(BillingStateObservation.observation_id)
-            .where(
+    return list(
+        db.scalars(
+            select(BillingStateObservation).where(
                 BillingStateObservation.subscription_id == row.subscription_id,
                 BillingStateObservation.evidence_schema_version == schema,
                 or_(
@@ -64,14 +65,38 @@ def activated(
                     selected,
                 ),
                 BillingStateObservation.result_classification == commercial,
-                BillingStateObservation.evidence_document["cycle"] == row.calendar_document,
                 BillingStateObservation.evidence_document["identity"].as_string() == identity,
                 BillingStateObservation.evidence_document["commercial"].as_string() == commercial,
                 BillingStateObservation.evidence_document["financial"].as_string() == Financial.ALLOWED,
                 BillingStateObservation.evidence_document["lifecycle"].as_string() == Lifecycle.ACTIVE,
                 BillingStateObservation.evidence_document["complete"].as_boolean().is_(True),
             )
-            .limit(1)
         )
-        is not None
     )
+
+
+def activation(db: Session, allowance_id: UUID) -> BillingStateObservation | None:
+    return db.scalar(
+        select(BillingStateObservation).where(
+            BillingStateObservation.observation_kind == BillingStateObservationKind.ALLOWANCE_ACTIVATION,
+            BillingStateObservation.evidence_document["allowance_id"].as_string() == str(allowance_id),
+        )
+    )
+
+
+def activation_subject(
+    db: Session, user_id: UUID, allowance_id: UUID
+) -> Row[tuple[PurchasedAllowance, ExternalSubscription, BillingProductAccessScope]] | None:
+
+    return db.execute(
+        select(PurchasedAllowance, ExternalSubscription, BillingProductAccessScope)
+        .join(ExternalSubscription, ExternalSubscription.subscription_id == PurchasedAllowance.subscription_id)
+        .join(
+            BillingProductAccessScope,
+            and_(
+                BillingProductAccessScope.user_id == ExternalSubscription.user_id,
+                BillingProductAccessScope.product_id == ExternalSubscription.product_id,
+            ),
+        )
+        .where(PurchasedAllowance.allowance_id == allowance_id, ExternalSubscription.user_id == user_id)
+    ).one_or_none()

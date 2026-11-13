@@ -6,6 +6,7 @@ import asyncio
 
 import httpx
 import pytest
+from sqlalchemy.engine import URL
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -516,3 +517,201 @@ async def test_historical_selection_has_deterministic_created_at_and_identity_or
     assert [item["allowance_id"] for item in result.json()["items"]] == [expected]
     assert backend.requests[0].url.params.get_list("allowance_id") == [expected]
     assert billing_snapshot(factory) == before
+
+
+@pytest.mark.parametrize("writer", ["v1", "v2", "v2_missing_receipt"])
+@pytest.mark.parametrize("equivalent_iso", [False, True])
+async def test_activated_timestamp_history_survives_equivalent_iso(
+    production_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    cabinet: tuple,
+    equivalent_iso: bool,
+    writer: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from calendar import monthrange
+    from app.domains.identity.services.auth import as_utc
+    from app.models import PaidAccessState
+
+    if writer != "v2":
+        from app.domains.billing import paid_access, reconciliation
+
+        monkeypatch.setattr(paid_access, "retain_activations", lambda *args: None)
+        if writer == "v1":
+            monkeypatch.setattr(reconciliation, "RECONCILIATION_SCHEMA", "subscription-reconciliation:v1")
+    factory = postgres_session_factory
+    start = datetime.now(UTC) + timedelta(seconds=1)
+    month_index = start.year * 12 + start.month
+    year, month_zero = divmod(month_index, 12)
+    end = start.replace(year=year, month=month_zero + 1, day=min(start.day, monthrange(year, month_zero + 1)[1]))
+    source = production_scenario[0].subscriptions[0]
+    source.update(
+        subscription_instance_start_date=start.isoformat(),
+        last_tariffication_period_start=start.isoformat(),
+        last_tariffication_period_end=end.isoformat(),
+    )
+    await reconcile(production_scenario, factory)
+    with factory() as db:
+        allowance = db.scalars(select(PurchasedAllowance)).one()
+        identity, original_calendar = allowance.allowance_id, allowance.calendar_document
+        boundary = as_utc(allowance.period_start)
+        assert db.scalar(select(PaidAccessState)).effective_state_document["allowances"] == []
+    await asyncio.sleep(max(0, (boundary - datetime.now(UTC)).total_seconds()) + 0.05)
+    if equivalent_iso:
+        source.update(
+            {
+                key: source[key].replace("+00:00", "Z")
+                for key in (
+                    "subscription_instance_start_date",
+                    "last_tariffication_period_start",
+                    "last_tariffication_period_end",
+                )
+            }
+        )
+    await reconcile(production_scenario, factory)
+    with factory() as db:
+        assert db.scalar(select(PaidAccessState)).effective_state_document["allowances"][0]["allowance_id"] == str(
+            identity
+        )
+        assert db.get(PurchasedAllowance, identity).calendar_document == original_calendar
+    source["current_blocking"] = 1
+    await reconcile(production_scenario, factory)
+    if writer == "v1":
+        from app.infrastructure.queries import paid_usage as usage_queries
+        from app.models import BillingStateObservation
+
+        original_candidates = usage_queries.legacy_activation_candidates
+
+        def with_unresolved_calendar(*args, **kwargs):
+            # Older complete commercial evidence may lack a proven calendar;
+            # another retained candidate must still be considered.
+            return [BillingStateObservation(evidence_document={"cycle": None}), *original_candidates(*args, **kwargs)]
+
+        monkeypatch.setattr(usage_queries, "legacy_activation_candidates", with_unresolved_calendar)
+    client, backend, _, _ = cabinet
+    before = billing_snapshot(factory)
+    response = await client.get("/api/paid-usage", headers=headers())
+    assert response.status_code == 200, response.text
+    if writer == "v2_missing_receipt":
+        assert response.json()["items"] == []
+        assert backend.requests == []
+        assert billing_snapshot(factory) == before
+        return
+    assert [item["allowance_id"] for item in response.json()["items"]] == [str(identity)]
+    assert response.json()["items"][0]["classification"] == "historical"
+    assert backend.requests[-1].url.params.get_list("allowance_id") == [str(identity)]
+    assert billing_snapshot(factory) == before
+
+
+@pytest.mark.parametrize("transition", ["noop", "blocked", "expired", "rollback"])
+async def test_upgrade_retains_previous_membership_before_reduction(
+    production_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    transition: str,
+) -> None:
+    from app.domains.billing import paid_access, reconciliation
+    from app.domains.identity.services.auth import as_utc
+    from app.models import (
+        BillingStateObservation,
+        BillingStateObservationKind,
+        BillingProductAccessScope,
+        PaidAccessState,
+    )
+    from app.models import ExternalSubscriptionFinancialAccessStatus as Financial
+    from app.infrastructure.queries.paid_usage import activation
+
+    factory = postgres_session_factory
+    # Simulate the pre-upgrade writer, without rewriting/deleting immutable rows.
+    with monkeypatch.context() as old:
+        old.setattr(paid_access, "retain_activations", lambda *args: None)
+        old.setattr(reconciliation, "RECONCILIATION_SCHEMA", "subscription-reconciliation:v1")
+        await reconcile(production_scenario, factory)
+    with factory() as db:
+        previous = db.scalar(select(PaidAccessState))
+        old_revision, committed_at = previous.access_revision, as_utc(previous.committed_at)
+        allowance = db.scalar(select(PurchasedAllowance))
+        allowance_id = allowance.allowance_id
+        original = (allowance.calendar_document, allowance.terms_document, allowance.created_at)
+        assert activation(db, allowance_id) is None
+    with factory() as db:
+        user = db.scalar(select(User).with_for_update())
+        scope = db.scalar(select(BillingProductAccessScope))
+        now = datetime.now(UTC)
+        if transition == "blocked":
+            db.scalar(select(ExternalSubscription)).financial_access_status = Financial.BLOCKED
+        elif transition == "expired":
+            now = as_utc(scope.effective_access_until) + timedelta(seconds=1)
+        result = paid_access.commit_paid_state(db, user, None, now)
+        receipt = activation(db, allowance_id)
+        assert receipt.resulting_access_revision == old_revision
+        assert as_utc(receipt.effective_at) == committed_at
+        assert as_utc(receipt.observed_at) == now
+        assert result == old_revision + (transition in {"blocked", "expired"})
+        if transition == "rollback":
+            db.rollback()
+        else:
+            db.commit()
+    with factory() as db:
+        if transition == "rollback":
+            assert activation(db, allowance_id) is None
+            assert db.scalar(select(PaidAccessState)).access_revision == old_revision
+        else:
+            user = db.scalar(select(User).with_for_update())
+            paid_access.commit_paid_state(db, user, None, now)
+            db.commit()
+            assert (
+                len(
+                    list(
+                        db.scalars(
+                            select(BillingStateObservation).where(
+                                BillingStateObservation.observation_kind
+                                == BillingStateObservationKind.ALLOWANCE_ACTIVATION
+                            )
+                        )
+                    )
+                )
+                == 1
+            )
+        row = db.get(PurchasedAllowance, allowance_id)
+        assert (row.calendar_document, row.terms_document, row.created_at) == original
+
+
+async def test_activation_receipt_is_unique_immutable_and_blocks_downgrade(
+    production_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    database_test_url: "URL",
+) -> None:
+    from alembic import command
+    from sqlalchemy import text
+    from sqlalchemy.exc import DBAPIError, IntegrityError
+    from apps.api.tests.support.postgres import alembic_test_config
+
+    factory = postgres_session_factory
+    await reconcile(production_scenario, factory)
+    with factory() as db:
+        with pytest.raises(IntegrityError):
+            db.execute(
+                text("""INSERT INTO billing_state_observations
+              (observation_id, observation_kind, external_billing_account_id, user_id, product_id,
+               access_scope_id, subscription_id, observed_at, effective_at, evidence_schema_version,
+               evidence_document, completeness_classification, result_classification, resulting_access_revision)
+              SELECT gen_random_uuid(), observation_kind, external_billing_account_id, user_id, product_id,
+               access_scope_id, subscription_id, observed_at, effective_at, evidence_schema_version,
+               evidence_document, completeness_classification, result_classification, resulting_access_revision
+              FROM billing_state_observations WHERE observation_kind = 'allowance_activation'""")
+            )
+        db.rollback()
+        with pytest.raises(DBAPIError):
+            db.execute(
+                text(
+                    "UPDATE billing_state_observations SET evidence_document = '{}'::jsonb WHERE observation_kind = 'allowance_activation'"
+                )
+            )
+        db.rollback()
+        with pytest.raises(DBAPIError):
+            db.execute(text("DELETE FROM billing_state_observations WHERE observation_kind = 'allowance_activation'"))
+        db.rollback()
+    with alembic_test_config(database_test_url) as config:
+        with pytest.raises(RuntimeError, match="Activation/V2 evidence requires the new reader"):
+            command.downgrade(config, "20261111_0011")

@@ -16,7 +16,7 @@ from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.customers import lock_user
 from app.domains.billing.paid_access import apply_paid_source, resolve_access_end
 from app.domains.billing.paid_policy import MeteringPolicy, CandidateConclusion, PrimaryCandidate, first_primary
-from app.domains.billing.reconciliation_contracts import RECONCILIATION_SCHEMA, ReconciliationResult
+from app.domains.billing.reconciliation_contracts import RECONCILIATION_READ_SCHEMAS, ReconciliationResult
 from app.domains.billing.work import verify_claim
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.catalog.publication import SessionFactory
@@ -131,7 +131,7 @@ def _source_current(db: Session, source: ReconciliationResult, sub: ExternalSubs
         and sub.external_agreement_id == source.subject.agreement_id
         and sub.purchase_intent_id == source.purchase.id
         and observation is not None
-        and observation.evidence_schema_version == RECONCILIATION_SCHEMA
+        and observation.evidence_schema_version in RECONCILIATION_READ_SCHEMAS
         and observation.subscription_id == sub.subscription_id
         and observation.user_id == source.purchase.user_id
         and observation.product_id == sub.product_id
@@ -265,7 +265,7 @@ def select_primaries(
                 basis_observation_id=cause.observation_id,
                 work_item_id=claim.id,
                 observed_at=now,
-                evidence_schema_version="primary-selection:v1",
+                evidence_schema_version="primary-selection:v2",
                 evidence_document=selection_evidence,
                 completeness_classification="complete",
                 result_classification="primary_selected",

@@ -177,7 +177,7 @@ def _require_policy(db: Session, consumer: BackendConsumer) -> None:
     description="Requires PortalUserBearer. A hash-only, single-use code expires within 60 seconds and remains bound "
     "to the parent session and configured consumer. The registered callback is deployment-owned; "
     "callback/redirect body fields are refused. All responses use Cache-Control: no-store. "
-    "401: invalid parent session; 403: unknown consumer; 422: invalid PKCE/body; 503: policy/storage unavailable.",
+    "401: invalid parent session or unverified email; 403: unknown consumer; 422: invalid PKCE/body; 503: policy/storage unavailable.",
 )
 def create_backend_code(
     payload: BackendCodeRequest,
@@ -211,7 +211,7 @@ def create_backend_code(
     "service credential; the body contains only the code and S256 verifier. Returns a V2 delegated "
     "user bearer, canonical UUID/scope, consumer and current policy revision. Lifetime is at most "
     "30 minutes and parent expiry. No refresh token. All responses are no-store. "
-    "401: invalid/used/expired/foreign code or parent; 403: scope/permission; 422: invalid body; "
+    "401: invalid/used/expired/foreign code, parent or unverified email; 403: scope/permission; 422: invalid body; "
     "503: policy/storage unavailable. Origin-bearing browser requests are refused.",
 )
 def exchange_backend_code(
@@ -249,7 +249,7 @@ def exchange_backend_code(
     summary="Validate this backend's delegated user on every protected request",
     description="Requires BackendServiceBearer with backend-session:introspect in Authorization. The secret "
     "access_token body field contains the delegated USER bearer, not the service credential. "
-    "Validates consumer audience, active user, parent revocation/expiry and current policy. "
+    "Validates consumer audience, active user, verified email, parent revocation/expiry and current policy. "
     "Read-only; no refresh or PII. valid_until includes the configured conservative clock budget. "
     "All responses are no-store. 401: backend_delegation_expired or backend_parent_authority_invalid; "
     "403: scope/permission/browser; 422: invalid secret body; 503: policy/storage unavailable.",

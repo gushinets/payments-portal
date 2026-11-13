@@ -173,7 +173,7 @@ current migration chain and table inventory. Do not create a separate
 bootstrap CLI. Before starting normal runtime on a fresh database, verify:
 
 - Alembic reports one head and the database is at that head;
-- the current head is `20261111_0011` and exactly 29 application tables exist;
+- the current head is `20261113_0012` and exactly 29 application tables exist;
 - every removed legacy catalog/order/payment/provider/subscription/
   entitlement/trial table is absent;
 - all seventeen billing/link/purchase tables are empty before explicit flows;
@@ -278,10 +278,10 @@ never repair failure by downgrading, stamping or rewriting purchase history.
 ### Paired compatibility and synchronized cutover
 
 The concrete supported pair is the current ANY-766 Portal and Kernel reader set:
-Portal migration head `20261111_0011`, Kernel head `0021`, consumer identity V2,
+Portal migration head `20261113_0012`, Kernel head `0021`, consumer identity V2,
 AccessSnapshot V3, manifest/invalidation/usage/exhaustion V1. Source baselines are
-Portal `c41428de013e69c982386acbb9edda05e1dc9014` and Kernel
-`82f1b155b5d9fbc9af8e5b6bd51364d640434495`, plus the local PR correction diff.
+Portal `65079f4e50867b9582a951a62a62cb6706dc0e0f` and Kernel
+`c8e867bfc25f4158b0bc36b76892e670a32cbb12`, plus the local remaining-corrections diff.
 Record final reviewed source SHAs, actual image IDs/digests and all frontend
 build inputs with the selected environment. Equal source labels or Alembic heads
 alone do not establish application/peer compatibility.
@@ -295,15 +295,18 @@ allowance IDs and quantities remain unchanged. The old Kernel-only delegation
 API and snapshot V2 binaries are also excluded; there is no rolling mixed-wire
 mode for this cutover.
 
-This pair expands the policy digest to include permissions and technical source without
-a DB migration or wire-version change. For an existing installation, stop Portal
+The earlier correction expanded the policy digest to include permissions and
+technical source without a DB migration or wire-version change. When crossing
+that digest boundary on an existing installation, stop Portal
 API/workers and configure P **above the persisted P for every configured consumer**
 before the first corrected startup. A fresh database may use P=1. Do not manually
 edit policy rows, decrease P, or restart the old Portal binary against the expanded
 digest merely because the migration head is unchanged. This changes P, not R,
 purchase ownership, allowance IDs or usage. A consumer-ID change never transfers
 historical purchases or delivery history. Keep that ID identical in the Portal
-registry, Kernel API environment and Kernel frontend build.
+registry, Kernel API environment and Kernel frontend build. The remaining
+activation correction requires migration `20261113_0012` with API/workers stopped;
+that migration alone does not require changing P.
 
 Before installing this pair over the Step 8 baseline:
 
@@ -317,9 +320,11 @@ Before installing this pair over the Step 8 baseline:
    allowance ownership by changing configuration. Enable Kernel invalidation and
    usage receiver permissions before enabling Portal delivery.
 3. While both old application sets remain stopped, run Portal's selected
-   `migrate` image through head `20261111_0011`: 0009 binds retained delegations
+   `migrate` image through head `20261113_0012`: 0009 binds retained delegations
    and policy scope; 0010 partitions recipient/outbox/work keys and retires stale
-   claims; 0011 adds exhaustion deduplication. Configure consumers before first
+   claims; 0011 adds exhaustion deduplication; 0012 retains allowance activation
+   and introduces V2 internal evidence readers/writers. Downgrade refuses retained
+   V2/activation evidence. Configure consumers before first
    API startup installs/verifies P/digest and recipient state. Do not run an old
    worker against migrated delivery keys.
 4. Use the selected Kernel images and its existing runner through head `0021`:
@@ -358,7 +363,7 @@ before selecting an environment.
 The disposable image rehearsal passed initial installation, production web HTTP
 and compiled-origin checks, frontend-only replacement without changing backend/DB
 container identities, backend/container recreation with retained synthetic user
-and usage state, and current heads `20261111_0011` / `0021`. Both real non-root
+and usage state, and then-current heads `20261111_0011` / `0021`. Both real non-root
 Kernel backend users could read the activation marker. An intentionally failing
 forward migration in each application's fixture image kept admission closed;
 recovery with the selected good images retained data and Kernel's prior
@@ -393,3 +398,11 @@ defined by [ADR 0005](decisions/0005-external-billing-boundary.md) and the accep
 [Portal <-> Kernel Access Contract Design](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md).
 This repository must not copy Platform Kernel runtime tables or store its
 artifacts and usage events.
+
+
+The web process receives `BACKEND_CALLBACKS` only, with `consumer_id` and
+`callback_url` matching the private API/worker registry. It never receives
+`BACKEND_CONSUMERS`. This public registry is read at server runtime; Kernel's
+consumer ID remains a frontend build input. Email must be verified before code
+issue, exchange or delegated introspection; unverified users can confirm email
+and recheck the authorization page without losing the pending PKCE request.

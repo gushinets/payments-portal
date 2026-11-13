@@ -37,6 +37,7 @@ def delegated_parent(migrated_database: Engine, postgres_session_factory: sessio
             email="synthetic@example.com",
             email_normalized="synthetic@example.com",
             status=UserStatus.ACTIVE,
+            email_verified_at=datetime.now(UTC),
         )
         db.add(user)
         db.flush()

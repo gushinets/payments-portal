@@ -827,3 +827,57 @@ def test_review_policy_cutover_preserves_accepted_work_and_recipient_history() -
                 indent=2,
             )
         )
+
+
+def test_verified_parent_required_through_real_smtp_and_http() -> None:
+    import re
+    from urllib.parse import parse_qs, urlsplit
+
+    with JointRuntime() as runtime, httpx.Client(trust_env=False, timeout=10) as client:
+        portal = runtime.origins["portal_api"]
+        email = f"verify-{uuid4().hex}@example.com"
+        registered = client.post(
+            portal + "/api/auth/register",
+            json={
+                "tenant_id": "anytoolai",
+                "region": "ru",
+                "email": email,
+                "password": "Synthetic-local-pass123!",
+                "personal_consent": True,
+                "offer_consent": True,
+            },
+        )
+        assert registered.status_code == 200, registered.text
+        token = registered.json()["token"]
+        request = {
+            "consumer_id": runtime.kernel_consumer_id,
+            "code_challenge": "a" * 43,
+            "code_challenge_method": "S256",
+        }
+        rejected = client.post(
+            portal + "/api/backend-session-codes", headers=bearer(token), json=request
+        )
+        assert rejected.status_code == 401
+        assert rejected.json()["detail"]["code"] == "backend_parent_authority_invalid"
+        mailbox = runtime.run / (
+            "mail-" + hashlib.sha256(email.encode()).hexdigest() + ".json"
+        )
+        eventually(mailbox.exists)
+        verification_url = re.search(
+            r"http://\S+", json.loads(mailbox.read_text())["body"]
+        ).group()
+        verification_token = parse_qs(urlsplit(verification_url).fragment)["token"][0]
+        confirmed = client.post(
+            portal + "/api/auth/email-verification/confirm",
+            headers=bearer(token),
+            json={"token": verification_token},
+        )
+        assert confirmed.status_code == 200, confirmed.text
+        delegated = delegate(runtime, client, owner_token=token)
+        checked = client.post(
+            portal + "/internal/v1/backend-sessions/introspect",
+            json={"access_token": delegated["access_token"]},
+            headers=bearer(runtime.consumers[0]["backend_to_portal_current_secret"]),
+        )
+        assert checked.status_code == 200
+        assert checked.json()["user_id"] == registered.json()["user"]["user_id"]

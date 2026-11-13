@@ -148,6 +148,7 @@ Indexes and constraints:
 
 Indexes and constraints:
 
+- `ck_billing_observations_activation_shape`
 - `ck_billing_observations_revision_positive`
 - `ck_billing_state_observations_evidence_schema_nonempty`
 - `ck_billing_state_observations_kind`
@@ -172,6 +173,7 @@ Indexes and constraints:
 - `ix_billing_state_observations_subscription_time`
 - `ix_billing_state_observations_user_product_time`
 - `ix_billing_state_observations_work_item`
+- `uq_billing_observations_allowance_activation`
 
 ## `billing_work_items`
 

@@ -13,7 +13,8 @@ from app.models import (
     ExternalSubscriptionLifecycleStatus as Lifecycle,
 )
 
-RECONCILIATION_SCHEMA = "subscription-reconciliation:v1"
+RECONCILIATION_SCHEMA = "subscription-reconciliation:v2"
+RECONCILIATION_READ_SCHEMAS = ("subscription-reconciliation:v1", RECONCILIATION_SCHEMA)
 
 
 class CommercialProof(StrEnum):

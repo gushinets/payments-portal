@@ -19,7 +19,7 @@ export async function accessibility(page: Page, info: TestInfo, name: string) {
   await page.screenshot({ path: info.outputPath(`${name}.png`), fullPage: true });
 }
 
-export async function launch(page: Page, info: TestInfo) {
+export async function launch(page: Page, info: TestInfo, productId = "brief_decoder") {
   const { portal, kernel, identity } = jointEnvironment();
   await page.addInitScript(({ portal, token }) => {
     if (location.origin === portal) localStorage.setItem("anytoolai_session_token_v1", token);
@@ -27,7 +27,7 @@ export async function launch(page: Page, info: TestInfo) {
   await page.goto(`${portal}/ru/account`);
   const cookie = page.getByRole("button", { name: ru.CookieBanner.acceptAction, exact: true });
   if (await cookie.isVisible()) await cookie.click();
-  const product = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "brief_decoder", exact: true }) });
+  const product = page.getByRole("article").filter({ has: page.getByRole("heading", { name: productId, exact: true }) });
   await expect(product.getByText(ru.Account.products.paid.confirmed, { exact: true })).toBeVisible();
   await accessibility(page, info, "paid-cabinet");
   const open = product.getByRole("link", { name: ru.Account.products.paid.openProduct, exact: true });
@@ -38,7 +38,7 @@ export async function launch(page: Page, info: TestInfo) {
   await accessibility(page, info, "backend-authorization");
   await page.getByRole("button", { name: ru.BackendSession.continue, exact: true }).click();
   const ready = await Promise.race([
-    page.waitForURL(`${kernel}/products/brief_decoder`, { timeout: 60_000 }).then(() => true),
+    page.waitForURL(`${kernel}/products/${productId}`, { timeout: 60_000 }).then(() => true),
     page.getByRole("alert").filter({ hasText: "Could not authorize this tab" }).waitFor().then(() => false),
   ]);
   if (!ready) {

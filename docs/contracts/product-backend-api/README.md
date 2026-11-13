@@ -1,6 +1,6 @@
 # Common product backend API
 
-Status: **LOCAL SCOPE IMPLEMENTED — ANY-766 Steps 1–17 and five PR corrections, 2026-11-12; focused local acceptance complete, PR review pending.**
+Status: **LOCAL SCOPE IMPLEMENTED — ANY-766 Steps 1–17 and both PR correction passes through 2026-11-13; focused local verification and owner review complete, CI/merge handoff pending.**
 Consumer-bound delegation V2, configured callbacks, the persisted policy guard,
 consumer-filtered AccessSnapshot V3 and Kernel's durable consumer/P/R coherence
 are implemented. Generated OpenAPI documents actual routes, security, schemas,
@@ -77,7 +77,7 @@ credentials; they are not accepted field names in the runtime registry.
 ### Implemented Step 10 settings and cutover
 
 Step-specific migration paragraphs below retain the historical Steps 10–13
-cutover checkpoints. The current pair requires Portal `20261111_0011` and Kernel
+cutover checkpoints. The current pair requires Portal `20261113_0012` and Kernel
 `0021`, delegation V2 and snapshot V3. For installation use the
 [paired compatibility/cutover procedure](../../architecture/deployment.md#paired-compatibility-and-synchronized-cutover),
 not an intermediate checkpoint's migration head.
@@ -94,9 +94,10 @@ Empty `[]` disables backend authentication. There are no default permissions.
 
 For managed local startup, set `BACKEND_CONSUMERS` to a single-line JSON array
 in the repository-root `.env`; a process environment value takes precedence.
-`repo:up` forwards it through private `.harness/runtime.env` to the API and web
-server environments. The registry stays out of runtime metadata and public
-`NEXT_PUBLIC_*` configuration.
+`repo:up` forwards it through private `.harness/runtime.env` to the API environment,
+including its embedded worker. Configure `BACKEND_CALLBACKS` separately for web;
+only that public projection reaches the web process. The private registry stays
+out of runtime metadata, web and `NEXT_PUBLIC_*` configuration.
 
 Safe synthetic example (one entry; add the independent second identity in tests):
 
@@ -144,10 +145,16 @@ Introspection also requires `PAID_ACCESS_CLOCK_SKEW_SECONDS`; configure 5 for th
 selected local clock budget. Missing configuration returns `503`; deployed
 support for that budget remains an operator requirement.
 
-Portal web uses the same **server-only** `BACKEND_CONSUMERS` registry and projects
-only consumer_id/callback_url into the authorization component. A service-specific
-web environment may supply just those two public fields. Never rename the
-registry to a NEXT_PUBLIC variable. The page is `/[locale]/backend/authorize`;
+Portal web receives only `BACKEND_CALLBACKS`, a server-runtime JSON array of
+`{"consumer_id":"platform-kernel","callback_url":"https://kernel.example/portal-session/callback"}`.
+It defaults to `[]` and has no fallback to the private API/worker
+`BACKEND_CONSUMERS` registry. Configure both callback projections consistently.
+Extra fields and malformed values are rejected without echoing raw input. Do not
+pass service credentials, database or LBX configuration into the web process.
+The agent runner passes the explicit public variable; CI may override it with
+`PLAYWRIGHT_BACKEND_CALLBACKS`.
+
+The page is `/[locale]/backend/authorize`;
 its query requires exactly consumer_id/state/code_challenge/code_challenge_method.
 Callback/redirect query fields, duplicate fields and unknown consumers are refused
 before code issuance. Selection always uses a configured callback, with code/state
@@ -295,7 +302,7 @@ The fixture bundle is authoritative for this pair and all body shapes.
    validated local product/result/handoff return target in tab sessionStorage.
    Navigate to Portal `/[locale]/backend/authorize` with configured consumer,
    challenge, S256 and state. This page authenticates the existing Portal
-   session and resolves the fixed configured callback. It rejects a supplied
+   session, requires verified email and resolves the fixed configured callback. It rejects a supplied
    external callback/redirect override. Kernel's local launch/callback names
    remain `/portal-session/launch` and `/portal-session/callback`.
 2. Portal's page calls `POST /api/backend-session-codes` with its primary bearer:
@@ -534,8 +541,18 @@ with own bounded HTTP resources outside SQL, tuple validation and a post-I/O
 local revision check (`503 paid_usage_state_changed`). Preserve isolated local
 paid-access capacity and verified-email session guard. Historical eligibility
 requires proven CONFIGURED_SOURCE compatible terms; exclude SIMULATED, missing
-unit/terms and future allowances awaiting authoritative activation. Select
-latest eligible by created_at then allowance_id when no current item exists;
+unit/terms and future allowances awaiting authoritative activation.
+Timestamp history uses exact `allowance-activation:v1` evidence from the sole
+paid-state writer. It retains the allowance UUID, subject, committed R and proven
+membership time, including previous committed membership before reduction on
+upgrade. This is not a claimed first-ever activation time. No-op backfill retains
+R and ordinary delivery semantics; all facts roll back with the caller transaction.
+Readers accept reconciliation/primary-selection V1 and V2. Only V1 evidence can
+use the conservative legacy fallback, comparing the cycle semantically against
+the target row, frozen first anchor and saved commercial period. V2 issuance
+without an activation fact grants no historical eligibility. Already-lost history
+with no retained proof remains excluded; GET does not repair it or call Kernel to
+invent proof. Select latest eligible by created_at then allowance_id when no current item exists;
 no eligible row means no item. Unknown/unavailable omit counters. Portal has no
 usage ledger. This cabinet composition is implemented in Step 15; Step 14 supplies the
 owner resolver and bounded V1 client, without adding the cabinet endpoint.
@@ -553,7 +570,11 @@ codes are relayed, while upstream service-auth/permission, transport or malforme
 response failures become `503 portal_identity_unavailable`. An unsupported Portal
 response version also becomes that safe dependency failure, not a user `422`.
 Invalid/used code, wrong audience or PKCE is `401`; expired token and invalid
-parent are distinct `401` meanings. Authenticated scope/permission refusal is
+parent are distinct `401` meanings. Missing verified email is
+`401 backend_parent_authority_invalid` at code issue, exchange and introspection.
+The authorization page gates the product action and offers a session recheck
+after email confirmation in another tab, preserving the PKCE query. Ordinary
+account/billing pages retain their existing verification behavior. Authenticated scope/permission refusal is
 `403`; invalid shape/unsupported version is `422`; unknown scoped snapshot user
 is `404`; unavailable identity/source/storage or no complete valid snapshot is
 `503`. Contract index lists per-operation statuses. Never include secret input
@@ -665,9 +686,10 @@ models are retained schema history, not evidence authorizing a purge here.
 Kernel scenarios/products, guest paths and ANY-507 execution semantics stay owned
 by Kernel; a non-Kernel product requires no Kernel scenario registration.
 
-**Current cutover:** Step 14 requires Portal `20261111_0011` and Kernel `0021`.
-The historical Step 13 heads were Portal `20261111_0010` and Kernel `0020`.
-Later steps extend the resulting actual heads; never edit applied migrations.
+**Current cutover:** the corrected pair requires Portal `20261113_0012` and Kernel
+`0021`. The historical Step 13 heads were Portal `20261111_0010` and Kernel `0020`;
+Step 14 advanced them to Portal `20261111_0011` and Kernel `0021`.
+Migration `0012` adds retained activation evidence; never edit applied migrations.
 First test forward migrations against populated isolated
 local databases. Quiesce both APIs/workers; migrate identity/policy, source-owner
 read compatibility, coherence and recipient scheduling in owning-step order;
@@ -678,7 +700,10 @@ readers from installation/recovery even when a migration head happens to match.
 Keep retained data, original purchases/digests, pending browser starts, allowance
 IDs, usage, floors and undelivered work. No owner transfer or bulk JSON rewrite.
 The [paired installation runbook](../../architecture/deployment.md#paired-compatibility-and-synchronized-cutover)
-specifies the corrected pair, required higher P and compatible recovery procedure.
+specifies the corrected pair, the higher P required only when crossing the earlier
+expanded-digest boundary, and the compatible recovery procedure. Activation/V2
+evidence excludes old Portal readers and blocks downgrade; migration `0012` alone
+does not require changing P.
 
 ## OpenAPI and handoff checkpoint
 
@@ -739,8 +764,8 @@ finalize or release under its durable execution/replay rules, preserve both floo
 on eviction/restart and reject expired or mismatching authority after lock waits.
 
 This is historical auth/access evidence, not today's installation target. Use the
-current paired cutover procedure above (Portal `20261111_0011`, Kernel `0021`
-and the expanded-digest P requirement). Old V2 readers are excluded; there is no
+current paired cutover procedure above (Portal `20261113_0012`, Kernel `0021`,
+with higher P when crossing the expanded-digest boundary). Old snapshot V2 readers are excluded; there is no
 translation route. Recover with compatible retained backups and binaries.
 Step 13 partitions invalidations; Steps 14/15 implement usage/exhaustion and cabinet usage.
 
@@ -894,11 +919,13 @@ returns `503 paid_usage_unavailable`, never zero.
 Selection uses current configured-source allowances. For each product without a
 current allowance, it selects the latest compatible configured-source history
 by `created_at`, then `allowance_id` (both descending). Legacy rows without proven
-unit/terms and SIMULATED evidence are excluded without rewriting them. A saved
-timestamp allowance issued before its start needs retained committed
-authoritative cycle/primary-selection evidence of activation; elapsed wall time
-alone cannot turn it into history. No eligible allowance means no item, including
-`items: []` for an empty result. Compatible old terms retain their Kernel owner.
+unit/terms and SIMULATED evidence are excluded without rewriting them. Timestamp
+history requires an exact `allowance-activation:v1` fact, or the conservative
+legacy proof from V1 reconciliation/primary-selection evidence described above.
+New V2 evidence without an activation fact cannot establish eligibility; elapsed
+wall time alone cannot turn future issuance into history. Reads never repair
+missing proof. No eligible allowance means no item, including `items: []` for an
+empty result. Compatible old terms retain their saved backend owner.
 
 `composition/paid_usage.py` owns an independent DB pool/thread limiter and HTTP
 pools. The usage lane admits two active requests and four waiters per process;
@@ -935,3 +962,16 @@ and unobserved/unavailable states, shows actual counters and read time, and
 separates temporary reservation pressure from final exhaustion. It invents no
 reset date. Local PostgreSQL, synthetic owner HTTP and desktop/mobile component
 accessibility evidence do not establish the assembled Step 16 or live acceptance.
+
+
+### Remaining-review cutover (2026-11-13)
+
+Portal head `20261113_0012` adds an observation kind and a unique partial index,
+without a new table or mutable allowance field. Stop Portal API/workers before
+migration and restart all writers/readers on the new binary. New reconciliation
+and primary-selection observations use V2; HTTP identity V2, snapshot V3 and
+other V1 contracts retain their versions. Downgrade refuses retained activation
+or V2 evidence; never delete history to force it. The earlier expanded-policy
+digest cutover still requires explicitly higher P when upgrading from a
+pre-expanded-digest binary. This migration alone does not change P. Do not mix
+old policy binaries or transfer purchase ownership.

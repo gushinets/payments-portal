@@ -10,7 +10,7 @@ from app.core.settings import Settings
 from app.domains.billing.customers import authenticate
 from app.domains.billing.paid_policy import MeteringPolicy
 from app.domains.billing.paid_read import read_committed_state
-from app.domains.billing.reconciliation_contracts import RECONCILIATION_SCHEMA, CommercialProof, IdentityProof
+from app.domains.billing.allowance_activation import was_activated
 from app.domains.catalog.contracts import SourceProvenance
 from app.domains.catalog.publication import SessionFactory
 from app.domains.catalog.technical_source import TechnicalOwnership
@@ -87,14 +87,7 @@ def select_paid_usage(factory: SessionFactory, configuration: Settings, token: s
             # Only timestamp allowances can be issued before activation. Reuse
             # retained authoritative cycle evidence, never the current clock.
             if classification == UsageClassification.HISTORICAL and row.period_start is not None:
-                if not queries.activated(
-                    db,
-                    row,
-                    schema=RECONCILIATION_SCHEMA,
-                    selection_schema="primary-selection:v1",
-                    identity=IdentityProof.MATCH,
-                    commercial=CommercialProof.MATCH,
-                ):
+                if not was_activated(db, row):
                     continue
             selected.append(
                 UsageAllowance(

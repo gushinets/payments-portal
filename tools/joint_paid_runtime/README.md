@@ -32,7 +32,8 @@ and repair. The separate image/Caddy web-update rehearsal is described in the
 [Kernel deployment runbook](https://github.com/gushinets/anytoolai-platform/blob/main/infra/deployment/README.md#pr-correction-web-update-rehearsal--2026-11-12);
 this harness's normal commands do not build or replace web images.
 
-External substitutions are explicit: LBX uses the existing purchase recordings
+External substitutions are explicit: a loopback-only SMTP sink retains synthetic
+verification mail privately in the run directory, LBX uses the existing purchase recordings
 served on loopback, AI uses Kernel's deterministic provider fixtures, and the
 second backend is a synthetic protocol demonstrator. Temporary product copies
 enable only the four selected production declarations; committed defaults retain
@@ -66,3 +67,9 @@ The 2026-11-11 acceptance scope prioritizes common backend auth/access, consumer
 isolation, owner-directed usage/exhaustion and the main paid journey. Broad suites
 and the remaining full failure/concurrency matrix are deferred at the user's
 request; focused acceptance is not a claim that those gates passed.
+
+
+The remaining-review cases exercise real registration and SMTP confirmation,
+authorization recheck with the original PKCE query, and restoration of the paid
+form after reload. Portal web gets only public callback/build values and the
+sanitized process environment, without the API's service, DB or LBX credentials.

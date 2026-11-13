@@ -70,6 +70,7 @@ def _require_parent(user: User | None, parent: AuthSession | None, tenant_id: st
         user is None
         or parent is None
         or user.status != UserStatus.ACTIVE
+        or user.email_verified_at is None
         or (user.tenant_id, user.region) != (tenant_id, region)
         or (parent.user_id, parent.tenant_id, parent.region) != (user.id, tenant_id, region)
         or parent.revoked_at is not None

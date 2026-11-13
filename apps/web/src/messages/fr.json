@@ -144,7 +144,9 @@
       "signOutAction": "Se déconnecter",
       "emailLabel": "Adresse e-mail",
       "emailVerified": "Adresse e-mail vérifiée",
-      "emailUnverified": "Adresse e-mail non vérifiée"
+      "emailUnverified": "Adresse e-mail non vérifiée",
+      "verificationRequired": "Confirmez votre adresse e-mail avant d’autoriser l’accès au produit.",
+      "checkVerificationAction": "J’ai confirmé mon adresse e-mail"
     },
     "products": {
       "title": "Mes produits",

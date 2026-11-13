@@ -19,7 +19,7 @@ BASELINE_REVISION = "20260924_0001"
 EMAIL_VERIFICATION_REVISION = "20261001_0002"
 BILLING_PREPARATION_REVISION = "20261029_0003"
 WORKER_REVISION = "20261028_0005"
-HEAD_REVISION = "20261111_0011"
+HEAD_REVISION = "20261113_0012"
 
 SURVIVOR_TABLES = {
     "regions",
@@ -489,6 +489,7 @@ EXPECTED_CHECKS = {
         "ck_billing_state_observations_subject_shape",
         "ck_billing_state_observations_kind",
         "ck_billing_state_observations_kind_shape",
+        "ck_billing_observations_activation_shape",
         "ck_billing_state_observations_evidence_schema_nonempty",
     },
     "purchased_allowances": {
@@ -683,6 +684,7 @@ EXPECTED_INDEXES = {
     },
     "billing_state_observations": {
         "ix_billing_state_observations_kind_time",
+        "uq_billing_observations_allowance_activation",
         "ix_billing_state_observations_account_kind_time",
         "ix_billing_state_observations_user_product_time",
         "ix_billing_state_observations_scope_time",
@@ -790,6 +792,7 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         assert script.get_bases() == [BASELINE_REVISION]
         assert [item.revision for item in script.walk_revisions()] == [
             HEAD_REVISION,
+            "20261111_0011",
             "20261111_0010",
             "20261111_0009",
             "20261110_0008",

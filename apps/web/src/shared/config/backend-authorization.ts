@@ -3,11 +3,19 @@ export type BackendCallback = { consumerId: string; callbackUrl: string };
 /** Parse a consumed public projection of deployment configuration, never credentials. */
 export function parseBackendCallbacks(raw: string | undefined): BackendCallback[] {
   if (!raw) return [];
-  const value: unknown = JSON.parse(raw);
+  try {
+    return parsePublicCallbacks(JSON.parse(raw));
+  } catch {
+    // Parser errors must never echo deployment input (including accidental secrets).
+    throw new Error("backend_configuration_invalid");
+  }
+}
+
+function parsePublicCallbacks(value: unknown): BackendCallback[] {
   if (!Array.isArray(value)) throw new Error("backend_configuration_invalid");
   const callbacks: BackendCallback[] = [];
   for (const item of value) {
-    if (typeof item !== "object" || item === null || !("consumer_id" in item) || !("callback_url" in item) ||
+    if (typeof item !== "object" || item === null || Object.keys(item).length !== 2 || !("consumer_id" in item) || !("callback_url" in item) ||
       typeof item.consumer_id !== "string" || !/^[a-z][a-z0-9-]{0,63}$/.test(item.consumer_id) ||
       typeof item.callback_url !== "string") throw new Error("backend_configuration_invalid");
     const url = new URL(item.callback_url);

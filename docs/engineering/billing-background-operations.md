@@ -228,9 +228,13 @@ Before cutover, stop the Portal API and embedded workers and the paired Kernel
 API/worker; retain the existing databases/backups. Install the compatible Kernel
 receiver with matching scope/current-or-previous Portal service token and set
 `ANYTOOLAI_PORTAL_ACCESS_INVALIDATION_ENABLED=true` there. The historical Step 13
-pair used Portal `20261111_0010` and Kernel `0020`; the current Step 14 pair
-requires Portal `20261111_0011` and Kernel `0021`. The PR digest correction adds no
-migration but requires a higher P for every existing configured consumer. Follow the
+pair used Portal `20261111_0010` and Kernel `0020`; Step 14 advanced them to Portal
+`20261111_0011` and Kernel `0021`. The current corrected pair requires Portal
+`20261113_0012` and Kernel `0021`. Keep Portal API/workers stopped for migration
+`0012` and restart compatible activation/V2-evidence readers and writers.
+The earlier digest correction requires a higher P for every existing configured
+consumer only when crossing that expanded-digest boundary; migration `0012`
+alone does not require changing P. Follow the
 [paired installation and compatibility procedure](../architecture/deployment.md#paired-compatibility-and-synchronized-cutover)
 and the synchronized
 [consumer identity cutover](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover)
@@ -693,7 +697,8 @@ No Kernel change or real-producer conformance is implied by this handoff.
 
 ### Inputs, acceptance and decisions
 
-Consume `subscription-reconciliation:v1` under the
+The ANY-765 handoff used `subscription-reconciliation:v1`. Current writers emit
+`subscription-reconciliation:v2`, with compatible V1/V2 readers, under the
 [source authority policy](#source-authority-and-trust) above: complete original
 ownership/legal/term proof and supported prepaid ACTIVE/ALLOWED facts. Integration
 alone translates LBX codes; Kernel does not become a settlement verifier.
@@ -840,13 +845,16 @@ remain unchanged. Time alone cannot prove a new cycle or extend authority.
 ### Migration, configuration, recovery and evidence limits
 
 The current chain is `20260924_0001 → 20261001_0002 → 20261029_0003 →
-20261028_0005 → 20261031_0006 → 20261110_0007 → 20261110_0008 → 20261111_0009 → 20261111_0010 → 20261111_0011`;
+20261028_0005 → 20261031_0006 → 20261110_0007 → 20261110_0008 → 20261111_0009 → 20261111_0010 → 20261111_0011 → 20261113_0012`;
 there is no `0004` dependency to recreate.
 `0006` preserves legacy UTC and v2 purchases, preflights incompatible history,
 enforces immutable allowance/logical identity and monotonic state/outbox guards,
 and refuses destructive downgrade. Running clean ANY-715/0005 code against a
 populated v2/0006 DB is not a supported rollback. See the
 [schema reference](../architecture/payment-portal-data-model.md).
+`0012` retains exact allowance activation facts in the existing immutable
+observation store. Downgrade is refused once activation or V2 evidence exists;
+never delete evidence or restart old writers to bypass that compatibility floor.
 
 Use the [worker settings](#embedded-worker-settings-and-resource-limits), operator
 procedures above and the authenticated-read runbook for configuration, connection
@@ -912,7 +920,9 @@ responses. No reconciliation, financial send or counter write occurs in a read.
 The [cabinet usage contract](../contracts/product-backend-api/README.md#implemented-step-15-cabinet-usage)
 records selection, status, limits and retry semantics. Retained configured-source
 history remains readable after blocking; legacy/SIMULATED or never-activated
-future rows produce no backend usage request. A tuple conflict is diagnosed
+future rows produce no backend usage request. Timestamp history requires an exact
+activation fact or conservative legacy V1 proof; V2 evidence alone cannot replace
+that fact. Already-lost history without retained proof stays unavailable. A tuple conflict is diagnosed
 without attributing foreign usage; a backend outage stays unavailable. Enable
 the matching backend usage permission before local integration acceptance.
 

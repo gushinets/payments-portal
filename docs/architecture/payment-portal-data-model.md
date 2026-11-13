@@ -1,14 +1,14 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-11-11 (ANY-766 immutable exhaustion work)
+Last updated: 2026-11-13 (ANY-766 retained allowance activation)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 -> 20261110_0008 -> 20261111_0009 -> 20261111_0010 -> 20261111_0011 (head)
+20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 -> 20261110_0008 -> 20261111_0009 -> 20261111_0010 -> 20261111_0011 -> 20261113_0012 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
@@ -335,8 +335,9 @@ financial status and an immediately expired projection, plus normalized effectiv
 terms and nullable/sentinel calendar observations. It creates no access-primary,
 paid state, grant or allowance, and never extends paid trust on Manage.
 
-ANY-715 Step 1 uses the existing reconciliation lease/fence columns and appends
-`subscription-reconciliation:v1` evidence through shared claim/read/apply logic.
+The shared claim/read/apply logic introduced in ANY-715 Step 1 uses the existing
+reconciliation lease/fence columns and now appends `subscription-reconciliation:v2`
+evidence (V1 remains readable).
 It creates/reuses a product scope without selecting a primary. Complete matching
 positive proof anchors at most six hours of source trust to read-set start; incomplete
 attempts preserve the existing deadline and complete support, while decisive
@@ -350,7 +351,7 @@ operations described below. See the
 `billing_state_observations` stores evidence whose core fields are immutable.
 Its closed kinds are
 `authoritative_subscription_read`, `target_product_discovery`,
-`primary_selection`, and `deterministic_access_boundary`; database checks
+`primary_selection`, `deterministic_access_boundary`, and `allowance_activation`; database checks
 enforce each kind's minimum provenance shape. DELETE is forbidden, and all
 fields except `resulting_access_revision` are immutable. That field may be
 assigned exactly once from `NULL` to a non-null value; once assigned, it cannot
@@ -361,8 +362,8 @@ Versioned `target-product-discovery:v2` and `paid-access-cause:v1` evidence may
 retain purchase provenance without an access scope.
 `target-product-discovery:v3` stores scoped candidate conclusions and references
 to the observations already committed by leased reconciliation. Inventory does
-not apply those source facts again. A `primary-selection:v1` observation links
-the chosen source to its discovery; selection, paid state, causal revision and
+not apply those source facts again. New `primary-selection:v2` observations link
+the chosen source to its discovery (V1 remains readable); selection, paid state, causal revision and
 outbox share the final inventory transaction. Later inventory failures cannot
 roll back earlier authoritative source/paid transactions.
 Customer and financial restrictions retain their existing fence/lease
@@ -570,3 +571,24 @@ and completed state. Its key binds tenant/region/user/allowance/event type;
 The full issued tuple and retained backend/source owner are validated before
 commit. The local lane schedules existing reconciliation only for a current
 allowance. No usage ledger or additional table is introduced.
+
+
+## Retained allowance activation
+
+Migration `20261113_0012` adds `allowance_activation` to the existing immutable
+observation store and `uq_billing_observations_allowance_activation`, unique by
+JSON allowance UUID for that kind. Typed `allowance-activation:v1` evidence has
+exactly the schema marker and allowance ID; the existing subject, effective time,
+observed time and resulting R columns retain its provenance. No allowance fields
+or evidence immutability triggers change. The sole paid-state writer appends
+missing facts for previous committed membership before replacing it, including
+on a no-op, then for newly committed active membership in the same transaction.
+It resolves the saved allowance/subscription, never a replacement primary.
+
+New reconciliation and primary-selection writers emit V2; all existing readers
+also accept V1. Exact activation evidence establishes timestamp-history eligibility.
+The conservative V1 fallback compares cycle meaning against saved period, first
+anchor and target allowance; V2 requires an exact fact. Future issuance, elapsed
+time and a new configuration cannot establish activation. Cabinet reads remain
+read-only; already-lost unprovable old history stays unavailable. Downgrade is
+blocked after activation or V2 evidence exists.
