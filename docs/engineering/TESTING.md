@@ -191,9 +191,15 @@ Inspect the printed path for this invocation, not a prior successful run.
 
 Collection errors, failed/crashed workers, missing reports or differences
 between expected IDs, worker collections and JUnit produce a nonzero result.
-Failures and skips remain in the merged report. A caller-supplied `--junitxml`
-path is marked incomplete when the run starts and replaced with current results;
-an older success cannot represent the new run.
+Failures and skips remain in the merged report. Once the `test` command options
+are parsed, a caller-supplied `--junitxml` path is marked incomplete before
+worker-count validation and test-environment preparation. Expected startup
+failures replace it with a current error; the runner does the same before its
+own validation when called directly. Execution replaces it with current results,
+so an older success cannot represent the new run. Report-write errors remain
+visible failures. If a later worker cannot start, available reports from the
+started workers are retained alongside the infrastructure error. Reports
+already collected are included only once when execution is interrupted.
 
 On Ctrl-C or termination, the runner interrupts children and gives pytest up to
 15 seconds for fixture cleanup, then allows 5 seconds after termination before

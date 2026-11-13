@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.domains.billing.discovery import apply_inventory
@@ -12,12 +13,12 @@ from app.domains.purchases import service
 from app.domains.purchases.inventory_contracts import InventoryResult
 from app.infrastructure.persistence.billing_work import coalesce
 from app.jobs.billing import BillingWorker
+from app.models import BillingWorkItem
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.test_billing_background_recovery_postgres import (
     background_scenario as background_scenario,
     anyio_backend as anyio_backend,
     job,
-    due,
     synthetic_prepare,
 )
 from apps.api.tests.test_any709_subscription_inventory_postgres import add_external_subscription
@@ -35,6 +36,14 @@ async def test_inventory_moves_from_normal_to_urgent_with_bounded_due_time(
     factory, config = postgres_session_factory, step1_settings()
     purchase = synthetic_prepare(factory, transport, purchase, uncertain=False)
     recovery.repair_batch(factory, config)
+    with factory() as db:
+        # Preparation also enqueues urgent reconciliation. Make it overdue to
+        # retain the queue contention seen when this scenario runs slowly.
+        reconciliation = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == work.RECONCILIATION))
+        assert reconciliation is not None and reconciliation.attempt_count == 0
+        reconciliation_id = reconciliation.work_item_id
+        reconciliation.next_attempt_at = db.scalar(select(func.clock_timestamp())) - timedelta(seconds=5)
+        db.commit()
     if reason == "incomplete":
         transport.hide.add("/subscriptions")
         # Empty complete inventory is valid; an explicit failing point makes
@@ -50,10 +59,20 @@ async def test_inventory_moves_from_normal_to_urgent_with_bounded_due_time(
         assert row.priority == 1 and row.work_state == "pending"
         assert started < row.next_attempt_at <= started + timedelta(seconds=work.URGENT_SECONDS)
         assert row.last_error_classification == "inventory_" + reason
-        due(factory, recovery.INVENTORY, purchase.customer_id)
+        with factory() as db:
+            # Put inventory first so lane assertions are independent of
+            # elapsed setup/HTTP time.
+            earliest = db.scalar(select(func.min(BillingWorkItem.next_attempt_at)))
+            assert earliest is not None
+            now = db.scalar(select(func.clock_timestamp()))
+            inventory = db.get(BillingWorkItem, row.work_item_id)
+            inventory.next_attempt_at = min(earliest, now) - timedelta(seconds=1)
+            db.commit()
         assert not await worker.tick(WorkLane.NORMAL)
         assert await worker.tick(WorkLane.URGENT)
         assert job(factory, recovery.INVENTORY, purchase.customer_id).attempt_count == 2
+        with factory() as db:
+            assert db.get(BillingWorkItem, reconciliation_id).attempt_count == 0
     finally:
         await worker.aclose()
 
