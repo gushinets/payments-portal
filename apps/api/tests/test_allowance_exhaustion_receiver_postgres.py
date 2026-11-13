@@ -30,7 +30,14 @@ from app.http import backend_auth
 from app.http.dependencies import get_session_factory
 from app.jobs.billing import BillingWorker
 from app.main import create_app
-from app.models import BillingWorkItem, BillingWorkKind, BillingWorkScope, BillingWorkState, ExternalSubscription, PurchasedAllowance
+from app.models import (
+    BillingWorkItem,
+    BillingWorkKind,
+    BillingWorkScope,
+    BillingWorkState,
+    ExternalSubscription,
+    PurchasedAllowance,
+)
 from apps.api.tests.factories.paid_runtime import reconcile
 from apps.api.tests.factories.purchase_terms import reviewed_meaning
 from apps.api.tests.support.any709_step1 import link_selection
@@ -170,17 +177,19 @@ def test_exhaustion_history_blocks_downgrade_at_0011(migrated_database: Engine) 
         # the actual 0011 boundary, without deleting immutable billing evidence.
         command.downgrade(migration, "20261111_0011")
         with Session(migrated_database) as db:
-            db.add(BillingWorkItem(
-                work_item_id=identity,
-                work_kind=BillingWorkKind.ALLOWANCE_EXHAUSTION,
-                scope_kind=BillingWorkScope.ALLOWANCE,
-                scope_reference=event.allowance_id,
-                coalescing_key=f"{event.tenant_id}:{event.region}:{event.user_id}:{event.allowance_id}:{event.event_type}",
-                payload_schema_version="allowance-exhaustion:v1",
-                payload_document=event.model_dump(mode="json"),
-                next_attempt_at=now,
-                work_state=BillingWorkState.COMPLETED,
-            ))
+            db.add(
+                BillingWorkItem(
+                    work_item_id=identity,
+                    work_kind=BillingWorkKind.ALLOWANCE_EXHAUSTION,
+                    scope_kind=BillingWorkScope.ALLOWANCE,
+                    scope_reference=event.allowance_id,
+                    coalescing_key=f"{event.tenant_id}:{event.region}:{event.user_id}:{event.allowance_id}:{event.event_type}",
+                    payload_schema_version="allowance-exhaustion:v1",
+                    payload_document=event.model_dump(mode="json"),
+                    next_attempt_at=now,
+                    work_state=BillingWorkState.COMPLETED,
+                )
+            )
             db.commit()
             before = db.scalar(retained, {"id": identity})
             assert before is not None
