@@ -55,7 +55,7 @@ from app.integrations.lbx.errors import (
 from app.integrations.lbx.financial import Agreement, Subscription, agreement_is_closed, subscription_lifecycle
 from app.integrations.lbx.reconciliation import MAX_RELEVANT_SUBSCRIPTIONS, source_scope_unproven, timely_point
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State
-from app.models import ExternalSubscriptionLifecycleStatus as Lifecycle, PurchaseIntentState
+from app.models import ExternalSubscriptionLifecycleStatus as Lifecycle
 
 
 async def collect_inventory(
@@ -179,7 +179,9 @@ async def collect_inventory(
             conflicting_bindings.add(provider_id)
         # Reused operator proof contributes completeness but supplies no committed
         # source receipt: only the final audited writer may apply/select it.
-        if proof.complete and (committed is None or committed.purchase.state != PurchaseIntentState.MANUAL_REVIEW):
+        # Review blocks this source's primary selection, not proof of its ownership
+        # or an independent product that happens to share its accepted tariff.
+        if proof.complete:
             conclusion = Conclusion.ELIGIBLE if paid_decision(proof) == PaidDecision.GRANT else Conclusion.INELIGIBLE
         elif proof.identity == IdentityProof.MATCH and proof.lifecycle == Lifecycle.ENDED:
             conclusion = Conclusion.INELIGIBLE

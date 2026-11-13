@@ -20,6 +20,7 @@ from app.domains.billing.inventory_history import (
 )
 from app.domains.billing.reconciliation import apply_reconciliation, claim_reconciliation, read_source_time
 from app.domains.billing.reconciliation_contracts import (
+    CommercialProof,
     IdentityProof,
     ReadInterval,
     SubscriptionProof,
@@ -36,6 +37,8 @@ from app.models import (
     BillingStateObservationKind,
     BillingWorkItem,
     ExternalCreateOperationKind as Kind,
+    ManualReviewCase,
+    PurchaseIntentState,
 )
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.factories.original_operation import advance_deadlines, financial_claim_clock
@@ -434,25 +437,64 @@ async def test_new_possible_external_effect_invalidates_all_product_decisions(
         assert all(scope.primary_subscription_id is None for scope in db.scalars(select(BillingProductAccessScope)))
 
 
-async def test_review_of_a_conclusive_bound_sibling_on_a_shared_tariff_does_not_block_primary(
+@pytest.mark.parametrize("tariff_id", [701, 702], ids=["shared-tariff", "distinct-tariff"])
+@pytest.mark.parametrize("review", ["after-inventory", "before-inventory", "commercial-mismatch"])
+async def test_review_of_a_conclusive_bound_sibling_does_not_block_primary(
     background_scenario: tuple,
     postgres_session_factory: sessionmaker[Session],
+    tariff_id: int,
+    review: str,
 ) -> None:
     transport, sources, purchase = background_scenario
     factory, config = postgres_session_factory, step1_settings(paid_access_clock_skew_seconds=10)
     first = synthetic_prepare(factory, transport, purchase, uncertain=False)
-    second = historical_link(factory, first, transport, "brief_decoder", 1)
+    second = historical_link(factory, first, transport, "brief_decoder", 1, tariff_id=tariff_id)
     for point in transport.subscriptions:
         point.update(state=2, last_tariffication_period_start="2026-10-01", last_tariffication_period_end="2026-10-31")
     second_id = service.linked_subscription_id(factory, second)
+
+    def open_operation_review() -> None:
+        current = service.read_purchase(factory, first.user_id, first.id)
+        operation = next(op for op in current.operations if op.kind == Kind.SUBSCRIPTION)
+        financial.financial_pending(factory, current, operation, conflict=True)
+
+    if review == "commercial-mismatch":
+        point = transport.subscriptions[0]
+        original_price = point["services"][0]["price"]
+        point["services"][0]["price"] = 15
+        negative = await reconcile_subscription(
+            sources.require_lbx(),
+            sources.billing,
+            config,
+            factory=factory,
+            subscription_id=service.linked_subscription_id(factory, first),
+        )
+        assert negative.proof.commercial == CommercialProof.MISMATCH
+        assert negative.purchase.state == PurchaseIntentState.MANUAL_REVIEW
+        point["services"][0]["price"] = original_price
+    elif review == "before-inventory":
+        open_operation_review()
     claim = claim_inventory(Scenario(factory, config, transport, sources, second_id))
     result = persist_discoveries(factory, claim, await inventory(sources, factory, first, claim=claim))
+    source = next(item for item in result.sources if item.purchase.id == first.id)
+    assert source.proof.complete
+    assert source.proof.identity == IdentityProof.MATCH
+    assert source.proof.commercial == CommercialProof.MATCH
+    assert source.proof.point_relationship == SubscriptionRelationship(
+        next(op.bound_id for op in first.operations if op.kind == Kind.AGREEMENT), first.accepted.selection.tariff_id
+    )
     product = next(item for item in result.products if item.product_id == "brief_decoder")
     assert product.complete and len(product.candidates) == 1
-    current = service.read_purchase(factory, first.user_id, first.id)
-    operation = next(op for op in current.operations if op.kind == Kind.SUBSCRIPTION)
-    financial.financial_pending(factory, current, operation, conflict=True)
+    assert product.candidates[0].purchase_id == second.id
+    if review == "after-inventory":
+        open_operation_review()
+    with factory() as db:
+        open_cases = set(
+            db.scalars(select(ManualReviewCase.review_case_id).where(ManualReviewCase.case_state == "open"))
+        )
+        assert open_cases
     apply_inventory(factory, claim, result, None, clock_skew_seconds=10)
+    assert service.read_purchase(factory, first.user_id, first.id).state == PurchaseIntentState.MANUAL_REVIEW
     with factory() as db:
         assert (
             db.scalar(
@@ -462,6 +504,15 @@ async def test_review_of_a_conclusive_bound_sibling_on_a_shared_tariff_does_not_
             )
             == second_id
         )
+        assert (
+            db.scalar(
+                select(BillingProductAccessScope.primary_subscription_id).where(
+                    BillingProductAccessScope.product_id == first.accepted.selection.product_id
+                )
+            )
+            is None
+        )
+        assert all(db.get(ManualReviewCase, identity).case_state == "open" for identity in open_cases)
 
 
 async def test_actual_deadline_review_does_not_cancel_an_independent_primary(
