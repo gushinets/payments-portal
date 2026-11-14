@@ -1,7 +1,8 @@
 # Deployment Architecture
 
 Status: authoritative current deployment plus target contour isolation
-Last source review: 2026-11-09; deployment acceptance remains separate.
+Last source review: 2026-11-09; local bootstrap reviewed 2026-11-14.
+Deployment acceptance remains separate.
 
 ## Current `ru` deployment
 
@@ -124,18 +125,23 @@ the database and verify that it cannot restart against the clean database.
 
 For the repository-managed local harness, read `worktree_id` from
 `.harness/runtime.json` or from the JSON previously printed by
-`python scripts/repo.py up`, then run exactly:
+`python scripts/repo.py up`. Replace `<worktree_id>` in both commands below
+with that recorded value, then run:
 
 ```bash
 python scripts/repo.py reset --confirm <worktree_id>
-python scripts/repo.py test-db up
+docker compose --project-name payments-<worktree_id> --env-file .harness/runtime.env -f docker-compose.yml -f docker-compose.agent.yml up -d --no-deps --wait postgres
 python scripts/repo.py migrate-api
 ```
 
 `reset` executes the harness-scoped Compose
 `down --volumes --remove-orphans`; it is the supported destructive local reset.
-`test-db up` starts only PostgreSQL. `migrate-api` applies `alembic upgrade head`
-to that harness database.
+The explicit Compose command starts only the application project's PostgreSQL,
+using its persistent volume and `POSTGRES_PORT`; API, web and workers remain
+stopped until verification succeeds. `migrate-api` applies `alembic upgrade head`
+to that same application database. `test-db up` instead manages a separate
+disposable server on `POSTGRES_PORT_TEST` for pytest; it cannot bootstrap the
+application database. See the [test-server lifecycle](../engineering/TESTING.md#test-environment-and-server-lifecycle).
 
 The clean baseline migration owns schema creation and configured-contour/legal
 bootstrap; subsequent revisions apply through the same `upgrade head`. The

@@ -615,3 +615,42 @@ def test_windows_break_signal_uses_pytest_interrupt_cleanup(monkeypatch: pytest.
     monkeypatch.setattr(signal, "signal", lambda number, handler: calls.append((number, handler)))
     pytest_manifest.pytest_configure()
     assert calls == [(99, signal.default_int_handler)]
+
+
+@pytest.mark.parametrize(
+    "arguments,expected_code",
+    [
+        (["test", "--help"], 0),
+        (["check", "--help"], 0),
+        (["test", "api-fast", "--pytest-args", "-c", "PAYLOAD"], 1),
+        (["test", "api-fast", "--pytest-args", "-m", "arbitrary_module"], 1),
+        (["test", "api-fast", ";", "touch", "MARKER"], 2),
+        (["check", "--fast", ";", "touch", "MARKER"], 2),
+    ],
+)
+def test_real_venv_reexec_keeps_cli_arguments_outside_python_and_shell(
+    tmp_path: Path, arguments: list[str], expected_code: int
+) -> None:
+    marker = tmp_path / "executed"
+    payload = f"from pathlib import Path; Path({str(marker)!r}).touch()"
+    arguments = [
+        payload if argument == "PAYLOAD" else str(marker) if argument == "MARKER" else argument
+        for argument in arguments
+    ]
+    script = """import json, sys
+from scripts import repo
+# Simulate the external interpreter in this child only; execv starts a real venv process.
+sys.prefix = sys.argv[1]
+sys.argv = [str(repo.ROOT / "scripts/repo.py"), *json.loads(sys.argv[2])]
+raise SystemExit(repo.main())
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(tmp_path / "outside-venv"), json.dumps(arguments)],
+        cwd=repo.ROOT,
+        env=environment(),
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == expected_code, result.stdout + result.stderr
+    assert not marker.exists()

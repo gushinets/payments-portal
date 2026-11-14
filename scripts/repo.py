@@ -3693,7 +3693,11 @@ def reexec_in_repository_venv_if_required() -> None:
         # Replace the waiting shim so it cannot kill the runner during cleanup.
         # End interpreter options before the fixed script and its CLI arguments.
         os.chdir(ROOT)
-        os.execv(str(python), [str(python), "--", str(Path(__file__).resolve()), *sys.argv[1:]])
+        # The executable and script are repository-owned. Remaining argv entries
+        # are script arguments parsed by argparse, never Python options or shell code.
+        os.execv(  # NOSONAR(S8705) Fixed interpreter/script; CLI data stays after the script.
+            str(python), [str(python), "--", str(Path(__file__).resolve()), *sys.argv[1:]]
+        )
     result = subprocess.run(
         [str(python), str(Path(__file__).resolve()), *sys.argv[1:]],
         cwd=ROOT,

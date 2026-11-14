@@ -1,7 +1,7 @@
 # Testing Strategy
 
 Status: authoritative
-Last verified: 2026-11-13
+Last verified: 2026-11-14
 
 ## Layers
 
@@ -111,9 +111,12 @@ On Unix/WSL, use the repository's worktree-scoped PostgreSQL server lifecycle:
 ```bash
 make test_db_up
 npm run test:api:postgres
-npm run test:api
 make test_db_stop
 ```
+
+For the complete backend suite, replace `npm run test:api:postgres` with
+`npm run test:api` in that flow. Choose one: the complete suite already includes
+the PostgreSQL partition.
 
 The cross-platform equivalents are `python scripts/repo.py test-db up` and
 `python scripts/repo.py test-db stop`. The dedicated `docker-compose.test.yml`

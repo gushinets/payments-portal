@@ -1,6 +1,6 @@
 # ANY-822 — Rebuild test execution acceleration from main
 
-Status: **COMPLETE — local review fixes and acceptance passed; remote CI not run**
+Status: **COMPLETE — implementation and local acceptance passed**
 Created: 2026-11-13
 Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
 Execution branch: `ANY-822`
@@ -279,7 +279,7 @@ Relevant primary references for these rules:
 ### Current execution evidence
 
 Steps 1–9 and local review fixes are complete; current acceptance is summarized
-in Step 9. Earlier entries retain the status at their own handoffs.
+in Step 9 and the final corrections below. Earlier entries retain their handoff status.
 
 Preparation verification on 2026-11-13: `npm run docs:check` passed;
 `git diff --check` and the new plan's whitespace check passed. At preparation
@@ -554,7 +554,8 @@ remain Step 9, not started. Remote CI was not run.
 #### Step 9 — final acceptance and review fixes (2026-11-13)
 
 Verified on `8496803c50d9b5153444290bfbcdedbcd4cfd351` plus the local review
-fixes. Implementation and local acceptance are complete; remote CI was not run.
+fixes. Implementation and local acceptance were complete; remote CI had not run
+at that handoff.
 
 Review fixes: invalidate stale JUnit before startup checks, retain completed
 worker results after launch failures, avoid duplicate reports on interruption,
@@ -588,10 +589,20 @@ Verification used isolated PostgreSQL 18.4 servers with a 2 GiB tmpfs and normal
 durability settings. Timings include collection and fixture cleanup, excluding
 server startup. Owned databases/containers were cleaned; existing resources
 were preserved. Builds/browser tests used cached Manrope fonts.
-Remote CI, Windows, live-source opt-in journeys, production-image/network checks
-and full serial API coverage remain unverified.
+At this handoff, remote CI, Windows, live-source opt-in journeys,
+production-image/network checks and full serial API coverage were unverified.
 
 Detailed results, source/environment fingerprints and startup timings remain in
 `.harness/any822-step9-20261113/`,
 `.harness/any822-review-fixes-81411570eab5/` and
 `.harness/any822-strong-fixes-6747e01dd3d5/`.
+
+#### Final implementation corrections (2026-11-14)
+
+Corrected the bootstrap runbook and duplicate PostgreSQL example. Documented
+S8705 as a reviewed false positive at the fixed `execv` call and added six
+real-reexec regression cases; launcher behavior is unchanged.
+
+`npm run check:fast -- --coverage` passed (1,974 API-fast, 414 components).
+Bootstrap commands were checked without database operations. Detailed evidence:
+`.harness/any822-final-review-20261114/`.
