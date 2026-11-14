@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
 from app.composition.backend_consumers import initialize_backend_consumers
+from app.composition.delegation_cleanup import delegation_cleanup_resources
 from app.composition.sources import source_resources
 from app.composition.billing_worker import billing_worker_resources
 from app.composition.paid_reads import paid_read_resources
@@ -56,6 +57,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await run_in_threadpool(_seed_legal_documents_sync)
 
     async with (
+        delegation_cleanup_resources(settings),
         paid_read_resources(settings) as reads,
         source_resources(settings) as sources,
         paid_usage_resources(settings) as usage,

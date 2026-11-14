@@ -518,6 +518,7 @@
     "description": "Ihre Portal-Sitzung autorisiert diesen Produkt-Tab.",
     "continue": "Weiter",
     "loading": "Autorisierung…",
-    "failed": "Autorisierung fehlgeschlagen. Prüfen Sie Ihre Sitzung und versuchen Sie es erneut."
+    "failed": "Autorisierung fehlgeschlagen. Prüfen Sie Ihre Sitzung und versuchen Sie es erneut.",
+    "rateLimited": "Zu viele Autorisierungsanfragen. Bitte versuchen Sie es später erneut."
   }
 }

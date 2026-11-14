@@ -29,7 +29,9 @@ RESET_PASSWORD = "Changed-password-123!"
 
 
 @pytest.fixture
-def delegated_parent(migrated_database: Engine, postgres_session_factory: sessionmaker[Session]) -> DelegatedParent:
+def parent_identity(
+    migrated_database: Engine, postgres_session_factory: sessionmaker[Session]
+) -> tuple[sessionmaker[Session], UUID, UUID]:
     with postgres_session_factory() as db:
         user = User(
             tenant_id="anytoolai",
@@ -51,6 +53,13 @@ def delegated_parent(migrated_database: Engine, postgres_session_factory: sessio
         db.add(parent)
         db.commit()
         parent_id, user_id = parent.id, user.id
+    return postgres_session_factory, parent_id, user_id
+
+
+@pytest.fixture
+def delegated_parent(parent_identity: tuple[sessionmaker[Session], UUID, UUID]) -> DelegatedParent:
+    factory, parent_id, user_id = parent_identity
+    with factory() as db:
         code = delegation.issue_code(
             db,
             token=PARENT_TOKEN,
@@ -59,7 +68,25 @@ def delegated_parent(migrated_database: Engine, postgres_session_factory: sessio
             code_challenge=delegation.pkce_challenge(VERIFIER),
             consumer_id="platform-kernel",
         ).code
-    return postgres_session_factory, parent_id, user_id, code
+    return factory, parent_id, user_id, code
+
+
+@pytest.fixture
+def historical_delegation(parent_identity: tuple[sessionmaker[Session], UUID, UUID]) -> DelegatedParent:
+    """Pre-budget historical data, without invoking today's code-issuance writer."""
+    factory, parent_id, user_id = parent_identity
+    code = "h" * 43
+    with factory.begin() as db:
+        db.add(
+            BackendSessionDelegation(
+                auth_session_id=parent_id,
+                consumer_id="platform-kernel",
+                code_hash=delegation.credential_hash(code),
+                code_challenge=delegation.pkce_challenge(VERIFIER),
+                code_expires_at=datetime.now(UTC) + timedelta(seconds=60),
+            )
+        )
+    return factory, parent_id, user_id, code
 
 
 def test_migrated_shape_and_single_use_race(delegated_parent: DelegatedParent, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -172,10 +199,10 @@ def test_foreign_scope_and_verifier_do_not_consume_code(delegated_parent: Delega
 
 
 def test_migration_round_trip_preserves_parent_and_rejects_partial_exchange(
-    delegated_parent: DelegatedParent,
+    historical_delegation: DelegatedParent,
     database_test_url: URL,
 ) -> None:
-    factory, parent_id, _, _ = delegated_parent
+    factory, parent_id, _, _ = historical_delegation
     with factory() as db:
         before = db.execute(
             text("SELECT to_jsonb(s) FROM auth_sessions s WHERE id = :id"), {"id": parent_id}
@@ -421,22 +448,24 @@ def test_password_reset_rechecks_token_expiry_after_user_lock_wait(
 
 
 def test_populated_step8_forward_migration_preserves_delegations_and_parent_state(
-    delegated_parent: DelegatedParent,
+    historical_delegation: DelegatedParent,
     database_test_url: URL,
 ) -> None:
-    factory, _, _, code = delegated_parent
+    factory, parent_id, _, code = historical_delegation
     with factory() as db:
         delegation.exchange_code(
             db, code=code, verifier=VERIFIER, tenant_id="anytoolai", region="ru", consumer_id="platform-kernel"
         )
-        delegation.issue_code(
-            db,
-            token=PARENT_TOKEN,
-            tenant_id="anytoolai",
-            region="ru",
-            code_challenge=delegation.pkce_challenge(VERIFIER),
-            consumer_id="platform-kernel",
+        db.add(
+            BackendSessionDelegation(
+                auth_session_id=parent_id,
+                consumer_id="platform-kernel",
+                code_hash=delegation.credential_hash("second-historical-code"),
+                code_challenge=delegation.pkce_challenge(VERIFIER),
+                code_expires_at=datetime.now(UTC) + timedelta(seconds=60),
+            )
         )
+        db.commit()
     with alembic_test_config(database_test_url) as config:
         command.downgrade(config, "20261110_0008")
         with factory() as db:
@@ -524,10 +553,10 @@ def test_concurrent_stale_installation_cannot_restore_old_consumer_policy(
 
 
 def test_forward_migration_refuses_to_adopt_foreign_historical_audience(
-    delegated_parent: DelegatedParent,
+    historical_delegation: DelegatedParent,
     database_test_url: URL,
 ) -> None:
-    factory, _, _, _ = delegated_parent
+    factory, _, _, _ = historical_delegation
     with alembic_test_config(database_test_url) as config:
         command.downgrade(config, "20261110_0008")
         with factory.begin() as db:
@@ -543,7 +572,7 @@ def test_forward_migration_refuses_to_adopt_foreign_historical_audience(
 
 @pytest.mark.parametrize("retained", ["policy", "foreign_delegation"])
 def test_consumer_downgrade_refuses_history_without_changing_schema_or_data(
-    delegated_parent: DelegatedParent,
+    historical_delegation: DelegatedParent,
     database_test_url: URL,
     retained: str,
 ) -> None:
@@ -551,7 +580,7 @@ def test_consumer_downgrade_refuses_history_without_changing_schema_or_data(
     from app.models import BackendConsumerPolicy
     from apps.api.tests.support.backend_consumers import backend_consumer
 
-    factory, _, _, _ = delegated_parent
+    factory, _, _, _ = historical_delegation
     current = backend_consumer(consumer_policy_revision=2)
     with factory.begin() as db:
         if retained == "policy":
@@ -588,43 +617,23 @@ def test_consumer_downgrade_refuses_history_without_changing_schema_or_data(
                 install_policy(db, stale)
 
 
-def test_issuance_cleans_delegations_with_large_expired_parent_history(delegated_parent: DelegatedParent) -> None:
+def test_issuance_does_not_wait_for_an_unrelated_expired_parent(delegated_parent: DelegatedParent) -> None:
     factory, _, user_id, _ = delegated_parent
-    now = datetime.now(UTC)
     with factory.begin() as db:
-        db.query(BackendSessionDelegation).one().code_expires_at = now - timedelta(seconds=1)
-        # Expired auth sessions are retained; their count must not become a SQL
-        # bind-parameter limit on an otherwise valid authorization request.
-        db.execute(
-            text("""
-            INSERT INTO auth_sessions
-                (id, tenant_id, region, user_id, token_hash, created_at, expires_at, last_seen_at)
-            SELECT gen_random_uuid(), 'anytoolai', 'ru', :user_id,
-                md5('synthetic-old-' || i::text) || md5('synthetic-suffix-' || i::text),
-                :created_at, :expires_at, :created_at
-            FROM generate_series(1, 32767) i
-        """),
-            {
-                "user_id": user_id,
-                "created_at": now - timedelta(days=31),
-                "expires_at": now - timedelta(days=1),
-            },
+        old_parent = AuthSession(
+            user_id=user_id,
+            tenant_id="anytoolai",
+            region="ru",
+            token_hash=delegation.credential_hash("locked-expired-parent"),
+            expires_at=datetime.now(UTC) - timedelta(days=1),
         )
-        db.execute(
-            text("""
-            INSERT INTO backend_session_delegations
-                (id, auth_session_id, consumer_id, code_hash, code_challenge, code_expires_at)
-            SELECT gen_random_uuid(), id, 'platform-kernel', :code_hash, :challenge, expires_at
-            FROM auth_sessions WHERE user_id = :user_id AND expires_at <= :now ORDER BY id LIMIT 1
-        """),
-            {
-                "user_id": user_id,
-                "now": now,
-                "challenge": delegation.pkce_challenge(VERIFIER),
-                "code_hash": delegation.credential_hash("synthetic-old-parent-code"),
-            },
-        )
-    with factory() as db:
+        db.add(old_parent)
+        db.flush()
+        old_parent_id = old_parent.id
+    # Logout/retention of another parent must not block a healthy authorization.
+    with factory.begin() as blocker, factory() as db:
+        blocker.query(AuthSession).filter_by(id=old_parent_id).with_for_update().one()
+        db.execute(text("SET LOCAL lock_timeout = '200ms'"))
         issued = delegation.issue_code(
             db,
             token=PARENT_TOKEN,
@@ -633,159 +642,14 @@ def test_issuance_cleans_delegations_with_large_expired_parent_history(delegated
             code_challenge=delegation.pkce_challenge(VERIFIER),
             consumer_id="platform-kernel",
         )
-        assert db.query(AuthSession).filter_by(user_id=user_id).count() == 32768
-        assert db.query(BackendSessionDelegation).one().code_hash == delegation.credential_hash(issued.code)
-        token = delegation.exchange_code(
-            db,
-            code=issued.code,
-            verifier=VERIFIER,
-            tenant_id="anytoolai",
-            region="ru",
-            consumer_id="platform-kernel",
-        )
         assert (
-            delegation.introspect_token(
+            delegation.exchange_code(
                 db,
-                token=token.access_token,
-                tenant_id="anytoolai",
-                region="ru",
-                clock_skew_seconds=5,
-                consumer_id="platform-kernel",
-            ).user_id
-            == user_id
-        )
-
-
-@pytest.mark.parametrize("expired", [False, True])
-def test_exchange_rereads_code_after_concurrent_issuance_cleanup(
-    delegated_parent: DelegatedParent,
-    monkeypatch: pytest.MonkeyPatch,
-    expired: bool,
-) -> None:
-    factory, _, _, code = delegated_parent
-    if expired:
-        with factory.begin() as db:
-            db.query(BackendSessionDelegation).one().code_expires_at = datetime.now(UTC) - timedelta(seconds=1)
-    read = Event()
-    resume = Event()
-    original = delegation.read_delegation
-
-    def pause_after_read(
-        db: Session,
-        *,
-        credential_hash: str,
-        by_code: bool,
-    ) -> tuple[BackendSessionDelegation, AuthSession, User] | None:
-        found = original(db, credential_hash=credential_hash, by_code=by_code)
-        read.set()
-        assert resume.wait(10)
-        return found
-
-    monkeypatch.setattr(delegation, "read_delegation", pause_after_read)
-
-    def exchange_waiting() -> delegation.DelegationToken | delegation.DelegationRefusal:
-        with factory() as db:
-            try:
-                return delegation.exchange_code(
-                    db,
-                    code=code,
-                    verifier=VERIFIER,
-                    tenant_id="anytoolai",
-                    region="ru",
-                    consumer_id="platform-kernel",
-                )
-            except delegation.InvalidDelegationError as error:
-                return error.code
-
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(exchange_waiting)
-        try:
-            assert read.wait(10)
-            with factory() as db:
-                delegation.issue_code(
-                    db,
-                    token=PARENT_TOKEN,
-                    tenant_id="anytoolai",
-                    region="ru",
-                    code_challenge=delegation.pkce_challenge(VERIFIER),
-                    consumer_id="platform-kernel",
-                )
-        finally:
-            resume.set()
-        result = future.result(timeout=10)
-    with factory() as db:
-        if expired:
-            assert result == delegation.DelegationRefusal.CODE_INVALID
-            assert db.query(BackendSessionDelegation).count() == 1
-        else:
-            assert isinstance(result, delegation.DelegationToken)
-            assert db.query(BackendSessionDelegation).count() == 2
-
-
-def test_issuance_cleanup_preserves_exchange_committed_while_waiting_for_user(
-    delegated_parent: DelegatedParent,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    factory, _, _, code = delegated_parent
-    exchanging, issuing = Event(), Event()
-    now = datetime.now(UTC)
-    monkeypatch.setattr(delegation, "utc_now", lambda: now)
-    original_lock = delegation.lock_active_user_by_id_and_scope
-
-    def signal_issuer(db: Session, *, user_id: UUID, tenant_id: str, region: str) -> User | None:
-        if db.info.get("issuer"):
-            issuing.set()
-        return original_lock(db, user_id=user_id, tenant_id=tenant_id, region=region)
-
-    def before_exchange_commit(db: Session) -> None:
-        nonlocal now
-        exchanging.set()
-        assert issuing.wait(10)
-        now += timedelta(seconds=61)
-
-    monkeypatch.setattr(delegation, "lock_active_user_by_id_and_scope", signal_issuer)
-
-    def exchange_first() -> delegation.DelegationToken:
-        with factory() as db:
-            event.listen(db, "before_commit", before_exchange_commit, once=True)
-            return delegation.exchange_code(
-                db,
-                code=code,
+                code=issued.code,
                 verifier=VERIFIER,
                 tenant_id="anytoolai",
                 region="ru",
                 consumer_id="platform-kernel",
-            )
-
-    def issue_waiting() -> delegation.DelegationCode:
-        assert exchanging.wait(10)
-        with factory() as db:
-            db.info["issuer"] = True
-            return delegation.issue_code(
-                db,
-                token=PARENT_TOKEN,
-                tenant_id="anytoolai",
-                region="ru",
-                code_challenge=delegation.pkce_challenge(VERIFIER),
-                consumer_id="platform-kernel",
-            )
-
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        exchange_result = pool.submit(exchange_first)
-        issue_result = pool.submit(issue_waiting)
-        token = exchange_result.result(timeout=15)
-        issued = issue_result.result(timeout=15)
-    with factory() as db:
-        assert db.query(BackendSessionDelegation).count() == 2
-        assert db.query(BackendSessionDelegation).filter_by(code_hash=delegation.credential_hash(issued.code)).one()
-        assert (
-            delegation.introspect_token(
-                db,
-                token=token.access_token,
-                tenant_id="anytoolai",
-                region="ru",
-                clock_skew_seconds=5,
-                consumer_id="platform-kernel",
-            ).user_id
-            == token.identity.user_id
+            ).identity.user_id
+            == user_id
         )

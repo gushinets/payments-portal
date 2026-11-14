@@ -18,6 +18,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.composition.allowance_usage import allowance_backend
+from app.composition.backend_consumers import initialize_backend_consumers
 from app.composition import purchases
 from app.composition.mapping_operator import fresh_link_evaluation
 from app.composition.sources import source_resources
@@ -65,6 +66,7 @@ async def receiver(
     kernel = backend_consumer(permissions=[BackendPermission.WRITE_EXHAUSTION])
     summary = second_consumer(permissions=[BackendPermission.WRITE_EXHAUSTION])
     config = source_settings(backend_consumers=(kernel, summary))
+    initialize_backend_consumers(config, postgres_session_factory)
     monkeypatch.setattr(backend_auth, "settings", config)
     app = create_app()
     app.dependency_overrides[get_session_factory] = lambda: postgres_session_factory
@@ -103,6 +105,30 @@ def hint(factory: SessionFactory) -> BillingWorkItem | None:
         return db.scalar(
             select(BillingWorkItem).where(BillingWorkItem.work_kind == BillingWorkKind.ALLOWANCE_EXHAUSTION)
         )
+
+
+@pytest.mark.parametrize("conflict", ["revision", "digest", "missing"])
+async def test_stale_process_cannot_ack_exhaustion(
+    production_scenario: tuple, receiver: tuple, postgres_session_factory: SessionFactory, conflict: str
+) -> None:
+    from app.models import BackendConsumerPolicy
+
+    factory = postgres_session_factory
+    await reconcile(production_scenario, factory)
+    client, config = receiver
+    consumer = config.backend_consumers[0]
+    with factory.begin() as db:
+        policy = db.get(BackendConsumerPolicy, (consumer.consumer_id, consumer.tenant_id, consumer.region))
+        if conflict == "revision":
+            policy.consumer_policy_revision += 1
+        elif conflict == "digest":
+            policy.policy_digest = "0" * 64
+        else:
+            db.delete(policy)
+    response = await client.post(PATH, json=payload(factory), headers=headers(consumer))
+    assert response.status_code == 503
+    assert response.json() == {"detail": {"code": "allowance_exhaustion_unavailable"}}
+    assert hint(factory) is None
 
 
 async def test_commit_ack_duplicate_after_completion_never_revives_or_mutates(
@@ -146,7 +172,7 @@ async def test_commit_ack_duplicate_after_completion_never_revives_or_mutates(
         with pytest.raises(RuntimeError, match="Activation/V2 evidence requires the new reader"):
             command.downgrade(migration, "20261111_0010")
     with factory() as db:
-        assert db.scalar(text("SELECT version_num FROM alembic_version")) == "20261113_0012"
+        assert db.scalar(text("SELECT version_num FROM alembic_version")) == "20261113_0013"
     assert hint(factory).payload_document == body
     assert hint(factory).work_state == BillingWorkState.COMPLETED
     assert hint(factory).enqueue_generation == done.enqueue_generation
@@ -251,7 +277,10 @@ async def test_auth_permissions_browser_and_wrong_owner_refusal(
         await client.post(PATH, json=body, headers={**headers(kernel), "Origin": "https://browser.test"})
     ).status_code == 403
     # Giving a foreign principal policy access cannot transfer the persisted bucket owner.
-    summary = summary.model_copy(update={"allowed_products": frozenset({body["product_id"]})})
+    summary = summary.model_copy(
+        update={"allowed_products": frozenset({body["product_id"]}), "consumer_policy_revision": 2}
+    )
+    initialize_backend_consumers(config.model_copy(update={"backend_consumers": (kernel, summary)}), factory)
     monkeypatch.setattr(backend_auth, "settings", config.model_copy(update={"backend_consumers": (summary,)}))
     assert (await client.post(PATH, json=body, headers=headers(summary))).status_code == 403
     kernel = kernel.model_copy(update={"permissions": frozenset()})

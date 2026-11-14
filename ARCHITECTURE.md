@@ -74,10 +74,10 @@ explicit acceptance and bounded preparation;
 browser Buy/Continue/Manage uses the same owned purchase. Catalog details read
 current selected offers; catalog/preparation evidence alone grants no paid access.
 
-The current migrated schema contains 29 application tables: ten retained
+The current migrated schema contains 30 application tables: ten retained
 identity/session/legal tables, fifteen original target billing tables, a current
 product-link pointer, a purchase hold, a consumer-bound session-delegation table
-and a backend policy guard.
+and a backend policy guard, plus a scoped code-issuance budget.
 The billing tables start empty. Direct
 link publication and explicit customer/purchase flows populate their owned
 records. Source-catalog projection slots have no runtime readers/writers.

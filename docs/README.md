@@ -70,9 +70,9 @@ Start with the smallest document that matches the task.
 - [ANY-664 completed implementation plan](exec-plans/completed/ANY-664-implementation-plan.md)
   — all eight Portal steps DONE; implementation-commit CI evidence, retained
   real-enablement gates and handoff to ANY-504 program Step 7
-- [Common product backend API target](contracts/product-backend-api/README.md)
-  — Step 9 consumer-neutral identity/access specification, safe examples, bounded
-  replacement/migration inventory and Step 12 working auth/access checkpoint.
+- [Common product backend API](contracts/product-backend-api/README.md)
+  — implemented identity/access, delivery and usage contracts, safe examples,
+  migration rules and local verification limits.
 - [ANY-766 paid integration target contracts](contracts/portal-kernel-paid/README.md)
   — reviewed target schemas, producer/consumer copies and offline fixtures for
   retained historical snapshot V2/identity V1 plus implemented V3/generic identity V2,
@@ -102,7 +102,7 @@ Start with the smallest document that matches the task.
 - [Billing authority](architecture/billing-authority.md) — historical/superseded
   reference only; not current-state or target authority
 - [Payment Portal data model](architecture/payment-portal-data-model.md) —
-  authoritative current as-built 29-table schema reference
+  authoritative current as-built schema reference
 - [Platform Kernel contract boundary](architecture/platform-kernel-contract.md)
   — superseded planned contract; retained historical context
 

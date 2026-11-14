@@ -1741,6 +1741,10 @@ export type CreateBackendCodeApiBackendSessionCodesPostErrors = {
      */
     422: BackendErrorResponse;
     /**
+     * Issuance budget exhausted; Retry-After is seconds until retry.
+     */
+    429: BackendErrorResponse;
+    /**
      * Service Unavailable
      */
     503: BackendErrorResponse;

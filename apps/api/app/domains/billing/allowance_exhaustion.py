@@ -23,6 +23,7 @@ from app.domains.identity.services.auth import as_utc
 from app.domains.billing.paid_allowances import allowance_ownership
 from app.infrastructure.persistence.billing_work import RECURRING_INDEX
 from app.infrastructure.queries import paid_read
+from app.infrastructure.queries.backend_policies import BackendPolicyConflict, require_current_policy
 from app.infrastructure.queries.billing_reconciliation import database_now
 from app.models import (
     BillingWorkItem,
@@ -71,9 +72,10 @@ class AllowanceExhaustion(BaseModel):
 def accept_exhaustion(factory: SessionFactory, consumer: BackendConsumer, event: AllowanceExhaustion) -> None:
     try:
         with factory() as db:
+            require_current_policy(db, consumer)
             receive_exhaustion(db, consumer, event)
             db.commit()
-    except SQLAlchemyError:
+    except (SQLAlchemyError, BackendPolicyConflict):
         raise BillingRefused("allowance_exhaustion_unavailable", 503) from None
 
 

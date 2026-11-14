@@ -518,6 +518,7 @@
     "description": "Tu sesión del Portal autorizará esta pestaña del producto.",
     "continue": "Continuar",
     "loading": "Autorizando…",
-    "failed": "No se pudo autorizar. Revisa tu sesión e inténtalo de nuevo."
+    "failed": "No se pudo autorizar. Revisa tu sesión e inténtalo de nuevo.",
+    "rateLimited": "Demasiadas solicitudes de autorización. Inténtalo de nuevo más tarde."
   }
 }

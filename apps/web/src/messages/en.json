@@ -518,6 +518,7 @@
     "description": "Your Portal session will authorize this product tab.",
     "continue": "Continue",
     "loading": "Authorizing…",
-    "failed": "Could not authorize. Check your session and try again."
+    "failed": "Could not authorize. Check your session and try again.",
+    "rateLimited": "Too many authorization requests. Please try again later."
   }
 }

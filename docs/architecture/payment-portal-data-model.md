@@ -8,7 +8,7 @@ Last updated: 2026-11-13 (ANY-766 retained allowance activation)
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 -> 20261110_0008 -> 20261111_0009 -> 20261111_0010 -> 20261111_0011 -> 20261113_0012 (head)
+20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 -> 20261110_0008 -> 20261111_0009 -> 20261111_0010 -> 20261111_0011 -> 20261113_0012 -> 20261113_0013 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
@@ -63,10 +63,10 @@ through the existing work table; it stores no Portal usage ledger.
 
 ## Physical baseline
 
-A fresh database has exactly 29 application tables: ten retained
+A fresh database has exactly 30 application tables: ten retained
 identity/session/legal tables, fifteen original external-billing persistence
 tables, one current product-link pointer, one purchase mutex, one session
-delegation table and one backend policy guard. Alembic has nine revisions in
+delegation table, one backend policy guard and one code-issuance budget table. Alembic has twelve revisions in
 one linear chain and one current head. Revision
 `20261029_0003` belongs to ANY-709, `20261028_0005` to ANY-715 and
 `20261031_0006` to ANY-765 and `20261110_0007`/`20261110_0008`/`20261111_0009`/`20261111_0010` to ANY-766.
@@ -92,6 +92,7 @@ to a Portal-managed routing catalog.
 | `users` | Identity | Canonical contour-scoped Portal user. |
 | `auth_sessions` | Identity | Hashed, expiring and revocable authenticated sessions. |
 | `backend_session_delegations` | Identity | Hash-only single-use PKCE codes/tokens bound to a configured consumer; parent-session deletion cascades. |
+| `backend_code_issuance_budgets` | Identity | Successful code issuance count per tenant/region/user/consumer, fixed one-hour window; scoped user deletion cascades. |
 | `backend_consumer_policies` | Integration configuration | Monotonic consumer/tenant/region policy revision and digest; no secrets or user usage. |
 | `magic_link_tokens` | Identity | Purpose-bound hash-only password-reset and email-verification capabilities, including decoy-safe nullable user binding for password reset. |
 | `password_reset_rate_limits` | Identity | Durable password-reset rate-limit windows. |
@@ -535,6 +536,15 @@ revocation/expiry. Codes last at most 60 seconds; tokens last at most 30 minutes
 and never outlive the parent. `UserStatus.INACTIVE` is an explicit non-active
 storage value; no deactivation endpoint is introduced. Existing password reset
 revokes the parent sessions and logout deletes its parent.
+
+`backend_code_issuance_budgets` has a composite tenant/region/user/consumer primary
+key, a scoped User foreign key, count constrained to 1–60 and an indexed window
+expiry. Issuance increments it under the User lock in the same transaction as
+the code. Cleanup uses that lock and rechecks expiration before removal, so a
+concurrently renewed budget is preserved. Independent startup/minute cleanup
+also removes expired unexchanged codes and credentials of invalid parents;
+exchanged-token expiry evidence stays while the parent is valid. See the
+[retention and limit contract](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).
 
 Introspection checks the current persisted consumer policy and uses a joined read
 of delegation/session/user; it never updates

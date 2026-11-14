@@ -77,10 +77,10 @@ credentials; they are not accepted field names in the runtime registry.
 ### Implemented Step 10 settings and cutover
 
 Step-specific migration paragraphs below retain the historical Steps 10–13
-cutover checkpoints. The current pair requires Portal `20261113_0012` and Kernel
-`0021`, delegation V2 and snapshot V3. For installation use the
+cutover checkpoints. Current migration heads, delegation V2 and snapshot V3 are
+recorded in the
 [paired compatibility/cutover procedure](../../architecture/deployment.md#paired-compatibility-and-synchronized-cutover),
-not an intermediate checkpoint's migration head.
+which governs installation instead of an intermediate checkpoint's migration head.
 
 `BACKEND_CONSUMERS` is a JSON array (at most 16 entries), parsed by Portal
 `app/core/backend_consumers.py` and `Settings`. Each entry requires the identity,
@@ -184,13 +184,37 @@ is needed in Step 10. Old binaries are incompatible and excluded. Downgrade acro
 `0009` refuses any retained consumer policy or non-Kernel delegation before changing
 the schema, preserving the monotonic policy guard and consumer ownership.
 
-Code issuance prunes expired unexchanged codes and delegations of expired or revoked
-parent sessions for the same scoped user and consumer, including earlier sessions.
-Cleanup and the new code commit together under User → AuthSession → delegation locks.
+Code issuance locks the scoped User and the selected AuthSession, rechecks parent
+authority and commits the budget and new code together. It does not scan or lock
+other parent sessions or perform retention; the independent cleanup task below
+owns credential deletion.
 Exchanged credentials remain while their parent is valid, even after token expiry:
 their hashes distinguish ordinary expiry from invalid parent authority and preserve
-Kernel's pending-work recovery. Cleanup runs on the next issuance, without a
-background sweep or a new issuance rate limit.
+Kernel's pending-work recovery. Migration `20261113_0013` adds an issuance budget:
+60 successful code issuances per scoped user and consumer across all parent
+sessions, in a fixed 3600-second window starting at the first issuance. The budget
+and code commit atomically; exchange, expiry or abandoned-code deletion never
+refunds it. Refusal is `429 backend_session_rate_limited`, with positive integer
+`Retry-After` seconds rounded up to the window boundary. Refusal does not extend
+the window or revoke sessions/codes/tokens. The authorization page retains its
+PKCE/state and parent session and permits a later retry.
+
+Every API process also runs one independent cleanup task, even with billing
+disabled: at startup and every 60 seconds after draining the backlog, in batches
+of at most 100 delegations and 100 expired budgets. Full batches continue after
+yielding the event loop. Cleanup covers the instance scope, inactive users and
+removed consumers. It removes expired unexchanged codes, credentials under
+expired/revoked parents and expired budgets, rechecking after User → AuthSession
+locks. Exchanged expired tokens remain until the parent becomes invalid, preserving
+`backend_delegation_expired` versus `backend_parent_authority_invalid`. Kernel
+requires no change for this correction. The separate one-connection PostgreSQL
+pool has two-second pool/lock timeouts and a ten-second statement timeout; shutdown
+drains its actual database owner before pool disposal. Failures are reported and
+retried on the next interval.
+
+Stop all old Portal APIs/workers before applying `0013`; start only updated
+Portal binaries afterward. Existing delegations remain unchanged and budgets
+start with post-update issuances. Downgrade refuses while any budget rows remain.
 
 The stable tab key `anytoolai.portal_session.v1` now contains a version-2 envelope
 with consumer/P. Version-1 envelopes fail closed and require authorization; the
@@ -532,7 +556,8 @@ the same meanings with their own products. See the
   ordered item per ID. Observed items include the complete immutable tuple,
   successful_used/reserved/remaining/available and UTC read_at. Unknown/foreign
   items contain only allowance_id/status=unobserved. Failure is unavailable/503,
-  never invented zero; reads create no buckets. remaining=max(Q-used,0),
+  never invented zero; reads create no usage buckets or change spend or reservations.
+  Authentication may persist consumer binding and policy observations. remaining=max(Q-used,0),
   available=max(Q-used-reserved,0). Busy reservation is not final exhaustion.
   Kernel's public product-scoped paid-usage route uses introspected owner.
 - Backend → Portal `POST /internal/v1/allowance-exhaustions`,
@@ -573,7 +598,7 @@ Portal identity refusals are no-store and use safe `detail: {"code":"..."}`.
 Its `401` includes WWW-Authenticate: Bearer. Implemented Portal identity codes
 are `backend_session_code_invalid`,
 `backend_delegation_expired`, `backend_parent_authority_invalid`,
-`backend_session_forbidden`, `backend_session_request_invalid` and
+`backend_session_forbidden`, `backend_session_request_invalid`, `backend_session_rate_limited` and
 `backend_session_unavailable`. Invalid service credentials use `service_unauthorized`.
 Kernel's local API retains its `error.code` envelope: allowlisted identity `401`
 codes are relayed, while upstream service-auth/permission, transport or malformed
@@ -587,8 +612,12 @@ after email confirmation in another tab, preserving the PKCE query. Ordinary
 account/billing pages retain their existing verification behavior. Authenticated scope/permission refusal is
 `403`; invalid shape/unsupported version is `422`; unknown scoped snapshot user
 is `404`; unavailable identity/source/storage or no complete valid snapshot is
-`503`. Contract index lists per-operation statuses. Never include secret input
-in validation errors or treat service refusal as empty paid access.
+`503`. Code issuance can return `429 backend_session_rate_limited` with
+`Retry-After`; the [issuance rules](#implemented-step-10-settings-and-cutover)
+define retry and state retention. Generated OpenAPI owns current per-operation
+statuses; `contract-index.json` retains its historical target checkpoint.
+Never include secret input in validation errors or treat service refusal as
+empty paid access.
 
 Retry safe GETs within a bounded deadline. Lost code-exchange response starts a
 new authorization, not code reuse. A paid execution retry preserves its exact
@@ -696,8 +725,8 @@ models are retained schema history, not evidence authorizing a purge here.
 Kernel scenarios/products, guest paths and ANY-507 execution semantics stay owned
 by Kernel; a non-Kernel product requires no Kernel scenario registration.
 
-**Current cutover:** the corrected pair requires Portal `20261113_0012` and Kernel
-`0021`. The historical Step 13 heads were Portal `20261111_0010` and Kernel `0020`;
+**Current cutover:** use the paired installation runbook linked below.
+The historical Step 13 heads were Portal `20261111_0010` and Kernel `0020`;
 Step 14 advanced them to Portal `20261111_0011` and Kernel `0021`.
 Migration `0012` adds retained activation evidence; never edit applied migrations.
 First test forward migrations against populated isolated
@@ -774,8 +803,8 @@ finalize or release under its durable execution/replay rules, preserve both floo
 on eviction/restart and reject expired or mismatching authority after lock waits.
 
 This is historical auth/access evidence, not today's installation target. Use the
-current paired cutover procedure above (Portal `20261113_0012`, Kernel `0021`,
-with higher P when crossing the expanded-digest boundary). Old snapshot V2 readers are excluded; there is no
+current paired cutover procedure above, including higher P when crossing the
+expanded-digest boundary. Old snapshot V2 readers are excluded; there is no
 translation route. Recover with compatible retained backups and binaries.
 Step 13 partitions invalidations; Steps 14/15 implement usage/exhaustion and cabinet usage.
 
@@ -883,6 +912,10 @@ Portal `POST /internal/v1/allowance-exhaustions` uses BackendServiceBearer with
 and `204/401/403/409/422/503` responses. It checks authenticated consumer/product,
 retained source/owner and the full issued tuple before committing one
 `allowance_exhaustion` work item. A failed/unknown commit never returns `204`.
+The same receive transaction first checks the persisted consumer P/digest.
+A missing or mismatching policy, including a stale process after policy
+replacement, returns `503 allowance_exhaustion_unavailable` before inserting work
+or acknowledging the event; database failures use the same refusal.
 A valid duplicate, including after completion, preserves the first payload and
 never revives work. Browser Origin is refused and every response is no-store.
 The embedded local worker only schedules existing GET-only reconciliation for a
@@ -976,7 +1009,7 @@ accessibility evidence do not establish the assembled Step 16 or live acceptance
 
 ### Remaining-review cutover (2026-11-13)
 
-Portal head `20261113_0012` adds an observation kind and a unique partial index,
+Portal migration `20261113_0012` adds an observation kind and a unique partial index,
 without a new table or mutable allowance field. Stop Portal API/workers before
 migration and restart all writers/readers on the new binary. New reconciliation
 and primary-selection observations use V2; HTTP identity V2, snapshot V3 and

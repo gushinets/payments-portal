@@ -317,8 +317,9 @@ order, one per requested ID. Observed items contain the complete allowance tuple
 status, successful_used, reserved, remaining, available and UTC read_at.
 Unobserved items contain only allowance_id/status. Unknown and foreign buckets
 are indistinguishable. Rows come from a single existing repository/readback row
-snapshot; errors are `503`, never manufactured zeros. Reads create no rows;
-snapshot ingestion establishes zero-use buckets via existing `ensure_usage`.
+snapshot; errors are `503`, never manufactured zeros. Reads create no usage buckets
+and change no spend or reservations; authentication may persist consumer binding
+and policy observations. Snapshot ingestion establishes zero-use buckets via existing `ensure_usage`.
 
 ```text
 remaining = max(quantity - successful_used, 0)
@@ -613,8 +614,8 @@ identities and separate disposable databases. External LBX/manifest responses
 and the second identity are synthetic. This is distinct from Step 16's assembled
 paid browser/execution acceptance. Recipient delivery was pending at this
 checkpoint and is now implemented in Step 13; backend/cabinet usage is implemented
-in Steps 14/15. Current installation heads are Portal `20261113_0012` and Kernel
-`0021`; the common guide owns the expanded-digest P upgrade requirement.
+in Steps 14/15. The [paired installation procedure](../../architecture/deployment.md#paired-compatibility-and-synchronized-cutover)
+owns the current migration heads and expanded-digest P upgrade requirement.
 
 
 The 2026-11-13 remaining-review correction requires verified email at all three

@@ -2891,7 +2891,7 @@
     },
     "/api/backend-session-codes": {
       "post": {
-        "description": "Requires PortalUserBearer. A hash-only, single-use code expires within 60 seconds and remains bound to the parent session and configured consumer. The registered callback is deployment-owned; callback/redirect body fields are refused. All responses use Cache-Control: no-store. 401: invalid parent session or unverified email; 403: unknown consumer; 422: invalid PKCE/body; 503: policy/storage unavailable.",
+        "description": "Requires PortalUserBearer. A hash-only, single-use code expires within 60 seconds and remains bound to the parent session and configured consumer. The registered callback is deployment-owned; callback/redirect body fields are refused. All responses use Cache-Control: no-store. At most 60 successful code issuances per user and consumer in a fixed one-hour window. 401: invalid parent session or unverified email; 403: unknown consumer; 422: invalid PKCE/body; 429: issuance budget exhausted with Retry-After; 503: policy/storage unavailable.",
         "operationId": "create_backend_code_api_backend_session_codes_post",
         "requestBody": {
           "content": {
@@ -2943,6 +2943,16 @@
               }
             },
             "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Issuance budget exhausted; Retry-After is seconds until retry."
           },
           "503": {
             "content": {

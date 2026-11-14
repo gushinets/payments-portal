@@ -4,7 +4,14 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.models import AuthSession, BackendSessionDelegation, User
+from app.models import AuthSession, BackendSessionDelegation, BackendCodeIssuanceBudget, User
+
+
+def issuance_budget(
+    db: Session, *, user_id: UUID, tenant_id: str, region: str, consumer_id: str
+) -> BackendCodeIssuanceBudget | None:
+    """Caller holds User; refresh after waiting for concurrent issuance or cleanup."""
+    return db.get(BackendCodeIssuanceBudget, (tenant_id, region, user_id, consumer_id), populate_existing=True)
 
 
 def read_delegation(
@@ -32,18 +39,6 @@ def read_delegation(
 
 def lock_parent_session(db: Session, session_id: UUID) -> AuthSession | None:
     return db.query(AuthSession).filter(AuthSession.id == session_id).populate_existing().with_for_update().first()
-
-
-def lock_user_sessions(db: Session, *, user_id: UUID, tenant_id: str, region: str) -> list[AuthSession]:
-    """Caller holds User; lock parents before pruning their delegation rows."""
-    return (
-        db.query(AuthSession)
-        .filter(AuthSession.user_id == user_id, AuthSession.tenant_id == tenant_id, AuthSession.region == region)
-        .order_by(AuthSession.id)
-        .populate_existing()
-        .with_for_update()
-        .all()
-    )
 
 
 def lock_delegation(db: Session, delegation_id: UUID) -> BackendSessionDelegation | None:

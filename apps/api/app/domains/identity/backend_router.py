@@ -13,6 +13,7 @@ from app.core.backend_consumers import BackendConsumer
 from app.core.database import get_db
 from app.core.settings import settings
 from app.domains.identity.services.backend_delegation import (
+    CodeIssuanceRateLimited,
     DelegationUnavailableError,
     InvalidDelegationError,
     exchange_code,
@@ -173,11 +174,19 @@ def _require_policy(db: Session, consumer: BackendConsumer) -> None:
 
 @router.post(
     "/api/backend-session-codes",
+    responses={
+        429: {
+            "model": BackendErrorResponse,
+            "description": "Issuance budget exhausted; Retry-After is seconds until retry.",
+        }
+    },
     summary="Issue a consumer-bound S256 authorization code",
     description="Requires PortalUserBearer. A hash-only, single-use code expires within 60 seconds and remains bound "
     "to the parent session and configured consumer. The registered callback is deployment-owned; "
     "callback/redirect body fields are refused. All responses use Cache-Control: no-store. "
-    "401: invalid parent session or unverified email; 403: unknown consumer; 422: invalid PKCE/body; 503: policy/storage unavailable.",
+    "At most 60 successful code issuances per user and consumer in a fixed one-hour window. "
+    "401: invalid parent session or unverified email; 403: unknown consumer; 422: invalid PKCE/body; "
+    "429: issuance budget exhausted with Retry-After; 503: policy/storage unavailable.",
 )
 def create_backend_code(
     payload: BackendCodeRequest,
@@ -198,6 +207,10 @@ def create_backend_code(
             consumer_id=consumer.consumer_id,
         )
         return BackendCodeResponse(code=result.code, expires_at=result.expires_at)
+    except CodeIssuanceRateLimited as error:
+        raise HTTPException(
+            429, detail={"code": "backend_session_rate_limited"}, headers={"Retry-After": str(error.retry_after)}
+        ) from None
     except InvalidDelegationError as error:
         raise _refusal(error) from None
     except DelegationUnavailableError:

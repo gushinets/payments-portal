@@ -569,6 +569,10 @@ async def test_billing_worker_embedded_lifespan_smoke_and_reserved_local_progres
             yield worker
 
     monkeypatch.setattr(main, "billing_worker_resources", resources)
+    from functools import partial
+    from app.composition.delegation_cleanup import delegation_cleanup_resources
+
+    monkeypatch.setattr(main, "delegation_cleanup_resources", partial(delegation_cleanup_resources, factory=factory))
     monkeypatch.setattr(main, "settings", config)
     monkeypatch.setattr(main, "SessionLocal", factory)
     monkeypatch.setattr(database, "SessionLocal", factory)

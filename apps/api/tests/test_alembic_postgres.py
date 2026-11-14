@@ -19,7 +19,7 @@ BASELINE_REVISION = "20260924_0001"
 EMAIL_VERIFICATION_REVISION = "20261001_0002"
 BILLING_PREPARATION_REVISION = "20261029_0003"
 WORKER_REVISION = "20261028_0005"
-HEAD_REVISION = "20261113_0012"
+HEAD_REVISION = "20261113_0013"
 
 SURVIVOR_TABLES = {
     "regions",
@@ -54,6 +54,7 @@ TARGET_TABLES = {
     "access_invalidation_outbox",
     "backend_session_delegations",
     "backend_consumer_policies",
+    "backend_code_issuance_budgets",
 }
 
 APPLICATION_TABLES = SURVIVOR_TABLES | TARGET_TABLES
@@ -441,6 +442,14 @@ EXPECTED_COLUMNS = {
         "policy_digest",
         "snapshot_delivery_enabled",
     },
+    "backend_code_issuance_budgets": {
+        "tenant_id",
+        "region",
+        "user_id",
+        "consumer_id",
+        "issued_count",
+        "window_expires_at",
+    },
 }
 
 EXPECTED_CHECKS = {
@@ -518,6 +527,7 @@ EXPECTED_CHECKS = {
     },
     "backend_session_delegations": {"ck_backend_delegation_exchange_shape"},
     "backend_consumer_policies": {"ck_backend_policy_positive"},
+    "backend_code_issuance_budgets": {"ck_backend_code_budget_count"},
 }
 
 EXPECTED_UNIQUE_CONSTRAINTS = {
@@ -730,6 +740,7 @@ EXPECTED_INDEXES = {
     },
     "access_invalidation_outbox": {"ix_access_invalidation_outbox_next_attempt_at"},
     "backend_session_delegations": {"ix_backend_session_delegations_auth_session_id"},
+    "backend_code_issuance_budgets": {"ix_backend_code_issuance_budgets_window_expires_at"},
 }
 
 ORM_ONLY_DEFAULT_COLUMNS = {
@@ -792,6 +803,7 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         assert script.get_bases() == [BASELINE_REVISION]
         assert [item.revision for item in script.walk_revisions()] == [
             HEAD_REVISION,
+            "20261113_0012",
             "20261111_0011",
             "20261111_0010",
             "20261111_0009",
@@ -806,7 +818,7 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         command.upgrade(config, "head")
 
     assert tuple(logging.getLogger().handlers) == handlers
-    assert len(APPLICATION_TABLES) == 29
+    assert len(APPLICATION_TABLES) == 30
     assert _public_table_names(postgres_engine) == APPLICATION_TABLES | {"alembic_version"}
     assert LEGACY_TABLES.isdisjoint(_public_table_names(postgres_engine))
     with postgres_engine.connect() as connection:

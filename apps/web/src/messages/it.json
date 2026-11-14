@@ -518,6 +518,7 @@
     "description": "La sessione del Portale autorizzerà questa scheda del prodotto.",
     "continue": "Continua",
     "loading": "Autorizzazione…",
-    "failed": "Autorizzazione non riuscita. Controlla la sessione e riprova."
+    "failed": "Autorizzazione non riuscita. Controlla la sessione e riprova.",
+    "rateLimited": "Troppe richieste di autorizzazione. Riprova più tardi."
   }
 }

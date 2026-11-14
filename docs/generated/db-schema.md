@@ -52,6 +52,23 @@ Indexes and constraints:
 - `ix_auth_sessions_token_hash`
 - `ix_auth_sessions_user_id`
 
+## `backend_code_issuance_budgets`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `tenant_id` | `TEXT` | no | PK |
+| `region` | `TEXT` | no | PK |
+| `user_id` | `CHAR(32)` | no | PK |
+| `consumer_id` | `TEXT` | no | PK |
+| `issued_count` | `INTEGER` | no |  |
+| `window_expires_at` | `DATETIME` | no |  |
+
+Indexes and constraints:
+
+- `ck_backend_code_budget_count`
+- `fk_backend_code_budget_user_scope`
+- `ix_backend_code_issuance_budgets_window_expires_at`
+
 ## `backend_consumer_policies`
 
 | Column | Type | Nullable | Key |

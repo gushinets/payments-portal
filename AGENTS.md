@@ -37,7 +37,7 @@ document that applies to the current task.
 - [docs/architecture/billing-authority.md](docs/architecture/billing-authority.md)
   — historical/superseded reference only; not current-state or target authority.
 - [docs/architecture/payment-portal-data-model.md](docs/architecture/payment-portal-data-model.md)
-  — authoritative current as-built 29-table schema reference.
+  — authoritative current as-built schema reference.
 - Superseded billing ADRs and retained billing execution plans are historical or
   migration references only. They do not define new target behavior.
 - [docs/product/ru-mvp.md](docs/product/ru-mvp.md) — implemented `ru` journey

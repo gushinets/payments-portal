@@ -518,6 +518,7 @@
     "description": "Sua sessão do Portal autorizará esta aba do produto.",
     "continue": "Continuar",
     "loading": "Autorizando…",
-    "failed": "Não foi possível autorizar. Confira sua sessão e tente novamente."
+    "failed": "Não foi possível autorizar. Confira sua sessão e tente novamente.",
+    "rateLimited": "Muitas solicitações de autorização. Tente novamente mais tarde."
   }
 }

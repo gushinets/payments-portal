@@ -60,8 +60,8 @@ Portal's enabled embedded worker now selects each snapshot recipient's origin
 and outgoing credential from `BACKEND_CONSUMERS`; legacy Kernel connection
 settings no longer select delivery destinations. Step 13 adds independent
 bounded delivery lanes and exact-N ACK/repair per recipient. Stop affected
-APIs/workers before migrating the current pair to Portal `20261113_0012` and
-Kernel `0021`. The historical Step 13 heads were Portal `20261111_0010` and
+APIs/workers and follow the [current paired cutover](../architecture/deployment.md#paired-compatibility-and-synchronized-cutover).
+The historical Step 13 heads were Portal `20261111_0010` and
 Kernel `0020`. Configure the compatible invalidation receiver and its permission first; the
 [delivery runbook](../engineering/billing-background-operations.md#any-766-step-7--durable-kernel-invalidations)
 describes migration order, parking and recipient-specific CLI retry. The
@@ -164,7 +164,7 @@ retain whole-user guarantees. Production metering
 requires accepted `CONFIGURED_SOURCE` terms; SIMULATED history stays labelled
 and can supply no production allowance. See the [as-built serving rules](../engineering/billing-background-operations.md#any-766-step-5--production-allowances-and-snapshot-serving).
 Use the [paired cutover procedure](../architecture/deployment.md#paired-compatibility-and-synchronized-cutover):
-Portal `20261113_0012`, Kernel `0021`, compatible readers and a higher P for every
+use its current migration heads, compatible readers and a higher P for every
 existing configured consumer when installing the expanded digest. Old V2 readers
 are excluded. Local acceptance changes no commercial flags or deployed configuration.
 
@@ -331,7 +331,7 @@ payment/deployed acceptance. Build/install preparation remains Step 17.
 
 The 2026-11-13 remaining-review correction adds exact immutable allowance
 activation observations and V2 internal reconciliation/selection evidence while
-retaining V1 readers. Portal head is `20261113_0012`; stop API/workers for migration
+retaining V1 readers. Migration `20261113_0012` introduced this evidence; stop API/workers for migration
 and do not downgrade once new evidence exists. Historical usage reads never
 repair missing proof. Web receives public `BACKEND_CALLBACKS`, not the private
 registry. Code issue, exchange and introspection all require verified email;

@@ -119,9 +119,8 @@ only their source-read/admission strategy.
 - Versioned `ru` legal-document metadata and append-only acceptance evidence.
 - One clean PostgreSQL first-install schema with configured-contour and legal
   bootstrap.
-- Twenty-eight application tables: ten identity/session/legal, fifteen original
-  target billing tables, a current product-link pointer, a purchase hold and a
-  Kernel session-delegation table.
+- Identity/session/legal and external-billing persistence follow the
+  [current as-built schema](architecture/payment-portal-data-model.md).
   Billing tables start empty; explicit publication/customer/purchase flows own
   their writes. Source-catalog projection slots are inert.
 - Static guards preventing restoration of the deleted direct-provider runtime,

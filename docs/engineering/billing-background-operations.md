@@ -229,9 +229,9 @@ API/worker; retain the existing databases/backups. Install the compatible Kernel
 receiver with matching scope/current-or-previous Portal service token and set
 `ANYTOOLAI_PORTAL_ACCESS_INVALIDATION_ENABLED=true` there. The historical Step 13
 pair used Portal `20261111_0010` and Kernel `0020`; Step 14 advanced them to Portal
-`20261111_0011` and Kernel `0021`. The current corrected pair requires Portal
-`20261113_0012` and Kernel `0021`. Keep Portal API/workers stopped for migration
-`0012` and restart compatible activation/V2-evidence readers and writers.
+`20261111_0011` and Kernel `0021`. Current migration heads and reader requirements
+are owned by the paired installation procedure below. Keep Portal API/workers
+stopped during migration and restart only compatible readers and writers.
 The earlier digest correction requires a higher P for every existing configured
 consumer only when crossing that expanded-digest boundary; migration `0012`
 alone does not require changing P. Follow the
@@ -844,9 +844,8 @@ remain unchanged. Time alone cannot prove a new cycle or extend authority.
 
 ### Migration, configuration, recovery and evidence limits
 
-The current chain is `20260924_0001 → 20261001_0002 → 20261029_0003 →
-20261028_0005 → 20261031_0006 → 20261110_0007 → 20261110_0008 → 20261111_0009 → 20261111_0010 → 20261111_0011 → 20261113_0012`;
-there is no `0004` dependency to recreate.
+The [schema reference](../architecture/payment-portal-data-model.md) owns the
+current migration chain; there is no `0004` dependency to recreate.
 `0006` preserves legacy UTC and v2 purchases, preflights incompatible history,
 enforces immutable allowance/logical identity and monotonic state/outbox guards,
 and refuses destructive downgrade. Running clean ANY-715/0005 code against a
@@ -855,6 +854,9 @@ populated v2/0006 DB is not a supported rollback. See the
 `0012` retains exact allowance activation facts in the existing immutable
 observation store. Downgrade is refused once activation or V2 evidence exists;
 never delete evidence or restart old writers to bypass that compatibility floor.
+Delegation issuance budgets and independent retention follow the
+[common identity rules](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).
+That cleanup runs in the API even when `BILLING_WORKER_ENABLED=false`.
 
 Use the [worker settings](#embedded-worker-settings-and-resource-limits), operator
 procedures above and the authenticated-read runbook for configuration, connection
@@ -888,11 +890,11 @@ ANY-767 work.
 ### ANY-766 Step 14 — immutable exhaustion hints
 
 `POST /internal/v1/allowance-exhaustions` now requires the sender's configured
-`allowance-exhaustion:write` permission, product scope and saved source/backend
-owner. The full issued tuple is immutable. A `204` follows the hint commit;
+`allowance-exhaustion:write` permission, current persisted P/digest, product scope
+and saved source/backend owner. The full issued tuple is immutable. A `204` follows the hint commit;
 duplicate or historical deliveries ACK without changing the first payload or
 reviving completed work. Malformed requests are `422`, unknown/conflicting
-bindings `409`, foreign consumer/product authority `403`, and storage failures
+bindings `409`, foreign consumer/product authority `403`, and stale/missing policy or storage failures
 `503`; all responses are no-store and browser Origin is refused.
 
 The existing worker's local lane claims `allowance_exhaustion` work without

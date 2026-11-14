@@ -1,5 +1,5 @@
 from app.models.billing_access import AccessInvalidationOutbox, PaidAccessState
-from app.models.backend_delegation import BackendSessionDelegation, BackendConsumerPolicy
+from app.models.backend_delegation import BackendSessionDelegation, BackendConsumerPolicy, BackendCodeIssuanceBudget
 from app.models.billing_operations import (
     BillingWorkItem,
     ExternalBillingWebhookDelivery,
@@ -59,6 +59,7 @@ from app.models.legal import (
 )
 
 __all__ = [
+    "BackendCodeIssuanceBudget",
     "BackendSessionDelegation",
     "BackendConsumerPolicy",
     "AcceptanceKind",

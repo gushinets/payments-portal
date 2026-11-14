@@ -84,6 +84,16 @@ def operator(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
     )
 
 
+@pytest.fixture(autouse=True)
+def cleanup_database(monkeypatch: pytest.MonkeyPatch, postgres_session_factory: sessionmaker[Session]) -> None:
+    from functools import partial
+    from app.composition.delegation_cleanup import delegation_cleanup_resources
+
+    monkeypatch.setattr(
+        "app.main.delegation_cleanup_resources", partial(delegation_cleanup_resources, factory=postgres_session_factory)
+    )
+
+
 def test_fresh_http_publication_faults_outage_restart_and_recovery(
     migrated_database: Engine,
     postgres_session_factory: sessionmaker[Session],

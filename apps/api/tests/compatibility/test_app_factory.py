@@ -17,8 +17,16 @@ from apps.api.tests.support.api import reset_api_database  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
-def initialized_schema() -> None:
+def initialized_schema(monkeypatch: pytest.MonkeyPatch) -> None:
+    from functools import partial
+    from app import main
+    from app.core.database import SessionLocal
+    from app.composition.delegation_cleanup import delegation_cleanup_resources
+
     reset_api_database()
+    monkeypatch.setattr(
+        main, "delegation_cleanup_resources", partial(delegation_cleanup_resources, factory=SessionLocal)
+    )
 
 
 def test_app_factory_builds_independent_apps_with_stable_routes() -> None:

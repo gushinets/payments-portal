@@ -87,7 +87,7 @@ def deploy(args: argparse.Namespace) -> None:
                     "--wait",
                     "api",
                 ),
-                ("up", "-d", "--no-deps", "--no-build", "--pull", "never", "web"),
+                ("up", "-d", "--no-deps", "--no-build", "--pull", "never", "--wait", "web"),
             ]
         for command in commands:
             subprocess.run([*compose, *command], cwd=ROOT, check=True)

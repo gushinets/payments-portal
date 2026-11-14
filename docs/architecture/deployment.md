@@ -182,7 +182,7 @@ current migration chain and table inventory. Do not create a separate
 bootstrap CLI. Before starting normal runtime on a fresh database, verify:
 
 - Alembic reports one head and the database is at that head;
-- the current head is `20261113_0012` and exactly 29 application tables exist;
+- the current head is `20261113_0013` and exactly 30 application tables exist;
 - every removed legacy catalog/order/payment/provider/subscription/
   entitlement/trial table is absent;
 - all seventeen billing/link/purchase tables are empty before explicit flows;
@@ -319,7 +319,7 @@ files to this explicit selection. A missing or invalid overlay fails at
 `image-up` holds the deployment lock throughout: stop the API (including its
 embedded worker), wait for retained PostgreSQL, run a fresh migration container
 from the selected backend image, then start API only after migration success and
-readiness, followed by web. The default API stop grace is 75 seconds for the
+readiness, followed by web health (`--wait` for both). The default API stop grace is 75 seconds for the
 default 60-second worker I/O budget; increase `PORTAL_API_STOP_GRACE_PERIOD` if
 raising that budget, retaining time for cleanup. PostgreSQL readiness uses TCP
 and a cold-initialization start period. A migration failure leaves the old API stopped; do
@@ -332,11 +332,12 @@ never repair failure by downgrading, stamping or rewriting purchase history.
 
 ### Paired compatibility and synchronized cutover
 
-The concrete supported pair is the current ANY-766 Portal and Kernel reader set:
-Portal migration head `20261113_0012`, Kernel head `0021`, consumer identity V2,
+The current local ANY-766 source pair requires
+Portal migration head `20261113_0013`, Kernel head `0022`, consumer identity V2,
 AccessSnapshot V3, manifest/invalidation/usage/exhaustion V1. Source baselines are
-Portal `65079f4e50867b9582a951a62a62cb6706dc0e0f` and Kernel
-`c8e867bfc25f4158b0bc36b76892e670a32cbb12`, plus the local remaining-corrections diff.
+Portal `2e328bb59af690ec3a4599da0ce4556f9bedce76` and Kernel
+`c153aaa200770ee156537e30fea1ebb3d085b434`, plus their review corrections.
+Earlier image rehearsals do not verify this corrected pair.
 Record final reviewed source SHAs, actual image IDs/digests and all frontend
 build inputs with the selected environment. Equal source labels or Alembic heads
 alone do not establish application/peer compatibility.
@@ -359,7 +360,7 @@ edit policy rows, decrease P, or restart the old Portal binary against the expan
 digest merely because the migration head is unchanged. This changes P, not R,
 purchase ownership, allowance IDs or usage. A consumer-ID change never transfers
 historical purchases or delivery history. Keep that ID identical in the Portal
-registry, Kernel API environment and Kernel frontend build. The remaining
+registry, Kernel API/worker environments and Kernel frontend build. The remaining
 activation correction requires migration `20261113_0012` with API/workers stopped;
 that migration alone does not require changing P.
 
@@ -375,16 +376,22 @@ Before installing this pair over the Step 8 baseline:
    allowance ownership by changing configuration. Enable Kernel invalidation and
    usage receiver permissions before enabling Portal delivery.
 3. While both old application sets remain stopped, run Portal's selected
-   `migrate` image through head `20261113_0012`: 0009 binds retained delegations
+   `migrate` image through head `20261113_0013`: 0009 binds retained delegations
    and policy scope; 0010 partitions recipient/outbox/work keys and retires stale
    claims; 0011 adds exhaustion deduplication; 0012 retains allowance activation
-   and introduces V2 internal evidence readers/writers. Downgrade refuses retained
-   V2/activation evidence. Configure consumers before first
+   and introduces V2 internal evidence readers/writers; 0013 bounds new code
+   issuance while preserving expired-token recovery evidence. Downgrade refuses
+   retained V2/activation evidence or issuance budgets. Keep all old Portal
+   APIs/workers stopped and start only updated binaries. Configure consumers before first
    API startup installs/verifies P/digest and recipient state. Do not run an old
    worker against migrated delivery keys.
-4. Use the selected Kernel images and its existing runner through head `0021`:
+4. Use the selected Kernel images and its existing runner through the head above:
    `0020` retains R floors and usage/reservations while clearing incompatible
-   cache metadata and initializing consumer/P; `0021` adds durable exhaustion.
+   cache metadata and initializing consumer/P; `0021` adds durable exhaustion;
+   `0022` binds retained history to one consumer without changing usage/replay keys.
+   Ambiguous ownership refuses migration; do not clear history to bypass it.
+   Start only compatible API/worker binaries with the retained consumer ID; see
+   [Kernel binding rules](https://github.com/gushinets/anytoolai-platform/blob/main/docs/contracts/portal-kernel-paid/README.md#service-requests-and-identity).
    Require profile generation, matching source checks, readiness and activation
    as documented in the Kernel deployment runbook. Retain both DB volumes.
 5. Start the matching Portal API/web with `image-up`, verify auth/access and

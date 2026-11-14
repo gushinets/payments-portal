@@ -518,6 +518,7 @@
     "description": "Votre session Portail autorisera cet onglet du produit.",
     "continue": "Continuer",
     "loading": "Autorisation…",
-    "failed": "Autorisation impossible. Vérifiez votre session et réessayez."
+    "failed": "Autorisation impossible. Vérifiez votre session et réessayez.",
+    "rateLimited": "Trop de demandes d’autorisation. Veuillez réessayer plus tard."
   }
 }

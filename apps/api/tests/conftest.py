@@ -60,6 +60,8 @@ def lifespan_database(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Give application startup its own initialized, thread-shared SQLite DB."""
     from app import main
     from app.core.database import Base
+    from app.composition.delegation_cleanup import delegation_cleanup_resources
+    from functools import partial
 
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",
@@ -68,7 +70,11 @@ def lifespan_database(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     )
     try:
         Base.metadata.create_all(engine)
-        monkeypatch.setattr(main, "SessionLocal", sessionmaker(bind=engine, autoflush=False, autocommit=False))
+        factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+        monkeypatch.setattr(main, "SessionLocal", factory)
+        monkeypatch.setattr(
+            main, "delegation_cleanup_resources", partial(delegation_cleanup_resources, factory=factory)
+        )
         yield
     finally:
         engine.dispose()

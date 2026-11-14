@@ -130,6 +130,7 @@ def fake_compose(
     monkeypatch: pytest.MonkeyPatch,
     *,
     fail_migration: bool = False,
+    unhealthy_web: bool = False,
     api_ref: str = "portal-api:reviewed",
 ) -> list[list[str]]:
     calls: list[list[str]] = []
@@ -150,6 +151,8 @@ def fake_compose(
                 ),
             )
         if fail_migration and command[-1] == "migrate":
+            raise subprocess.CalledProcessError(1, command)
+        if unhealthy_web and command[-1] == "web" and "--wait" in command:
             raise subprocess.CalledProcessError(1, command)
         return subprocess.CompletedProcess(command, 0)
 
@@ -182,6 +185,15 @@ def test_install_migrates_before_ready_backend(monkeypatch: pytest.MonkeyPatch, 
     image_deploy.deploy(selection)
     assert [call[-1] for call in calls[1:]] == ["api", "postgres", "migrate", "api", "web"]
     assert "--wait" in calls[-2]
+
+
+def test_full_install_fails_when_web_is_unhealthy(
+    monkeypatch: pytest.MonkeyPatch, selection: argparse.Namespace
+) -> None:
+    calls = fake_compose(monkeypatch, unhealthy_web=True)
+    with pytest.raises(subprocess.CalledProcessError):
+        image_deploy.deploy(selection)
+    assert calls[-1][-1] == "web"
 
 
 @pytest.mark.parametrize("api_ref", ["portal-api", "portal-api:latest"])

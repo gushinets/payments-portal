@@ -289,7 +289,9 @@ returns canonical owner and one item per requested ID in request order.
 Observed: complete allowance tuple, status=observed, successful_used, reserved,
 remaining, available, UTC read_at. Unobserved: allowance_id/status only; foreign
 and unknown are indistinguishable. Existing row-snapshot readback owns counters;
-failure is `503`, not zero, and reads create no rows. Snapshot ingestion uses
+failure is `503`, not zero, and reads create no usage buckets or change spend or
+reservations; authentication may persist consumer binding and policy observations.
+Snapshot ingestion uses
 ensure_usage for actual zero buckets. remaining=max(Q-successful_used,0),
 available=max(Q-successful_used-reserved,0). Authenticated public
 `GET /v1/products/{product_id}/paid-usage?allowance_id=...` derives owner through
