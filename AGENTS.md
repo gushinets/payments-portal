@@ -47,6 +47,8 @@ document that applies to the current task.
   [docs/RELIABILITY.md](docs/RELIABILITY.md) — operational constraints.
 - [docs/engineering/AGENT_WORKFLOW.md](docs/engineering/AGENT_WORKFLOW.md) —
   required delivery and evidence loop.
+- [docs/engineering/TESTING.md](docs/engineering/TESTING.md) — test levels,
+  isolated PostgreSQL lifecycle, workers, coverage and verification evidence.
 - [docs/engineering/CODING_CONVENTIONS.md](docs/engineering/CODING_CONVENTIONS.md)
   — coding conventions for new and changed code.
 - [docs/exec-plans](docs/exec-plans/) — active plans, completed plans, and debt.
@@ -124,7 +126,11 @@ npm run check
 ```
 
 Use the smallest relevant check during iteration. Before handoff, run the
-broadest check supported by the local environment and record any skipped check.
+broadest check supported by the local environment and record any skipped check;
+reuse still-valid evidence when code, environment and scope are unchanged.
+Append `-- --coverage` for single-pass API-fast/component coverage. See the
+[Testing Strategy](docs/engineering/TESTING.md) for PostgreSQL prerequisites,
+four-process defaults, serial diagnosis and browser scope.
 
 ## Pull requests
 

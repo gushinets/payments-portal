@@ -114,6 +114,7 @@ Start with the smallest document that matches the task.
 - [Security](SECURITY.md)
 - [Quality score](QUALITY_SCORE.md)
 - [Execution plans](exec-plans/README.md)
+- [ANY-822 test-execution acceleration plan](exec-plans/active/ANY-822-implementation-plan.md) — implementation, performance evidence and review follow-ups.
 - [ANY-715 completed MVP rebuild plan](exec-plans/completed/ANY-715-mvp-rebuild-plan.md) — Stages 0–6 closed by owner decision; verification evidence, limitations and follow-ups under ANY-820 are retained.
 - [Background billing operations](engineering/billing-background-operations.md) — worker settings, scheduling, polling-only operation, retained inbox history, operator commands and diagnostics.
 

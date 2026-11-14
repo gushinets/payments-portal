@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import socket
 import subprocess
 import sys
@@ -32,11 +31,7 @@ def _stop_process(process: subprocess.Popen[str]) -> str:
 
 def test_uvicorn_serves_application_with_production_proxy_flags() -> None:
     port = _available_port()
-    environment = {
-        **os.environ,
-        **api_test_environment(),
-        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:4318",
-    }
+    environment = api_test_environment(OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:4318")
     process = subprocess.Popen(
         [
             sys.executable,

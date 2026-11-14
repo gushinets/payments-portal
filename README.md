@@ -86,9 +86,13 @@ design system, using navy/amber, flat dark panels and compact styling.
 6. Run the canonical checks:
 
    ```bash
-   npm run check:fast
+   python scripts/repo.py test-db up
    npm run check
+   python scripts/repo.py test-db stop
    ```
+
+   Use `npm run check:fast` for PostgreSQL-free feedback. Stop the dedicated
+   test server only after its tests finish.
 
 Runtime state and test evidence are written to the ignored `.harness/`
 directory. Each Git worktree receives an isolated Compose project, database,
@@ -125,8 +129,16 @@ npm run build:api
 ```
 
 The API test boundaries are intentional: `test:api:fast` is PostgreSQL-free,
-`test:api:postgres` runs the PostgreSQL tests, and `test:api` runs the complete
-backend suite. Frontend tests and browser E2E remain separate commands.
+`test:api:postgres` runs PostgreSQL with four processes by default, and
+`test:api` runs fast tests serially followed by parallel PostgreSQL. Use
+`npm run test:api:postgres -- --workers 1` for serial diagnosis. Frontend tests
+and browser E2E remain separate commands.
+
+Use `npm run check:fast -- --coverage` or `npm run check -- --coverage` to
+collect API-fast and component coverage in their single test executions. The
+complete check also builds web and runs PostgreSQL uninstrumented; browsers
+require a separate run or `RUN_E2E=true` with a running harness stack. Standalone
+`python scripts/repo.py coverage api` covers the complete backend serially.
 
 For local PostgreSQL tests on Unix/WSL, start and stop only the worktree-local
 server through the minimal Makefile shortcuts:
@@ -138,15 +150,17 @@ make test_db_stop
 ```
 
 The cross-platform equivalents are `python scripts/repo.py test-db up` and
-`python scripts/repo.py test-db stop`. Compose and `repo.py` own the server
-container; pytest creates, migrates, resets, and drops the disposable
-`_tests` database. Developers must not manually create or drop that database.
-
-Test database configuration takes precedence in this order: an explicit
-`TEST_POSTGRES_DATABASE_URL`; a complete explicit `POSTGRES_*_TEST`
-configuration (partial configuration fails clearly); then the current
-worktree runtime configuration, with the mapped host port and an automatically
-derived database name ending in `_tests`.
+`python scripts/repo.py test-db stop`. This starts a dedicated test Compose
+project with a worktree-scoped loopback `POSTGRES_PORT_TEST`, separate from the
+development server and volume. It needs up to **2 GiB RAM** for its tmpfs plus
+PostgreSQL/test-process memory; stopping it loses all disposable test state.
+The pinned PostgreSQL image must already be installed (no automatic pull).
+Compose and `repo.py` own the server container; pytest owns unique per-process
+scenario/template databases and clones the migrated template for each ordinary
+database test. Developers must not manually create or drop these databases.
+See the [Testing Strategy](docs/engineering/TESTING.md) as the detailed authority
+for configuration precedence, lifecycle, focused selectors, workers, reports,
+interruption handling and test-design rules.
 
 ## Runtime baseline
 

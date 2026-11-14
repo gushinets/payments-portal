@@ -1,7 +1,7 @@
 # Development Environment
 
 Status: authoritative
-Last verified: 2026-08-28
+Last verified: 2026-11-13 (test workflow; dated mock evidence below is unchanged)
 
 Use `scripts/repo.py` through root npm commands. It derives a stable worktree ID,
 Compose project, database port, and service ports without sharing state with
@@ -63,7 +63,9 @@ npm run repo:up
 API runtime, migration, test, and build operations are exposed through the
 root aliases `dev:api`, `migrate:api`, `test:api:fast`, `test:api:postgres`,
 `test:api`, and `build:api`. Repository checks remain `npm run check:fast` and
-`npm run check`.
+`npm run check`; append `-- --coverage` to collect API-fast/component coverage
+without duplicate executions. See the [Testing Strategy](TESTING.md) for exact
+check scope, standalone coverage and CI behavior.
 
 ## Minimal Makefile
 
@@ -73,16 +75,12 @@ linking uses the one `app.cli.commercial_mappings` CLI. See the
 [normal LBX connection and link runbook](ANY-709-billing-runbook.md). Historical
 `catalog_preview`/`catalog_preview_publish` shortcuts have been retired.
 
-Compose owns the PostgreSQL server/container and `repo.py` owns its
-worktree-specific orchestration. pytest owns creation, migration, schema reset,
-and teardown of the disposable `_tests` database; developers must not manually
-create or drop the physical test database.
-
-For PostgreSQL tests, configuration precedence is: explicit
-`TEST_POSTGRES_DATABASE_URL`; complete explicit `POSTGRES_*_TEST` configuration
-(partial configuration fails); then the current worktree runtime configuration
-with its mapped host port and a derived `_tests` database name. Credentials are
-read from the environment and are not documented here.
+Compose and `repo.py` own the dedicated worktree test server, separate from the
+development server and persistent volume. It uses a loopback `POSTGRES_PORT_TEST`
+and a 2 GiB tmpfs; allow that RAM plus PostgreSQL/test-process memory. Stopping
+it loses all disposable test state. The pinned image must already be installed;
+`test-db up` does not pull it. pytest owns unique per-process scenario/template
+databases, migration and fresh clones; developers must not create or drop them.
 
 The normal Unix/WSL PostgreSQL flow is:
 
@@ -93,7 +91,12 @@ make test_db_stop
 ```
 
 The complete backend flow uses `npm run test:api` in the middle. The
-`test:api:fast` alias remains PostgreSQL-independent.
+`test:api:fast` alias remains PostgreSQL-independent and serial; PostgreSQL
+defaults to four processes. Use `npm run test:api:postgres -- --workers 1` for
+serial diagnosis. Cross-platform server commands are
+`python scripts/repo.py test-db up` and `python scripts/repo.py test-db stop`.
+The [Testing Strategy](TESTING.md) is the detailed authority for configuration
+precedence, safe ownership, selectors, reports and interruption handling.
 
 
 ## Local Kernel Manifest Mock (ANY-664, development only)

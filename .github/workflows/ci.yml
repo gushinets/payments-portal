@@ -47,25 +47,23 @@ jobs:
         run: npm ci
       - name: Check provisional Kernel spec, HTTP mock and Portal consumer
         run: ./.venv/bin/python scripts/check_kernel_manifest_contract.py --local
-      - name: Run fast checks
-        run: npm run check:fast
-      - name: Generate API coverage
-        run: python scripts/repo.py coverage api-fast
+      - name: Run fast checks with coverage
+        run: npm run check:fast -- --coverage
       - name: Upload API coverage
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: api-coverage-${{ github.run_id }}-${{ github.run_attempt }}
+          include-hidden-files: true
           path: .harness/coverage/api/
           if-no-files-found: warn
           retention-days: 7
-      - name: Generate frontend component coverage
-        run: npm --workspace @anytoolai/web run test:components:coverage
       - name: Upload frontend component coverage
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: frontend-component-coverage-${{ github.run_id }}-${{ github.run_attempt }}
+          include-hidden-files: true
           path: .harness/coverage/web-components/
           if-no-files-found: warn
           retention-days: 7
@@ -108,6 +106,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
+          --tmpfs /var/lib/postgresql:rw,size=2g
           --health-cmd "pg_isready -U anytoolai -d payment_portal_test"
           --health-interval 5s
           --health-timeout 5s
@@ -164,7 +163,7 @@ jobs:
           set -a
           source "$CI_ENV_FILE"
           set +a
-          python scripts/repo.py test api-postgres \
+          python scripts/repo.py test api-postgres --workers 4 \
             --junitxml="$CI_ARTIFACTS/postgres-junit.xml" \
             2>&1 | tee "$CI_ARTIFACTS/postgres-pytest.log"
       - name: Validate Compose configuration
@@ -222,7 +221,10 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: production-gate-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .harness/ci/
+          include-hidden-files: true
+          path: |
+            .harness/ci/
+            .harness/api-tests/
           if-no-files-found: warn
           retention-days: 7
       - name: Stop smoke container

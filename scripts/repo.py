@@ -113,6 +113,10 @@ class RuntimeConfig:
     def kernel_mock_port(self) -> int:
         return self.api_port + 9000
 
+    @property
+    def postgres_test_port(self) -> int:
+        return self.postgres_port + 10000
+
 
 @dataclass(frozen=True)
 class TrivyGateSummary:
@@ -267,7 +271,11 @@ def dotenv_value(value: str, line_number: int) -> str:
     return re.sub(escape_pattern, lambda item: escapes[item[1]], match[1])
 
 
-def read_dotenv(path: Path = ROOT / ".env") -> dict[str, str]:
+def read_dotenv(path: Path | None = None) -> dict[str, str]:
+    if path is None:
+        if os.getenv("PYTHON_DOTENV_DISABLED", "").lower() in {"1", "true", "t", "yes", "y"}:
+            return {}
+        path = ROOT / ".env"
     if not path.exists():
         return {}
 
@@ -444,6 +452,7 @@ def write_runtime(config: RuntimeConfig) -> None:
         "POSTGRES_PASSWORD": "anytoolai-local-only",
         "POSTGRES_HOST": "postgres",
         "POSTGRES_PORT": str(config.postgres_port),
+        "POSTGRES_PORT_TEST": str(config.postgres_test_port),
         "DATABASE_URL": (
             f"postgresql+psycopg://anytoolai:anytoolai-local-only@postgres:5432/"
             f"{config.database_name}"
@@ -564,6 +573,19 @@ def compose_command(config: RuntimeConfig) -> list[str]:
     if kernel_mock_enabled():
         command.extend(["-f", str(ROOT / "docker-compose.kernel-mock.dev.yml")])
     return command
+
+
+def test_compose_command(config: RuntimeConfig) -> list[str]:
+    return [
+        tool("docker"),
+        "compose",
+        "--project-name",
+        f"{config.compose_project}-tests",
+        "--env-file",
+        str(RUNTIME_ENV),
+        "-f",
+        str(ROOT / "docker-compose.test.yml"),
+    ]
 
 
 def cmd_doctor(_: argparse.Namespace) -> None:
@@ -714,10 +736,17 @@ def cmd_down(_: argparse.Namespace) -> None:
 def cmd_test_db(args: argparse.Namespace) -> None:
     config = load_runtime()
     write_runtime(config)
+    runtime_env = read_runtime_env()
+    # Compose gives shell variables precedence over --env-file. Keep the
+    # disposable server at exactly the endpoint/credentials used by pytest.
+    environment = {
+        **os.environ,
+        **{name: runtime_env[name] for name in ("POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT_TEST")},
+    }
     if args.action == "up":
-        run([*compose_command(config), "up", "-d", "--no-deps", "--wait", "postgres"])
+        run([*test_compose_command(config), "up", "-d", "--pull", "never", "--wait", "postgres"], env=environment)
         return
-    run([*compose_command(config), "stop", "postgres"])
+    run([*test_compose_command(config), "down"], env=environment)
 
 
 def cmd_reset(args: argparse.Namespace) -> None:
@@ -949,18 +978,9 @@ def import_api() -> tuple[object, object]:
     api_root = str(ROOT / "apps" / "api")
     if api_root not in sys.path:
         sys.path.insert(0, api_root)
-    os.environ.setdefault("APP_ENV", "test")
-    os.environ["INSTANCE_TENANT_ID"] = LOCAL_INSTANCE_TENANT_ID
-    os.environ["INSTANCE_REGION"] = LOCAL_INSTANCE_REGION
-    os.environ.setdefault("APP_PUBLIC_BASE_URL", "http://localhost:3000")
-    os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
-    os.environ.setdefault("POSTGRES_DB", "anytoolai")
-    os.environ.setdefault("POSTGRES_USER", "anytoolai")
-    os.environ.setdefault("POSTGRES_PASSWORD", "anytoolai")
-    os.environ.setdefault("POSTGRES_HOST", "postgres")
-    os.environ.setdefault("POSTGRES_PORT", "5432")
-    os.environ.setdefault("CORS_ALLOW_ORIGINS", "http://localhost:3000")
-    os.environ.setdefault("SKIP_LEGAL_SEED", "true")
+    from apps.api.tests.support.settings import configure_api_test_environment
+
+    configure_api_test_environment()
     from app.core.database import Base  # type: ignore
     from app.main import app as fastapi_app  # type: ignore
     importlib.import_module("app.models")
@@ -3201,6 +3221,7 @@ def cmd_trivy(args: argparse.Namespace) -> None:
 
 
 def cmd_check(args: argparse.Namespace) -> None:
+    coverage = getattr(args, "coverage", False)
     check_env = canonical_check_environment()
     cmd_docs(argparse.Namespace())
     cmd_generate(argparse.Namespace(check=True))
@@ -3208,11 +3229,12 @@ def cmd_check(args: argparse.Namespace) -> None:
     cmd_lint(argparse.Namespace(target="api"))
     run([tool("npm"), "run", "test:boundaries:web"], env=check_env)
     run(
-        [tool("npm"), "--workspace", "@anytoolai/web", "run", "test:components"],
+        [tool("npm"), "--workspace", "@anytoolai/web", "run",
+         "test:components:coverage" if coverage else "test:components"],
         env=check_env,
     )
     run([tool("npm"), "run", "lint:web"], env=check_env)
-    cmd_test(
+    (cmd_coverage if coverage else cmd_test)(
         argparse.Namespace(target="api-fast", junitxml=None),
         environment=check_env,
     )
@@ -3362,6 +3384,9 @@ def api_test_marker_args(target: str) -> list[str]:
 
 
 def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, str]:
+    from apps.api.tests.support.settings import api_test_environment as isolated_environment
+
+    environment = isolated_environment(environ=environment)
     if target == "api-fast":
         return environment
 
@@ -3387,17 +3412,29 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
                 + " together, missing: "
                 + ", ".join(missing_names)
             )
+        from sqlalchemy.engine import URL
+
+        environment[test_database_url_name] = URL.create(
+            "postgresql+psycopg",
+            username=environment["POSTGRES_USER_TEST"],
+            password=environment["POSTGRES_PASSWORD_TEST"],
+            host=environment.get("POSTGRES_HOST_TEST", "localhost"),
+            port=int(environment["POSTGRES_PORT_TEST"]),
+            database=environment["POSTGRES_DB_TEST"],
+        ).render_as_string(hide_password=False)
         return environment
 
     runtime_env = read_runtime_env()
-    runtime_names = ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT")
+    runtime_names = ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT_TEST")
     missing_runtime_names = [name for name in runtime_names if not runtime_env.get(name)]
     if missing_runtime_names:
         raise HarnessError(
             "Cannot derive local PostgreSQL test configuration; runtime.env is missing: "
             + ", ".join(missing_runtime_names)
+            + ". Refresh the dedicated test server configuration with:\n"
+            "  python scripts/repo.py test-db up"
         )
-    if port_is_free(int(runtime_env["POSTGRES_PORT"])):
+    if port_is_free(int(runtime_env["POSTGRES_PORT_TEST"])):
         raise HarnessError(
             "Local test PostgreSQL server is not running. Start it with:\n"
             "  python scripts/repo.py test-db up\n"
@@ -3407,6 +3444,7 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
 
     database_environment = {
         **runtime_env,
+        "POSTGRES_PORT": runtime_env["POSTGRES_PORT_TEST"],
         "POSTGRES_DB": f"{runtime_env['POSTGRES_DB']}_tests",
     }
     environment[test_database_url_name] = host_database_url_from_runtime(database_environment)
@@ -3418,22 +3456,57 @@ def cmd_test(
     *,
     environment: dict[str, str] | None = None,
 ) -> None:
-    check_env = api_test_environment(
-        args.target,
-        canonical_check_environment() if environment is None else environment,
-    )
-    command = api_pytest_command(*api_test_marker_args(args.target))
-    if args.junitxml:
-        command.insert(-1, f"--junitxml={args.junitxml}")
-    run(command, env=check_env)
+    from scripts.api_test_runner import DEFAULT_POSTGRES_WORKERS, RunnerError, merge_junit, run_api_tests
+
+    junitxml = Path(args.junitxml).resolve() if args.junitxml else None
+    if junitxml is not None:
+        merge_junit([], junitxml, [f"API test run has not completed: preparing {args.target}"])
+    try:
+        workers = getattr(args, "workers", None)
+        if workers is None:
+            workers = 1 if args.target == "api-fast" else DEFAULT_POSTGRES_WORKERS
+        if not 1 <= workers <= DEFAULT_POSTGRES_WORKERS or (args.target == "api-fast" and workers != 1):
+            raise RunnerError("Workers must be 1–4; api-fast supports only --workers 1")
+        check_env = api_test_environment(
+            args.target,
+            canonical_check_environment() if environment is None else environment,
+        )
+    except (HarnessError, OSError, RunnerError) as exc:
+        if junitxml is not None:
+            merge_junit([], junitxml, [f"API test startup failed: {exc}"])
+        if isinstance(exc, RunnerError):
+            raise HarnessError(str(exc)) from exc
+        raise
+    try:
+        result = run_api_tests(
+            root=ROOT,
+            artifacts=HARNESS_DIR / "api-tests",
+            target=args.target,
+            workers=workers,
+            environment=check_env,
+            arguments=getattr(args, "pytest_args", ()),
+            junitxml=junitxml,
+        )
+    except RunnerError as exc:
+        raise HarnessError(str(exc)) from exc
+    if result.returncode:
+        raise SystemExit(result.returncode)
 
 
 def api_coverage_xml_path() -> Path:
     return ROOT / ".harness" / "coverage" / "api" / "coverage.xml"
 
 
-def cmd_coverage(args: argparse.Namespace) -> None:
-    check_env = api_test_environment(args.target, canonical_check_environment())
+def cmd_coverage(
+    args: argparse.Namespace,
+    *,
+    environment: dict[str, str] | None = None,
+) -> None:
+    # Coverage stays serial, including the standalone complete-API command.
+    check_env = api_test_environment(
+        args.target,
+        canonical_check_environment() if environment is None else environment,
+    )
     coverage_xml = api_coverage_xml_path()
     coverage_xml.parent.mkdir(parents=True, exist_ok=True)
     run(
@@ -3528,12 +3601,16 @@ def build_parser() -> argparse.ArgumentParser:
     test = sub.add_parser("test")
     test.add_argument("target", choices=("api-fast", "api-postgres", "api"))
     test.add_argument("--junitxml")
+    test.add_argument("--workers", type=int, choices=range(1, 5))
+    test.add_argument("--pytest-args", nargs=argparse.REMAINDER, default=[],
+                      help="Selectors and diagnostic pytest options (must be last)")
     test.set_defaults(func=cmd_test)
     coverage = sub.add_parser("coverage")
     coverage.add_argument("target", choices=("api", "api-fast"))
     coverage.set_defaults(func=cmd_coverage)
     check = sub.add_parser("check")
     check.add_argument("--fast", action="store_true")
+    check.add_argument("--coverage", action="store_true", help="Collect API-fast and component coverage in their test runs")
     check.set_defaults(func=cmd_check)
     sub.add_parser("dev-api").set_defaults(func=cmd_dev_api)
     customer = sub.add_parser(
@@ -3612,6 +3689,15 @@ def reexec_in_repository_venv_if_required() -> None:
         return
     if Path(sys.prefix).resolve() == REPOSITORY_VENV.resolve():
         return
+    if sys.argv[1] in {"test", "check"}:
+        # Replace the waiting shim so it cannot kill the runner during cleanup.
+        # End interpreter options before the fixed script and its CLI arguments.
+        os.chdir(ROOT)
+        # The executable and script are repository-owned. Remaining argv entries
+        # are script arguments parsed by argparse, never Python options or shell code.
+        os.execv(  # NOSONAR(S8705) Fixed interpreter/script; CLI data stays after the script.
+            str(python), [str(python), "--", str(Path(__file__).resolve()), *sys.argv[1:]]
+        )
     result = subprocess.run(
         [str(python), str(Path(__file__).resolve()), *sys.argv[1:]],
         cwd=ROOT,
@@ -3623,6 +3709,10 @@ def reexec_in_repository_venv_if_required() -> None:
 def main() -> int:
     try:
         reexec_in_repository_venv_if_required()
+        # Script execution starts with scripts/ on sys.path; shared test
+        # configuration is repository-owned and also used by module callers.
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
         args = build_parser().parse_args()
         args.func(args)
     except (HarnessError, subprocess.CalledProcessError, OSError) as exc:

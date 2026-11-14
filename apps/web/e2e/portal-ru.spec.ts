@@ -3,23 +3,13 @@ import { expect, test, type Locator, type Page, type TestInfo } from "@playwrigh
 
 import ruMessages from "../src/messages/ru.json";
 import { emptyPaidState } from "../tests/fixtures/paid-access";
+import { inventedSubscriptionState } from "../tests/helpers/subscription-state";
 
 const removedContracts = [
   "/api/auth/checkout-intent",
   "/api/account/subscriptions",
   "/api/auth/payment-status"
 ];
-// Match complete subscription/access nouns, never the adjective in
-// "Нет доступных продуктов" (a valid empty technical catalog).
-const inventedSubscriptionState = /нет\s+(?:активн[а-яё]+\s+)?(?:подписки|подписок|подписка|подписку|доступа?)(?![а-яё])|(?:подписк[аи]|доступа?)\s+(?:нет|отсутству(?:ет|ют))(?![а-яё])|no\s+(?:active\s+)?(?:subscriptions?|access)\b/iu;
-
-test("subscription-state guard permits an empty catalog but rejects invented access facts", () => {
-  expect(ruMessages.CatalogPreview.empty).not.toMatch(inventedSubscriptionState);
-  for (const unsupported of ["Нет подписки", "Нет активных подписок", "Нет доступа", "Подписка отсутствует", "Доступа нет", "No subscription", "No access"]) {
-    expect(unsupported).toMatch(inventedSubscriptionState);
-  }
-});
-
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/paid-access", (route) => route.fulfill({ json: emptyPaidState() }));
   // These layout journeys cover a genuinely empty technical catalog. Unknown
