@@ -9,6 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
+from app.composition.backend_introspection import BackendIntrospectionResources
 from app.core.backend_consumers import BackendConsumer
 from app.core.database import get_db
 from app.core.settings import settings
@@ -17,11 +18,11 @@ from app.domains.identity.services.backend_delegation import (
     DelegationUnavailableError,
     InvalidDelegationError,
     exchange_code,
-    introspect_token,
     issue_code,
     require_consumer_policy,
 )
 from app.http.backend_auth import BackendPrincipal, authorize_exchange, authorize_introspection, portal_user_bearer
+from app.http.dependencies import get_backend_introspection_resources
 from app.http.backend_session_policy import BackendErrorResponse
 
 router = APIRouter(
@@ -267,23 +268,13 @@ def exchange_backend_code(
     "All responses are no-store. 401: backend_delegation_expired or backend_parent_authority_invalid; "
     "403: scope/permission/browser; 422: invalid secret body; 503: policy/storage unavailable.",
 )
-def introspect_backend_token(
+async def introspect_backend_token(
     payload: BackendIntrospectionRequest,
     principal: Annotated[BackendPrincipal, Depends(authorize_introspection)],
-    db: Annotated[Session, Depends(get_db)],
+    reads: Annotated[BackendIntrospectionResources, Depends(get_backend_introspection_resources)],
 ) -> BackendIntrospectionResponse:
-    _require_policy(db, principal.consumer)
-    if settings.paid_access_clock_skew_seconds is None:
-        raise HTTPException(503, detail={"code": "backend_session_unavailable"})
     try:
-        result = introspect_token(
-            db,
-            token=payload.access_token,
-            tenant_id=principal.tenant_id,
-            region=principal.region,
-            clock_skew_seconds=settings.paid_access_clock_skew_seconds,
-            consumer_id=principal.consumer.consumer_id,
-        )
+        result = await reads.introspect(settings, principal.consumer, payload.access_token)
         return BackendIntrospectionResponse(
             consumer_id=principal.consumer.consumer_id,
             consumer_policy_revision=principal.consumer.consumer_policy_revision,

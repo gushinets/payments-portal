@@ -131,8 +131,20 @@ storage unavailability and overload return safe `503` refusals. The customer
 `/api/paid-access` DTO remains separate and retains its verified-email session
 guard and provenance labels.
 
-Both boundaries read committed state under a shared scoped User lock. Snapshot
-GET performs no authentication bookkeeping, writes, source calls or peer calls.
+Mandatory backend session introspection uses a separate two-connection database
+pool and two-slot thread limiter, with at most eight queued reads per API process,
+independent of purchases and the paid-read pool. Header validation does not use
+the shared framework thread limiter. HTTP queue/read waiting is bounded at
+1.5 seconds; PostgreSQL connect/pool/lock/statement timeouts are 1 s/250 ms/250 ms/
+500 ms. Overload and contention return `503 backend_session_unavailable`, never
+cached authority. HTTP cancellation/timeout retains actual resource ownership.
+Shutdown waits up to `PREFLIGHT_CLEANUP_TIMEOUT_SECONDS` for queued and running
+reads; if any remain, it raises `PreflightCleanupPending` and leaves the engine
+undisposed. The engine is disposed only after all reads finish.
+
+Snapshot serving and cabinet `/api/paid-access` read committed state under a
+shared scoped User lock; introspection does not acquire that lock. Snapshot GET
+performs no authentication bookkeeping, writes, source calls or peer calls.
 Snapshot serving selects authorized products and their supporting provenance/deadlines
 before checking completeness and expiry. An unrelated overdue product cannot
 deny this consumer's view; an included overdue reduction or uncommitted

@@ -71,7 +71,12 @@ def authorize_exchange(principal: Annotated[BackendPrincipal, Depends(authentica
     return principal
 
 
-def authorize_introspection(principal: Annotated[BackendPrincipal, Depends(authenticate_backend)]) -> BackendPrincipal:
+async def authorize_introspection(
+    request: Request,
+    _credentials: Annotated[HTTPAuthorizationCredentials | None, Security(backend_service_bearer)],
+) -> BackendPrincipal:
+    # Header-only validation must not queue behind purchase authentication threads.
+    principal = authenticate_backend(request, _credentials)
     if BackendPermission.INTROSPECT not in principal.consumer.permissions:
         raise HTTPException(403, detail={"code": "backend_session_forbidden"})
     return principal

@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 import httpx
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from typing import Any
 from pydantic import ValidationError
 from sqlalchemy import event
@@ -13,14 +13,16 @@ from sqlalchemy.exc import OperationalError
 
 from app.core.database import SessionLocal
 from app.composition.backend_consumers import initialize_backend_consumers
+from app.composition.backend_introspection import BackendIntrospectionResources, backend_introspection_resources
 from apps.api.tests.support.backend_consumers import backend_consumer, second_consumer
 from app.core.settings import Settings, settings
 from app.domains.identity.services import backend_delegation as delegation
 from app.domains.identity.services import delegation_cleanup as cleanup
 from app.domains.identity.services.auth import validate_session
 from app.http.backend_session_policy import BackendErrorResponse
+from app.http.dependencies import get_backend_introspection_resources
 from app.models import AuthSession, BackendSessionDelegation, User, UserStatus
-from apps.api.tests.support.api import client, register_test_user, reset_api_database
+from apps.api.tests.support.api import app, client, register_test_user, reset_api_database
 from apps.api.tests.support.settings import override_settings
 from apps.api.tests.support.paid_contracts import validate_contract
 
@@ -31,8 +33,14 @@ INTERNAL = "/internal/v1/backend-sessions/"
 
 
 @pytest.fixture(autouse=True)
-def isolated_delegation_settings() -> Iterator[None]:
+def isolated_delegation_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     reset_api_database()
+
+    async def local_introspection() -> AsyncIterator[BackendIntrospectionResources]:
+        async with backend_introspection_resources(settings, factory=SessionLocal) as reads:
+            yield reads
+
+    monkeypatch.setitem(app.dependency_overrides, get_backend_introspection_resources, local_introspection)
     with override_settings(
         settings,
         backend_consumers=(backend_consumer(), second_consumer()),

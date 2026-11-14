@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.composition.backend_consumers import initialize_backend_consumers
+from app.composition.backend_introspection import backend_introspection_resources
 from app.composition.paid_reads import paid_read_resources
 from app.core.database import get_db
 from app.domains.billing import snapshot_router
@@ -82,8 +83,12 @@ async def test_actual_portal_kernel_tcp_auth_access_for_two_consumers(
     @asynccontextmanager
     async def local_resources(app: FastAPI) -> AsyncIterator[None]:
         initialize_backend_consumers(config, factory)
-        async with paid_read_resources(config, factory=factory) as reads:
+        async with (
+            paid_read_resources(config, factory=factory) as reads,
+            backend_introspection_resources(config, factory=factory) as introspection,
+        ):
             app.state.paid_reads = reads
+            app.state.backend_introspection = introspection
             yield
 
     app.dependency_overrides[get_db] = database_session

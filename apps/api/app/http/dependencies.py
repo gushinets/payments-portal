@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal, get_db
 from app.composition.paid_reads import PaidReadResources
+from app.composition.backend_introspection import BackendIntrospectionResources
 from app.core.settings import settings
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.errors import InvalidAuthSessionError
@@ -22,6 +23,10 @@ def get_session_factory() -> SessionFactory:
 async def get_paid_read_resources(request: Request) -> PaidReadResources:
     # An async dependency must not wait for the shared framework thread limiter.
     return request.app.state.paid_reads
+
+
+async def get_backend_introspection_resources(request: Request) -> BackendIntrospectionResources:
+    return request.app.state.backend_introspection
 
 
 def get_current_session(

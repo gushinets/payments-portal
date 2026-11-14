@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
 from app.composition.backend_consumers import initialize_backend_consumers
+from app.composition.backend_introspection import backend_introspection_resources
 from app.composition.delegation_cleanup import delegation_cleanup_resources
 from app.composition.sources import source_resources
 from app.composition.billing_worker import billing_worker_resources
@@ -58,10 +59,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     async with (
         delegation_cleanup_resources(settings),
+        backend_introspection_resources(settings) as introspection,
         paid_read_resources(settings) as reads,
         source_resources(settings) as sources,
         paid_usage_resources(settings) as usage,
     ):
+        _app.state.backend_introspection = introspection
         _app.state.paid_reads = reads
         _app.state.paid_usage = usage
         _app.state.sources = sources

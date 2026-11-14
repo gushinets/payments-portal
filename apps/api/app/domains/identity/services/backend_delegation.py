@@ -12,6 +12,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.backend_consumers import BackendConsumer
+from app.domains.catalog.publication import SessionFactory
 from app.infrastructure.queries.backend_policies import BackendPolicyConflict, require_current_policy
 from app.core.time import utc_now
 from app.domains.identity.errors import InvalidAuthSessionError
@@ -211,3 +212,19 @@ def require_consumer_policy(db: Session, consumer: BackendConsumer) -> None:
             require_current_policy(db, consumer)
         except BackendPolicyConflict:
             raise DelegationUnavailableError() from None
+
+
+def read_delegated_identity(
+    factory: SessionFactory, consumer: BackendConsumer, token: str, clock_skew_seconds: int
+) -> DelegatedIdentity:
+    """One read-only policy/identity unit owns its session within the delegated thread."""
+    with delegation_storage_errors(), factory() as db:
+        require_consumer_policy(db, consumer)
+        return introspect_token(
+            db,
+            token=token,
+            tenant_id=consumer.tenant_id,
+            region=consumer.region,
+            clock_skew_seconds=clock_skew_seconds,
+            consumer_id=consumer.consumer_id,
+        )

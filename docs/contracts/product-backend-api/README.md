@@ -418,6 +418,12 @@ Permission: `backend-session:introspect`. Check consumer audience, parent sessio
 active user, expiry and current policy on every request. Introspection reads do
 not commit session bookkeeping. Responses have canonical scope/UUID and no PII.
 
+The queue/read wait for introspection is limited to 1.5 seconds, leaving transport
+time within Kernel's two-second timeout. Overload and timeout return
+`503 backend_session_unavailable`, without a cached-auth fallback. Resource
+isolation, database timeouts and shutdown behavior are documented in the
+[billing operations runbook](../../engineering/billing-background-operations.md#any-766-step-5--production-allowances-and-snapshot-serving).
+
 5. Fetch consumer-scoped purchased limits under `access-snapshot:read`:
 
 ```http
