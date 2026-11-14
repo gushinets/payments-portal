@@ -393,7 +393,7 @@ async def test_any709_step1_configured_production_http_is_not_blanket_rejected_o
         )
 
 
-def test_any709_step1_cli_accepts_only_ids_and_quantity() -> None:
+def test_any709_step1_cli_accepts_ids_and_distinct_commercial_and_technical_quantities() -> None:
     args = parser().parse_args(
         [
             "publish",
@@ -405,11 +405,17 @@ def test_any709_step1_cli_accepts_only_ids_and_quantity() -> None:
             "1",
             "--period-id",
             "1",
+            "--metric-key",
+            "proposal_ai.generations",
+            "--unit",
+            "generation",
+            "--allowance-quantity",
+            "7",
             "--expected-previous-revision",
             "0",
         ]
     )
-    assert args.period_id == 1 and args.quantity == 1
+    assert args.period_id == 1 and args.quantity == 1 and args.allowance_quantity == 7
     for forbidden in ("--price", "--allowance", "--proposal", "--approved", "--actor"):
         with pytest.raises(SystemExit):
             parser().parse_args(
@@ -423,6 +429,12 @@ def test_any709_step1_cli_accepts_only_ids_and_quantity() -> None:
                     "1",
                     "--period-id",
                     "1",
+                    "--metric-key",
+                    "proposal_ai.generations",
+                    "--unit",
+                    "generation",
+                    "--allowance-quantity",
+                    "7",
                     forbidden,
                     "1",
                 ]

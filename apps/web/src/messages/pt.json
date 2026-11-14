@@ -144,7 +144,9 @@
       "signOutAction": "Sair",
       "emailLabel": "E-mail",
       "emailVerified": "E-mail verificado",
-      "emailUnverified": "E-mail não verificado"
+      "emailUnverified": "E-mail não verificado",
+      "verificationRequired": "Confirme seu email antes de autorizar o acesso ao produto.",
+      "checkVerificationAction": "Já confirmei meu email"
     },
     "products": {
       "title": "Meus produtos",
@@ -185,7 +187,22 @@
         "usageUnavailable": "Uso e quantidade restante indisponíveis.",
         "refresh": "Atualizar acesso pago",
         "deadlinePending": "O acesso está sendo atualizado após um prazo. Tente novamente em breve.",
-        "empty": "Ainda não há acesso pago."
+        "empty": "Ainda não há acesso pago.",
+        "openProduct": "Abrir produto",
+        "launchUnavailable": "A abertura do produto não está configurada."
+      },
+      "usage": {
+        "current": "Uso do limite atual",
+        "historical": "Uso do limite anterior",
+        "used": "Usado com sucesso",
+        "reserved": "Reservado",
+        "remaining": "Restante",
+        "available": "Disponível agora",
+        "readAt": "Leitura às {time} UTC",
+        "unobserved": "O uso ainda não foi observado",
+        "loading": "Carregando uso…",
+        "busy": "Toda a capacidade restante está temporariamente reservada",
+        "exhausted": "Limite esgotado"
       }
     }
   },
@@ -479,7 +496,7 @@
     "reference": "Referência da compra: {id}",
     "acceptedTerms": "Condições aceitas originalmente",
     "awaitingVerification": "O pagamento aguarda verificação oficial. Consultar o estado salvo lê apenas registros do Portal e não atualiza os dados de cobrança.",
-    "technicalLimit": "Limite de teste por ciclo confirmado",
+    "technicalLimit": "Limite por ciclo confirmado",
     "simulatedTerms": "SIMULATED · condições de teste",
     "technicalUnknown": "Limite técnico não confirmado; execução com cota indisponível.",
     "fullFunding": "É necessário cobrir o valor integral.",
@@ -495,5 +512,13 @@
     },
     "managedInAccount": "O pagamento e o gerenciamento da assinatura estão disponíveis na sua conta.",
     "accessInAccount": "O acesso pago confirmado aparece na sua conta. O uso e a cota restante ainda estão indisponíveis."
+  },
+  "BackendSession": {
+    "title": "Continuar para seu produto",
+    "description": "Sua sessão do Portal autorizará esta aba do produto.",
+    "continue": "Continuar",
+    "loading": "Autorizando…",
+    "failed": "Não foi possível autorizar. Confira sua sessão e tente novamente.",
+    "rateLimited": "Muitas solicitações de autorização. Tente novamente mais tarde."
   }
 }

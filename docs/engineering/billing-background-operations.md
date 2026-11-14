@@ -89,15 +89,110 @@ The worker uses shared reconciliation, inventory and the paid writer to produce
 source facts, primary decisions, grants/allowances and revision/outbox changes.
 Preparation or recovery binding alone still supplies no positive paid authority.
 
+## ANY-766 Step 5 — production allowances and snapshot serving
+
+The existing claimed source apply and sole whole-user paid writer now use an
+explicit provenance policy. Production permits accepted
+`purchased-technical-terms:v2` and Step 11's `purchased-technical-terms:v3` only
+with `CONFIGURED_SOURCE` provenance. Development
+and tests also permit the historical SIMULATED terms. Legacy purchases without
+technical terms can retain independently proven product access but receive no
+invented allowance. Accepted quantities, units and initial cycle anchors stay
+fixed through republication and renewal. Same-cycle block/recovery reuses allowance
+IDs; a proven new cycle issues new IDs without rewriting historical allowances.
+No sale flags, mappings or deployed settings are enabled by this implementation.
+Step 11 records source/backend ownership in new terms and preserves the exact
+old `terms_document` representation used by this writer. Its
+[source/history rules](../contracts/product-backend-api/README.md#implemented-step-11-technical-sources-and-history)
+do not add another meter or change execution/usage ownership.
+
+`GET /internal/v1/access-snapshots/{user_id}?tenant_id=anytoolai&region=ru`
+now serves [consumer-scoped V3](../contracts/product-backend-api/README.md#policy-snapshots-and-durable-backend-enforcement),
+superseding Step 5's V2 wire in Step 12. Configure reverse-direction
+current/previous credentials in each consumer's `BACKEND_CONSUMERS` entry, with explicit
+`access-snapshot:read` permission, as described by the
+[current identity configuration](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).
+No permission is granted by default. Service authentication selects the consumer,
+its authorized products and current policy P; R remains the whole-user paid-state
+revision. The persisted P/digest guard refuses stale configuration. V3 includes
+`consumer_id` and `consumer_policy_revision` and exposes only authorized products.
+The permission grants neither exchange nor introspection. Exactly one Bearer header and the matching
+tenant/region query are required. Origin, foreign/ambiguous scope, unknown input
+and malformed identity are refused; success/refusal responses are no-store.
+Unknown scoped users return `404`; known users without a transition return an
+implicit empty revision zero without inserting state or outbox rows.
+
+The snapshot and cabinet share the existing reserved two-connection/two-thread
+paid-read pool with at most eight queued operations. Snapshot header validation
+does not wait for shared sale threads. Cancellation retains ownership of the
+entire synchronous read until it closes its session; shutdown waits or reports
+pending cleanup before disposing the pool. Pool/lock/statement contention,
+storage unavailability and overload return safe `503` refusals. The customer
+`/api/paid-access` DTO remains separate and retains its verified-email session
+guard and provenance labels.
+
+Mandatory backend session introspection uses a separate two-connection database
+pool and two-slot thread limiter, with at most eight queued reads per API process,
+independent of purchases and the paid-read pool. Header validation does not use
+the shared framework thread limiter. HTTP queue/read waiting is bounded at
+1.5 seconds; PostgreSQL connect/pool/lock/statement timeouts are 1 s/250 ms/250 ms/
+500 ms. Overload and contention return `503 backend_session_unavailable`, never
+cached authority. HTTP cancellation/timeout retains actual resource ownership.
+Shutdown waits up to `PREFLIGHT_CLEANUP_TIMEOUT_SECONDS` for queued and running
+reads; if any remain, it raises `PreflightCleanupPending` and leaves the engine
+undisposed. The engine is disposed only after all reads finish.
+
+Snapshot serving and cabinet `/api/paid-access` read committed state under a
+shared scoped User lock; introspection does not acquire that lock. Snapshot GET
+performs no authentication bookkeeping, writes, source calls or peer calls.
+Snapshot serving selects authorized products and their supporting provenance/deadlines
+before checking completeness and expiry. An unrelated overdue product cannot
+deny this consumer's view; an included overdue reduction or uncommitted
+provenance/start correction refuses that view rather than omitting tuples at the
+same P/R. Every included grant, even without an allowance, must prove its owner
+through its primary subscription and saved accepted purchase. Missing/unproven
+purchase evidence returns `503 paid_access_state_pending`. Included allowances
+also retain the authenticated consumer's technical source and backend owner.
+A proven mismatch returns `503 paid_access_owner_conflict`
+without rewriting terms, allowance IDs or R; higher P cannot transfer old
+authority or usage. Owner transfer requires a separate explicit continuity
+procedure. The cabinet retains whole-user checks. Time is sampled
+from the database after waiting reads. With configured local/staging B=5:
+`expires_at = min(T+300s, included effective source/grant/UTC deadlines)-B` and
+`refresh_after = min(T+60s, expires_at)`. An empty set uses only T+300s. Source
+trust stays at most six hours; a missing clock budget or no remaining lifetime
+returns `503`. The envelope subtracts the interservice budget once. The grant
+field keeps its already committed source-conservative UTC bound unchanged;
+the producer does not haircut it again or recompute it on every GET. LBX
+conservatism remains internal and separate from the snapshot envelope.
+
+Timestamp allowance starts/ends retain their frozen issuance conservatism.
+A future bucket can be issued into immutable history but is omitted from the
+effective set before its proven start. The existing reconciliation queue is
+scheduled no later than that boundary, preserving earlier work. Only another
+eligible authoritative source apply can expose it; local expiry/time progression
+never activates or refills a bucket. Date-only cycles acquire no invented UTC
+bound. Kernel receives no calendar or period fields, only the approved immutable
+allowance tuple. Local tests use real disposable PostgreSQL and intercepted
+sources; real two-service execution, deployed clock/TLS proof, sales and live
+positive acceptance remain later gates.
+
 ## Embedded worker settings and resource limits
 
 The initial deployment is one API process/replica with an embedded worker.
 There is no separate process to launch or standalone worker command/container.
 
 - `BILLING_WORKER_ENABLED=true`: enables local expiry/repair; source lanes start
-  only when LBX is configured. Disabling the worker stops both kinds of work.
+  only when LBX is configured. Delivery starts independently for each
+  `BACKEND_CONSUMERS` entry with `access-snapshot:read`, without LBX configuration.
+  Disabling the worker stops all lanes.
 - `BILLING_WORKER_URGENT_CONCURRENCY=2`: urgent source slots, range 1–16.
 - `BILLING_WORKER_NORMAL_CONCURRENCY=1`: normal source slots, range 1–16.
+- `BILLING_WORKER_DELIVERY_CONCURRENCY=1`: slots per snapshot recipient,
+  range 1–16 per recipient, with at most 16 registry entries. Each recipient has
+  its own HTTP pool and DB delegation limiter. The worker's private DB pool is
+  bounded to urgent + normal + (snapshot recipient count × delivery concurrency)
+  + one local slot, with zero overflow. The paid-read pool remains separate.
 - `BILLING_WORKER_IO_TIMEOUT_SECONDS=60`: total source/cleanup budget; greater
   than the cleanup reserve and at most 240 seconds. This leaves the 30-second
   claim/apply margin and refusal retry within the five-minute urgent cadence.
@@ -122,14 +217,113 @@ retains its occupied capacity through cleanup, including after cancellation.
 Limits are per-process, not provider-wide concurrency or requests-per-second
 quotas. Urgent, normal and provider-free local work have reserved capacity;
 worker resources are isolated from purchase/Widget/new-sale resources.
-Unconfigured or partially configured LBX reports `not_configured` without source
-execution; disabled execution reports `disabled`. Source outage alone does not
-withdraw identity readiness.
+Delivery slots/cleanup cannot occupy urgent, normal or local-deadline slots.
+Unconfigured or partially configured LBX disables its source lanes; local work
+and configured snapshot-recipient delivery remain available. Disabling the entire worker
+reports `disabled`. Source outage alone does not withdraw identity readiness.
 
 Increase capacity only from measured queue age/source latency and actual LBX
 limits. A future separate worker can reuse the durable jobs, but requires an
 explicit stop-claim/drain/replace procedure and aggregate capacity review before
 adding processes. Limits do not coordinate capacity across API replicas.
+
+## ANY-766 Step 7 — durable Kernel invalidations
+
+Step 13 now selects each destination from `BACKEND_CONSUMERS`, using its
+`backend_base_url` and `portal_to_backend_current_secret`. The reverse-direction
+identity/snapshot credential stays independent. Every configured consumer with
+`access-snapshot:read` has its own bounded delivery lane when
+`BILLING_WORKER_ENABLED=true`; there is no separate Portal sender-enable flag.
+Legacy `KERNEL_BASE_URL`/`KERNEL_SERVICE_TOKEN` no longer select invalidation delivery.
+
+Before cutover, stop the Portal API and embedded workers and the paired Kernel
+API/worker; retain the existing databases/backups. Install the compatible Kernel
+receiver with matching scope/current-or-previous Portal service token and set
+`ANYTOOLAI_PORTAL_ACCESS_INVALIDATION_ENABLED=true` there. The historical Step 13
+pair used Portal `20261111_0010` and Kernel `0020`; Step 14 advanced them to Portal
+`20261111_0011` and Kernel `0021`. Current migration heads and reader requirements
+are owned by the paired installation procedure below. Keep Portal API/workers
+stopped during migration and restart only compatible readers and writers.
+The earlier digest correction requires a higher P for every existing configured
+consumer only when crossing that expanded-digest boundary; migration `0012`
+alone does not require changing P. Follow the
+[paired installation and compatibility procedure](../architecture/deployment.md#paired-compatibility-and-synchronized-cutover)
+and the synchronized
+[consumer identity cutover](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover)
+and restart only compatible binaries with the complete registry. Startup installs
+snapshot-recipient membership alongside the existing policy guard. The installed
+`BackendConsumerPolicy.snapshot_delivery_enabled` flag controls activity. Removing
+a consumer or its `access-snapshot:read` permission retains its outbox, queue
+history, revisions, leases and diagnostics; neither R changes nor writer no-ops
+create new delivery work for it. Never mark inactive history delivered or delete
+it to clear the active backlog.
+
+The migration binds all retained outbox/work rows to `platform-kernel` without
+changing pending/delivered revisions, row IDs, attempts, backoff or parked state.
+It replaces delivery keys with `recipient_id:user_id`, clears old claim leases
+and moves only running rows to pending with a higher generation. Old claims
+cannot acknowledge replacement work. Missing/completed scheduling is restored
+by existing bounded startup/sweep repair. No table or worker framework is added.
+An absent recipient configuration leaves its unresolved work retained and unsent;
+restore the entry before retrying. A disabled receiver permission returns `403`
+and parks only that recipient; enabling it later also requires CLI retry.
+
+Production connections retain public HTTPS validation, verified TLS, no
+environment proxy, no redirects and no browser Origin. Configuration does not
+establish joint or deployed acceptance and does not enable sales.
+
+The whole-user paid commit atomically fans out R to each installed in-scope
+active snapshot recipient, including when its last product grant is removed. Each
+recipient/scoped user has its own outbox, work key, claim, attempts, retry/parking
+and delivered revision. One recipient's ACK or failure cannot settle another's
+work. The V1 payload is unchanged; the authenticated destination selects the recipient.
+An overdue refresh preserves the causal reduction/restoration revisions while
+only the final phase touches the queue. Semantic no-ops preserve existing
+delivery backoff. A short capture transaction locks User → outbox → queue,
+checks the live claim, and captures the exact sent revision N before HTTP. HTTP
+runs outside SQL. On `204`, the same lock order and live-claim check allow only
+`delivered_revision=max(delivered_revision,N)`. Pending N+1 and newer queue
+generations survive. A lost response/ACK is safely redelivered after its lease;
+a superseded sender cannot acknowledge a successor's work.
+
+Transport failures, timeouts, `429` and `5xx` retry indefinitely with bounded
+exponential backoff (5 seconds to 15 minutes, deterministic 0–20% earlier
+jitter). Other statuses, including redirects and unexpected success codes, park
+the row as `invalid` with a safe diagnostic and an error log; Sentry reporting
+uses the existing optional configuration. Response
+bodies, tokens and authorization headers never enter diagnostics. The existing
+worker metrics include the `delivery` lane, retry/parked attempts and parked
+backlog. Delivery backlog counts include active recipients only; inactive history
+remains available through inspection. Monitor invalid backlog as well as due-work age. Safe logs and CLI
+identify the recipient; historical `kernel_invalidation_*` classifications remain
+compatible for every recipient. Metrics retain the aggregate `delivery` label.
+
+Each recipient lane has separate HTTP admission, cleanup ownership and DB
+thread capacity, so one blocked recipient cannot occupy another's slot or the
+local deadline lane. The [worker resource limits](#embedded-worker-settings-and-resource-limits)
+define per-recipient concurrency and the aggregate DB pool budget.
+
+Local startup/sweeps repair missing or prematurely completed scheduling from
+unresolved outbox rows in bounded batches without LBX configuration or HTTP.
+Repair filters by recipient/tenant/region and activity before LIMIT and rechecks
+activity under the User lock before scheduling. Inactive history cannot occupy
+the repair batch. Restore the registry entry/permission with a valid monotonic P
+to resume saved undelivered N through repair/claim/ACK. Live leases and retry
+schedules survive; parked errors still need explicit retry. After
+repairing credentials, permission, scope or deployed schema, use the existing
+privileged OS-principal CLI from the repository root:
+
+```bash
+./.venv/bin/python scripts/repo.py billing-purchase inspect-invalidation --recipient-id <consumer-id> --user-id <uuid>
+./.venv/bin/python scripts/repo.py billing-purchase retry-invalidation --recipient-id <consumer-id> --user-id <uuid>
+```
+
+Inspection is local and remains available for inactive recipients. Explicit
+retry refuses with `409 invalidation_recipient_inactive` until reactivation;
+an active recipient's retry only re-enqueues a parked row and sends no HTTP.
+Ordinary delivery resumes through the worker. Neither command grants access,
+changes an allowance nor issues a financial operation. Invalidation is a
+convergence hint; finite snapshot expiry remains the correctness backstop.
 
 ## Enrollment, cadence and recovery
 
@@ -292,6 +486,8 @@ cannot resolve review.
 Invoke `.venv/bin/python scripts/repo.py billing-purchase <action>` with
 `--user-id <portal-user-uuid>` and `--purchase-id <purchase-intent-uuid>`.
 The read-only `inspect-operation` lookup instead takes only `--operation-id`.
+`inspect-invalidation` and `retry-invalidation` instead take `--recipient-id` and `--user-id`;
+they inspect local delivery state or re-enqueue a parked invalidation after repair.
 Success JSON includes the operator principal. Exit 0 means the command completed,
 not that payment or positive source proof was established. Exit 1 returns only
 `detail.code`; invalid parser arguments exit 2.
@@ -489,12 +685,19 @@ subscription resumes; first binding alone does not establish positive trust.
 ANY-765 consumes authoritative observations and complete relevant inventory to
 commit local paid access, stable allowances and revision/outbox changes. The
 existing local lane reduces expired access and repairs deadlines without source
-HTTP. The [implemented handoff](#step-10-handoff--any-765) below defines these
-producer seams and the remaining Step 10 wire/B10 work. Step 9 retains its own
-test-LBX-to-cabinet checkpoint; Step 11 owns the broader deployed journey,
-natural renewal and launch acceptance.
+HTTP. The [producer handoff](#step-10-handoff--any-765) below defines the inherited
+seams. ANY-766 Step 12 now serves consumer-scoped V3 and extends Kernel paid
+admission with independent durable P/R floors; Step 7's Kernel invalidation
+delivery is now partitioned by recipient in Step 13. Step 12 proves
+local TCP auth/access; Step 16 supplies focused assembled local paid browser/execution
+acceptance. Step 17 supplies build/install preparation. ANY-767 owns the full
+deferred matrix, remote/live journey, remaining natural renewal and rollout.
 
 ## Step 10 handoff — ANY-765
+
+Here, Step 10 means parent ANY-504's ANY-766 stage. Within the revised ANY-766
+implementation plan, Step 10 generalizes consumer authentication/delegation,
+Step 15 adds cabinet usage, and Step 16 owns assembled local acceptance.
 
 This is the implemented local producer baseline for
 [ANY-766](https://linear.app/paveldik/issue/ANY-766), not an internal HTTP wire.
@@ -506,7 +709,8 @@ No Kernel change or real-producer conformance is implied by this handoff.
 
 ### Inputs, acceptance and decisions
 
-Consume `subscription-reconciliation:v1` under the
+The ANY-765 handoff used `subscription-reconciliation:v1`. Current writers emit
+`subscription-reconciliation:v2`, with compatible V1/V2 readers, under the
 [source authority policy](#source-authority-and-trust) above: complete original
 ownership/legal/term proof and supported prepaid ACTIVE/ALLOWED facts. Integration
 alone translates LBX codes; Kernel does not become a settlement verifier.
@@ -627,7 +831,7 @@ For supported calendar-month timestamp evidence, Integration normalizes activati
 to the first day at midnight in its explicit offset. Date-only evidence remains
 date-only; naive/mixed timestamps acquire no invented zone or UTC deadline.
 
-### Revision, outbox and remaining B10 work
+### Revision, outbox and current wire boundary
 
 Absent state is immutable empty revision 0 with no outbox row. The first material
 set is revision 1; later empty state retains its positive revision. Canonical
@@ -638,37 +842,33 @@ refreshes. Material changes increment exactly once with causal observation and
 survive concurrent product changes. A null observation `resulting_access_revision`
 means no material commit, not an implicit successful invalidation.
 
-Step 10 owns HTTP delivery and authenticated Kernel consumption. Capture
-`sent_revision=N` before sending; ACK N may advance delivered only to
-`max(delivered,N)`. Re-read current pending under the delivery transaction;
-pending N+1 remains work after ACK N. Never acknowledge the latest pending value
-merely because an older request succeeded. Full delivery/ACK races remain Step
-10 checks; this implementation produces durable coalesced work only.
-
-Coordinate B10 against the external-billing design's
-[Allowances and quota identity](../superpowers/specs/2026-09-15-external-billing-boundary-design.md#allowances-and-quota-identity)
-and [Subscription lifetime and allowance periods](../superpowers/specs/2026-09-15-external-billing-boundary-design.md#subscription-lifetime-and-allowance-periods),
-and the access design's [AccessSnapshot](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md#accesssnapshot)
-UTC tuple, clock-haircut/cache rules and
-[quota-ledger lifetime](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md#quota-ownership-and-allowance-ledger-lifetime).
-Their existing UTC `period_start/period_end` requirements do not turn LBX calendar
-dates into instants. Review/version both producer and consumer DTOs, validation,
-specs, fixtures/hashes and compatibility together; do not serialize the local
-calendar document as an alternate unreviewed wire. Preserve durable usage keyed
-by allowance identity, six-hour last-complete-read trust and the up-to-five-minute
-snapshot ceiling. An unobserved cycle rollover may retain the old cycle only
-within those finite bounds; no exact LBX-midnight cutoff or outage extension is
-claimed. Independently proven UTC deadlines still reduce access earlier.
+HTTP delivery follows [the durable invalidation lifecycle](#any-766-step-7--durable-kernel-invalidations).
+The current wire is [snapshot V3](../contracts/product-backend-api/README.md#policy-snapshots-and-durable-backend-enforcement),
+implemented by [the current producer](#any-766-step-5--production-allowances-and-snapshot-serving).
+The [consumer-neutral amendment](../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md#snapshot-v3-and-independent-pr-target)
+supersedes the V2 consumer/semantic identity with consumer/P/R. V3 retains
+immutable allowance identity/product/metric/unit/quantity; calendar evidence and
+proven UTC bounds stay Portal-internal. Consumer-filtered membership and retained
+owner validation authorize the bucket; Kernel's synchronized cutover requires
+migration `0020` and a V3 reader.
+Six-hour source trust, finite snapshot expiry and original-bucket usage history
+remain unchanged. Time alone cannot prove a new cycle or extend authority.
 
 ### Migration, configuration, recovery and evidence limits
 
-The consolidated chain is `20260924_0001 → 20261001_0002 → 20261029_0003 →
-20261028_0005 → 20261031_0006`; there is no `0004` dependency to recreate.
+The [schema reference](../architecture/payment-portal-data-model.md) owns the
+current migration chain; there is no `0004` dependency to recreate.
 `0006` preserves legacy UTC and v2 purchases, preflights incompatible history,
 enforces immutable allowance/logical identity and monotonic state/outbox guards,
 and refuses destructive downgrade. Running clean ANY-715/0005 code against a
 populated v2/0006 DB is not a supported rollback. See the
 [schema reference](../architecture/payment-portal-data-model.md).
+`0012` retains exact allowance activation facts in the existing immutable
+observation store. Downgrade is refused once activation or V2 evidence exists;
+never delete evidence or restart old writers to bypass that compatibility floor.
+Delegation issuance budgets and independent retention follow the
+[common identity rules](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).
+That cleanup runs in the API even when `BILLING_WORKER_ENABLED=false`.
 
 Use the [worker settings](#embedded-worker-settings-and-resource-limits), operator
 procedures above and the authenticated-read runbook for configuration, connection
@@ -676,7 +876,7 @@ budgets and incident recovery. `PURCHASE_TEST_TERMS_ENABLED` is development/test
 only and refused in production. Customer conflicts reduce all dependent products;
 product/metric conflicts remain scoped. Operators cannot supply paid flags or quota.
 
-Current local canonical/focused/browser evidence and the review corrections are
+Historical ANY-765 canonical/focused/browser evidence and the review corrections are
 recorded in the linked porting plan. The actual Widget → LBX → ordinary worker →
 revision/outbox → authenticated API/cabinet checkpoint passed on Portal
 `7a2a4d8cc13d9b007c550813d0f4c1bdff2b7fca` and Kernel
@@ -684,7 +884,64 @@ revision/outbox → authenticated API/cabinet checkpoint passed on Portal
 Live allowance issuance remained unproved because LBX cycle evidence was
 ambiguous. Deterministic PostgreSQL/source fixtures verify the owned metered,
 failure/concurrency and recovery logic separately. DOD-1 current-HEAD LBX
-acceptance remains owned by ANY-765; ANY-711 owns approved production metric/unit
-vocabulary, ANY-766 the coordinated wire/delivery/enforcement and actual usage,
+acceptance remains owned by ANY-765. Under the
+[2026-11-09 ANY-766 scope clarification](https://linear.app/paveldik/issue/ANY-766),
+ANY-711 remains Done for delivered manifest/TEST-ONLY vocabulary; ANY-766 owns
+the selected production metric/unit declarations and scenario bindings as well
+as coordinated wire/delivery/enforcement and actual usage,
 and ANY-767 the deployed journey/natural renewal/production enablement. No
-test-only limit or historical positive QA result waives those gates.
+test-only limit or historical positive QA result waives those gates. Commercial
+quantities, exact LBX associations and sales enablement require separate owner
+approval. The [ANY-766 contract bundle](../contracts/portal-kernel-paid/README.md)
+records the selected wire contracts and implemented server attachment points.
+Browser/usage integration is implemented, and Steps 16/17 supply focused local
+acceptance and build/install preparation. Full and remote/live acceptance remain
+ANY-767 work.
+
+
+### ANY-766 Step 14 — immutable exhaustion hints
+
+`POST /internal/v1/allowance-exhaustions` now requires the sender's configured
+`allowance-exhaustion:write` permission, current persisted P/digest, product scope
+and saved source/backend owner. The full issued tuple is immutable. A `204` follows the hint commit;
+duplicate or historical deliveries ACK without changing the first payload or
+reviving completed work. Malformed requests are `422`, unknown/conflicting
+bindings `409`, foreign consumer/product authority `403`, and stale/missing policy or storage failures
+`503`; all responses are no-store and browser Origin is refused.
+
+The existing worker's local lane claims `allowance_exhaustion` work without
+requiring LBX configuration. It only schedules existing GET-only reconciliation
+for a still-current allowance; old-cycle hints complete with no effect on the
+new cycle. There are no financial commands or direct grant/subscription changes.
+Migration `20261111_0011` preserves existing queue history while extending unique
+work identity. Quiesce affected workers during migration; do not replace this
+insert with ordinary coalescing. Kernel migration `0021`, sender settings,
+lease/retry/parking behavior and the reverse usage contract are documented in the
+[common backend guide](../contracts/product-backend-api/README.md#implemented-step-14-usage-and-exhaustion).
+Step 15 implements cabinet usage composition; Step 16 supplies focused paired local
+acceptance, with the full matrix and remote/live acceptance deferred to ANY-767.
+
+
+### ANY-766 Step 15 — independent cabinet usage reads
+
+The cabinet reads `/api/paid-usage` separately from local `/api/paid-access`.
+Both require the verified-email billing session. Usage has its own bounded
+admission, HTTP clients, DB pool and thread limiter; a slow backend or cancelled
+usage waiter cannot consume reserved local access capacity. Transactions end
+before HTTP; a fresh session/revision/selection check prevents mixed or revoked
+responses. No reconciliation, financial send or counter write occurs in a read.
+
+The [cabinet usage contract](../contracts/product-backend-api/README.md#implemented-step-15-cabinet-usage)
+records selection, status, limits and retry semantics. Retained configured-source
+history remains readable after blocking; legacy/SIMULATED or never-activated
+future rows produce no backend usage request. Timestamp history requires an exact
+activation fact or conservative legacy V1 proof; V2 evidence alone cannot replace
+that fact. Already-lost history without retained proof stays unavailable. A tuple conflict is diagnosed
+without attributing foreign usage; a backend outage stays unavailable. Enable
+the matching backend usage permission before local integration acceptance.
+
+The independent pool does not bypass whole-user committed-state/deadline checks
+from Steps 5/12. Pending paid-state/deadline refusals wait for the existing
+worker/reconciliation commit; reads never repair authority. Missing saved-owner
+configuration must be repaired without redirecting history. The contract above
+lists the inherited `paid_access_*` and usage-specific `503` codes and recovery.

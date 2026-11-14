@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from functools import partial
 from typing import Any, TypeVar
@@ -15,14 +15,22 @@ import anyio
 from app.composition.reconciliation import reconcile_subscription
 from app.composition.billing_background import recover_operation, inventory_customer, apply_deadline
 from app.domains.billing import background_recovery
+from app.domains.billing import access_invalidation
+from app.domains.billing import allowance_exhaustion
 from app.core.settings import Settings
 from app.core.time import utc_now
 from app.domains.billing import work
 from app.domains.billing.contracts import BillingRefused
-from app.domains.billing.work_contracts import WorkLane
+from app.domains.billing.work_contracts import WorkLane, WorkAttemptOutcome, InvalidationFailureCode, DeliveryLane
 from app.domains.catalog.publication import SessionFactory
 from app.infrastructure import billing_worker_metrics as metrics
-from app.infrastructure.preflight import PreflightAdmission, PreflightCleanupPending, PreflightPolicy
+from app.infrastructure.preflight import (
+    PreflightAdmission,
+    PreflightCleanupPending,
+    PreflightPolicy,
+    PreflightDeadlineExceeded,
+)
+from app.integrations.kernel.client import PlatformKernelClient, KernelInvalidationFailed
 from app.infrastructure.sentry import Operation, report_exception
 from app.integrations.lbx.client import LbxServerClient
 
@@ -31,10 +39,22 @@ logger = logging.getLogger(__name__)
 
 
 class BillingWorker:
-    def __init__(self, configuration: Settings, factory: SessionFactory, client: LbxServerClient | None) -> None:
+    def __init__(
+        self,
+        configuration: Settings,
+        factory: SessionFactory,
+        client: LbxServerClient | None,
+        *,
+        delivery_clients: Mapping[str, PlatformKernelClient] | None = None,
+    ) -> None:
         self.configuration = configuration
         self.factory = factory
         self.client = client
+        self.delivery_clients = dict(delivery_clients or {})
+        delivery_slots = tuple(
+            (DeliveryLane(recipient_id), configuration.billing_worker_delivery_concurrency)
+            for recipient_id in self.delivery_clients
+        )
         self.admissions = {
             lane: PreflightAdmission(
                 PreflightPolicy(
@@ -47,6 +67,7 @@ class BillingWorker:
             for lane, count in (
                 (WorkLane.URGENT, configuration.billing_worker_urgent_concurrency),
                 (WorkLane.NORMAL, configuration.billing_worker_normal_concurrency),
+                *delivery_slots,
             )
         }
         # Independent bounded DB delegation; no request-scoped Session crosses
@@ -57,9 +78,12 @@ class BillingWorker:
                 (WorkLane.LOCAL, 1),
                 (WorkLane.URGENT, configuration.billing_worker_urgent_concurrency),
                 (WorkLane.NORMAL, configuration.billing_worker_normal_concurrency),
+                *delivery_slots,
             )
         }
-        self.db_tasks: dict[WorkLane, set[asyncio.Task[Any]]] = {lane: set() for lane in self.db_limiters}
+        self.db_tasks: dict[WorkLane | DeliveryLane, set[asyncio.Task[Any]]] = {
+            lane: set() for lane in self.db_limiters
+        }
         self.db_cleanup: set[asyncio.Task[Any]] = set()
         self.tasks: list[asyncio.Task[None]] = []
         self.stopping = False
@@ -73,7 +97,7 @@ class BillingWorker:
         self.invalid = 0
         self.enrolled_batches = 0
 
-    async def db(self, lane: WorkLane, function: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+    async def db(self, lane: WorkLane | DeliveryLane, function: Callable[..., T], *args: Any, **kwargs: Any) -> T:
         # Shield the resource-owning framework task, not just its waiter. Native
         # asyncio cancellation must not release AnyIO's limiter while its thread
         # can still commit. The worker retains and drains that exact task.
@@ -109,8 +133,12 @@ class BillingWorker:
             (WorkLane.LOCAL, 1),
             (WorkLane.URGENT, self.configuration.billing_worker_urgent_concurrency),
             (WorkLane.NORMAL, self.configuration.billing_worker_normal_concurrency),
+            *(
+                (DeliveryLane(recipient_id), self.configuration.billing_worker_delivery_concurrency)
+                for recipient_id in self.delivery_clients
+            ),
         ):
-            if lane != WorkLane.LOCAL and self.client is None:
+            if lane in (WorkLane.URGENT, WorkLane.NORMAL) and self.client is None:
                 continue
             for _ in range(count):
                 task = asyncio.create_task(self._loop(lane), name=f"billing-{lane}")
@@ -123,12 +151,13 @@ class BillingWorker:
             if not task.cancelled() and task.exception() is not None:
                 report_exception(task.exception(), operation=Operation.BILLING_WORKER)
 
-    async def tick(self, lane: WorkLane) -> bool:
-        if lane != WorkLane.LOCAL and self.client is None:
+    async def tick(self, lane: WorkLane | DeliveryLane) -> bool:
+        delivery_lane = lane if isinstance(lane, DeliveryLane) else None
+        if lane in (WorkLane.URGENT, WorkLane.NORMAL) and self.client is None:
             return False
         if any(task in self.db_cleanup for task in self.db_tasks[lane]):
             return False  # An interrupted DB owner may still be committing.
-        attempt_outcome = "completed"
+        attempt_outcome = WorkAttemptOutcome.COMPLETED
         if lane == WorkLane.LOCAL:
             claim = await self.db(lane, work.claim_work, self.factory, self.configuration, lane)
             if claim is None:
@@ -136,13 +165,14 @@ class BillingWorker:
             if claim.kind == work.SWEEP:
                 # One committed batch per tick allows due expiry between batches.
                 paid = await self.db(lane, work.repair_paid_deadlines, self.factory, self.configuration)
+                delivery = await self.db(lane, access_invalidation.repair_delivery, self.factory, self.configuration)
                 count = await self.db(lane, work.enroll_batch, self.factory, self.configuration)
                 repaired = (
                     await self.db(lane, background_recovery.repair_batch, self.factory, self.configuration)
                     if self.client is not None
                     else 0
                 )
-                count = max(count, repaired, paid)
+                count = max(count, repaired, paid, delivery)
                 self.enrolled_batches += int(count > 0)
                 await self.db(
                     lane,
@@ -153,6 +183,8 @@ class BillingWorker:
                 )
             elif claim.kind == background_recovery.DEADLINE:
                 await apply_deadline(self.factory, claim, delegate=partial(self.db, lane))
+            elif claim.kind == allowance_exhaustion.KIND:
+                await self.db(lane, allowance_exhaustion.process_exhaustion, self.factory, claim)
             else:
                 await self.db(lane, work.expire_trust, self.factory, claim)
         else:
@@ -160,11 +192,52 @@ class BillingWorker:
             if admission.active_count >= admission.policy.max_active:
                 return False  # Unfinished cleanup still occupies its actual slot.
             async with admission.operation(bound_scope=False) as budget:
-                claim = await self.db(lane, work.claim_work, self.factory, self.configuration, lane)
+                claim = await self.db(
+                    lane,
+                    work.claim_work,
+                    self.factory,
+                    self.configuration,
+                    WorkLane.DELIVERY if delivery_lane else lane,
+                    recipient_id=delivery_lane.recipient_id if delivery_lane else None,
+                )
                 if claim is None:
                     return False
                 try:
-                    if claim.kind == background_recovery.RECOVERY:
+                    if claim.kind == access_invalidation.KIND:
+                        sent = await self.db(
+                            lane, access_invalidation.capture_delivery, self.factory, self.configuration, claim
+                        )
+                        if sent is not None:
+                            error: InvalidationFailureCode | None = None
+                            permanent = False
+                            try:
+                                await self.delivery_clients[sent.recipient_id].send_invalidation(sent, budget=budget)
+                            except KernelInvalidationFailed as failure:
+                                error, permanent = failure.code, failure.permanent
+                            except PreflightDeadlineExceeded:
+                                error = InvalidationFailureCode.TIMEOUT
+                            await self.db(
+                                lane,
+                                access_invalidation.apply_delivery,
+                                self.factory,
+                                claim,
+                                sent,
+                                error=error,
+                                permanent=permanent,
+                            )
+                            if permanent:
+                                logger.error("Backend invalidation delivery parked recipient=%s", sent.recipient_id)
+                                report_exception(
+                                    KernelInvalidationFailed(error, permanent=True), operation=Operation.BILLING_WORKER
+                                )
+                            attempt_outcome = (
+                                WorkAttemptOutcome.PARKED
+                                if permanent
+                                else WorkAttemptOutcome.RETRY
+                                if error
+                                else WorkAttemptOutcome.COMPLETED
+                            )
+                    elif claim.kind == background_recovery.RECOVERY:
                         await recover_operation(
                             self.client,
                             admission,
@@ -225,13 +298,13 @@ class BillingWorker:
                     )
                     if not saved:
                         raise
-                    attempt_outcome = "refused"
+                    attempt_outcome = WorkAttemptOutcome.REFUSED
         self.last_progress_at = utc_now()
         metrics.PROGRESS.set(self.last_progress_at.timestamp())
         metrics.ATTEMPTS.labels(lane=lane.value, outcome=attempt_outcome).inc()
         return True
 
-    async def _loop(self, lane: WorkLane) -> None:
+    async def _loop(self, lane: WorkLane | DeliveryLane) -> None:
         while not self.stopping:
             try:
                 progressed = await self.tick(lane)
@@ -244,16 +317,20 @@ class BillingWorker:
                 raise
             except Exception as error:
                 self.failures += 1
-                metrics.ATTEMPTS.labels(lane=lane.value, outcome="failed").inc()
+                metrics.ATTEMPTS.labels(lane=lane.value, outcome=WorkAttemptOutcome.FAILED).inc()
                 # Safe constant message; the reporting adapter strips raw errors.
                 logger.warning("Billing worker attempt failed", extra={"structured": {"lane": lane.value}})
                 report_exception(error, operation=Operation.BILLING_WORKER)
                 progressed = False
-            for source_lane, admission in self.admissions.items():
-                metrics.SLOTS.labels(lane=source_lane.value).set(admission.active_count)
-                metrics.CLEANUP.labels(lane=source_lane.value).set(
-                    admission.cleanup_pending_count
-                    + sum(task in self.db_cleanup for task in self.db_tasks[source_lane])
+            for label in (WorkLane.URGENT, WorkLane.NORMAL, WorkLane.DELIVERY):
+                slots = [key for key in self.admissions if key.value == label.value]
+                metrics.SLOTS.labels(lane=label.value).set(sum(self.admissions[key].active_count for key in slots))
+                metrics.CLEANUP.labels(lane=label.value).set(
+                    sum(
+                        self.admissions[key].cleanup_pending_count
+                        + sum(task in self.db_cleanup for task in self.db_tasks[key])
+                        for key in slots
+                    )
                 )
             metrics.CLEANUP.labels(lane=WorkLane.LOCAL.value).set(
                 sum(task in self.db_cleanup for task in self.db_tasks[WorkLane.LOCAL])

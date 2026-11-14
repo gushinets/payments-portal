@@ -234,6 +234,28 @@
   gap: 12px;
 }
 
+.paid-product-usage {
+  margin-block: 12px;
+  overflow-wrap: anywhere;
+}
+
+.paid-usage-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-block: 12px;
+}
+
+.paid-usage-values dt {
+  color: var(--txt2);
+  font-size: 13px;
+}
+
+.paid-usage-values dd {
+  margin: 4px 0 0;
+  font-weight: 700;
+}
+
 .account-product-heading > div:last-child {
   min-width: 0;
 }

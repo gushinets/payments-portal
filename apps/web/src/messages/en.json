@@ -144,7 +144,9 @@
       "signOutAction": "Sign out",
       "emailLabel": "Email",
       "emailVerified": "Email verified",
-      "emailUnverified": "Email not verified"
+      "emailUnverified": "Email not verified",
+      "verificationRequired": "Verify your email before authorizing access to the product.",
+      "checkVerificationAction": "I have verified my email"
     },
     "products": {
       "title": "My products",
@@ -185,7 +187,22 @@
         "usageUnavailable": "Used and remaining quantities are unavailable.",
         "refresh": "Refresh paid access",
         "deadlinePending": "Access is being updated after a deadline. Try again shortly.",
-        "empty": "There is no paid access yet."
+        "empty": "There is no paid access yet.",
+        "openProduct": "Open product",
+        "launchUnavailable": "Product launch is not configured."
+      },
+      "usage": {
+        "current": "Current allowance usage",
+        "historical": "Historical allowance usage",
+        "used": "Successfully used",
+        "reserved": "Reserved",
+        "remaining": "Remaining",
+        "available": "Available now",
+        "readAt": "Read at {time} UTC",
+        "unobserved": "Usage has not been observed yet",
+        "loading": "Loading usage…",
+        "busy": "All remaining capacity is temporarily reserved",
+        "exhausted": "Allowance exhausted"
       }
     }
   },
@@ -479,7 +496,7 @@
     "reference": "Purchase reference: {id}",
     "acceptedTerms": "Originally accepted terms",
     "awaitingVerification": "Payment status is awaiting authoritative verification. Checking saved status reads Portal records only; it does not refresh billing facts.",
-    "technicalLimit": "Test limit per confirmed cycle",
+    "technicalLimit": "Limit per confirmed cycle",
     "simulatedTerms": "SIMULATED · test terms",
     "technicalUnknown": "Technical limit is unproven; metered execution is unavailable.",
     "fullFunding": "Full funding is required.",
@@ -495,5 +512,13 @@
     },
     "managedInAccount": "Payment and subscription management are available in your account.",
     "accessInAccount": "Confirmed paid access is shown in your account. Usage and remaining quota are not yet available."
+  },
+  "BackendSession": {
+    "title": "Continue to your product",
+    "description": "Your Portal session will authorize this product tab.",
+    "continue": "Continue",
+    "loading": "Authorizing…",
+    "failed": "Could not authorize. Check your session and try again.",
+    "rateLimited": "Too many authorization requests. Please try again later."
   }
 }

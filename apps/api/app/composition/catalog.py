@@ -26,9 +26,18 @@ async def catalog_preview(
     product_id: str | None = None,
 ) -> tuple[ProductPreview, ...]:
     async with sources.preflight.operation() as budget:
-        manifest = await sources.require_kernel().fetch_manifest(budget=budget)
         if product_id is None:
-            return list_product_previews(manifest)
+            previews = []
+            for source in sources.discovery_sources():
+                manifest = await source.client.fetch_manifest(budget=budget)
+                previews.extend(
+                    item
+                    for item in list_product_previews(manifest)
+                    if source.products is None or item.product_id in source.products
+                )
+            return tuple(sorted(previews, key=lambda item: item.product_id))
+        source = sources.technical_source(product_id)
+        manifest = await source.client.fetch_manifest(budget=budget)
         require_enabled_product(manifest, product_id)
         # No DB resource is made on the event loop or moved between threads.
         if not configuration.lbx_external_billing_account_id:
@@ -51,6 +60,7 @@ async def catalog_preview(
         budget.check()
         if link is None:
             return (ProductPreview(product_id, manifest.provenance, "UNMAPPED"),)
+        sources.technical_source(product_id, expected=link.document.ownership)
         try:
             offer = await read_current_offer(
                 sources.require_lbx(), selection=link.document.selection, configuration=configuration, budget=budget

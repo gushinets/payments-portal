@@ -119,3 +119,22 @@ def test_enabled_source_missing_file_refuses_without_fallback(monkeypatch: pytes
         purchase_terms.current_technical_terms(
             step1_settings(purchase_test_terms_enabled=True), technical_manifest(), link, original.offer
         )
+
+
+def test_new_production_purchase_requires_published_quantity_without_promoting_legacy_terms() -> None:
+    from app.domains.catalog.link_publication import StoredProductLink
+    from apps.api.tests.support.any709_step1 import link_document
+    from uuid import uuid4
+
+    config = step1_settings(
+        app_env="production",
+        app_public_base_url="https://portal.example.test",
+        cors_allow_origins=("https://portal.example.test",),
+        kernel_base_url="https://kernel.example.test",
+        kernel_mock_enabled=False,
+    )
+    original = subject_factory().purchase.accepted
+    with pytest.raises(PurchaseRefused, match="purchase_technical_terms_unavailable"):
+        purchase_terms.current_technical_terms(
+            config, technical_manifest(), StoredProductLink(uuid4(), 1, 1, link_document()), original.offer
+        )

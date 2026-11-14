@@ -16,6 +16,9 @@ from app.main import create_app
 from app.models import (
     AccessInvalidationOutbox,
     AuthSession,
+    BackendSessionDelegation,
+    BackendConsumerPolicy,
+    BackendCodeIssuanceBudget,
     BillingProductAccessScope,
     BillingPurchaseScopeHold,
     BillingStateObservation,
@@ -62,6 +65,8 @@ OPENAPI_HTTP_METHODS = (
 )
 RAW_OR_SCHEMA_HIDDEN_ROUTE_EXCEPTIONS = {
     ("GET", "/metrics"),
+    # Exhaustion delivery is acknowledged with 204 only after the durable hint commit.
+    ("POST", "/internal/v1/allowance-exhaustions"),
 }
 
 
@@ -170,6 +175,10 @@ def test_ordinary_json_routes_have_named_openapi_response_schemas() -> None:
     assert readiness_unavailable_schema == {
         "$ref": "#/components/schemas/ReadinessUnavailableResponse",
     }
+
+    exhaustion_responses = openapi["paths"]["/internal/v1/allowance-exhaustions"]["post"]["responses"]
+    assert {status for status in exhaustion_responses if status.startswith("2")} == {"204"}
+    assert "content" not in exhaustion_responses["204"]
 
 
 def test_openapi_guard_rejects_unlisted_non_json_routes() -> None:
@@ -982,6 +991,9 @@ def test_canonical_orm_contains_step_3_survivors_and_step_4_target_models() -> N
         CountryRegionRule,
         User,
         AuthSession,
+        BackendSessionDelegation,
+        BackendConsumerPolicy,
+        BackendCodeIssuanceBudget,
         MagicLinkToken,
         PasswordResetRateLimit,
         LegalEntity,
@@ -1007,7 +1019,7 @@ def test_canonical_orm_contains_step_3_survivors_and_step_4_target_models() -> N
         AccessInvalidationOutbox,
     )
 
-    assert len(Base.metadata.tables) == 27
+    assert len(Base.metadata.tables) == 30
     assert set(Base.metadata.tables) == {model.__tablename__ for model in retained_models}
 
 

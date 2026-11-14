@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     AccessInvalidationOutbox,
+    BackendConsumerPolicy,
     BillingProductAccessScope,
     BillingStateObservation,
     ExternalBillingCustomer,
@@ -86,9 +87,41 @@ def state(db: Session, user_id: UUID) -> PaidAccessState | None:
     return db.scalar(select(PaidAccessState).where(PaidAccessState.user_id == user_id).with_for_update())
 
 
-def outbox(db: Session, user_id: UUID) -> AccessInvalidationOutbox | None:
+def outbox(db: Session, user_id: UUID, recipient_id: str) -> AccessInvalidationOutbox | None:
     return db.scalar(
-        select(AccessInvalidationOutbox).where(AccessInvalidationOutbox.user_id == user_id).with_for_update()
+        select(AccessInvalidationOutbox)
+        .where(
+            AccessInvalidationOutbox.user_id == user_id,
+            AccessInvalidationOutbox.recipient_id == recipient_id,
+        )
+        .with_for_update()
+    )
+
+
+def outboxes(db: Session, user_id: UUID) -> list[AccessInvalidationOutbox]:
+    return list(
+        db.scalars(
+            select(AccessInvalidationOutbox)
+            .where(
+                AccessInvalidationOutbox.user_id == user_id,
+            )
+            .order_by(AccessInvalidationOutbox.recipient_id)
+            .with_for_update()
+        )
+    )
+
+
+def snapshot_recipients(db: Session, tenant_id: str, region: str) -> list[str]:
+    return list(
+        db.scalars(
+            select(BackendConsumerPolicy.consumer_id)
+            .where(
+                BackendConsumerPolicy.tenant_id == tenant_id,
+                BackendConsumerPolicy.region == region,
+                BackendConsumerPolicy.snapshot_delivery_enabled.is_(True),
+            )
+            .order_by(BackendConsumerPolicy.consumer_id)
+        )
     )
 
 
@@ -107,7 +140,9 @@ def access_end_observation(db: Session, sub: ExternalSubscription) -> BillingSta
             BillingStateObservation.external_billing_account_id == sub.external_billing_account_id,
             BillingStateObservation.user_id == sub.user_id,
             BillingStateObservation.product_id == sub.product_id,
-            BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v1",
+            BillingStateObservation.evidence_schema_version.in_(
+                ("subscription-reconciliation:v1", "subscription-reconciliation:v2")
+            ),
             BillingStateObservation.completeness_classification == "complete",
             BillingStateObservation.result_classification == "COMPLETE_MATCH",
             evidence["access_end_at"].as_string().is_not(None),
@@ -159,8 +194,25 @@ def latest_paid_allowance_end(subscription_id: UUID | SQLColumnExpression[UUID])
     )
 
 
+def latest_paid_allowance_start(db: Session, subscription_id: UUID) -> datetime | None:
+    return db.scalar(
+        select(PurchasedAllowance.period_start)
+        .where(
+            PurchasedAllowance.subscription_id == subscription_id,
+            PurchasedAllowance.cycle_schema_version == "timestamp:v1",
+        )
+        .order_by(PurchasedAllowance.created_at.desc(), PurchasedAllowance.allowance_id.desc())
+        .limit(1)
+    )
+
+
 def missing_deadline_users(
-    db: Session, tenant: str, region: str, limit: int, *, allow_simulated_metering: bool = True
+    db: Session,
+    tenant: str,
+    region: str,
+    limit: int,
+    *,
+    permitted_provenances: tuple[str, ...] | None = None,
 ) -> list[UUID]:
     """Persisted scope/identity, independent of today's source account setting."""
     allowance_end = (
@@ -183,14 +235,18 @@ def missing_deadline_users(
         BillingWorkItem.next_attempt_at <= metering_deadline,
     )
     needs_repair = ~scheduled
-    if not allow_simulated_metering:
-        simulated = exists().where(
+    # Application supplies this optional storage filter; persistence does not
+    # interpret provenance vocabularies or decide environment policy.
+    if permitted_provenances is not None:
+        unpermitted = exists().where(
             ExternalSubscription.subscription_id == BillingProductAccessScope.primary_subscription_id,
             ExternalSubscription.purchase_intent_id == PurchaseIntent.purchase_intent_id,
-            PurchaseIntent.accepted_snapshot["technical_terms"]["provenance"].as_string() == "SIMULATED",
+            func.coalesce(PurchaseIntent.accepted_snapshot["technical_terms"]["provenance"].as_string(), "").not_in(
+                permitted_provenances
+            ),
         )
         needs_repair = or_(
-            needs_repair, simulated & (BillingProductAccessScope.effective_access_document["allowances"] != [])
+            needs_repair, unpermitted & (BillingProductAccessScope.effective_access_document["allowances"] != [])
         )
     return list(
         db.scalars(

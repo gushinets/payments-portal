@@ -224,7 +224,7 @@ async def test_any709_step3_linked_widget_retries_after_failed_point_proof(
             with factory() as db:
                 observation = db.scalars(
                     select(BillingStateObservation)
-                    .where(BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v1")
+                    .where(BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v2")
                     .order_by(BillingStateObservation.observed_at.desc())
                 ).first()
                 assert observation.completeness_classification == "incomplete"

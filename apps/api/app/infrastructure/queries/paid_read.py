@@ -19,14 +19,17 @@ from app.models import (
 MAX_EVIDENCE_PRODUCTS = 100
 
 
-def lock_reader(db: Session, user_id: UUID, tenant: str, region: str) -> None:
+def lock_reader(db: Session, user_id: UUID, tenant: str, region: str) -> bool:
     # Writers acquire this row FOR UPDATE before business/state/queue locks.
     # Multiple readers can coexist; none can mix pre/post-commit metadata.
-    db.execute(
-        select(User.id)
-        .where(User.id == user_id, User.tenant_id == tenant, User.region == region)
-        .with_for_update(read=True)
-    ).one()
+    return (
+        db.scalar(
+            select(User.id)
+            .where(User.id == user_id, User.tenant_id == tenant, User.region == region)
+            .with_for_update(read=True)
+        )
+        is not None
+    )
 
 
 def state(db: Session, user_id: UUID, tenant: str, region: str) -> PaidAccessState | None:
@@ -75,3 +78,20 @@ def sources(
 
 def allowances(db: Session, identities: list[UUID]) -> list[PurchasedAllowance]:
     return list(db.scalars(select(PurchasedAllowance).where(PurchasedAllowance.allowance_id.in_(identities))))
+
+
+def grant_purchases(db: Session, user_id: UUID, products: list[str]) -> dict[str, PurchaseIntent]:
+    """Resolve committed grant provenance under the caller's shared user lock."""
+    return dict(
+        db.execute(
+            select(BillingProductAccessScope.product_id, PurchaseIntent)
+            .join(
+                ExternalSubscription,
+                ExternalSubscription.subscription_id == BillingProductAccessScope.primary_subscription_id,
+            )
+            .join(PurchaseIntent, PurchaseIntent.purchase_intent_id == ExternalSubscription.purchase_intent_id)
+            .where(BillingProductAccessScope.user_id == user_id, BillingProductAccessScope.product_id.in_(products))
+        )
+        .tuples()
+        .all()
+    )

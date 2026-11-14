@@ -165,16 +165,31 @@ stored digests remain unchanged and readable; live continuation recomputes both
 old and current offers under the new comparison. Historical approval/mapping
 formats are not rewritten. The accepted specification bodies stay intact.
 
+### ANY-766 consumer-neutral target — 2026-11-10
+
+The [dated amendments in the owning designs](../../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md#any-766-consumer-neutral-amendment--2026-11-10)
+generalize the technical vocabulary/usage/enforcement owner to the configured
+backend for each product. Kernel remains the first owner and retains its own
+execution/product behavior. Portal identity, immutable purchased authority and
+External Billing ownership stay unchanged. The
+[common backend guide](../../contracts/product-backend-api/README.md) records the
+Section 3.9 target and bounded migration inventory. Step 9 specifies it; runtime
+implementation is Steps 10–15. This is not evidence of a working generic API,
+third-party adoption or sales/deployment approval.
+
 ## Implementation status
 
 The former direct-provider runtime has been physically removed. ANY-709 adds
 direct product links, live offers, account Widget and accepted-purchase
 preparation/recovery. ANY-715 adds polling-only reconciliation/recovery; ANY-765
 adds local paid projection, allowances, revisions/outbox, expiry and authenticated
-cabinet reads. Kernel delivery remains ANY-766 work; current-version live
-acceptance and production enablement retain their gates. Current boundaries are
-in [ARCHITECTURE](../../../ARCHITECTURE.md); dated delivery evidence is in ANY-709
-and the [ANY-765 handoff](../../engineering/billing-background-operations.md#step-10-handoff--any-765).
+cabinet reads. ANY-766 adds delegated identity V2, snapshot V3, coherent Kernel paid
+admission, recipient-specific invalidation delivery, recoverable paid browser
+launch and cabinet usage readback. Steps 16/17 supply focused local acceptance
+and build/install preparation; the full matrix, remote/live acceptance and
+rollout belong to ANY-767.
+Current boundaries are in [ARCHITECTURE](../../../ARCHITECTURE.md) and
+[billing operations](../../engineering/billing-background-operations.md).
 The original context above records transition history.
 
 ## Consequences

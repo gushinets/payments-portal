@@ -8,9 +8,13 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from app.models import BillingWorkItem
+from app.models import BillingWorkItem, BillingWorkKind
 
-RECURRING_INDEX = "work_kind IN ('subscription_reconciliation', 'subscription_trust_expiry', 'billing_enrollment_sweep', 'customer_inventory', 'external_create_deadline')"
+RECURRING_INDEX = (
+    "work_kind IN ('subscription_reconciliation', 'subscription_trust_expiry', "
+    "'billing_enrollment_sweep', 'customer_inventory', 'external_create_deadline', "
+    f"'{BillingWorkKind.ACCESS_INVALIDATION.value}', '{BillingWorkKind.ALLOWANCE_EXHAUSTION.value}')"
+)
 
 
 def coalesce(
@@ -26,6 +30,7 @@ def coalesce(
     hint: bool = False,
     replace_deadline: bool = False,
     revive_completed: bool = False,
+    recipient_id: str | None = None,
 ) -> None:
     insert = pg_insert if db.get_bind().dialect.name == "postgresql" else sqlite_insert
     statement = insert(BillingWorkItem).values(
@@ -33,6 +38,7 @@ def coalesce(
         work_kind=kind,
         scope_kind=scope_kind,
         scope_reference=reference,
+        recipient_id=recipient_id,
         coalescing_key=key,
         payload_schema_version="billing-work:v1",
         payload_document=payload,

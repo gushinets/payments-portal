@@ -181,7 +181,7 @@ async def test_concurrent_first_bind_discards_candidate_and_uses_claimed_known_s
         assert sub.reconciliation_fencing_token == 2
         assert (
             db.get(BillingStateObservation, sub.latest_observation_id).evidence_schema_version
-            == "subscription-reconciliation:v1"
+            == "subscription-reconciliation:v2"
         )
         assert (
             db.scalar(

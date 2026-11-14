@@ -9,6 +9,7 @@ class RegionStatus(StrEnum):
 
 class UserStatus(StrEnum):
     ACTIVE = "active"
+    INACTIVE = "inactive"
 
 
 class MagicLinkPurpose(StrEnum):
@@ -84,6 +85,7 @@ class ExternalSubscriptionCommercialAccessStatus(StrEnum):
 class BillingStateObservationKind(StrEnum):
     AUTHORITATIVE_SUBSCRIPTION_READ = "authoritative_subscription_read"
     TARGET_PRODUCT_DISCOVERY = "target_product_discovery"
+    ALLOWANCE_ACTIVATION = "allowance_activation"
     PRIMARY_SELECTION = "primary_selection"
     DETERMINISTIC_ACCESS_BOUNDARY = "deterministic_access_boundary"
 
@@ -94,9 +96,41 @@ class WebhookDeliveryState(StrEnum):
     IGNORED = "ignored"
 
 
+class BillingWorkKind(StrEnum):
+    SUBSCRIPTION_RECONCILIATION = "subscription_reconciliation"
+    SUBSCRIPTION_TRUST_EXPIRY = "subscription_trust_expiry"
+    BILLING_ENROLLMENT_SWEEP = "billing_enrollment_sweep"
+    CUSTOMER_INVENTORY = "customer_inventory"
+    EXTERNAL_CREATE_DEADLINE = "external_create_deadline"
+    EXTERNAL_CREATE_RECOVERY = "external_create_recovery"
+    ACCESS_INVALIDATION = "access_invalidation"
+    ALLOWANCE_EXHAUSTION = "allowance_exhaustion"
+
+
+class BillingWorkState(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    INVALID = "invalid"
+    DONE = "done"
+    PAUSED = "paused"
+
+
+class BillingWorkScope(StrEnum):
+    ALLOWANCE = "allowance"
+    BILLING_ACCOUNT = "billing_account"
+    SUBSCRIPTION = "subscription"
+    CUSTOMER = "customer"
+    CREATE_OPERATION = "create_operation"
+    USER = "user"
+
+
 __all__ = [
     "AcceptanceKind",
     "BillingStateObservationKind",
+    "BillingWorkKind",
+    "BillingWorkScope",
+    "BillingWorkState",
     "ExternalBillingCustomerBindingState",
     "ExternalCreateOperationKind",
     "ExternalCreateOperationState",

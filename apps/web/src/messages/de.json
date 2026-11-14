@@ -144,7 +144,9 @@
       "signOutAction": "Abmelden",
       "emailLabel": "E-Mail",
       "emailVerified": "E-Mail bestätigt",
-      "emailUnverified": "E-Mail nicht bestätigt"
+      "emailUnverified": "E-Mail nicht bestätigt",
+      "verificationRequired": "Bestätigen Sie Ihre E-Mail-Adresse, bevor Sie den Zugriff auf das Produkt erlauben.",
+      "checkVerificationAction": "Ich habe meine E-Mail-Adresse bestätigt"
     },
     "products": {
       "title": "Meine Produkte",
@@ -185,7 +187,22 @@
         "usageUnavailable": "Verbrauch und Restmenge sind nicht verfügbar.",
         "refresh": "Bezahlten Zugriff aktualisieren",
         "deadlinePending": "Der Zugriff wird nach einer Frist aktualisiert. Bitte später erneut versuchen.",
-        "empty": "Es besteht noch kein bezahlter Zugriff."
+        "empty": "Es besteht noch kein bezahlter Zugriff.",
+        "openProduct": "Produkt öffnen",
+        "launchUnavailable": "Der Produktstart ist nicht konfiguriert."
+      },
+      "usage": {
+        "current": "Nutzung des aktuellen Kontingents",
+        "historical": "Nutzung des bisherigen Kontingents",
+        "used": "Erfolgreich genutzt",
+        "reserved": "Reserviert",
+        "remaining": "Verbleibend",
+        "available": "Jetzt verfügbar",
+        "readAt": "Abgelesen um {time} UTC",
+        "unobserved": "Nutzung wurde noch nicht erfasst",
+        "loading": "Nutzung wird geladen…",
+        "busy": "Die gesamte verbleibende Kapazität ist vorübergehend reserviert",
+        "exhausted": "Kontingent ausgeschöpft"
       }
     }
   },
@@ -479,7 +496,7 @@
     "reference": "Kaufreferenz: {id}",
     "acceptedTerms": "Ursprünglich akzeptierte Bedingungen",
     "awaitingVerification": "Der Zahlungsstatus wartet auf eine verbindliche Prüfung. Die Statusabfrage liest nur Portal-Daten und aktualisiert keine Abrechnungsdaten.",
-    "technicalLimit": "Testlimit je bestätigtem Zyklus",
+    "technicalLimit": "Limit je bestätigtem Zyklus",
     "simulatedTerms": "SIMULATED · Testbedingungen",
     "technicalUnknown": "Technisches Limit nicht bestätigt; Ausführung mit Kontingent nicht verfügbar.",
     "fullFunding": "Vollständige Deckung ist erforderlich.",
@@ -495,5 +512,13 @@
     },
     "managedInAccount": "Zahlung und Abonnementverwaltung stehen in deinem Konto zur Verfügung.",
     "accessInAccount": "Bestätigter bezahlter Zugriff wird im Konto angezeigt. Verbrauch und Restkontingent sind noch nicht verfügbar."
+  },
+  "BackendSession": {
+    "title": "Weiter zu Ihrem Produkt",
+    "description": "Ihre Portal-Sitzung autorisiert diesen Produkt-Tab.",
+    "continue": "Weiter",
+    "loading": "Autorisierung…",
+    "failed": "Autorisierung fehlgeschlagen. Prüfen Sie Ihre Sitzung und versuchen Sie es erneut.",
+    "rateLimited": "Zu viele Autorisierungsanfragen. Bitte versuchen Sie es später erneut."
   }
 }

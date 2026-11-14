@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import timedelta
 from uuid import UUID
 
+import httpx
 import pytest
 from pydantic import SecretStr
 from sqlalchemy import delete, func, null, select
@@ -190,7 +191,9 @@ async def test_paid_access_restart_repairs_deadline_and_catches_up(
     monkeypatch.setattr(billing_reconciliation, "database_now", lambda db: as_utc(job.next_attempt_at))
     # Production lifespan must start a local lane without constructing an LBX client.
     async with billing_worker_resources(
-        config.model_copy(update={"billing_worker_enabled": True}), factory=factory
+        config.model_copy(update={"billing_worker_enabled": True}),
+        factory=factory,
+        invalidation_transport=httpx.MockTransport(lambda request: httpx.Response(204)),
     ) as worker:
         assert worker is not None and worker.client is None
         import asyncio

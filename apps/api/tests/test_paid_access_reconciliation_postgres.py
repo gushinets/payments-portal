@@ -11,6 +11,8 @@ from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.composition.backend_consumers import initialize_backend_consumers
+from apps.api.tests.support.backend_consumers import backend_consumer
 from app.composition.purchases import advance_purchase, confirm_purchase, review_purchase
 from app.composition.reconciliation import reconcile_subscription
 from app.composition.sources import SourceResources, source_resources
@@ -57,6 +59,7 @@ async def paid_source(
     monkeypatch.setattr("app.integrations.lbx.current_offer.utc_now", lambda: datetime(2026, 10, 27, 12, tzinfo=UTC))
     factory = postgres_session_factory
     config = step1_settings(purchase_test_terms_enabled=True, paid_access_clock_skew_seconds=10)
+    initialize_backend_consumers(config.model_copy(update={"backend_consumers": (backend_consumer(),)}), factory)
     transport = setup_purchase(factory)
     async with source_resources(
         config,

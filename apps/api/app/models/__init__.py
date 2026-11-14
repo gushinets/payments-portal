@@ -1,4 +1,5 @@
 from app.models.billing_access import AccessInvalidationOutbox, PaidAccessState
+from app.models.backend_delegation import BackendSessionDelegation, BackendConsumerPolicy, BackendCodeIssuanceBudget
 from app.models.billing_operations import (
     BillingWorkItem,
     ExternalBillingWebhookDelivery,
@@ -25,6 +26,9 @@ from app.models.billing_allowances import PurchasedAllowance
 from app.models.enums import (
     AcceptanceKind,
     BillingStateObservationKind,
+    BillingWorkKind,
+    BillingWorkScope,
+    BillingWorkState,
     ExternalBillingCustomerBindingState,
     ExternalCreateOperationKind,
     ExternalCreateOperationState,
@@ -55,6 +59,9 @@ from app.models.legal import (
 )
 
 __all__ = [
+    "BackendCodeIssuanceBudget",
+    "BackendSessionDelegation",
+    "BackendConsumerPolicy",
     "AcceptanceKind",
     "AccessInvalidationOutbox",
     "AuthSession",
@@ -63,6 +70,9 @@ __all__ = [
     "BillingStateObservation",
     "BillingStateObservationKind",
     "BillingWorkItem",
+    "BillingWorkKind",
+    "BillingWorkScope",
+    "BillingWorkState",
     "CapabilityManifestProjection",
     "CommercialMappingRevision",
     "CommercialProductHead",

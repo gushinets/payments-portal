@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -51,6 +52,17 @@ def test_migration_service_gates_api_startup(path: str) -> None:
     ]
     assert migrate["environment"] == api["environment"]
     assert api["depends_on"]["migrate"]["condition"] == "service_completed_successfully"
+
+
+@pytest.mark.parametrize("path", ["docker-compose.yml", "docker-compose.prod.yml"])
+def test_postgres_healthcheck_requires_tcp_before_migration(path: str) -> None:
+    check = load_compose(path)["services"]["postgres"]["healthcheck"]["test"]
+    assert check[0] == "CMD-SHELL"
+    command = shlex.split(check[1])
+    # The image's temporary initialization server accepts Unix sockets before TCP.
+    assert command[0] == "pg_isready"
+    assert "-h" in command
+    assert command[command.index("-h") + 1] == "127.0.0.1"
 
 
 def test_production_sentry_configuration_is_optional_and_minimal() -> None:
@@ -411,3 +423,34 @@ def test_caddy_proxies_canonical_health_routes(path: str) -> None:
     caddyfile = (ROOT / path).read_text(encoding="utf-8")
 
     assert "reverse_proxy /api/*" in caddyfile
+
+
+@pytest.mark.parametrize("path", ["deploy/caddy/Caddyfile.dev", "deploy/caddy/Caddyfile.prod"])
+def test_caddy_routes_service_api_and_swagger_without_rewriting_paths(path: str) -> None:
+    caddyfile = (ROOT / path).read_text(encoding="utf-8")
+    matcher = next(
+        (line.strip() for line in caddyfile.splitlines() if line.strip().startswith("@portal_service_api path ")), ""
+    )
+    paths = set(matcher.split()[2:])
+    assert {
+        "/internal/v1/backend-sessions/exchange",
+        "/internal/v1/backend-sessions/introspect",
+        "/internal/v1/access-snapshots/*",
+        "/internal/v1/allowance-exhaustions",
+        "/docs",
+        "/docs/*",
+        "/openapi.json",
+    } <= paths
+    assert "reverse_proxy @portal_service_api api:8000" in caddyfile
+    assert "handle_path" not in caddyfile
+    assert "payments-portal-prod-api-1" not in caddyfile
+
+
+@pytest.mark.parametrize("path", ["docker-compose.prod.yml", "docker-compose.agent.yml"])
+def test_web_receives_only_public_backend_callbacks(path: str) -> None:
+    services = load_compose(path)["services"]
+    public = services["web"]["environment"]
+    assert "BACKEND_CONSUMERS" not in public
+    assert "BACKEND_CALLBACKS" in public
+    assert "BACKEND_CONSUMERS" not in public["BACKEND_CALLBACKS"]
+    assert "BACKEND_CONSUMERS" in services["api"]["environment"]

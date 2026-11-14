@@ -5,10 +5,11 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.domains.billing.allowance_activation import retain_activations
 from app.domains.billing.paid_allowances import materialize_allowance
 from app.domains.billing.paid_deadlines import schedule_deadline
 from app.domains.billing.paid_contracts import EFFECTIVE_SCHEMA, EffectiveState, PaidGrant, canonical_state
-from app.domains.billing.paid_policy import PaidDecision, paid_decision
+from app.domains.billing.paid_policy import MeteringPolicy, PaidDecision, paid_decision
 from app.domains.billing.reconciliation_contracts import SubscriptionProof
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases.contracts import Purchase
@@ -56,7 +57,7 @@ def apply_paid_source(
     skew_seconds: int | None,
     access_end_at: datetime | None,
     review: bool = False,
-    allow_simulated_metering: bool = True,
+    metering_policy: MeteringPolicy = MeteringPolicy.NONPRODUCTION,
 ) -> None:
     """Caller holds user first, then original purchase/scope/source locks."""
     decision = paid_decision(proof, review=review)
@@ -81,11 +82,16 @@ def apply_paid_source(
             scope.effective_access_document = None
             scope.effective_access_until = deadline
             return
+        terms = purchase.accepted.technical_terms
         allowance = (
             materialize_allowance(db, subscription, purchase.accepted, proof.cycle, skew_seconds=skew_seconds)
-            if allow_simulated_metering
+            if terms is not None and metering_policy.permits(terms.provenance)
             else None
         )
+        if allowance is not None and allowance.period_start and datetime.fromisoformat(allowance.period_start) > now:
+            # Issuance freezes history, not authority. Only another source apply
+            # at/after the proven start may add this bucket to the committed set.
+            allowance = None
         state = EffectiveState(
             grants=(
                 PaidGrant(product_id=subscription.product_id, valid_until=grant_end.isoformat() if grant_end else None),
@@ -134,10 +140,12 @@ def commit_paid_state(
     now: datetime,
     *,
     related_causes: tuple[BillingStateObservation, ...] = (),
-    allow_simulated_metering: bool = True,
+    metering_policy: MeteringPolicy = MeteringPolicy.NONPRODUCTION,
     schedule_deadlines: bool = True,
 ) -> int:
     """Canonicalize under the user lock; a pre-refresh reduction defers queue writes."""
+    from app.domains.billing.access_invalidation import schedule_delivery
+
     states = []
     reductions = []
     deadlines = []
@@ -179,12 +187,12 @@ def commit_paid_state(
         ]
         if ended_periods:
             reductions.append(_reduction_cause(db, scope, primary, now, min(ended_periods)))
-        simulated = False
-        if state.allowances and not allow_simulated_metering:
+        metering_refused = False
+        if state.allowances:
             purchase = db.get(PurchaseIntent, primary.purchase_intent_id) if primary.purchase_intent_id else None
             terms = accepted(purchase).technical_terms if purchase else None
-            simulated = terms is None or terms.provenance == "SIMULATED"
-            if simulated:
+            metering_refused = not metering_policy.permits(terms.provenance if terms else None)
+            if metering_refused:
                 reductions.append(
                     _reduction_cause(db, scope, primary, now, now, reason="metering_provenance_unavailable")
                 )
@@ -195,7 +203,9 @@ def commit_paid_state(
                 "allowances": tuple(
                     item
                     for item in state.allowances
-                    if not simulated and (item.period_end is None or datetime.fromisoformat(item.period_end) > now)
+                    if not metering_refused
+                    and (item.period_start is None or datetime.fromisoformat(item.period_start) <= now)
+                    and (item.period_end is None or datetime.fromisoformat(item.period_end) > now)
                 )
             }
         )
@@ -204,11 +214,26 @@ def commit_paid_state(
         deadlines.append((primary, scope))
     effective = canonical_state(states).model_dump(mode="json")
     row = queries.state(db, user.id)
-    outbox = queries.outbox(db, user.id)
+    if row is not None:
+        # The previous committed set proves activation even when this first
+        # post-upgrade write removes an expired or newly blocked subscription.
+        retain_activations(
+            db,
+            user,
+            EffectiveState.model_validate(row.effective_state_document),
+            row.access_revision,
+            as_utc(row.committed_at),
+            now,
+        )
+    outboxes = {item.recipient_id: item for item in queries.outboxes(db, user.id)}
+    recipients = set(queries.snapshot_recipients(db, user.tenant_id, user.region))
     if (row.effective_state_document if row else EffectiveState().model_dump(mode="json")) == effective:
         if schedule_deadlines:
+            for outbox in outboxes.values():
+                if outbox.recipient_id in recipients and outbox.pending_revision > outbox.delivered_revision:
+                    schedule_delivery(db, user.id, now, recipient_id=outbox.recipient_id, hint=False)
             for primary, scope in deadlines:
-                schedule_deadline(db, primary, scope)
+                schedule_deadline(db, primary, scope, evaluated_at=now)
         return row.access_revision if row else 0
     revision = row.access_revision + 1 if row else 1
     if row is None:
@@ -226,6 +251,7 @@ def commit_paid_state(
         row.access_revision = revision
         row.effective_state_document = effective
         row.committed_at = now
+    retain_activations(db, user, EffectiveState.model_validate(effective), revision, now, now)
     if cause is None:
         if not reductions:
             raise ValueError("material access change requires causal evidence")
@@ -256,24 +282,32 @@ def commit_paid_state(
     for related in related_causes:
         if related.resulting_access_revision is None:
             related.resulting_access_revision = revision
-    if outbox is None:
-        db.add(
-            AccessInvalidationOutbox(
-                tenant_id=user.tenant_id,
-                region=user.region,
-                user_id=user.id,
-                pending_revision=revision,
-                delivered_revision=0,
-                attempt_count=0,
-                next_attempt_at=now,
+    # Fan out the whole-user R, including grant removal, in this same transaction.
+    # Product filtering belongs to snapshots; it must not omit a removed grant's recipient.
+    for recipient_id in sorted(recipients):
+        outbox = outboxes.get(recipient_id)
+        if outbox is None:
+            db.add(
+                AccessInvalidationOutbox(
+                    recipient_id=recipient_id,
+                    tenant_id=user.tenant_id,
+                    region=user.region,
+                    user_id=user.id,
+                    pending_revision=revision,
+                    delivered_revision=0,
+                    attempt_count=0,
+                    next_attempt_at=now,
+                )
             )
-        )
-    else:
-        outbox.pending_revision = max(outbox.pending_revision, revision)
+        else:
+            outbox.pending_revision = max(outbox.pending_revision, revision)
     db.flush()
     if schedule_deadlines:
+        for outbox in queries.outboxes(db, user.id):
+            if outbox.recipient_id in recipients and outbox.pending_revision > outbox.delivered_revision:
+                schedule_delivery(db, user.id, now, recipient_id=outbox.recipient_id)
         for primary, scope in deadlines:
-            schedule_deadline(db, primary, scope)
+            schedule_deadline(db, primary, scope, evaluated_at=now)
     return revision
 
 

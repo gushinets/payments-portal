@@ -144,7 +144,9 @@
       "signOutAction": "Cerrar sesión",
       "emailLabel": "Correo electrónico",
       "emailVerified": "Correo electrónico verificado",
-      "emailUnverified": "Correo electrónico sin verificar"
+      "emailUnverified": "Correo electrónico sin verificar",
+      "verificationRequired": "Verifica tu correo electrónico antes de autorizar el acceso al producto.",
+      "checkVerificationAction": "Ya he verificado mi correo"
     },
     "products": {
       "title": "Mis productos",
@@ -185,7 +187,22 @@
         "usageUnavailable": "Uso y cantidad restante no disponibles.",
         "refresh": "Actualizar acceso de pago",
         "deadlinePending": "El acceso se está actualizando tras un vencimiento. Inténtalo más tarde.",
-        "empty": "Aún no hay acceso de pago."
+        "empty": "Aún no hay acceso de pago.",
+        "openProduct": "Abrir producto",
+        "launchUnavailable": "El inicio del producto no está configurado."
+      },
+      "usage": {
+        "current": "Uso del límite actual",
+        "historical": "Uso del límite anterior",
+        "used": "Usado correctamente",
+        "reserved": "Reservado",
+        "remaining": "Restante",
+        "available": "Disponible ahora",
+        "readAt": "Lectura a las {time} UTC",
+        "unobserved": "El uso aún no se ha observado",
+        "loading": "Cargando uso…",
+        "busy": "Toda la capacidad restante está reservada temporalmente",
+        "exhausted": "Límite agotado"
       }
     }
   },
@@ -479,7 +496,7 @@
     "reference": "Referencia de compra: {id}",
     "acceptedTerms": "Condiciones aceptadas originalmente",
     "awaitingVerification": "El pago espera una verificación autorizada. Consultar el estado guardado solo lee los registros del Portal y no actualiza los datos de facturación.",
-    "technicalLimit": "Límite de prueba por ciclo confirmado",
+    "technicalLimit": "Límite por ciclo confirmado",
     "simulatedTerms": "SIMULATED · condiciones de prueba",
     "technicalUnknown": "Límite técnico sin confirmar; ejecución con cuota no disponible.",
     "fullFunding": "Se requiere financiación completa.",
@@ -495,5 +512,13 @@
     },
     "managedInAccount": "El pago y la gestión de la suscripción están disponibles en tu cuenta.",
     "accessInAccount": "El acceso de pago confirmado se muestra en tu cuenta. El uso y la cuota restante aún no están disponibles."
+  },
+  "BackendSession": {
+    "title": "Continuar al producto",
+    "description": "Tu sesión del Portal autorizará esta pestaña del producto.",
+    "continue": "Continuar",
+    "loading": "Autorizando…",
+    "failed": "No se pudo autorizar. Revisa tu sesión e inténtalo de nuevo.",
+    "rateLimited": "Demasiadas solicitudes de autorización. Inténtalo de nuevo más tarde."
   }
 }

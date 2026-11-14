@@ -30,6 +30,7 @@ from app.domains.purchases.contracts import (
 from app.domains.purchases import service
 from app.domains.purchases.technical_terms import AcceptedTechnicalTerms, TechnicalOffer
 from app.domains.catalog.mapping_evidence import Digest
+from app.domains.catalog.contracts import SourceProvenance
 from app.domains.purchases.account import list_account_purchases
 from app.http.dependencies import get_session_factory
 from app.models import PurchaseIntentState
@@ -86,7 +87,7 @@ class PurchaseTermsResponse(BaseModel):
 class PurchaseTechnicalTermsResponse(BaseModel):
     source_version: str
     source_digest: Digest
-    provenance: Literal["SIMULATED"]
+    provenance: SourceProvenance
     offer: TechnicalOffer
     digest: Digest
 

@@ -28,9 +28,9 @@ from app.infrastructure.persistence.password_reset import (
     revoke_active_auth_sessions,
 )
 from app.infrastructure.queries.identity import (
-    get_active_user_by_id_and_scope,
     get_active_user_by_normalized_email,
     get_magic_link_token_by_hash_and_purpose,
+    lock_active_user_by_id_and_scope,
 )
 from app.infrastructure.sentry import FailureCategory, Operation, report_exception
 from app.models import MagicLinkPurpose, MagicLinkToken
@@ -183,19 +183,7 @@ def confirm_password_reset(
     if not password_meets_policy(password):
         raise PasswordPolicyError()
 
-    now = utc_now()
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-    claimed = claim_valid_password_reset_token(
-        db,
-        token_hash=token_hash,
-        tenant_id=tenant_id,
-        region=region,
-        now=now,
-    )
-    if claimed != 1:
-        db.rollback()
-        raise InvalidOrExpiredResetTokenError()
-
     reset_token = get_magic_link_token_by_hash_and_purpose(
         db,
         token_hash=token_hash,
@@ -210,13 +198,27 @@ def confirm_password_reset(
         db.rollback()
         raise InvalidOrExpiredResetTokenError()
 
-    user = get_active_user_by_id_and_scope(
+    # Lock the owner before claiming a token or revoking sessions. Claiming
+    # first also lets two reset tokens deadlock while invalidating each other.
+    user = lock_active_user_by_id_and_scope(
         db,
         user_id=reset_token.user_id,
         tenant_id=tenant_id,
         region=region,
     )
     if user is None:
+        db.rollback()
+        raise InvalidOrExpiredResetTokenError()
+
+    now = utc_now()
+    claimed = claim_valid_password_reset_token(
+        db,
+        token_hash=token_hash,
+        tenant_id=tenant_id,
+        region=region,
+        now=now,
+    )
+    if claimed != 1:
         db.rollback()
         raise InvalidOrExpiredResetTokenError()
 

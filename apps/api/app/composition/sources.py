@@ -10,9 +10,22 @@ import httpx
 from app.core.settings import Settings
 from app.core.errors import AppError
 from app.domains.catalog.contracts import SourceProvenance
+from app.domains.catalog.technical_source import LEGACY_KERNEL_OWNERSHIP, TechnicalOwnership
 from app.infrastructure.preflight import PreflightAdmission, PreflightCleanupPending, PreflightPolicy
-from app.integrations.kernel.client import KernelNotConfigured, PlatformKernelClient
+from app.integrations.kernel.client import KernelNotConfigured, ManifestConnection, PlatformKernelClient
 from app.integrations.lbx.client import LbxServerClient
+
+
+class TechnicalSourceRefused(AppError):
+    def __init__(self) -> None:
+        super().__init__("technical_source_ownership_unavailable")
+
+
+@dataclass(frozen=True)
+class TechnicalSource:
+    ownership: TechnicalOwnership
+    products: frozenset[str] | None
+    client: PlatformKernelClient
 
 
 @dataclass(frozen=True)
@@ -22,6 +35,23 @@ class SourceResources:
     lbx: LbxServerClient | None = None
     lbx_error: str | None = None
     billing: PreflightAdmission | None = None
+    technical_sources: tuple[TechnicalSource, ...] = ()
+
+    def technical_source(self, product_id: str, *, expected: TechnicalOwnership | None = None) -> TechnicalSource:
+        if self.technical_sources:
+            source = next(
+                (item for item in self.technical_sources if item.products is None or product_id in item.products), None
+            )
+            if source is None:
+                raise TechnicalSourceRefused()
+        else:
+            source = TechnicalSource(LEGACY_KERNEL_OWNERSHIP, None, self.require_kernel())
+        if expected is not None and source.ownership != expected:
+            raise TechnicalSourceRefused()
+        return source
+
+    def discovery_sources(self) -> tuple[TechnicalSource, ...]:
+        return self.technical_sources or (TechnicalSource(LEGACY_KERNEL_OWNERSHIP, None, self.require_kernel()),)
 
     def require_kernel(self) -> PlatformKernelClient:
         if self.kernel is None:
@@ -78,10 +108,27 @@ async def source_resources(
         if configuration.kernel_base_url
         else None
     )
+    technical_sources = tuple(
+        TechnicalSource(
+            TechnicalOwnership(consumer.technical_source_id, consumer.consumer_id),
+            consumer.allowed_products,
+            PlatformKernelClient(
+                configuration,
+                provenance=(
+                    SourceProvenance.SIMULATED
+                    if consumer.consumer_id == "platform-kernel" and configuration.kernel_mock_enabled
+                    else SourceProvenance.CONFIGURED_SOURCE
+                ),
+                connection=ManifestConnection(consumer.backend_base_url, consumer.portal_to_backend_current_secret),
+                transport=kernel_transport,
+            ),
+        )
+        for consumer in configuration.backend_consumers
+    )
     lbx_error = configuration.lbx_configuration_error
     lbx = LbxServerClient(configuration, transport=lbx_transport) if lbx_error is None else None
     try:
-        yield SourceResources(admission, kernel, lbx, lbx_error, billing)
+        yield SourceResources(admission, kernel, lbx, lbx_error, billing, technical_sources)
     finally:
         # Pending source cleanup still owns this client's HTTP resources.
         # Propagate the bounded drain failure without closing underneath it.
@@ -90,7 +137,11 @@ async def source_resources(
         try:
             async with asyncio.timeout(configuration.preflight_cleanup_timeout_seconds):
                 results = await asyncio.gather(
-                    *(client.aclose() for client in (kernel, lbx) if client is not None),
+                    *(
+                        client.aclose()
+                        for client in (kernel, lbx, *(item.client for item in technical_sources))
+                        if client is not None
+                    ),
                     return_exceptions=True,
                 )
         except TimeoutError:

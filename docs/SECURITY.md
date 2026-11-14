@@ -116,7 +116,10 @@ above under its own integration scope.
   trusting external state. ANY-709 implements real source reads and an explicit
   account Widget bootstrap, accepted-purchase preparation and point-verified
   payment presentation. ANY-765 derives local paid access through the same
-  authoritative observation boundary; Kernel HTTP integration remains deferred.
+  authoritative observation boundary. Implemented Kernel delegation, snapshots
+  and invalidation delivery use independent directional service credentials and
+  receiver-owned scope/permissions; see the
+  [paid integration contract](contracts/portal-kernel-paid/README.md).
 - Treat request IDs and external billing or payment metadata as untrusted input
   with length and character limits.
 - Store session tokens only as hashes.

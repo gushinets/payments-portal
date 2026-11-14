@@ -144,7 +144,9 @@
       "signOutAction": "Se déconnecter",
       "emailLabel": "Adresse e-mail",
       "emailVerified": "Adresse e-mail vérifiée",
-      "emailUnverified": "Adresse e-mail non vérifiée"
+      "emailUnverified": "Adresse e-mail non vérifiée",
+      "verificationRequired": "Confirmez votre adresse e-mail avant d’autoriser l’accès au produit.",
+      "checkVerificationAction": "J’ai confirmé mon adresse e-mail"
     },
     "products": {
       "title": "Mes produits",
@@ -185,7 +187,22 @@
         "usageUnavailable": "Utilisation et solde indisponibles.",
         "refresh": "Actualiser l’accès payant",
         "deadlinePending": "L’accès est en cours de mise à jour après une échéance. Réessayez bientôt.",
-        "empty": "Aucun accès payant pour le moment."
+        "empty": "Aucun accès payant pour le moment.",
+        "openProduct": "Ouvrir le produit",
+        "launchUnavailable": "Le lancement du produit n’est pas configuré."
+      },
+      "usage": {
+        "current": "Utilisation du quota actuel",
+        "historical": "Utilisation du quota historique",
+        "used": "Utilisé avec succès",
+        "reserved": "Réservé",
+        "remaining": "Restant",
+        "available": "Disponible maintenant",
+        "readAt": "Relevé à {time} UTC",
+        "unobserved": "Utilisation pas encore observée",
+        "loading": "Chargement de l’utilisation…",
+        "busy": "Toute la capacité restante est temporairement réservée",
+        "exhausted": "Quota épuisé"
       }
     }
   },
@@ -479,7 +496,7 @@
     "reference": "Référence de l’achat : {id}",
     "acceptedTerms": "Conditions initialement acceptées",
     "awaitingVerification": "Le paiement attend une vérification auprès de la facturation. La consultation de l’état enregistré lit uniquement le Portail et n’actualise pas les données de facturation.",
-    "technicalLimit": "Limite de test par cycle confirmé",
+    "technicalLimit": "Limite par cycle confirmé",
     "simulatedTerms": "SIMULATED · conditions de test",
     "technicalUnknown": "Limite technique non confirmée ; exécution avec quota indisponible.",
     "fullFunding": "Un financement intégral est requis.",
@@ -495,5 +512,13 @@
     },
     "managedInAccount": "Le paiement et la gestion de l’abonnement sont disponibles dans votre compte.",
     "accessInAccount": "L’accès payant confirmé est affiché dans votre compte. L’utilisation et le quota restant sont encore indisponibles."
+  },
+  "BackendSession": {
+    "title": "Accéder à votre produit",
+    "description": "Votre session Portail autorisera cet onglet du produit.",
+    "continue": "Continuer",
+    "loading": "Autorisation…",
+    "failed": "Autorisation impossible. Vérifiez votre session et réessayez.",
+    "rateLimited": "Trop de demandes d’autorisation. Veuillez réessayer plus tard."
   }
 }

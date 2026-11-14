@@ -5,11 +5,12 @@ import hashlib
 import json
 import re
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, Any
 
 import httpx
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from app.core.errors import AppError
 from app.core.settings import Settings
@@ -20,6 +21,9 @@ from app.domains.catalog.contracts import (
     SourceProvenance,
 )
 from app.infrastructure.preflight import PreflightBudget
+from app.domains.billing.work_contracts import InvalidationDelivery, InvalidationFailureCode
+from app.integrations.kernel.usage import UsageResponse
+from uuid import UUID
 
 
 MANIFEST_PATH = "/internal/v1/capability-manifest"
@@ -56,6 +60,11 @@ class KernelManifestInvalid(KernelError):
         super().__init__("kernel_manifest_invalid")
 
 
+class BackendUsageInvalid(KernelError):
+    def __init__(self) -> None:
+        super().__init__("backend_usage_invalid")
+
+
 class KernelUnavailable(KernelError):
     def __init__(self) -> None:
         super().__init__("kernel_unavailable")
@@ -64,6 +73,14 @@ class KernelUnavailable(KernelError):
 class KernelTimeout(KernelError):
     def __init__(self) -> None:
         super().__init__("kernel_timeout")
+
+
+class KernelInvalidationFailed(KernelError):
+    code: InvalidationFailureCode
+
+    def __init__(self, code: InvalidationFailureCode, *, permanent: bool) -> None:
+        super().__init__(code)
+        self.permanent = permanent
 
 
 class _WireModel(BaseModel):
@@ -178,6 +195,12 @@ class _CleanupProtectedStream(httpx.AsyncByteStream):
             await self._stream.aclose()
 
 
+@dataclass(frozen=True)
+class ManifestConnection:
+    base_url: str
+    service_token: SecretStr
+
+
 class PlatformKernelClient:
     """One lifespan-owned async HTTP pool; no construction/startup fetch or LKG.
 
@@ -192,15 +215,19 @@ class PlatformKernelClient:
         *,
         provenance: SourceProvenance,
         transport: httpx.AsyncBaseTransport | None = None,
+        max_connections: int | None = None,
+        connection: ManifestConnection | None = None,
     ) -> None:
-        if not configuration.kernel_base_url:
+        # The same V1 protocol/validator serves each explicitly configured source.
+        endpoint = connection or ManifestConnection(configuration.kernel_base_url, configuration.kernel_service_token)
+        if not endpoint.base_url:
             raise KernelNotConfigured()
         self._configuration = configuration
         self._provenance = provenance
         self._http = httpx.AsyncClient(
-            base_url=configuration.kernel_base_url,
+            base_url=endpoint.base_url,
             headers={
-                "Authorization": f"Bearer {configuration.kernel_service_token.get_secret_value()}",
+                "Authorization": f"Bearer {endpoint.service_token.get_secret_value()}",
                 "Accept": "application/json",
                 "Accept-Encoding": "identity",
                 "Cache-Control": "no-cache, no-store",
@@ -208,11 +235,57 @@ class PlatformKernelClient:
             follow_redirects=False,
             trust_env=False,
             limits=httpx.Limits(
-                max_connections=configuration.preflight_max_active,
-                max_keepalive_connections=configuration.preflight_max_active,
+                max_connections=max_connections or configuration.preflight_max_active,
+                max_keepalive_connections=max_connections or configuration.preflight_max_active,
             ),
             transport=transport,
         )
+
+    async def send_invalidation(self, delivery: InvalidationDelivery, *, budget: PreflightBudget) -> None:
+        """One durable attempt. Queue owns retries; response content is never read/logged."""
+
+        async def send() -> None:
+            config = self._configuration
+            remaining = budget.remaining_seconds()
+            try:
+                async with self._http.stream(
+                    "POST",
+                    "/internal/v1/access-invalidations",
+                    json={
+                        "schema_version": 1,
+                        "tenant_id": delivery.tenant_id,
+                        "region": delivery.region,
+                        "user_id": str(delivery.user_id),
+                        "access_revision": delivery.revision,
+                    },
+                    timeout=httpx.Timeout(
+                        connect=min(remaining, config.kernel_connect_timeout_seconds),
+                        read=min(remaining, config.kernel_read_timeout_seconds),
+                        write=min(remaining, config.kernel_connect_timeout_seconds),
+                        pool=min(remaining, config.kernel_connect_timeout_seconds),
+                    ),
+                ) as response:
+                    response.stream = _CleanupProtectedStream(response.stream, budget)
+                    budget.check()
+                    status = response.status_code
+                    if status != 204:
+                        raise KernelInvalidationFailed(
+                            InvalidationFailureCode.AUTHENTICATION_FAILED
+                            if status == 401
+                            else InvalidationFailureCode.SCOPE_FORBIDDEN
+                            if status == 403
+                            else InvalidationFailureCode.UNAVAILABLE
+                            if status == 429 or 500 <= status <= 599
+                            else InvalidationFailureCode.CONTRACT_INVALID,
+                            permanent=not (status == 429 or 500 <= status <= 599),
+                        )
+                budget.check()
+            except httpx.TimeoutException:
+                raise KernelInvalidationFailed(InvalidationFailureCode.TIMEOUT, permanent=False) from None
+            except httpx.TransportError:
+                raise KernelInvalidationFailed(InvalidationFailureCode.UNAVAILABLE, permanent=False) from None
+
+        await budget.run(send)
 
     async def fetch_manifest(self, *, budget: PreflightBudget) -> CapabilityManifest:
         config = self._configuration
@@ -225,7 +298,45 @@ class PlatformKernelClient:
                 await budget.run(lambda: asyncio.sleep(config.kernel_retry_delay_seconds))
         raise AssertionError("unreachable retry bound")
 
+    async def fetch_usage(
+        self, user_id: UUID, allowance_ids: tuple[UUID, ...], *, budget: PreflightBudget
+    ) -> UsageResponse:
+        if not 1 <= len(allowance_ids) <= 100 or len(set(allowance_ids)) != len(allowance_ids):
+            raise ValueError("Usage requires 1–100 distinct allowance IDs")
+        config = self._configuration
+        body = await budget.run(
+            lambda: self._read_body(
+                budget,
+                f"/internal/v1/usage/{user_id}",
+                [("tenant_id", config.instance_tenant_id), ("region", config.instance_region)]
+                + [("allowance_id", str(identity)) for identity in allowance_ids],
+            )
+        )
+        try:
+            result = UsageResponse.model_validate(
+                json.loads(body.decode("utf-8"), object_pairs_hook=_unique_object, parse_constant=_reject_constant)
+            )
+        except (ValueError, RecursionError):
+            raise BackendUsageInvalid() from None
+        if (result.tenant_id, result.region, result.user_id) != (
+            config.instance_tenant_id,
+            config.instance_region,
+            str(user_id),
+        ) or [item.allowance_id for item in result.items] != [str(identity) for identity in allowance_ids]:
+            raise BackendUsageInvalid()
+        budget.check()
+        return result
+
     async def _read_once(self, budget: PreflightBudget) -> CapabilityManifest:
+        config = self._configuration
+        body = await self._read_body(
+            budget, MANIFEST_PATH, [("tenant_id", config.instance_tenant_id), ("region", config.instance_region)]
+        )
+        return _decode_manifest(
+            body, tenant_id=config.instance_tenant_id, region=config.instance_region, provenance=self._provenance
+        )
+
+    async def _read_body(self, budget: PreflightBudget, path: str, params: list[tuple[str, str]]) -> bytes:
         config = self._configuration
         remaining = budget.remaining_seconds()
         timeout = httpx.Timeout(
@@ -237,8 +348,8 @@ class PlatformKernelClient:
         try:
             async with self._http.stream(
                 "GET",
-                MANIFEST_PATH,
-                params={"tenant_id": config.instance_tenant_id, "region": config.instance_region},
+                path,
+                params=params,
                 timeout=timeout,
             ) as response:
                 # aiter_bytes() also closes at EOF, before the context manager's
@@ -275,15 +386,8 @@ class PlatformKernelClient:
                         raise KernelManifestInvalid()
                     body.extend(fragment)
                 budget.check()
-                manifest = _decode_manifest(
-                    bytes(body),
-                    tenant_id=config.instance_tenant_id,
-                    region=config.instance_region,
-                    provenance=self._provenance,
-                )
-                budget.check()
             budget.check()
-            return manifest
+            return bytes(body)
         except httpx.TimeoutException:
             raise KernelTimeout() from None
         except httpx.TransportError:

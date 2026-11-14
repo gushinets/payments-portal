@@ -1,4 +1,4 @@
-"""Product-head CAS and immutable v2 revisions; network I/O has already finished."""
+"""Product-head CAS and immutable versioned revisions; source I/O has finished."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.domains.catalog.commercial_offer import CommercialEvidenceMode, CommercialScope, commercial_digest
 from app.domains.catalog.mapping_evidence import MappingEvidenceMode, MappingRefused
-from app.domains.catalog.product_link import LINK_SCHEMA, ProductLinkDocument, ProductLinkRequest
+from app.domains.catalog.product_link import LINK_SCHEMAS, ProductLinkDocument, ProductLinkRequest
 from app.domains.catalog.publication import (
     MappingCommitUncertain,
     MappingRevisionConflict,
@@ -66,7 +66,7 @@ def validate_product_link(row: CommercialMappingRevision, *, scope: CommercialSc
     except (ValidationError, ValueError, TypeError, RecursionError):
         raise MappingRefused("mapping_stored_evidence_invalid") from None
     if (
-        row.mapping_schema_version != LINK_SCHEMA
+        row.mapping_schema_version != document.schema_version
         or document.scope != scope
         or row.external_billing_account_id != scope.external_billing_account_id
         or row.billing_offer_id != document.selection.billing_offer_id
@@ -190,7 +190,7 @@ def require_compatible_connection(
         if deadline is not None:
             _check_deadline(deadline)
         other_scope = CommercialScope(scope.tenant_id, scope.region, historic.external_billing_account_id)
-        if historic.mapping_schema_version == LINK_SCHEMA:
+        if historic.mapping_schema_version in LINK_SCHEMAS:
             validate_product_link(historic, scope=other_scope)
             real_binding = True
         else:
@@ -227,7 +227,7 @@ def query_link_history(
             historic_scope = CommercialScope(scope.tenant_id, scope.region, row.external_billing_account_id)
             stored = (
                 validate_product_link(row, scope=historic_scope)
-                if row.mapping_schema_version == LINK_SCHEMA
+                if row.mapping_schema_version in LINK_SCHEMAS
                 else validate_stored_mapping(row, scope=historic_scope, offer_id=offer_id, allow_simulated=True)
             )
             candidates[row.external_billing_account_id] = stored
@@ -304,6 +304,8 @@ def publish_product_link(
         # Serialize first claims across products and check even an unchanged link.
         lock_mapping_scope(db, account_id=scope.external_billing_account_id, offer_id=selection.billing_offer_id)
         require_offer_product_owner(db, scope=scope, selection=selection)
+        if latest is not None and latest.document.ownership != evaluation.ownership:
+            raise MappingRefused("mapping_technical_owner_transfer_forbidden")
         if latest is not None and latest.document.identity_digest == evaluation.identity_digest:
             _check_deadline(deadline)
             if provider_origin is not None and head.provider_origin is None:
@@ -334,7 +336,7 @@ def publish_product_link(
             manifest_version=document.manifest_version,
             catalog_version=None,
             catalog_digest=document.identity_digest,
-            mapping_schema_version=LINK_SCHEMA,
+            mapping_schema_version=document.schema_version,
             mapping_document=document.model_dump(mode="json"),
             published_at=document.published_at,
             published_by_principal=document.publisher_principal,

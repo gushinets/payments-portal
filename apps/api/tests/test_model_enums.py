@@ -13,6 +13,9 @@ from app.core.database import Base
 from app.models import (
     AcceptanceKind,
     BillingStateObservationKind,
+    BillingWorkKind,
+    BillingWorkScope,
+    BillingWorkState,
     ExternalBillingCustomerBindingState,
     ExternalCreateOperationKind,
     ExternalCreateOperationState,
@@ -37,7 +40,7 @@ def _values(enum_cls: type) -> set[str]:
 
 def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
     assert _values(RegionStatus) == {"active"}
-    assert _values(UserStatus) == {"active"}
+    assert _values(UserStatus) == {"active", "inactive"}
     assert _values(MagicLinkPurpose) == {"password_reset", "email_verification"}
     assert _values(LegalEntityStatus) == {"active"}
     assert _values(LegalEntityType) == {
@@ -97,11 +100,34 @@ def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
         "target_product_discovery",
         "primary_selection",
         "deterministic_access_boundary",
+        "allowance_activation",
     }
     assert _values(WebhookDeliveryState) == {"pending", "processed", "ignored"}
+    assert _values(BillingWorkKind) == {
+        "subscription_reconciliation",
+        "subscription_trust_expiry",
+        "billing_enrollment_sweep",
+        "customer_inventory",
+        "external_create_deadline",
+        "external_create_recovery",
+        "access_invalidation",
+        "allowance_exhaustion",
+    }
+    assert _values(BillingWorkState) == {"pending", "running", "completed", "invalid", "done", "paused"}
+    assert _values(BillingWorkScope) == {
+        "allowance",
+        "billing_account",
+        "subscription",
+        "customer",
+        "create_operation",
+        "user",
+    }
     assert set(model_enums.__all__) == {
         "AcceptanceKind",
         "BillingStateObservationKind",
+        "BillingWorkKind",
+        "BillingWorkScope",
+        "BillingWorkState",
         "ExternalBillingCustomerBindingState",
         "ExternalCreateOperationKind",
         "ExternalCreateOperationState",
@@ -137,7 +163,7 @@ def test_legacy_commercial_models_and_enums_are_not_public() -> None:
 
 
 def test_user_status_vocabulary_requires_explicit_auth_semantics() -> None:
-    assert _values(UserStatus) == {"active"}
+    assert _values(UserStatus) == {"active", "inactive"}
 
 
 def test_persisted_enum_type_validates_and_serializes_values() -> None:

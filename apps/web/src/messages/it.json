@@ -144,7 +144,9 @@
       "signOutAction": "Esci",
       "emailLabel": "Email",
       "emailVerified": "Email verificata",
-      "emailUnverified": "Email non verificata"
+      "emailUnverified": "Email non verificata",
+      "verificationRequired": "Conferma la tua email prima di autorizzare l’accesso al prodotto.",
+      "checkVerificationAction": "Ho confermato la mia email"
     },
     "products": {
       "title": "I miei prodotti",
@@ -185,7 +187,22 @@
         "usageUnavailable": "Utilizzo e quantità residua non disponibili.",
         "refresh": "Aggiorna accesso a pagamento",
         "deadlinePending": "L’accesso viene aggiornato dopo una scadenza. Riprova tra poco.",
-        "empty": "Non è ancora presente alcun accesso a pagamento."
+        "empty": "Non è ancora presente alcun accesso a pagamento.",
+        "openProduct": "Apri prodotto",
+        "launchUnavailable": "L’avvio del prodotto non è configurato."
+      },
+      "usage": {
+        "current": "Utilizzo del limite attuale",
+        "historical": "Utilizzo del limite passato",
+        "used": "Utilizzati con successo",
+        "reserved": "Riservati",
+        "remaining": "Rimanenti",
+        "available": "Disponibili ora",
+        "readAt": "Lettura alle {time} UTC",
+        "unobserved": "Utilizzo non ancora osservato",
+        "loading": "Caricamento dell’utilizzo…",
+        "busy": "Tutta la capacità rimanente è temporaneamente riservata",
+        "exhausted": "Limite esaurito"
       }
     }
   },
@@ -479,7 +496,7 @@
     "reference": "Riferimento acquisto: {id}",
     "acceptedTerms": "Condizioni accettate inizialmente",
     "awaitingVerification": "Il pagamento attende una verifica autorevole. Il controllo dello stato salvato legge solo i dati del Portale e non aggiorna i dati di fatturazione.",
-    "technicalLimit": "Limite di test per ciclo confermato",
+    "technicalLimit": "Limite per ciclo confermato",
     "simulatedTerms": "SIMULATED · condizioni di test",
     "technicalUnknown": "Limite tecnico non confermato; esecuzione con quota non disponibile.",
     "fullFunding": "È richiesta la copertura completa.",
@@ -495,5 +512,13 @@
     },
     "managedInAccount": "Il pagamento e la gestione dell’abbonamento sono disponibili nel tuo account.",
     "accessInAccount": "L’accesso a pagamento confermato è visibile nell’account. Utilizzo e quota residua non sono ancora disponibili."
+  },
+  "BackendSession": {
+    "title": "Vai al tuo prodotto",
+    "description": "La sessione del Portale autorizzerà questa scheda del prodotto.",
+    "continue": "Continua",
+    "loading": "Autorizzazione…",
+    "failed": "Autorizzazione non riuscita. Controlla la sessione e riprova.",
+    "rateLimited": "Troppe richieste di autorizzazione. Riprova più tardi."
   }
 }

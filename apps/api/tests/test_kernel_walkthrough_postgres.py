@@ -84,6 +84,16 @@ def operator(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
     )
 
 
+@pytest.fixture(autouse=True)
+def cleanup_database(monkeypatch: pytest.MonkeyPatch, postgres_session_factory: sessionmaker[Session]) -> None:
+    from functools import partial
+    from app.composition.delegation_cleanup import delegation_cleanup_resources
+
+    monkeypatch.setattr(
+        "app.main.delegation_cleanup_resources", partial(delegation_cleanup_resources, factory=postgres_session_factory)
+    )
+
+
 def test_fresh_http_publication_faults_outage_restart_and_recovery(
     migrated_database: Engine,
     postgres_session_factory: sessionmaker[Session],
@@ -93,6 +103,7 @@ def test_fresh_http_publication_faults_outage_restart_and_recovery(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(database, "SessionLocal", postgres_session_factory)
+    monkeypatch.setattr("app.main.SessionLocal", postgres_session_factory)
     app = create_app()
 
     def db() -> Iterator[Session]:
@@ -253,6 +264,7 @@ def test_independent_http_target_switch_changes_only_url_and_credentials(
             pass
 
     monkeypatch.setattr(database, "SessionLocal", postgres_session_factory)
+    monkeypatch.setattr("app.main.SessionLocal", postgres_session_factory)
     args = cli.parser().parse_args(
         ["publish", "--proposal", str(tmp_path / "proposal.json"), "--expected-previous-revision", "0"]
     )

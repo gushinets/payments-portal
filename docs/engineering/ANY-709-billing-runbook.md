@@ -39,14 +39,26 @@ there is no `LBX_BILLING_TIMEZONE` setting. Provider calendar/sentinel dates nev
 establish paid UTC intervals. Unsupported discounts, credit or effective-price
 facts cannot be filled with guessed zero/false values.
 
-Configure the Kernel URL/service token independently. Optional
+With `BACKEND_CONSUMERS` configured, Step 11 selects each product's manifest
+origin and outgoing credential from its registered backend entry. See the
+[source configuration](../contracts/product-backend-api/README.md#implemented-step-11-technical-sources-and-history).
+Legacy `KERNEL_BASE_URL`/`KERNEL_SERVICE_TOKEN` still serve technical reads when
+the registry is empty. Step 13 invalidation delivery uses only the registered
+backend origin and outgoing key, independently for each snapshot consumer.
+Follow the [delivery cutover and recipient CLI](billing-background-operations.md#any-766-step-7--durable-kernel-invalidations)
+before starting the updated workers.
+They do not select another registered backend's manifest. Optional
 `KERNEL_MOCK_ENABLED=1` with explicit matching `KERNEL_MOCK_TOKEN` and
 `KERNEL_SERVICE_TOKEN` starts the development technical mock at
 `http://kernel-mock:8091`; it needs no billing mounts, publisher UID or approval
 files. Kernel evidence stays SIMULATED, independently of LBX CONFIGURED_SOURCE.
 Ordinary HTTPS connections may be configured in production; CONFIGURED_SOURCE
 is not producer conformance or launch approval. Mock mode remains development/
-test only, including after changing its URL. Real Kernel conformance is ANY-711.
+test only, including after changing its URL. It also keeps the registered
+`platform-kernel` consumer SIMULATED; the harness mock's token must match that
+entry's outgoing credential when it supplies manifest reads. ANY-711's delivered
+producer/contract evidence does not approve current deployment conformance or
+commercial enablement.
 
 Test and production deployments use the same integration code with separate
 DBs, origins, credentials, sellers and provider objects. Do not repoint a
@@ -100,9 +112,9 @@ triggers, operation-account backfill and purchase holds. Within the consolidated
 revision, upgrade preserves the old `0003` then `0004` operation order;
 downgrade reverses those operations.
 The consolidation preserved that baseline's schema, legal seed, historical
-consent and accepted-purchase meaning. The current chain continues through
-ANY-715 `20261028_0005` to ANY-765 `20261031_0006`; see the
-[current schema reference](../architecture/payment-portal-data-model.md#physical-baseline).
+consent and accepted-purchase meaning. The
+[current schema reference](../architecture/payment-portal-data-model.md#physical-baseline)
+owns the subsequent forward chain and its current head.
 The retained transitions below align old ANY-709 branch labels at `0003` before
 the normal forward upgrade; they do not make `0003` the current head.
 
@@ -110,8 +122,8 @@ the normal forward upgrade; they do not make `0003` the current head.
   command above. Conflicting old identities or held scopes abort the transaction;
   the migration never chooses, deletes or relabels those records.
 - A database at `20261029_0003`, with the nullable active recovery column and
-  its complete expected schema, runs normal `upgrade head` to apply `0005` and
-  `0006`. The paid migration refuses incompatible history without repairing it.
+  its complete expected schema, runs normal `upgrade head` to apply all subsequent
+  revisions. The paid migration refuses incompatible history without repairing it.
 - A **pre-consolidation** database at `20261027_0003` may lack
   `billing_work_items.active_recovery_deadline_at`. The new distinct revision ID
   makes `upgrade head` refuse this retired label instead of silently skipping
@@ -124,7 +136,7 @@ the normal forward upgrade; they do not make `0003` the current head.
   After an exact match, use a guarded transaction that requires the single old
   `0004` version row to change only `alembic_version` to `20261029_0003`.
   Preserve/fingerprint all application rows across that label-only transition,
-  then run normal `upgrade head` to apply `0005` and `0006`. Never replay the
+  then run normal `upgrade head` through the current head. Never replay the
   consolidated DDL on that database.
 - A fully upgraded database at retired `20261027_0006` has the pre-window schema, but
   its old label is not in the new graph. Verify that its columns, constraints,
@@ -163,9 +175,11 @@ for that operator and set `MAPPING_OPERATOR_LOCK_FILE` to its absolute path
 
 ```bash
 PYTHONPATH=apps/api .venv/bin/python -m app.cli.commercial_mappings dry-run \
-  --product-id proposal_ai --tariff-id 32 --tariff-service-id 1 --period-id 1
+  --product-id proposal_ai --tariff-id 32 --tariff-service-id 1 --period-id 1 \
+  --metric-key proposal_ai.generations --unit generation --allowance-quantity "$APPROVED_ALLOWANCE_QUANTITY"
 PYTHONPATH=apps/api .venv/bin/python -m app.cli.commercial_mappings publish \
   --product-id proposal_ai --tariff-id 32 --tariff-service-id 1 --period-id 1 \
+  --metric-key proposal_ai.generations --unit generation --allowance-quantity "$APPROVED_ALLOWANCE_QUANTITY" \
   --expected-previous-revision 0
 PYTHONPATH=apps/api .venv/bin/python -m app.cli.commercial_mappings query \
   --product-id proposal_ai
@@ -176,6 +190,46 @@ ID, not association 82 or price-row 288. Quantity defaults to one commercial
 service subject to source bounds; it is not a Kernel allowance. Non-unit
 connection charges without proven quantity semantics remain unsupported.
 
+ANY-766 Step 3 requires all three technical flags for `dry-run` and `publish`.
+The operator supplies an owner-approved integer `APPROVED_ALLOWANCE_QUANTITY`;
+there is no launch default. Zero is a finite zero allowance. Booleans, floats,
+negative values and values above 2^53−1 are rejected. `--quantity` still selects
+LBX commercial service quantity; it never determines the technical allowance.
+The exact product/metric/unit must be enabled in its freshly read configured
+source manifest (Kernel is the first source). The development Kernel mock cannot
+publish configured technical terms.
+Ordinary production commercial flags remain disabled until sales approval;
+these examples authorize neither real associations nor enablement.
+
+ANY-766 Step 11 metered publications use `product-link-v4` in the existing
+immutable mapping table.
+Its selected identity includes the fixed-per-cycle technical offer, LBX selection
+and source provenance. Fresh selected-offer LBX reads, OS principal, product CAS,
+history and uncertain-commit recovery remain required. Unrelated manifest/version
+changes do not create a new selected identity. New buyer acceptance pins
+`purchased-technical-terms:v3` inside `accepted-purchase:v4`, including explicit
+source/backend owner, mapping revision/digest, account/selection, commercial
+fingerprint and neutral manifest evidence.
+The complete source/audit digests remain separate from `confirmation_digest()`.
+Review shows quantity/unit before consent; changed selected terms require a new
+review. Accepted purchases and their renewal quantities never rebind to a newer
+mapping. Existing v1/v2 links and purchases, SIMULATED terms and exact historical
+v2 full-digest replay remain readable without rewriting stored documents.
+The [Step 11 source/history guide](../contracts/product-backend-api/README.md#implemented-step-11-technical-sources-and-history)
+defines registry endpoint/credential selection, source ownership refusal and the
+unchanged historical serializers. Existing v3 links, terms v2 and purchases v3
+remain readable; their missing owner resolves to Kernel only in memory. Metered
+publication refuses changing a retained product's source/backend owner. The
+unmetered Kernel development path retains its old format. No migration is needed,
+but readers predating Step 11 cannot read newly written formats even at the same
+migration head; exclude those binaries from rollback/install combinations.
+Legacy links without a published quantity cannot start a new production purchase;
+original accepted-operation replay/recovery remains independent of new-sale terms.
+ANY-766 Step 5 implements configured-source allowance derivation; Step 12 now
+serves consumer-scoped V3 snapshots in place of the original V2 wire.
+[Billing operations](billing-background-operations.md#any-766-step-5--production-allowances-and-snapshot-serving)
+defines their provenance and serving rules.
+
 For the configured harness, use its shared lock and current host UID:
 
 ```bash
@@ -184,8 +238,10 @@ portal_operator() {
     api python -m app.cli.commercial_mappings "$@"
 }
 portal_operator query --product-id proposal_ai
-portal_operator dry-run --product-id proposal_ai --tariff-id 32 --tariff-service-id 1 --period-id 1
+portal_operator dry-run --product-id proposal_ai --tariff-id 32 --tariff-service-id 1 --period-id 1 \
+  --metric-key proposal_ai.generations --unit generation --allowance-quantity "$APPROVED_ALLOWANCE_QUANTITY"
 portal_operator publish --product-id proposal_ai --tariff-id 32 --tariff-service-id 1 --period-id 1 \
+  --metric-key proposal_ai.generations --unit generation --allowance-quantity "$APPROVED_ALLOWANCE_QUANTITY" \
   --expected-previous-revision 0
 ```
 
@@ -521,8 +577,9 @@ transitions. Reuse these owners when changing either path:
   subscription lease before point reads and apply through the same fenced
   transaction. Repeated opens do not rebind financial operations or append
   preparation observations. ANY-765 adds committed paid state and authenticated
-  cabinet reads. Kernel wire delivery/usage remain later work. Preparation grants
-  no paid access.
+  cabinet reads. ANY-766 now implements consumer-scoped snapshot V3, durable
+  policy/access floors and Kernel invalidation delivery;
+  cabinet usage is implemented separately in Step 15. Preparation grants no paid access.
 - Payment presentation requires a committed complete identity/commercial match,
   supported nonterminal lifecycle and final local session/customer/purchase
   admission after Client readiness. Waiting/unpaid and financially blocked
@@ -577,10 +634,13 @@ Per-product confirmed access, fresh authoritative absence and unavailable eviden
 remain distinct. Implicit revision zero with no product evidence is confirmed
 empty; unavailable reads are never presented as empty. Product evidence is bounded
 to 100 entries with `evidence_complete=false` when truncated; committed grants and
-allowances are not truncated. Accepted technical terms and purchased quantities
-are marked `SIMULATED`; legacy purchases with no technical terms stay unknown.
-Actual usage and remaining quota remain unavailable. Production cannot derive
-simulated metering; this read does not implement Kernel enforcement or delivery.
+allowances are not truncated. Technical terms retain their `SIMULATED` or
+`CONFIGURED_SOURCE` provenance; legacy purchases without terms stay unknown.
+This endpoint does not return actual usage or remaining quota; the cabinet reads
+those separately through `GET /api/paid-usage`, as described in the
+[usage guide](../contracts/product-backend-api/README.md#implemented-step-15-cabinet-usage).
+Production cannot derive simulated metering; this local read does not implement
+Kernel enforcement or delivery.
 
 ## Verification commands
 

@@ -13,8 +13,12 @@ and recovery.
 The former CloudPayments/direct-provider runtime and Portal-owned catalog,
 order, payment, subscription, entitlement, and trial architecture have been
 physically removed. Portal implements local paid-access projection and cabinet
-reads; the accepted Portal-Kernel snapshot/invalidation boundary remains Step 10
-work. Platform Kernel code is maintained in the separate
+reads. ANY-766 implements scoped session delegation V2, snapshot V3 serving and
+durable invalidation delivery; Kernel implements coherent paid admission and
+ownership. Step 8 implements recoverable paid browser launch; Step 15 adds cabinet
+usage. Focused paired local acceptance and build/install preparation are complete
+in the agreed Steps 16/17 scope; PR review and remote/live acceptance remain separate.
+Platform Kernel code is maintained in the separate
 [anytoolai-platform](https://github.com/gushinets/anytoolai-platform) repository.
 
 The repository remains pre-production on the surface established by ANY-636 4F. All thirteen ANY-636 steps are marked `done` in the
@@ -26,10 +30,10 @@ cabinet Widget after fresh ownership/effective-term verification. ANY-715 adds
 durable embedded polling, GET-only recovery, shared scoped inventory and
 audited operator commands. ANY-765 adds committed paid grants/allowances,
 semantic revisions/outbox, local expiry and authenticated cabinet reads.
-Kernel delivery/enforcement and actual usage/remaining remain later work.
-Delivery and acceptance evidence are in
-[ANY-709](https://linear.app/paveldik/issue/ANY-709); commands, migration transitions
-and diagnostics are in the [billing runbook](docs/engineering/ANY-709-billing-runbook.md).
+The [ANY-766 plan](docs/exec-plans/active/ANY-766-implementation-plan.md) records
+the completed local scope, PR readiness and deferred full acceptance matrix. Remote
+deployment and live-service acceptance belong to ANY-767. Commands, migration
+transitions and diagnostics are in the [billing runbook](docs/engineering/ANY-709-billing-runbook.md).
 Background operation and CLI commands are in the
 [background billing operations guide](docs/engineering/billing-background-operations.md).
 For target billing work, follow [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md),
@@ -44,16 +48,17 @@ in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 External Billing owns commercial billing truth and lifecycle. The Portal owns
 identity/legal, subscription observation/projection, reconciliation/recovery and
-local paid-access authority, with Kernel delivery remaining later work. Platform
+local paid-access authority and revisioned invalidation delivery. Platform
 Kernel owns technical product/metric identity, actual usage, and quota enforcement.
 The component historically named
 “Payments Portal” in the accepted ADR/design records is this Portal backend
 boundary; those records retain their authority and historical names.
 
 The durable [RU Portal 4F handoff](docs/product/ru-mvp.md) records the current
-UI/data sources and step ownership. Steps 6–8 supply source-backed offers,
-purchase/Widget actions and reconciliation/recovery; Step 9 supplies confirmed
-access in the existing per-product slots. Step 10 still owns actual usage/quota
+UI/data sources and parent ANY-504 step ownership. Parent Steps 6–8 supply
+source-backed offers, purchase/Widget actions and reconciliation/recovery;
+Step 9 supplies confirmed access in the existing per-product slots.
+Parent Step 10 (ANY-766) implements actual usage/quota
 integration. UI “not ready/unknown” does not establish
 no subscription, no access, or zero usage/quota. The approved RU mockup supplies
 product/visual direction; evolved Bundle 3 is its canonical implementation
@@ -138,15 +143,37 @@ make test_db_stop
 ```
 
 The cross-platform equivalents are `python scripts/repo.py test-db up` and
-`python scripts/repo.py test-db stop`. Compose and `repo.py` own the server
-container; pytest creates, migrates, resets, and drops the disposable
-`_tests` database. Developers must not manually create or drop that database.
+`python scripts/repo.py test-db stop`. They use `docker-compose.test.yml` in a
+separate `<worktree-project>-tests` Compose project, on the worktree PostgreSQL
+port plus 10000. Its 2 GiB tmpfs contains only disposable test data; the persistent
+development server and volume are independent. Stopping the test server loses
+its data. No PostgreSQL durability settings are disabled.
+
+`test:api:postgres` uses four independent pytest processes, balanced by collected
+case count while keeping modules together. `test:api` runs the fast partition
+serially first, then the same parallel PostgreSQL partition, and combines their
+JUnit reports. This preserves the existing fast-suite ordering and SQLite
+fixture lifecycle. Each PostgreSQL process creates
+unique `_tests` databases, runs real Alembic migrations once into a template,
+and gives every test using `migrated_database` a fresh schema/seed copy. Business fixtures,
+HTTP clients and real transaction boundaries are unchanged. Explicit migration
+tests retain their own upgrade/downgrade checks. pytest owns database cleanup;
+developers must not manually create or drop these databases.
+
+Use `python scripts/repo.py test api-postgres --workers 1` for serial debugging
+or a constrained/disk-backed server. Direct `.venv/bin/python -m pytest <path>`
+also runs serially with the same per-test isolation. `test:api:fast` remains
+serial and PostgreSQL-free. Parallel logs and per-process JUnit reports are in
+`.harness/test-runs/<run-id>/`; `--junitxml=<path>` combines all worker reports,
+and any worker failure or collection mismatch fails the command.
 
 Test database configuration takes precedence in this order: an explicit
 `TEST_POSTGRES_DATABASE_URL`; a complete explicit `POSTGRES_*_TEST`
 configuration (partial configuration fails clearly); then the current
 worktree runtime configuration, with the mapped host port and an automatically
-derived database name ending in `_tests`.
+derived database name ending in `_tests`. The configured name is validated for
+test use; each pytest process allocates fresh unique names on that server, so
+simultaneous runs never reset each other's databases.
 
 ## Runtime baseline
 
@@ -177,7 +204,8 @@ do not use `alembic stamp`, downgrade, or an upgrade bridge.
 - `apps/api` — FastAPI identity, password-reset, legal, health, metrics and billing
   API; accepted-purchase preparation, polling-only reconciliation/recovery,
   scoped inventory, privileged operator commands, local paid projection and
-  authenticated paid reads. Kernel delivery remains future work.
+  authenticated paid reads, consumer-bound session delegation V2, snapshot V3,
+  recipient-specific invalidation delivery and cabinet usage readback.
 - `apps/api/alembic` — PostgreSQL schema and first-install legal seed.
 - `docs` — authoritative product, architecture, design, reliability, security,
   legal, planning, and generated documentation.
@@ -324,11 +352,12 @@ repository. No direct-provider runtime exists in this repository.
   pre-production.
 - Contour confirmation via Region Resolver is planned and not implemented.
 - The typed Manifest client and a real Kernel producer are implemented; their
-  [pinned source inspection and verification limits](docs/integrations/platform-kernel.md#observed-implementation)
-  do not establish conformance or production enablement. The
+  [focused local acceptance and verification limits](docs/integrations/platform-kernel.md#any-766-step-16--focused-local-acceptance)
+  do not establish live-service acceptance or production enablement. The
   [provisional mock](docs/contracts/kernel-capability-manifest/v1/README.md)
-  remains a development/test tool. Snapshot/invalidation HTTP integration is
-  ANY-766 work.
+  remains a development/test tool. Snapshot/invalidation transport is implemented;
+  Steps 16/17 have focused local acceptance and build/install evidence. The full
+  matrix and remote/live acceptance are deferred to ANY-767.
 - The owner-approved [live-source admission amendment](docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
   requires live Kernel/LBX checks for offer publication and each new purchase,
   without periodic source-catalog mirrors. ANY-709 Step 1 now uses direct versioned product links, source-backed Kernel

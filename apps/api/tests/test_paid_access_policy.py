@@ -6,9 +6,12 @@ from datetime import date
 import pytest
 from pydantic import ValidationError
 
+from app.core.settings import AppEnv
+from app.domains.catalog.contracts import SourceProvenance
 from app.domains.billing.paid_cycles import CalendarEvidence, CycleKind, classify_cycle
 from app.domains.billing.paid_policy import (
     CandidateConclusion as C,
+    MeteringPolicy,
     PaidDecision,
     PrimaryCandidate,
     first_primary,
@@ -19,6 +22,16 @@ from app.domains.billing.reconciliation_contracts import CommercialProof, Identi
 from app.domains.catalog.commercial_offer import CommercialPeriod
 from apps.api.tests.factories.reconciliation import subject_factory
 from apps.api.tests.support.any709_step1 import step1_settings
+
+
+@pytest.mark.parametrize("environment", list(AppEnv))
+@pytest.mark.parametrize(
+    "provenance", [None, SourceProvenance.SIMULATED, SourceProvenance.CONFIGURED_SOURCE, "unknown"]
+)
+def test_metering_provenance_is_explicit(environment: AppEnv, provenance: SourceProvenance | str | None) -> None:
+    assert MeteringPolicy.for_environment(environment).permits(provenance) is (
+        provenance == "CONFIGURED_SOURCE" or (provenance == "SIMULATED" and environment != "production")
+    )
 
 
 def period(unit: str = "month", length: int = 1, anchor: str = "instance_start") -> CommercialPeriod:

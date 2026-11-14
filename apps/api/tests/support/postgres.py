@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
+from uuid import uuid4
 
 from alembic import command
 from alembic.config import Config
@@ -36,15 +37,32 @@ def validate_test_database_url(database_url: URL) -> URL:
     return database_url
 
 
-def create_test_database(database_test_url: URL, database_admin_url: URL) -> None:
+def unique_test_database_url(database_url: URL) -> URL:
+    """Allocate a database name owned by this pytest process, never a shared name."""
+    validate_test_database_url(database_url)
+    return database_url.set(database=f"portal_{uuid4().hex}_tests")
+
+
+def create_test_database(
+    database_test_url: URL,
+    database_admin_url: URL,
+    *,
+    template_url: URL | None = None,
+) -> None:
     """Create a fresh physical PostgreSQL database for the test session."""
     validate_test_database_url(database_test_url)
+    if template_url is not None:
+        validate_test_database_url(template_url)
     admin_engine = create_engine(database_admin_url, isolation_level="AUTOCOMMIT")
     try:
         with admin_engine.connect() as connection:
             database_name = connection.dialect.identifier_preparer.quote(database_test_url.database)
-            connection.execute(text(f"DROP DATABASE IF EXISTS {database_name} WITH (FORCE)"))
-            connection.execute(text(f"CREATE DATABASE {database_name}"))
+            template = (
+                " TEMPLATE " + connection.dialect.identifier_preparer.quote(template_url.database)
+                if template_url is not None
+                else ""
+            )
+            connection.execute(text(f"CREATE DATABASE {database_name}{template}"))
     finally:
         admin_engine.dispose()
 
@@ -56,9 +74,22 @@ def drop_test_database(database_test_url: URL, database_admin_url: URL) -> None:
     try:
         with admin_engine.connect() as connection:
             database_name = connection.dialect.identifier_preparer.quote(database_test_url.database)
-            connection.execute(text(f"DROP DATABASE IF EXISTS {database_name} WITH (FORCE)"))
+            connection.execute(text(f"DROP DATABASE IF EXISTS {database_name}"))
     finally:
         admin_engine.dispose()
+
+
+def restore_test_database(engine: Engine, template_url: URL) -> None:
+    """Replace this process's database, preserving real commit/rollback semantics."""
+    validate_test_database_url(engine.url)
+    validate_test_database_url(template_url)
+    if engine.pool.checkedout():
+        raise RuntimeError("Cannot restore test database with checked-out connections")
+    engine.dispose()
+    admin_url = engine.url.set(database="postgres")
+    # No FORCE: a leaked independent connection must fail instead of being hidden.
+    drop_test_database(engine.url, admin_url)
+    create_test_database(engine.url, admin_url, template_url=template_url)
 
 
 def reset_public_schema(engine: Engine) -> None:

@@ -136,7 +136,9 @@ async def test_shutdown_retains_client_and_slot_until_pending_http_cleanup_finis
     assert transport.closed
 
 
-async def test_lifespan_owns_one_resource_set_without_any_startup_http(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_lifespan_owns_one_resource_set_without_any_startup_http(
+    monkeypatch: pytest.MonkeyPatch, lifespan_database: None
+) -> None:
     from app import main
 
     monkeypatch.setenv("SKIP_LEGAL_SEED", "true")
@@ -158,7 +160,9 @@ async def test_lifespan_owns_one_resource_set_without_any_startup_http(monkeypat
     assert reads.closed and reads.engine is None
 
 
-async def test_partial_billing_configuration_leaves_portal_identity_available(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_partial_billing_configuration_leaves_portal_identity_available(
+    monkeypatch: pytest.MonkeyPatch, lifespan_database: None
+) -> None:
     from app import main
     from apps.api.tests.support.any709_step1 import step1_settings
 
@@ -177,7 +181,7 @@ async def test_partial_billing_configuration_leaves_portal_identity_available(mo
 
 
 async def test_real_local_http_route_runs_while_new_source_admission_is_saturated(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, lifespan_database: None
 ) -> None:
     from app import main
 

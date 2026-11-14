@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Clock3, LogOut, ShieldCheck, UserRound } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { AccountBilling } from "@/features/billing";
@@ -32,7 +32,7 @@ type AccountState =
   | { status: "session_error"; token: string }
   | { status: "authenticated"; user: SessionUserResponse };
 
-export function AccountClient({ languageTag, initialPurchaseId }: { languageTag: string; initialPurchaseId?: string }) {
+export function AccountClient({ languageTag, initialPurchaseId, children, requireVerifiedEmailForChildren = false }: { languageTag: string; initialPurchaseId?: string; children?: ReactNode; requireVerifiedEmailForChildren?: boolean }) {
   const t = useTranslations("Account");
   const authT = useTranslations("Auth");
   const { begin: beginOperation, beginAuth } = useSessionOperation();
@@ -316,7 +316,14 @@ export function AccountClient({ languageTag, initialPurchaseId }: { languageTag:
         </aside>
 
         <div className="account-workspace">
-          <AccountBilling key={`${accountState.user.user_id}:${initialPurchaseId ?? ""}`} userId={accountState.user.user_id} emailVerified={accountState.user.email_verified} initialPurchaseId={initialPurchaseId} />
+          {requireVerifiedEmailForChildren && !accountState.user.email_verified ? (
+            <div className="form-panel form-grid">
+              <p role="status">{t("authenticated.verificationRequired")}</p>
+              <button className="btn-primary" type="button" onClick={retrySessionLoad}>
+                {t("authenticated.checkVerificationAction")}
+              </button>
+            </div>
+          ) : children ?? <AccountBilling key={`${accountState.user.user_id}:${initialPurchaseId ?? ""}`} userId={accountState.user.user_id} emailVerified={accountState.user.email_verified} initialPurchaseId={initialPurchaseId} />}
         </div>
       </div>
     </section>
