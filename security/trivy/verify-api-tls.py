@@ -10,6 +10,7 @@ import asyncio
 import hashlib
 import json
 import os
+import secrets
 import ssl
 import subprocess
 import sys
@@ -62,7 +63,7 @@ async def main() -> None:
         DATABASE_URL="sqlite+pysqlite:///:memory:",
         POSTGRES_DB="anytoolai_test",
         POSTGRES_USER="anytoolai",
-        POSTGRES_PASSWORD="simulated",
+        POSTGRES_PASSWORD=secrets.token_urlsafe(32),
         POSTGRES_HOST="localhost",
         POSTGRES_PORT="5432",
         CORS_ALLOW_ORIGINS="http://localhost:3000",
@@ -75,7 +76,7 @@ async def main() -> None:
         KERNEL_SERVICE_TOKEN="simulated-kernel-token",
         LBX_BASE_URL="https://localhost",
         LBX_SERVER_USERNAME="simulated",
-        LBX_SERVER_PASSWORD="simulated",
+        LBX_SERVER_PASSWORD=secrets.token_urlsafe(32),
         LBX_WIDGET_SIGNING_SECRET="simulated",
         LBX_SELLER_ORGANIZATION_ID="21",
     )
