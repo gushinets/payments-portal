@@ -275,6 +275,38 @@ describe("ANY-709 Step 4 purchase journey", () => {
 
   });
 
+  it.each(["resolved_no_external_effect", "resolved_external_terminal", "failed_before_external_effect"] as const)("clears the timeout warning when local status proves a released %s purchase", async (state) => {
+    advance.mockImplementationOnce(async () => {
+      owned = { ...savedPurchase, state, scope_held: false };
+      throw new DOMException("synthetic_timeout", "AbortError");
+    });
+    renderProduct();
+    await accept();
+    expect(await screen.findByText(ru.Purchase.states[state])).toBeVisible();
+    await waitFor(() => expect(screen.getByRole("button", { name: ru.Purchase.buy })).toBeEnabled());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: ru.Purchase.recover })).not.toBeInTheDocument();
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(advance).toHaveBeenCalledTimes(1);
+    expect(bootstrap).not.toHaveBeenCalled();
+    expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith(`/${savedPurchase.purchase_intent_id}`))).toHaveLength(1);
+  });
+
+  it.each(["awaiting_external_result", "manual_review", "resolved_external_terminal"] as const)("keeps the timeout warning when local status returns a held %s purchase", async (state) => {
+    advance.mockImplementationOnce(async () => {
+      owned = { ...savedPurchase, state, scope_held: true };
+      throw new DOMException("synthetic_timeout", "AbortError");
+    });
+    renderProduct();
+    await accept();
+    expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
+    expect(screen.getByText(ru.Purchase.states[state])).toBeVisible();
+    expect(screen.queryByRole("button", { name: ru.Purchase.buy })).not.toBeInTheDocument();
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(advance).toHaveBeenCalledTimes(1);
+    expect(bootstrap).not.toHaveBeenCalled();
+  });
+
   it("keeps the held intent and shows recovery when timeout status inspection also fails", async () => {
     advance.mockImplementationOnce(async () => {
       fetcher.mockRejectedValueOnce(new TypeError("synthetic_status_unavailable"));

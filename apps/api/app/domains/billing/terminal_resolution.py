@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.settings import Settings
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.customers import lock_customer, lock_user
+from app.domains.billing.operator_contracts import LATE_REASON
 from app.domains.billing.operator_review import digest, operation_digest, case_digest
 from app.domains.billing.paid_access import reduce_paid_access
 from app.domains.catalog.publication import SessionFactory
@@ -31,7 +32,6 @@ from app.models import (
 SCHEMA = "purchase-terminal-resolution:v1"
 TERMINAL_REASON = "purchase_terminal_resolution"
 LATE_SCHEMA = "purchase-late-object:v1"
-LATE_REASON = "purchase_late_external_object"
 SafeText = Annotated[str, Field(min_length=1, max_length=500, pattern=r"^[^\x00-\x1f\x7f]+$")]
 ProviderId = Annotated[str, Field(pattern=r"^[1-9][0-9]{0,19}$")]
 

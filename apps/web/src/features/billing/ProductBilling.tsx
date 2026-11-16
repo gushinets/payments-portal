@@ -162,7 +162,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
       catch { /* Keep the original held intent visible if the status read also fails. */ }
       if (current()) {
         if (saved) setState({ kind: "purchase", purchase: saved });
-        setFailure(saved?.state === "linked" ? null : { message: "financialPending", requestId: id });
+        setFailure(saved && (saved.state === "linked" || (!saved.scope_held && isResolvedPurchase(saved.state))) ? null : { message: "financialPending", requestId: id });
       }
       return;
     }

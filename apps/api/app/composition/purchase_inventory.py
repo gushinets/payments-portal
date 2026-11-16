@@ -355,13 +355,6 @@ async def collect_inventory(
                 original_agreement = next(op for op in historical.operations if op.kind == Kind.AGREEMENT)
                 if historical.accepted.provider_origin != configuration.lbx_provider_origin:
                     raise PurchaseInventoryIncomplete()
-                prove_agreement(
-                    agreement,
-                    user_id=int(current.provider_id),
-                    seller_id=historical.accepted.seller_id,
-                    number=original_agreement.key,
-                )
-                ended = agreement_is_closed(agreement) or subscription_lifecycle(point)[0] == Lifecycle.ENDED
                 product = historical.accepted.selection.product_id
                 for unrelated in affected - {product}:
                     candidates[unrelated] = [item for item in candidates[unrelated] if item.identity != provider_id]
@@ -375,6 +368,18 @@ async def collect_inventory(
                             conclusion=Conclusion.INCOMPLETE,
                         )
                     )
+                try:
+                    prove_agreement(
+                        agreement,
+                        user_id=int(current.provider_id),
+                        seller_id=historical.accepted.seller_id,
+                        number=original_agreement.key,
+                    )
+                    ended = agreement_is_closed(agreement) or subscription_lifecycle(point)[0] == Lifecycle.ENDED
+                except LbxResponseInvalid:
+                    # Keep the INCOMPLETE candidate scoped to its retained owner.
+                    complete = False
+                    continue
                 if not ended:
                     operation = next(op for op in historical.operations if op.kind == Kind.SUBSCRIPTION)
                     if operation.bound_id in {None, provider_id}:

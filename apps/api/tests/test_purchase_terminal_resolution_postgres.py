@@ -16,7 +16,7 @@ from app.domains.billing import background_recovery, terminal_resolution as term
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.operator_diagnostics import inspect_evidence
 from app.domains.purchases import financial, service
-from app.domains.purchases.contracts import Purchase, PurchaseRefused
+from app.domains.purchases.contracts import Purchase, PurchaseRefused, PurchaseInventoryIncomplete
 from app.composition.backend_consumers import initialize_backend_consumers
 from app.models import (
     ExternalCreateOperationKind as Kind,
@@ -438,19 +438,64 @@ async def test_concurrent_identical_completion_has_one_audit(
         assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 1
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "healthy"),
+    [
+        (None, None, True),
+        ("organization_id", None, True),
+        ("agreement_number", None, True),
+        ("is_offer", None, True),
+        ("organization_id", 999, False),
+    ],
+)
 async def test_resolution_and_late_inventory_preserve_an_unrelated_product(
-    background_scenario: tuple, postgres_session_factory: sessionmaker[Session]
+    background_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    field: str | None,
+    value: int | None,
+    healthy: bool,
 ) -> None:
     transport, sources, purchase = background_scenario
     factory = postgres_session_factory
     purchase = synthetic_prepare(factory, transport, purchase, uncertain=False)
     sibling = historical_link(factory, purchase, transport, "brief_decoder", 1)
     terminal.resolve_purchase(factory, step1_settings(), request(factory, purchase, confirmed=True), PRINCIPAL)
+    if field:
+        transport.agreements[0][field] = value
     result = await inventory(sources, factory, sibling)
     assert not result.complete  # New financial CREATE remains customer-wide strict.
-    assert next(item for item in result.products if item.product_id == "brief_decoder").complete
+    assert next(item for item in result.products if item.product_id == "brief_decoder").complete is healthy
+    with pytest.raises(PurchaseInventoryIncomplete):
+        result.require_clear(sibling)
     saved = service.read_purchase(factory, sibling.user_id, sibling.id)
     assert saved.held and saved.operations == sibling.operations
+    with factory() as db:
+        subscription_id = db.scalar(
+            select(ExternalSubscription.subscription_id).where(ExternalSubscription.purchase_intent_id == sibling.id)
+        )
+        assert subscription_id is not None
+        assert (
+            db.scalar(
+                select(BillingProductAccessScope.primary_subscription_id).where(
+                    BillingProductAccessScope.user_id == sibling.user_id,
+                    BillingProductAccessScope.product_id == "brief_decoder",
+                )
+            )
+            is None
+        )
+    scenario = Scenario(factory, step1_settings(paid_access_clock_skew_seconds=10), transport, sources, subscription_id)
+    await run_inventory(scenario)
+    with factory() as db:
+        primary = db.scalar(
+            select(BillingProductAccessScope.primary_subscription_id).where(
+                BillingProductAccessScope.user_id == sibling.user_id,
+                BillingProductAccessScope.product_id == "brief_decoder",
+            )
+        )
+        assert (primary == subscription_id) is healthy
+        state = db.scalar(select(PaidAccessState).where(PaidAccessState.user_id == sibling.user_id))
+        grants = state.effective_state_document["grants"] if state else []
+        assert any(item["product_id"] == "brief_decoder" for item in grants) is healthy
 
 
 async def test_terminal_migration_refuses_downgrade_with_retained_external_history(

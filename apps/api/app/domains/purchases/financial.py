@@ -29,7 +29,7 @@ from app.domains.purchases.contracts import (
 )
 from app.domains.purchases.preparation import record_first_binding
 from app.domains.purchases.service import _locked, _operation, _verify_original_consent
-from app.infrastructure.queries import purchases as queries
+from app.infrastructure.queries import billing_operator, purchases as queries
 from app.infrastructure.queries.billing_customers import (
     customer_operation,
     recovery_work,
@@ -37,7 +37,7 @@ from app.infrastructure.queries.billing_customers import (
 )
 from app.infrastructure.queries.billing_reconciliation import database_now
 from app.domains.billing.work_contracts import WorkClaim
-from app.domains.billing.operator_contracts import OriginalOperationProof, ReviewResolution
+from app.domains.billing.operator_contracts import LATE_REASON, OriginalOperationProof, ReviewResolution
 from app.models import (
     BillingWorkItem,
     ExternalCreateOperation,
@@ -90,6 +90,8 @@ def claim_financial(
         if customer_create is None:
             raise PurchaseRefused("billing_identity_unproven", 409)
         customer_admission_reviews(db, customer, customer_create)
+        if billing_operator.has_open_purchase_review(db, customer.customer_id, reason=LATE_REASON):
+            raise PurchaseRefused("purchase_existing_subscription_review", 409)
         work = recovery_work(db, operation.create_operation_id)
         if retry_unsent and (
             operation.unknown_since is None
