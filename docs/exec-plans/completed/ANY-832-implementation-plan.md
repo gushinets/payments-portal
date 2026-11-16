@@ -1,15 +1,21 @@
 # ANY-832 implementation record
 
-Status: **IMPLEMENTED LOCALLY; focused verification passed; full-suite verification incomplete.**
+Status: **IMPLEMENTED ON BRANCH; focused verification passed; full-suite verification incomplete.**
 Updated: 2026-11-16.
 Issue: [ANY-832](https://linear.app/paveldik/issue/ANY-832/fix-deferred-pr-164-inventory-completeness-and-calendar-allowance-edge).
 Predecessor: [PR #164](https://github.com/gushinets/payments-portal/pull/164).
 Branch: `ANY-832`; PR base: `main`.
 
-This completed implementation plan records the branch changes through HEAD
-`07cee6e2` and the local REV-8 correction, with merge base
-`2d278f62f0a2f7c4b40fb322618b268580de2301`. It describes implemented behavior and
-verification limits, not instructions to repeat the implementation or merge approval.
+This record covers ANY-832, including REV-8 and the PR #168 repeat-read correction,
+rebased onto `ece3590b857adb120182949dfe291116ca8ba510` (`main`, merged ANY-766
+[PR #167](https://github.com/gushinets/payments-portal/pull/167)). The pre-rebase
+head was `b13454ecdb47e3b8c187f6dbc99dfb06d7421cbe`, with base
+`6e3d458a572b16a161db72f718cbcc0a5055739a`; those pins describe historical checks.
+
+Earlier verification referenced `07cee6e2` plus then-local corrections and the
+original base `2d278f62f0a2f7c4b40fb322618b268580de2301`. These historical pins
+remain scoped to the dated results below. This record describes implemented
+behavior and verification limits; it does not grant merge approval.
 Billing authority remains [ADR 0005](../../architecture/decisions/0005-external-billing-boundary.md)
 and its accepted specifications and dated decisions.
 
@@ -20,8 +26,8 @@ independently proven product decisions and corrects supported calendar allowance
 edge cases. Public HTTP/Kernel contracts, permanent bindings, accepted terms,
 finite source trust and production enablement gates are unchanged. No new table,
 migration, dependency, catalog mirror, background process or durable decision-attempt
-subsystem was introduced. ANY-766 remains a separate integration; it is not a
-prerequisite for implementing ANY-832.
+subsystem was introduced by ANY-832. ANY-766 was implemented independently and is
+now inherited from `main`, including its migrations and backend integration.
 
 ### Inventory collection and history
 
@@ -87,29 +93,31 @@ normalization and retained history feeding the existing allowance writer.
 
 ## ANY-766 integration handoff
 
-Combined checks used these exact inspected revisions:
+The current branch includes ANY-766 through the `main` revision above. Rebase
+resolution preserves both implementations at the overlapping composition,
+`billing/discovery.py`, `billing/reconciliation.py` and
+`billing/reconciliation_contracts.py` boundaries.
+
+Earlier combined checks used these exact inspected revisions:
 
 - [Portal PR #167](https://github.com/gushinets/payments-portal/pull/167):
   `ec10983ef174fb59ecbf3dcf714a2f75647f8de1`.
 - [Kernel PR #267](https://github.com/gushinets/anytoolai-platform/pull/267):
   `9c00d812a5077455a351a352b190cd58c383ea97`.
 
-These are verification pins, not a claim about the latest PR state. The temporary
-combination preserved both implementations; the independent ANY-832 branch does
-not contain ANY-766's runtime or migration changes.
+These historical pins scope the earlier combined results below; they do not
+certify the rebased branch or the current paired Kernel revision.
 
-When integrating, preserve the following at the overlapping composition,
-`billing/discovery.py`, `billing/reconciliation.py` and
-`billing/reconciliation_contracts.py` boundaries:
+The integrated branch retains:
 
 - ANY-832's read intervals, `established_calendar`, `point_relationship`,
   supplemental history, shared claim/receipt validation, product preflight and
   queue-hint handling. Ordinary read/refused-apply retention and strict
-  CREATE/restore receipts must survive the merge.
+  CREATE/restore receipts remain enforced.
 - ANY-766's `MeteringPolicy` at paid-writer calls, v2 canonical and
   primary-selection writers, activation receipts and immutable observation guards.
-  ANY-832 writes canonical v1; after integration, history and receipt readers use
-  the owner's `RECONCILIATION_READ_SCHEMAS` vocabulary accepting v1 and v2.
+  New canonical observations use v2; history and receipt readers use the owner's
+  `RECONCILIATION_READ_SCHEMAS` vocabulary accepting v1 and v2.
   Supplemental relationship v2 is a separate schema from canonical v2.
 - The sole paid-state writer, frozen technical ownership, AccessSnapshot V3,
   P/R separation and recipient-specific delivery. Kernel remains the authority
@@ -117,10 +125,39 @@ When integrating, preserve the following at the overlapping composition,
 
 ## Verification record
 
-The following results were recorded on 2026-11-13. The earlier code correction
-covered REV-6 (ordinary read lost after refused apply) and REV-7 (strict admission
-accepted a stale source receipt). Earlier REV-3/4/5 and PLAN-1/2 regressions remain
-in the affected suites.
+The latest verification is the 2026-11-16 rebase entry. The older 2026-11-13
+record covers REV-6 (ordinary read lost after refused apply), REV-7 (strict
+admission accepted a stale source receipt) and REV-8. Earlier REV-3/4/5 and
+PLAN-1/2 regressions remain in the affected suites.
+
+### ANY-766 rebase integration — 2026-11-16
+
+The resolved tree combined pre-rebase ANY-832 `b13454ec` with `main` `ece3590b`.
+Before the documentation refresh, all 857 tracked files matched the previously
+checked temporary combination byte for byte, including the test-fixture repair.
+This permits reuse of its **2361 API fast tests** and **293 distinct PostgreSQL
+cases**: 230 inventory/history/primary/reconciliation/usage cases, all 37
+AccessSnapshot cases, and 26 ANY-766 purchase-terms/technical-source cases.
+
+The additional integration regression is
+`test_consumer_filtering_precedes_deadlines_and_policy_change_keeps_paid_revision`.
+It passed on unmodified `main`, failed with `KeyError: 702` on the combination,
+and passed after registering tariff 702 in `PurchaseTransport.offers`. The repair
+preserves ANY-832's explicit multi-offer transport and ANY-766's two-consumer
+scenario; it is included in the 37 AccessSnapshot cases above.
+
+After rebase, `npm run test:api:fast` passed **2361 tests** again on the actual
+branch. A focused PostgreSQL rerun passed **40 cases**: all 37 AccessSnapshot
+cases and the three disputed-repeat-read cases. These 40 are a subset of the
+293 above, not additional distinct coverage. Architecture, documentation,
+Ruff/format (388 API files) and `git diff --check` also passed. Full
+`npm run check` was attempted again and stopped at the missing
+`@hey-api/openapi-ts` package; no dependencies were installed.
+
+PostgreSQL checks used an isolated disposable local PostgreSQL **18.6** container
+and simulated external HTTP, not live-provider acceptance. Full `npm run check`,
+frontend/build/E2E and paired Kernel HTTP acceptance are not certified by those
+focused results. Older combined HTTP results remain historical.
 
 ### PR #168 failed repeat-read correction — 2026-11-16
 
@@ -135,7 +172,8 @@ The permanent regression in `test_billing_inventory_refactoring_postgres.py`
 failed **1 case with 2 passing controls** before the fix. All three cases pass
 afterward and assert both product completeness and actual primary application.
 
-Verification against `3b067fe8` plus the local correction:
+Verification ran against `3b067fe8` plus the correction subsequently committed
+as `ee714fab`:
 
 - **134 PostgreSQL cases passed** across inventory refactoring, scoped inventory,
   retained history and operator primary-selection suites. These used the available
@@ -189,10 +227,11 @@ identity/counters/revisions/outbox, block/restore, execution/replay, future-peri
 non-activation, retained storage and policy cutover. The deselected test covers
 the separate SMTP/browser identity journey.
 
-Those HTTP results predate REV-6/REV-7 and REV-8 and do not certify them.
-The latest local changes have focused verification only; full `npm run check`
-and joint HTTP acceptance were not rerun. No live-provider or production
-acceptance is claimed.
+Those HTTP results predate REV-6/REV-7, REV-8 and the PR #168 correction and do
+not certify those changes. The current branch has focused verification only.
+Full `npm run check` was attempted on 2026-11-16 and stopped at the missing
+`@hey-api/openapi-ts` dependency. Joint HTTP acceptance has not been rerun after
+the later corrections. No live-provider or production acceptance is claimed.
 
 For documentation-only edits, use `npm run docs:check` and `git diff --check`.
 Existing runtime evidence remains scoped to the implementation and revisions

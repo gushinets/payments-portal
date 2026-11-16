@@ -803,6 +803,13 @@ authorization/scope and discovery failures remain global, including failures
 normalized into a canonical proof. Incomplete inventory cannot authorize
 customer-wide financial CREATE admission.
 
+If a canonical read proves a bound subscription on its original agreement but
+discovery assigns it to another product's agreement, the collector marks that
+subscription uncertain before attempting the repeat point GET. A failed or
+terminal repeat cannot make either implicated product complete within that scan.
+Both remain blocked from new primary selection; an independent product with
+complete proof can still select its primary.
+
 Bound subscriptions retain relationship implications from permanent acceptance,
 canonical reconciliation, discovery and supplemental point reads across scans.
 Failed/missing point reads, old-tariff listings and omissions cannot erase them.
@@ -846,6 +853,15 @@ decisions; `work.finish` preserves that pending hint and its scheduled time.
 
 Audited `select-primary` uses complete relevant product proof alongside its
 command, case-digest and own-source claim checks; refusal leaves review open.
+Its inventory reuses the selected subscription's fresh proof without adding a
+committed receipt for that proof. The final writer directly validates its live
+claim and the command's expected observation/fence in the decision transaction.
+Inventory contains at most one held purchase per `(user_id, product_id)`;
+conclusively owned subscriptions of other products are excluded from the target's
+primary candidates. A newer claim or incomplete poll on an independent sibling
+with unchanged target-product relationship implications does not block selection.
+Changed relationship implications still invalidate the affected product's basis.
+
 Financial CREATE, its admission-blocking path and `restore-original` retain
 full customer-wide validation, including the exact observation and fence of every
 used source. A newer incomplete/refused poll or an in-flight claim invalidates
