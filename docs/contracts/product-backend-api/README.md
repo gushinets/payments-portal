@@ -269,8 +269,21 @@ Portal requests the same `/internal/v1/capability-manifest` V1 shape and validat
 scope, digest, unique products/metrics, selected enabled capability and unit
 through the existing client. No Kernel scenario registration is needed for an
 external product. A selected detail/publication/purchase reads only its source;
-discovery reads the configured sources under the same bounded preflight budget
-and filters each response to its configured products.
+discovery skips empty product scopes, reads the remaining configured sources
+serially under one bounded preflight budget and filters each response to its
+configured products. If all configured scopes are empty, discovery returns an
+empty list without falling back to the legacy Kernel connection. An unknown
+product returns `404`; an unavailable configured owner or retained-owner conflict
+remains `503`.
+
+`PREFLIGHT_TOTAL_TIMEOUT_SECONDS` (default 10 seconds) is the aggregate operation
+budget, including admission wait, all source reads/retries and the cleanup
+reserve. The 16-consumer configuration limit is not a guarantee that every
+topology finishes in that default budget. Size the existing setting for the
+selected deployment's aggregate latency; budget exhaustion returns
+`503 catalog_unavailable` with reason `preflight_deadline_exceeded`, never a
+partial catalog. Selected detail/publication/purchase preflights retain their
+existing end-to-end bounds.
 
 Configured connections carry `CONFIGURED_SOURCE`, which does not establish live
 producer conformance or approve sales. `KERNEL_MOCK_ENABLED` keeps the Kernel
@@ -389,6 +402,11 @@ not the exchange body. Code exchange is atomic and single-use; cross-consumer
 redemption fails. Delegated expiry is min(issuance+30 minutes,parent expiry).
 There is no refresh token. A lost exchange response requires fresh authorization,
 while preserving any same-owner pending execution request/key.
+
+Delegated user tokens are opaque Bearer credentials: their total length is
+43–512 characters, including trailing `=` padding. Consumers validate the
+[RFC 6750 Section 2.1 grammar](https://www.rfc-editor.org/rfc/rfc6750#section-2.1),
+without requiring unpadded base64url or decoding the token.
 
 4. Every protected backend request introspects its delegated user bearer through
    this server-only call. Authorization is the service key; the token being

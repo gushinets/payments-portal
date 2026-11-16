@@ -364,6 +364,12 @@ registry, Kernel API/worker environments and Kernel frontend build. The remainin
 activation correction requires migration `20261113_0012` with API/workers stopped;
 that migration alone does not require changing P.
 
+The Kernel image installer also checks the web image's compiled consumer through
+its `io.anytoolai.portal-consumer-id` label before installation or a frontend-only
+replacement. Rebuild older unlabelled images; runtime variables cannot repair a
+missing or foreign build audience. Compatible frontend/backend source revisions
+may still differ.
+
 Before installing this pair over the Step 8 baseline:
 
 1. Close both ingress paths and stop Portal API/embedded workers and all extra

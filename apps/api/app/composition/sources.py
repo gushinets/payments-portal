@@ -21,6 +21,10 @@ class TechnicalSourceRefused(AppError):
         super().__init__("technical_source_ownership_unavailable")
 
 
+class TechnicalSourceNotFound(TechnicalSourceRefused):
+    """No configured owner exists, unlike a conflicting retained owner."""
+
+
 @dataclass(frozen=True)
 class TechnicalSource:
     ownership: TechnicalOwnership
@@ -43,7 +47,7 @@ class SourceResources:
                 (item for item in self.technical_sources if item.products is None or product_id in item.products), None
             )
             if source is None:
-                raise TechnicalSourceRefused()
+                raise TechnicalSourceNotFound()
         else:
             source = TechnicalSource(LEGACY_KERNEL_OWNERSHIP, None, self.require_kernel())
         if expected is not None and source.ownership != expected:
@@ -51,7 +55,9 @@ class SourceResources:
         return source
 
     def discovery_sources(self) -> tuple[TechnicalSource, ...]:
-        return self.technical_sources or (TechnicalSource(LEGACY_KERNEL_OWNERSHIP, None, self.require_kernel()),)
+        if self.technical_sources:
+            return tuple(source for source in self.technical_sources if source.products is None or source.products)
+        return (TechnicalSource(LEGACY_KERNEL_OWNERSHIP, None, self.require_kernel()),)
 
     def require_kernel(self) -> PlatformKernelClient:
         if self.kernel is None:

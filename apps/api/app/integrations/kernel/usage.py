@@ -47,6 +47,8 @@ class ObservedUsage(BaseModel):
 
     @model_validator(mode="after")
     def counters_match(self) -> "ObservedUsage":
+        if self.successful_used + self.reserved > self.quantity:
+            raise ValueError("Overdrawn allowance")
         if self.remaining != max(self.quantity - self.successful_used, 0) or self.available != max(
             self.quantity - self.successful_used - self.reserved, 0
         ):

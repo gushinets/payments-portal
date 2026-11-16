@@ -55,8 +55,36 @@ async def test_backend_usage_uses_owner_directional_key_and_exact_query(product:
     assert result.model_dump(mode="json") == body
 
 
+@pytest.mark.parametrize("used,reserved", [(8, 2), (10, 0)])
+async def test_backend_usage_accepts_busy_and_exhausted_allowances(used: int, reserved: int) -> None:
+    body = response()
+    body["items"][0].update(quantity=10, successful_used=used, reserved=reserved, remaining=10 - used, available=0)
+    async with source_resources(
+        source_settings(), kernel_transport=httpx.MockTransport(lambda request: httpx.Response(200, json=body))
+    ) as sources:
+        async with sources.preflight.operation() as budget:
+            result = await sources.technical_source("proposal_ai").client.fetch_usage(
+                UUID(body["user_id"]),
+                tuple(UUID(item["allowance_id"]) for item in body["items"]),
+                budget=budget,
+            )
+    assert result.model_dump(mode="json") == body
+
+
 @pytest.mark.parametrize(
-    "change", ["owner", "order", "duplicate", "missing", "boolean", "counter", "version", "unknown-status"]
+    "change",
+    [
+        "owner",
+        "order",
+        "duplicate",
+        "missing",
+        "boolean",
+        "counter",
+        "version",
+        "unknown-status",
+        "overdrawn",
+        "used-over-quantity",
+    ],
 )
 async def test_backend_usage_refuses_foreign_incomplete_and_malformed_response(change: str) -> None:
     original = response()
@@ -75,6 +103,14 @@ async def test_backend_usage_refuses_foreign_incomplete_and_malformed_response(c
         body["items"][0]["status"] = "unknown"
     elif change == "boolean":
         body["items"][0]["quantity"] = True
+    elif change in {"overdrawn", "used-over-quantity"}:
+        body["items"][0].update(
+            quantity=10,
+            successful_used=8 if change == "overdrawn" else 11,
+            reserved=5 if change == "overdrawn" else 0,
+            remaining=2 if change == "overdrawn" else 0,
+            available=0,
+        )
     else:
         body["items"][0]["available"] += 1
     async with source_resources(

@@ -3,8 +3,10 @@
 from copy import deepcopy
 from dataclasses import replace
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import uuid4
 
+from fastapi import FastAPI
 import httpx
 from pydantic import ValidationError
 import pytest
@@ -20,6 +22,9 @@ from app.domains.catalog.preview import CatalogProductNotFound
 from app.domains.catalog.technical_offer import TechnicalOffer
 from app.domains.catalog.technical_source import TechnicalOwnership
 from app.domains.purchases.technical_terms import AcceptedTechnicalTerms, bind_published_terms
+from app.domains.catalog import router as catalog_http
+from app.http.dependencies import get_session_factory
+from app.infrastructure import preflight
 from apps.api.tests.support.any709_step1 import link_selection, recording, step1_settings
 from apps.api.tests.support.backend_consumers import backend_consumer, second_consumer
 from apps.api.tests.support.kernel import manifest_fixture, resign
@@ -112,6 +117,80 @@ async def test_each_source_uses_own_endpoint_and_key_and_filters_discovery() -> 
 async def test_source_ids_cannot_select_ambiguous_owners() -> None:
     with pytest.raises(ValidationError, match="Each technical source"):
         source_settings(backend_consumers=(backend_consumer(), second_consumer(technical_source_id="platform-kernel")))
+
+
+@pytest.mark.parametrize("active_owner", [True, False])
+async def test_discovery_never_contacts_empty_product_scopes(active_owner: bool) -> None:
+    empty = second_consumer(allowed_products=[])
+    config = source_settings(backend_consumers=(backend_consumer(), empty) if active_owner else (empty,))
+    seen: list[str] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.host)
+        if request.url.host != "kernel.example.test":
+            raise httpx.ConnectError("Empty-scope backend is offline", request=request)
+        return httpx.Response(200, json=manifest_fixture())
+
+    async with source_resources(config, kernel_transport=httpx.MockTransport(respond)) as sources:
+        products = await catalog_preview(sources, config, session_factory=lambda: pytest.fail("DB-free listing"))
+    assert seen == (["kernel.example.test"] if active_owner else [])
+    assert bool(products) is active_owner
+
+
+@pytest.mark.parametrize("product_id,status", [("unknown-id", 404), ("proposal_ai", 503)])
+async def test_catalog_distinguishes_unknown_product_from_owner_outage(
+    monkeypatch: pytest.MonkeyPatch, product_id: str, status: int
+) -> None:
+    config = source_settings()
+    monkeypatch.setattr(catalog_http, "settings", config)
+    seen: list[str] = []
+
+    def offline(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.host)
+        raise httpx.ConnectError("Configured backend is offline", request=request)
+
+    async with source_resources(config, kernel_transport=httpx.MockTransport(offline)) as sources:
+        app = FastAPI()
+        app.state.sources = sources
+        app.include_router(catalog_http.router)
+        app.dependency_overrides[get_session_factory] = lambda: lambda: pytest.fail("No DB needed")
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://portal.test") as client:
+            response = await client.get(f"/api/catalog/products/{product_id}")
+    assert response.status_code == status
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.json()["detail"]["code"] == (
+        "catalog_product_not_found" if status == 404 else "catalog_unavailable"
+    )
+    assert seen == ([] if status == 404 else ["kernel.example.test"])
+
+
+@pytest.mark.parametrize("total_timeout,expected_status", [(10.0, 503), (20.0, 200)])
+async def test_discovery_uses_configured_aggregate_deadline(
+    monkeypatch: pytest.MonkeyPatch, total_timeout: float, expected_status: int
+) -> None:
+    config = source_settings(preflight_total_timeout_seconds=total_timeout)
+    monkeypatch.setattr(catalog_http, "settings", config)
+    clock = [0.0]
+    monkeypatch.setattr(preflight, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        # Each read fits the smaller budget alone; both together do not.
+        clock[0] += 6.0
+        document = summary_manifest() if request.url.host == "summary.example.test" else manifest_fixture()
+        return httpx.Response(200, json=document)
+
+    async with source_resources(config, kernel_transport=httpx.MockTransport(respond)) as sources:
+        app = FastAPI()
+        app.state.sources = sources
+        app.include_router(catalog_http.router)
+        app.dependency_overrides[get_session_factory] = lambda: lambda: pytest.fail("DB-free listing")
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://portal.test") as client:
+            response = await client.get("/api/catalog/products")
+    assert response.status_code == expected_status
+    if expected_status == 503:
+        assert response.json()["detail"]["reason"] == "preflight_deadline_exceeded"
+    else:
+        assert "synthetic_summary" in {item["product_id"] for item in response.json()["products"]}
 
 
 @pytest.mark.parametrize(
