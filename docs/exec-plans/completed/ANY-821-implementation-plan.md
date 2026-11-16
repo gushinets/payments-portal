@@ -16,7 +16,7 @@ the [delivery workflow](../../engineering/AGENT_WORKFLOW.md), their linked codin
 and testing guidance, and the [Kernel integration map](../../integrations/platform-kernel.md).
 
 Planning checkout: `ANY-821` at `2d278f62`; compared main: `6e3d458a`.
-The following open PR heads were inspected on 2026-11-16:
+The following PR snapshots informed implementation decisions on 2026-11-16:
 
 - [ANY-832 / PR 168](https://github.com/gushinets/payments-portal/pull/168),
   [20eacc5d](https://github.com/gushinets/payments-portal/commit/20eacc5dfb7e20551ae3c40c1c67d941b1e0f3ff):
@@ -35,10 +35,10 @@ The following open PR heads were inspected on 2026-11-16:
   fixes monthly allowance calendar interpretation. Preserve its regressions;
   it creates no extra purchase-resolution implementation work.
 
-None implements terminal UNKNOWN resolution: their existing hold release still
-covers only changed terms before a possible send. Implement against main without
-importing these PRs; retain the agreed ANY-821 then ANY-766 merge order. Recheck
-touched seams if the pinned heads change.
+None of these snapshots implements terminal UNKNOWN resolution; their hold
+release covers only changed terms before a possible send. These are historical
+comparisons: local `main` now contains ANY-766 (`ece3590b`). Recheck touched seams
+against the integration target.
 
 ## Implementation - three parts
 
@@ -76,6 +76,8 @@ resolution, worker and UI behavior. Reuse existing recovery and audit coverage.
   They receive no automatic access or cross-purchase adoption. Route unsafe
   findings to existing manual review; the same operator action must support
   resolving the exact late-object case after its original hold has gone.
+  Keep financial CREATE blocked until those cases are resolved, independently
+  of later listing results.
   Preserve ANY-832's inventory owners and strict financial admission on integration.
 - Keep completed purchases ineligible in the existing paid-access dependency
   checks and call the shared reducer in the resolution transaction, preserving
@@ -95,9 +97,9 @@ resolution, worker and UI behavior. Reuse existing recovery and audit coverage.
   restart, stale-worker races, late discovery after a replacement, user/product
   isolation and UI reload. Use PostgreSQL for transaction and migration behavior.
 - Give the ANY-821 migration a distinct revision from its actual main parent.
-  With the agreed ANY-821-before-ANY-766 sequence, join the independent heads
-  with a merge revision during integration; do not rewrite published ANY-766
-  migrations. Verify both upgrade paths and the combined head.
+  Join the independent ANY-821/ANY-766 heads with a merge revision during
+  integration; do not rewrite published ANY-766 migrations. Verify both upgrade
+  paths and the combined head.
 - Run focused tests, `npm run generate`, and the broadest supported canonical
   checks; record skips and limitations. Check the touched inventory, paid-state,
   migration and cabinet seams in an isolated combination with the pinned PRs.
@@ -111,4 +113,4 @@ enablement and real-provider gates remain with their existing owners.
 
 - [x] Operator completion and minimal state/contract migration.
 - [x] Terminal guards, late-object handling and shared paid-state integration.
-- [x] Existing-screen presentation, runbook and focused/combined verification.
+- [x] Existing-screen presentation, runbook and focused verification.

@@ -577,10 +577,13 @@ result at the localized `/account?purchase=<id>#billing` link and start a new
 purchase with current terms; there is no automatic charge, access grant or quota
 reset. A late live original discovered by `recover` or inventory opens a
 `purchase_late_external_object` case on the original purchase without changing
-its terminal history or adopting it into the replacement. Correct the source,
-obtain fresh final confirmation and run the same action with `--case-id` and a
-fresh digest to close that exact case. An old delayed GET cannot reopen a case
-whose confirmation supersedes that read. Fresh contradictory evidence can.
+its terminal history or adopting it into the replacement. Any open late-object
+case blocks new financial CREATE for that customer independently of later
+listings. Independently proven access for other products remains eligible.
+Correct the source, obtain fresh final confirmation and run the same action
+with `--case-id` and a fresh digest to close that exact case. An old delayed GET
+cannot reopen a case whose confirmation supersedes that read. Fresh contradictory
+evidence can.
 
 ### Existing original-object resolutions
 
@@ -646,10 +649,11 @@ or already-bound objects, unsupported policy, customer identity conflict,
 unrelated open cases, terminal revival and changed accepted requests. Diagnose
 billing_review_stale, billing_review_unrelated_cases, billing_review_proof_incomplete,
 billing_review_terminal, purchase_history_unproven and ordinary source/busy errors;
-do not bypass them. There is no release-terminal, force-release, arbitrary rebind,
-commercial reacceptance, manual paid or quota command. Terminal revival has no
-override; an inventory review requires fresh proof that competition was corrected. Existing Step 7 proven-unsent automatic
-release keeps its separate rule.
+do not bypass them. `resolve-review` does not release purchase holds; audited
+terminal completion uses `resolve-purchase` above. There is no release-terminal, force-release,
+arbitrary rebind, commercial reacceptance, manual paid or quota command. Terminal
+revival has no override; an inventory review requires fresh proof that competition
+was corrected. Existing Step 7 proven-unsent automatic release keeps its separate rule.
 
 Source proof intervals are bracketed by short PostgreSQL clock reads before
 and after source I/O; their sessions close before HTTP. Reconciliation claims,

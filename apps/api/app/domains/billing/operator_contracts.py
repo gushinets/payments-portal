@@ -17,6 +17,7 @@ from app.domains.purchases.contracts import Purchase
 from app.domains.billing.reconciliation_contracts import SubscriptionProof
 
 RESOLUTION_SCHEMA = "billing-operator-resolution:v1"
+LATE_REASON = "purchase_late_external_object"
 
 
 class ResolutionRequest(BaseModel):

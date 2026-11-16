@@ -138,3 +138,19 @@ def work(db: Session, references: tuple[str, ...]) -> list[BillingWorkItem]:
             .limit(101)
         )
     )
+
+
+def has_open_purchase_review(db: Session, customer_id: UUID, *, reason: str) -> bool:
+    return bool(
+        db.scalar(
+            select(
+                exists().where(
+                    PurchaseIntent.customer_id == customer_id,
+                    ManualReviewCase.scope_kind == "purchase_intent",
+                    ManualReviewCase.scope_reference == cast(PurchaseIntent.purchase_intent_id, Text),
+                    ManualReviewCase.reason_code == reason,
+                    ManualReviewCase.case_state == "open",
+                )
+            )
+        )
+    )
