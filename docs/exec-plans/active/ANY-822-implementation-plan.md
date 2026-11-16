@@ -1,21 +1,53 @@
 # ANY-822 — Rebuild test execution acceleration from main
 
-Status: **COMPLETE — implementation and local acceptance passed**
+Status: implementation complete; local acceptance passed; remote CI pending
 Created: 2026-11-13
 Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
 Execution branch: `ANY-822`
 Original base: `2d278f62f0a2f7c4b40fb322618b268580de2301`
 Rebased on main: `ece3590b857adb120182949dfe291116ca8ba510` (ANY-766, 2026-11-16)
 
-## 1. Objective, decisions and preparation
+## 1. Current acceptance — rebased branch (2026-11-16)
 
-Reduce complete test feedback time while preserving meaningful coverage of
-business invariants, PostgreSQL migrations, independent commits, locking and
-recovery. Deliver implementation and durable testing guidance; research or a
-successful source-code transfer alone does not complete the issue.
+All 13 ANY-822 commits were replayed on main. The original head `c13ebfe8`
+is preserved by `codex/any822-before-rebase-20261116-c13ebfe8` and a verified
+full Git bundle. ANY-766 product code, migrations and generated contracts are
+preserved; its older test accelerator is superseded by the single ANY-822
+runner and `PostgresTestDatabase`. Final collection: **3,623 IDs**, versus
+**3,502 on main**; all removed IDs have retained guarantee owners below.
 
-Owner-selected acceptance targets on the current machine, without competing
-heavy workloads:
+Verified runtime/test source: `b5b17ef1` plus formatter-only test changes,
+committed as `12b15287`. Subsequent changes to this plan are documentation-only.
+
+- **PASSED:** `npm run check -- --coverage`, **887.182 s**: **2,411 API-fast**,
+  **1,211 PostgreSQL passed + 1 prerequisite skip**, **454 components**, static
+  checks and web build. The PostgreSQL skip requires the prepared paired
+  Kernel checkout (`ANY766_KERNEL_ROOT`); it is an existing ANY-766 condition.
+- **PASSED:** whole PostgreSQL runner, **597.834 s**, four workers. This spans
+  collection-log creation through runner-result writing, including fixture
+  cleanup. Server startup was **2.189 s**, outside the check interval.
+  Both absolute targets passed in this sample; PostgreSQL margin is only
+  **2.166 s**, not evidence of a stable timing guarantee.
+- **PASSED:** desktop/mobile Playwright, **246 passed + 2 existing live-source
+  opt-in skips**, no retries; local manifest contract check with a loopback mock.
+  These checks do not establish live-source or real-Kernel acceptance.
+- **PASSED:** source/history, collection/JUnit and documentation/diff checks;
+  owned test databases and containers were cleaned. Builds used cached local
+  Manrope fonts. Main was rechecked unchanged after verification.
+- **UNVERIFIED:** remote CI, actual CI cancellation/artifact upload, Windows,
+  paired/live acceptance and complete serial API coverage.
+
+Detailed commands, source/environment fingerprints, inventory, logs, timings
+and cleanup results: `.harness/any822-rebase-20261116/` and the printed run
+under `.harness/api-tests/`. Earlier checkpoints below are historical evidence,
+not acceptance of the rebased source. Current execution instructions belong to
+the [Testing Strategy](../../engineering/TESTING.md).
+
+## 2. Objective, scope and decisions
+
+Reduce complete feedback time while preserving business assertions, PostgreSQL
+migrations, independent commits, locking and recovery. Owner-selected targets
+on the current machine, without competing heavy workloads:
 
 - Complete PostgreSQL partition: **at most 10 minutes**.
 - Complete canonical `check`, including coverage and excluding browsers:
@@ -24,305 +56,110 @@ heavy workloads:
   retries introduced to obtain a passing result.
 - Existing developer aliases and CI use the accelerated path by default.
 
+The change owns test infrastructure, bounded test improvements and guidance;
+it does not change commercial or paid-access behavior. During the initial
+rebuild only the ANY-766 infrastructure slice was in scope. The later rebase
+retains the business changes already merged into main.
+
+The former branch `822-OLD` at `1201e29aa837d0446dd8440139c250536935df66`
+and its separately verified stash were preserved during preparation. Its
+unfinished xdist/double-reset design is historical research, not the baseline.
+Broad fixture extraction did not improve that sample and was not repeated.
+No new scheduler dependency, business-state cache or fixture framework was added.
+
 Follow [root AGENTS](../../../AGENTS.md), [documentation AGENTS](../../AGENTS.md),
-[Testing Strategy](../../engineering/TESTING.md),
 [Agent Workflow](../../engineering/AGENT_WORKFLOW.md) and
-[Coding Conventions](../../engineering/CODING_CONVENTIONS.md). Read the API/web
-subtree instructions before changing their tests. This work changes testing
-infrastructure and selected tests, not commercial or paid-access behavior.
+[Coding Conventions](../../engineering/CODING_CONVENTIONS.md), including the
+API/web subtree instructions and the owner's explicit-authorization rules.
 
-Preparation completed at the owner's request:
+## 3. Completed implementation
 
-- [x] Fetch remote `main` and fast-forward local `main`; both identify the base
-  above on 2026-11-13.
-- [x] Preserve the former branch as `822-OLD` at
-  `1201e29aa837d0446dd8440139c250536935df66`. Preserve its 15 modified/untracked
-  files in a separately verified Git stash.
-- [x] Create a new `ANY-822` from that main in the existing working directory.
-  No additional worktree is required.
-- [x] Record this replacement plan; all implementation steps were pending at
-  preparation time.
+- [x] **Settings:** safe configuration before application imports; no personal
+  dotenv in tests; shared child-process environment and explicit scenario
+  overrides. Preserve URL / complete `POSTGRES_*_TEST` / worktree precedence,
+  reject partial inputs and retain normal application dotenv behavior.
+  Include ANY-766 `BACKEND_*` settings in isolation.
+- [x] **Server:** separate worktree Compose project and loopback test port;
+  pinned PostgreSQL 18.4 image, 2 GiB tmpfs and normal durability. Preserve the
+  development volume and explicit test-server support. `test-db up` never pulls;
+  `test-db stop` removes this disposable server. Document RAM and stale-runtime
+  guidance in the Testing Strategy.
+- [x] **Database ownership:** one migrated schema/seed template per process,
+  fresh scenario clones and function-scoped business setup. Preserve explicit
+  migration transitions and fresh state afterwards. Validate before destructive
+  operations; track creation, preserve collisions, dispose pools and reject
+  checked-out/external connection leaks. No pre-drop, FORCE or foreign-run sweep.
+- [x] **Runner:** stdlib subprocesses, four PostgreSQL workers by default,
+  serial fast API and `--workers 1–4` diagnosis. Balance whole modules by case
+  count, preserving case order. Run both API partitions even after fast failure.
+  Validate selectors, collections, manifests, JUnit and exit status; retain real
+  failures/skips and available reports after partial launch or interruption.
+  Invalidate old caller JUnit before startup checks. Stop/join children with
+  graceful cleanup before escalation; handled interruptions return 130.
+- [x] **Coverage/CI:** API-fast and components run once with `check --coverage`;
+  PostgreSQL remains parallel and uninstrumented. Standalone `coverage api`
+  and `coverage api-fast` remain serial with their original scopes. CI uses
+  the accelerated path, preserves coverage artifacts and uploads available
+  runner diagnostics on failure/cancellation; Docker logs remain failure-only.
+- [x] **Documentation:** Testing Strategy is the detailed authority. README,
+  Development, AGENTS and Agent Workflow link it and agree on commands,
+  ownership, test levels, clocks/readiness and evidence reuse.
 
-The old branch is historical research, not an implementation baseline. Its
-double-reset ordinary/schema lifecycle and unfinished xdist implementation
-must not be carried forward. Broad fixture extraction in its Step 6 did not
-improve the measured sample; do not repeat that refactor as an optimization.
-Keep installations, commits, pushes and publication under the owner's existing
-explicit-authorization rules.
+## 4. Retained test guarantees
 
-## 2. Source material and measurement baseline
+These owners were identified before consolidation; fewer cases alone were not
+an acceptance criterion. Distinct transaction, migration and recovery paths
+retain real PostgreSQL coverage.
 
-Port the infrastructure slice from ANY-766, including its two follow-up fixes:
-
-- [10c5a4f — isolated templates and workers](https://github.com/gushinets/payments-portal/commit/10c5a4f357324f963f6f3dd1a9340e634e1feb5b)
-- [c5df8c9 — pytest arguments and report lifecycle](https://github.com/gushinets/payments-portal/commit/c5df8c987804f35eaba0917b12eac818124e61b4)
-- [12d06a6 — marker partitions](https://github.com/gushinets/payments-portal/commit/12d06a6df858246801381bf816d098bb507b706c)
-
-Transfer only the applicable testing changes, not the ANY-766 branch, its
-business implementation or its task-specific tests. Adapt selected earlier
-ANY-822 changes from `1a58bfe` (settings), `4c0e71d` (single-pass coverage) and
-`ad586d5` (public-route waits), without copying their old execution reports or
-progress claims.
-
-Historical evidence supports the direction, not acceptance of this rebuild:
-ANY-766 recorded a local complete PostgreSQL run around 7m12s and a CI command
-around 4m28s, compared with an earlier CI command around 28m53s. These were
-different runs/revisions, not controlled repeated measurements of this branch.
-
-Before implementation, capture collection and retain the existing 24-case
-identity/legal/email-verification control from the two persistence modules.
-Its exact historical IDs are in commit `793118f`, file
-`docs/exec-plans/active/ANY-822-step4-verification.json`, under
-`ordinary_measurements.baseline.case_ids`. Confirm them against this base and
-freeze the selected IDs before changing infrastructure.
-
-Measure the original serial path and final accelerated path using those same
-cases, one unmeasured warm-up and three measured runs per side. Use identical
-test inputs/settings and installed tool versions; report storage and process
-differences explicitly as parts of the intended optimization. Use newly
-created disposable resources for the baseline too. A before/after full-suite
-run is not required; final absolute runtime targets remain mandatory.
-
-## 3. Ordered infrastructure implementation
-
-### A. Isolate test configuration
-
-- [x] Adapt `1a58bfe`: establish safe test settings before application imports;
-  test processes must not consume the personal dotenv file.
-- [x] Preserve explicit scenario overrides and apply the same environment to
-  pytest workers, CLI tests and other child processes.
-- [x] Keep database configuration precedence: explicit
-  `TEST_POSTGRES_DATABASE_URL`, then complete explicit `POSTGRES_*_TEST`, then
-  worktree runtime configuration. Reject partial configuration.
-- [x] Keep production settings semantics unchanged and add focused regressions
-  for contamination, override precedence and child-process propagation.
-
-Expected effect: reproducible tests independent of developer configuration;
-remove the environment contamination observed during the previous research.
-
-### B. Introduce a dedicated RAM-backed test server
-
-- [x] Port the separate test Compose project, worktree-scoped loopback port
-  and runtime `POSTGRES_PORT_TEST` configuration from ANY-766.
-- [x] Use the repository's existing pinned PostgreSQL image and a 2 GiB tmpfs
-  mounted at `/var/lib/postgresql`. Preserve normal PostgreSQL durability
-  settings. Keep the development server and its persistent volume separate.
-- [x] Route `test-db up/stop` to this test server. Stale runtime configuration
-  must explain that `test-db up` is required.
-- [x] Continue supporting explicitly configured test servers. The standard
-  acceptance environment uses tmpfs; document RAM requirements and that
-  stopping this disposable server loses its test state.
-
-Expected effect: avoid the disk/checkpoint stalls that prevented reliable
-parallel execution during ANY-766 experiments.
-
-### C. Clone a migrated database template per scenario
-
-- [x] Give each pytest process unique session-owned scenario/template database
-  names. Build its template once through real Alembic `upgrade head`, including
-  migration seeds, and close template connections before cloning.
-- [x] Replace repeated migrations for `migrated_database` with a fresh database
-  clone before each dependent test. Keep business data, mutable fixtures and
-  clients function-scoped; do not cache prepared purchase/reconciliation state.
-- [x] Keep migration tests' explicit schema resets and upgrade/downgrade
-  transitions. Ordinary tests following them must still receive a fresh clone.
-- [x] Validate destructive targets before connecting/executing SQL. Use one
-  fixture owner, track successful creation, fail on name collisions, and clean
-  up only resources created by the current run.
-- [x] Dispose pools and reject checked-out connections before replacement.
-  Do not pre-drop a colliding database or use `DROP ... FORCE`. Connection
-  leaks must remain visible as failures.
-
-Expected effect: remove repeated Alembic startup while retaining PostgreSQL
-constraints, triggers, independent connections and real commit behavior.
-
-### D. Port bounded PostgreSQL parallelism
-
-- [x] Implement the stdlib subprocess runner and the three source commits'
-  documented argument/report-lifecycle and marker-partition fixes. Add no
-  dependency on xdist or another scheduler.
-- [x] Default to four PostgreSQL processes, keeping fast API tests serial.
-  Partition whole modules greedily by collected case count, preserving order
-  within modules. Each process owns separate database resources and artifacts.
-- [x] Support `test api-postgres --workers N` and `test api --workers N` for
-  1–4 workers; one worker is the serial diagnostic mode. For `api-fast`, allow
-  only a serial worker setting. Keep existing npm aliases working.
-- [x] `test api` runs the fast and PostgreSQL partitions and retains outcomes
-  from both, including when the fast partition fails.
-- [x] Retain per-run manifests/logs/JUnit, expected-versus-worker node-ID
-  checks, merged JUnit, strict supported marker partitions and safe path/argument
-  handling. Fix nondeterministic parameter IDs only where collection requires it.
-- [x] Fail on collection errors, worker failures, missing reports or mismatched
-  collections. Preserve failures and skips in reports; a previous report must
-  never be presented as the current run's success.
-- [x] On interruption, stop/join children and allow fixture cleanup before
-  forced process termination. Return a nonzero result. Do not sweep resources
-  from previous runs; any hard-kill leftovers remain confined to disposable
-  test storage and must be reported rather than silently ignored.
-
-Expected effect: parallelize the dominant PostgreSQL partition using the
-method already exercised in ANY-766, with complete outcome accounting.
-
-### E. Execute coverage once and wire CI
-
-- [x] Adapt `4c0e71d` to add `check --coverage`, including `--fast --coverage`.
-  Run API-fast and frontend components once each with coverage enabled.
-- [x] Change CI quality to `check --fast --coverage`, remove the two standalone
-  duplicate coverage executions, and preserve artifact publication.
-- [x] Run PostgreSQL uninstrumented and parallel in a complete `check`.
-  Preserve standalone `coverage api` and `coverage api-fast` behavior and
-  scope, using serial execution; do not introduce parallel coverage merging.
-- [x] Add tmpfs to the CI PostgreSQL service and use the same four-process
-  runner. Preserve existing CI checks and failure diagnostics.
-
-Expected effect: eliminate duplicate API-fast/component work in quality CI
-and make normal local and CI commands use the same accelerated implementation.
-
-## 4. Bounded test improvements
-
-For each consolidation, record the old guarantee and its retained test owner.
-Preserve assertions before removing cases; do not use test-count reduction as
-the success metric.
-
-- [x] In `test_expiration_never_appends_or_changes_latest_revision`, reduce the
-  3x3 PostgreSQL matrix to the three stages `before_database`, `after_history`
-  and `after_flush`, using the common account-day boundary. Keep all three
-  deadline sources (account day, policy, price) in the existing fast
-  `test_evaluation_carries_exclusive_account_calendar_boundary` matrix. Retain
-  rollback/history assertions and the separate real PostgreSQL lock-wait test.
-- [x] For
+- **Expiry:** the original 3x3 matrix becomes three PostgreSQL publication
+  stages (`before_database`, `after_history`, `after_flush`) with rollback and
+  immutable-history assertions. Account-day, policy and price calculations
+  remain in `test_evaluation_carries_exclusive_account_calendar_boundary`;
+  the separate real PostgreSQL lock-wait test remains.
+- **Bounded paid reader:** only
   `test_paid_read_bounds_display_evidence_without_truncating_effective_contents`
-  only, replace full purchase/reconciliation setup with a module-local fixture
-  for valid persisted reader state. Retain real FK-valid provenance records,
-  typed effective state and valid allowance technical terms. Keep the real HTTP
-  request, 100-product cap, complete grants/allowances, and before/after billing
-  snapshot assertions. Other paid-read scenarios keep their full business path.
-  Do not introduce a general billing fixture framework.
-- [x] Move the pure subscription-state regex guard test from Playwright to
-  Vitest. Extract one test-only TypeScript helper shared with the real browser
-  assertions; preserve its positive/negative input cases and page coverage.
-- [x] Remove the weaker synchronous unverified-email component duplicate,
-  retaining the stronger test that checks after React effects have executed.
-- [x] Adapt `ad586d5` only in public-route tests: replace `networkidle` with
-  the relevant response and visible-ready-state waits. Await fonts and required
-  effects before accessibility assertions; retain desktop/mobile coverage.
+  uses module-local typed, FK-valid persisted state and technical terms. The
+  real HTTP read still checks the 100-product cap, complete grants/allowances
+  beyond that cap and no billing writes. Other scenarios retain full
+  purchase/reconciliation setup.
+- **Subscription wording:** `SubscriptionStateGuard.test.ts` retains every
+  original regex input; real browser assertions share the same helper.
+- **Unverified email:** the stronger component test checks after React effects
+  and also rejects refresh; only the weaker synchronous duplicate was removed.
+- **Public routes:** relevant response, hydration/visible state and font waits
+  replace `networkidle`; desktop/mobile and accessibility assertions remain.
+- **ANY-766 DB safety:** unique names/routing and unsafe-template rejection
+  remain in database-safety tests; real template-lifecycle tests reject
+  checked-out connections. ANY-766 database-fixture tests retain committed
+  DDL, seed and sequence isolation.
+- **ANY-766 runner:** module balancing, serial/parallel outcomes, collection
+  failure, option validation and cancellation cleanup remain in API runner
+  regressions, including zero-exit/no-report crashes. Adapted tiny-subprocess
+  dispatch tests preserve fast-before-PostgreSQL execution and combined
+  success/failure reports. Stale success after collection interruption is
+  intentionally replaced by the current incomplete/error status.
+- **Stability fixes:** inventory tests explicitly establish queue order and
+  retain competing reconciliation checks; customer recovery rejects Kernel
+  transport calls. Production deadlines, retries and assertions are unchanged.
 
-Expected effect: fewer redundant database preparations and browser contexts,
-plus concrete examples for future work. These are supporting improvements;
-RAM, templates and bounded workers remain the main performance intervention.
+Focused checks cover one/four-worker equivalence, real migration/ordinary test
+ordering across processes, seeds, unsafe targets, collisions, cleanup failures,
+report corruption, partial launch, cancellation and single-pass coverage.
+Real timeout, cancellation and lock-wait tests retain elapsed-time mechanisms.
+Shared fixtures own resources; factories own data shapes; no unrelated helper
+migration or test-framework refactor was required.
 
-## 5. Documentation, verification and completion
+## 5. Frozen before/after measurement (2026-11-13)
 
-### Documentation changes
+This controlled sample predates the ANY-766 rebase. It compares infrastructure,
+not the current full-suite runtime. The same 24 identity/legal/verification
+cases, inputs and installed tool versions were retained, with one excluded
+warm-up and three measured runs per side. Exact historical IDs originated in
+`793118f:docs/exec-plans/active/ANY-822-step4-verification.json`, under
+`ordinary_measurements.baseline.case_ids`.
 
-- [x] Update the existing Testing Strategy as the single detailed authority;
-  reconcile README/development/AGENTS command references and links.
-- [x] Document test-server lifecycle, configuration precedence, memory needs,
-  default workers, serial diagnosis, interruption behavior and ownership.
-- [x] Require the cheapest test level that protects the actual invariant.
-  Keep PostgreSQL for migrations, constraints, independent commits, locks and
-  recovery; use fast matrices for calculation variants and representative
-  integration paths for wiring.
-- [x] Distinguish fixture resource ownership from factory data shapes; keep
-  mutable business setup per test. For new/materially changed test helpers,
-  avoid imports from another `test_*.py`; extract only justified shared setup.
-- [x] Require controlled clocks for calendar calculations and observable
-  readiness in browser tests, while preserving real timeout/cancellation/lock
-  scenarios. Do not treat retries or increased deadlines as repairs.
-- [x] Extend Agent Workflow with focused iteration, final broad verification,
-  reuse of still-valid evidence, and an assertion/guarantee map for consolidation.
-- [x] Record compact timings and conclusions in this plan or a short results
-  document. Keep detailed logs/manifests/JUnit in `.harness` or CI artifacts;
-  do not copy the previous branch's large reports into this rebuild.
-
-Relevant primary references for these rules:
-[PostgreSQL database templates](https://www.postgresql.org/docs/18/sql-createdatabase.html),
-[pytest-postgresql template approach](https://github.com/dbfixtures/pytest-postgresql),
-[Docker tmpfs](https://docs.docker.com/engine/storage/tmpfs/),
-[pytest flaky-test guidance](https://docs.pytest.org/en/stable/explanation/flaky.html),
-[Playwright practices](https://playwright.dev/docs/best-practices).
-
-### Focused verification during implementation
-
-- [x] Settings/child-process isolation and explicit configuration precedence.
-- [x] Fresh state across tests/separate pytest processes, migration seeds and mixed
-  ordinary/migration ordering; real independent-commit and locking scenarios.
-  Concurrent worker verification passed in Step 5.
-- [x] Unsafe-target rejection, collision preservation, connection-leak failure
-  and cleanup of owned resources after failed setup/test execution.
-- [x] Module partition completeness, one-versus-four-worker equivalence on a
-  small real sample, and the mixed API dispatcher on a small controlled sample.
-- [x] Collection failure, failed/crashed worker, missing/mismatched manifests
-  or JUnit, skips, and interruption; validate return codes and reports.
-- [x] Single API-fast/component execution with coverage, unchanged standalone
-  coverage scope and compatible npm aliases.
-- [x] The changed backend/component/browser tests and their guarantee map.
-
-### Final acceptance on the implementation revision
-
-- [x] Run `npm run check -- --coverage` once on the final source state and
-  measure its PostgreSQL stage and complete non-browser wall time.
-- [x] Run `npm run typecheck:web` and the complete Playwright suite because
-  browser tests change. Reuse valid checks unless affected code or conditions
-  change; do not routinely run full fast/API partitions again before `check`.
-- [x] Include collection, database creation/cloning, tests and cleanup in
-  runtime figures. Report server startup separately. Use installed dependencies
-  and available browsers, retain caches consistently, and state machine/load,
-  tools, storage, process count, SHA, commands, outcomes and exclusions.
-- [x] Confirm PostgreSQL <=10 minutes and complete non-browser `check`
-  <=15 minutes. If either target fails, profile and correct the measured
-  bottleneck within scope; do not declare completion from a successful port.
-- [x] Inspect the final diff, generated-file status and all new files. Record
-  each check as passed/failed/blocked/skipped with its actual revision.
-- [x] Validate CI configuration locally; record actual remote CI separately
-  after normal authorized publication. Local checks do not imply a CI PASS.
-
-### ANY-766 rebase: retained test guarantees (2026-11-16)
-
-The older ANY-766 accelerator is superseded by the single ANY-822 runner and
-`PostgresTestDatabase`; product changes, migrations and business tests remain.
-Before consolidation, retained owners are:
-
-- Unique names/routing and unsafe-template rejection: database-safety tests;
-  checked-out connection rejection: real PostgreSQL template-lifecycle tests.
-- Committed DDL, seed and sequence isolation: ANY-766 database-fixture tests.
-- Complete module balancing, serial/parallel outcomes, collection failure,
-  option validation and cancellation cleanup: API test-runner regressions.
-  Retain a zero-exit/no-report worker regression from the older runner.
-- Fast-before-PostgreSQL dispatch and combined success/failure reports:
-  adapted dispatch tests using a tiny subprocess suite.
-- Previous reports are replaced with incomplete status before launch;
-  retaining stale success after collection interruption is intentionally removed.
-
-### Current execution evidence
-
-Steps 1–9 and local review fixes are complete; current acceptance is summarized
-in Step 9 and the final corrections below. Earlier entries retain their handoff status.
-
-Preparation verification on 2026-11-13: `npm run docs:check` passed;
-`git diff --check` and the new plan's whitespace check passed. At preparation
-time, the working changes contained only this plan and its documentation-index
-entry; runtime and performance suites had not yet been run.
-
-#### Step 1 — original serial baseline (2026-11-13)
-
-- [x] Read the project instructions, Testing Strategy and preparation evidence;
-  preserve the pre-existing plan and documentation-index changes on `ANY-822`.
-- [x] Capture complete API, fast and PostgreSQL collections before implementation.
-- [x] Resolve and freeze the historical 24-case control against this base.
-- [x] Run one excluded warm-up and exactly three measured serial runs, without
-  coverage, using newly created disposable resources and unchanged fixtures.
-- [x] Verify exact collection, all outcomes, JUnit completeness and database
-  cleanup for every run; remove only this run's container and volume.
-- [x] Complete final documentation, canonical fast and diff checks.
-
-Collection passed: **2,866 total = 1,871 API-fast + 995 PostgreSQL**. The two
-marker partitions are disjoint and their union exactly matches the full
-collection. All historical control IDs exist unchanged, including the three
-commercial-triplet parameter cases. The ordered, newline-terminated UTF-8 control
-list has SHA-256
-`71eb278348978f6721ab01cfaf43117f0331c8d6f376d533b800486a61039f65`.
-Freeze this exact order and parameter spelling for the final comparison:
+The ordered, newline-terminated UTF-8 control list has SHA-256
+`71eb278348978f6721ab01cfaf43117f0331c8d6f376d533b800486a61039f65`:
 
 ```text
 apps/api/tests/test_email_verification_persistence_postgres.py::test_confirm_and_resend_race_serializes_on_user_lock
@@ -351,311 +188,105 @@ apps/api/tests/test_identity_legal_persistence_postgres.py::test_registration_pe
 apps/api/tests/test_identity_legal_persistence_postgres.py::test_unknown_email_password_reset_uses_hashed_decoy_without_user_binding
 ```
 
-These unchanged tests characterize transactional registration/rollback,
-hashed sessions and reset tokens, logout/revocation, canonical scope/FK
-constraints, append-only legal evidence and allowed audit clearing, commercial
-triplet constraints, concurrent duplicate registration, and verification/resend
-serialization through independent PostgreSQL sessions. No assertions, cases,
-deadlines or retries were changed.
+- **Original serial/disk path:** warm-up **139.834 s**; measured
+  **146.553 / 73.228 / 56.941 s**; median **73.228 s**;
+  range **56.941–146.553 s**, relative range **122.37%**.
+  Setup/call/teardown totals: **107.437/36.763/0.309**,
+  **53.665/16.841/0.224**, **43.610/10.587/0.599 s**.
+  Server startup **28.524 s**, separately.
+- **Accelerated tmpfs/template path:** warm-up **13.188 s**; measured
+  **13.334 / 13.373 / 13.243 s**; median **13.334 s**. Four workers were
+  configured; these two modules used **two actual workers**.
+- Each invocation retained the exact control collection and **24 passed**,
+  complete JUnit, no skips/xfails and verified owned-resource cleanup. Timing
+  includes collection, database setup, tests and fixture/report teardown;
+  server startup and post-run probes are separate. No full before/after suite
+  measurement was required; current absolute targets are assessed in Section 1.
 
-The measured command was repository-root `.venv/bin/python -m pytest -p
-no:cacheprovider -p any822_evidence --durations=24 -ra --junitxml=<run.xml>`
-followed by the 24 exact node IDs above as separate subprocess arguments.
-The small evidence plugin only records collected IDs and phase outcomes/times;
-it does not modify fixtures or collection. Use the same recorder and frozen
-inputs for the final comparison. Each timed interval includes Python/pytest
-startup, imports/collection, physical test DB creation, the original per-case
-schema reset and Alembic upgrade, tests, teardown and JUnit writing. Server
-startup and the post-run read-only cleanup probes are outside those intervals.
+Baseline host: Linux `6.8.0-138-generic`, Xeon E5-2660 v4 (14 cores/28 logical
+CPUs), 31.24 GiB RAM. Python `3.12.13`, pytest `9.1.1`, Alembic `1.18.5`,
+SQLAlchemy `2.0.51`, psycopg `3.3.4`, pytest-cov `7.1.0`, Node `24.14.0`,
+npm `11.11.1`, uv `0.12.7`; installed xdist `3.8.0` was unused. PostgreSQL
+18.4 used the repository pin with normal durability; baseline storage was a
+new disk-backed ext4 Docker volume (87% used), final storage a 2 GiB tmpfs.
+No dependencies were installed/updated. Synthetic settings and owned routing
+isolated both measurements from personal or external data.
+Baseline Pydantic dotenv loading still existed; explicit synthetic fields
+shadowed consumed values. Step 2 subsequently disabled that test source.
 
-- Warm-up, excluded from statistics: **139.834 s**.
-- Measured runs, in execution order: **146.553 / 73.228 / 56.941 s**.
-- Median: **73.228 s**; range: **56.941–146.553 s**;
-  `(max - min) / median`: **122.37%**.
-- Setup/call/teardown totals for the measured runs, respectively:
-  **107.437/36.763/0.309 s**, **53.665/16.841/0.224 s** and
-  **43.610/10.587/0.599 s**. These phase totals exclude pytest startup/reporting.
-- All four invocations: **24 passed, exit 0**, exact frozen collection,
-  24 JUnit cases, no failures/errors/skips/xfails. After each invocation:
-  zero remaining application/test databases and zero other client connections.
+The original baseline was noisy: host load **7.78–12.90**, available RAM
+**12.89–14.32 GiB**, effectively no swap; no competing heavy check was launched
+by this task. Preserve the spread and storage/process differences; these
+samples do not establish a stable speedup factor.
 
-Environment and ownership:
+Exact commands, frozen environment/tool inventory, source fingerprints, phase
+outcomes, manifests, JUnit and server logs:
+`.harness/any822-step1-20261113/` and `.harness/any822-step9-20261113/`.
 
-- Linux `6.8.0-138-generic`, Intel Xeon E5-2660 v4, 14 cores/28 logical CPUs,
-  approximately 31.24 GiB RAM; Python `3.12.13`, pytest `9.1.1`, Alembic
-  `1.18.5`, SQLAlchemy `2.0.51`, psycopg `3.3.4`, pytest-cov `7.1.0`,
-  Node `24.14.0`, npm `11.11.1`, uv `0.12.7`. Installed pytest-xdist `3.8.0`
-  was auto-discovered but unused: **one serial pytest process**, no workers.
-  No dependencies were installed or updated; the full installed-version
-  inventory is retained with the evidence.
-- The repository-pinned PostgreSQL `18.4` image
-  `postgres:18.4-alpine3.22@sha256:774521500f4c22761b25a6bdb772a0a3c2e8dd32468210bdad9231c5752ea398`
-  was already installed and used with `--pull=never`. The newly created server
-  bound only a dynamically allocated `127.0.0.1` port, using a new disk-backed
-  Docker volume on ext4 (87% used), without tmpfs or durability tuning.
-  `fsync`, `synchronous_commit` and `full_page_writes` were `on`;
-  `shared_buffers` was 128 MiB and `max_connections` 100.
-  Server startup, including initialization/readiness: **28.524 s**, separately.
-- The measurement launcher supplied a clean allowlisted process environment,
-  explicit synthetic values for all Settings fields, disabled dotenv's
-  `load_dotenv` through `PYTHON_DOTENV_DISABLED=1`, and cleared external source,
-  SMTP and telemetry settings. Pydantic's existing dotenv source was still
-  present, with consumed fields shadowed by explicit environment values.
-  This is a measurement-only precaution; production/test settings code is
-  unchanged and Step 2 remains pending. Reuse the frozen `environment.json`
-  and installed tool versions for the final sample, changing only owned
-  database routing and artifact paths as required by the intended optimization.
-- pytest alone created/dropped `any822_baseline_tests` for each invocation.
-  The container `any822-baseline-1e08c1fd7869` and its new volume were removed
-  after verification; no existing server, volume or database was reused or
-  removed. The original fixture's destructive lifecycle remained confined to
-  this new disposable server.
+## 6. Historical implementation checkpoints
 
-Detailed evidence remains ignored under `.harness/any822-step1-20261113/`:
-`frozen-control.json`, `control-nodeids.txt`, `collection-*.json/log`,
-`collection-summary.json`, `environment.json`, `environment-metadata.json`,
-`baseline-results.json`, the measurement launcher/recorder, per-run logs,
-phase reports, collections and JUnit, and PostgreSQL logs. Source fingerprints
-are retained in `baseline-results.json`.
+These dated passes describe their own source states, not the current branch.
+Full step-by-step details remain in Git at `12b15287` and in the evidence paths.
 
-Final verification at the base SHA above, with only this plan changed during
-Step 1 and the pre-existing documentation-index entry preserved:
+- **Step 1:** original collection **2,866 = 1,871 fast + 995 PostgreSQL**;
+  `check:fast` **134.121 s**, 414 components; separate typecheck/docs passed.
+- **Step 2:** `check:fast` **129.235 s**, 1,886 fast + 414 components;
+  26 PostgreSQL/CLI and 15 new isolation regressions passed.
+- **Step 3:** `check:fast` **146.716 s**, 1,892 fast + 414 components;
+  28 settings/server and 29 PostgreSQL/CLI cases; real server isolation,
+  restart and cleanup passed.
+- **Step 4:** `check:fast` **229.539 s**, 1,908 fast + 414 components;
+  full serial PostgreSQL **1,003 tests, 25m24s**, 62 final focused tests passed.
+  The full check stopped at unavailable build fonts at that checkpoint.
+- **Step 5:** `check:fast` **134.075 s**, 1,941 fast + 414 components;
+  parallel PostgreSQL **1,003 tests, 418.608 s**, 33 runner regressions and
+  the same 29 real cases with one/four workers passed.
+- **Step 6:** `check:fast -- --coverage` **177.381 s**, 1,953 fast + 414
+  components; 342 focused checks and 27 PostgreSQL cases passed.
+- **Step 7:** 1,953 fast + 414 components; 15 PostgreSQL, 24 calendar and
+  54 desktop/mobile browser cases, web typecheck and static checks passed.
+- **Step 8:** documentation-only; **353 tooling tests, 15.184 s** and
+  16 command examples validated without dispatching database commands.
+- **Step 9/review fixes:** `8496803c` plus local fixes; complete coverage check
+  **622.442 s**, 1,967 fast + 414 components, PostgreSQL **997 tests, 407.486 s**.
+  47 runner and 33 affected PostgreSQL cases passed. Reused web typecheck,
+  **244 browser passes + 2 opt-in skips**, 4 React runtime passes, no retries.
+- **2026-11-14 corrections:** bootstrap guidance, duplicate PostgreSQL example
+  and fixed-interpreter S8705 annotation; six real-reexec regressions retained.
+  `check:fast -- --coverage`: **1,974 fast + 414 components**, passed.
+- **2026-11-16 reporting follow-up, before rebase:** `80da57f2` plus fixes;
+  seven regressions failed before the fix, both affected modules then passed
+  (**117 tests**). Complete coverage check **624.982 s**: **2,003 fast**,
+  **997 PostgreSQL**, **414 components**; build/static checks and cleanup passed.
 
-- **PASSED:** `npm run check:fast`, exit 0, **134.121 s**, executed on the host
-  with synthetic settings. It passed documentation/generated-artifact checks,
-  architecture, Python lint/format, web boundaries/typechecks, all **414**
-  component tests, web lint and all **1,871** API-fast tests (**995 deselected**,
-  no skips/xfails). Existing SQLite FK-sort/deprecation warnings remain in the
-  log; no source change was made to suppress them.
-- **PASSED:** separate `npm run typecheck:web`, final `npm run docs:check`,
-  `git diff --check`, explicit untracked-plan whitespace/control-digest checks,
-  and inspection of the original-to-current plan diff and all untracked files.
-  Measured execution-source fingerprints remain unchanged.
-- **RESOLVED environment-only attempts:** the first sandboxed `check:fast`
-  stopped at a web tooling test; direct diagnosis exposed `spawnSync npm EPERM`.
-  The same three tooling cases passed outside the sandbox. The first host
-  attempt then passed 1,868 API-fast cases and failed three runtime-config
-  cases because the measurement launcher's `KERNEL_MOCK_ENABLED=false` was
-  valid for Pydantic but incompatible with repo.py's `0/1` grammar. The final
-  canonical run used `KERNEL_MOCK_ENABLED=0` and passed completely. Dotenv
-  loading was enabled for canonical checks because they explicitly test its
-  behavior with synthetic files; explicit Settings values remained supplied.
-  The frozen benchmark environment and its four original runs were preserved.
-  All attempt logs/results remain in `check-fast*` artifacts.
-- **SKIPPED by step scope:** full PostgreSQL/complete `check`, coverage,
-  browsers and remote CI. No application journey or external-provider runtime
-  investigation applies to this measurement/documentation-only change.
+Intermediate SQL statement timeouts, inventory-ordering and HTTP-cleanup
+failures were retained in diagnostics. Final checks passed after the ordering
+and reporting fixes; the isolated statement-timeout/cleanup causes were not
+established. No production deadline, retry or assertion was relaxed. Older
+statements that ANY-766 sources or later steps were unavailable applied only
+to those handoffs; they are superseded by Section 1.
 
-Limitations: no competing heavy check was launched by this task during timing,
-but the shared developer desktop had background processes. One-minute host
-load ranged from approximately **7.78 to 12.90** in the captured samples;
-available RAM was approximately 12.89–14.32 GiB across the snapshots, and swap
-remained effectively unused. The large measured spread is retained without
-discarding or replacing a run. This is a noisy original-path baseline, not
-evidence of a stable speedup; compare the final sample with this variability
-explicitly. The complete PostgreSQL suite, complete `check`, coverage,
-browser suites and remote CI were not run in this measurement step. Full
-before/after suite measurement is not required by this plan; final absolute
-runtime targets remain Step 9 work.
+Evidence by step: `.harness/any822-step2-20261113/`,
+`.harness/any822-step3-20261113/`, `.harness/any822-step4-20261113/`,
+`.harness/any822-step5-20261113/`, `.harness/any822-step6-20261113/`,
+`.harness/any822-step7-20261113/`, `.harness/any822-step8-20261113/`.
+Final/review evidence: `.harness/any822-review-fixes-81411570eab5/`,
+`.harness/any822-strong-fixes-6747e01dd3d5/`,
+`.harness/any822-final-review-20261114/`,
+`.harness/any822-reporting-followup-20261116-a35232ff/` and `.harness/api-tests/`.
 
-#### Step 2 — isolate test configuration (2026-11-13)
+## 7. Source references
 
-Completed: isolated test settings and child processes from personal configuration;
-retained scenario overrides, database precedence and normal runtime dotenv behavior.
+Infrastructure source slice:
 
-Verification: `npm run check:fast` passed (1,886 API-fast + 414 component tests,
-129.235 s); 26 PostgreSQL/CLI cases, docs and diff checks passed. Added 15 settings
-regressions; all previous test IDs retained. Evidence: `.harness/any822-step2-20261113/`.
-Full PostgreSQL/check, coverage, browsers and CI remained deferred at that
-handoff; Steps 3–9 had not started.
+- [10c5a4f — isolated templates and workers](https://github.com/gushinets/payments-portal/commit/10c5a4f357324f963f6f3dd1a9340e634e1feb5b)
+- [c5df8c9 — pytest arguments and report lifecycle](https://github.com/gushinets/payments-portal/commit/c5df8c987804f35eaba0917b12eac818124e61b4)
+- [12d06a6 — marker partitions](https://github.com/gushinets/payments-portal/commit/12d06a6df858246801381bf816d098bb507b706c)
 
-#### Step 3 — dedicated RAM-backed PostgreSQL server (2026-11-13)
-
-Completed: dedicated PostgreSQL 18.4 Compose project with a 2 GiB tmpfs,
-worktree-scoped loopback port and `test-db up/stop` lifecycle. Normal durability,
-development storage and explicit test-server configuration are preserved.
-Stale runtime guidance and Compose credential/port precedence are covered.
-
-Verification: `npm run check:fast` passed (1,892 API-fast + 414 component tests,
-146.716 s); 28 focused settings/server and 29 PostgreSQL/CLI cases passed.
-Real tmpfs, restart, development isolation and owned-resource cleanup verified;
-docs and diff checks passed. Evidence: `.harness/any822-step3-20261113/`.
-Full PostgreSQL/check, coverage, browsers and CI remain deferred. Step 4 not started.
-
-#### Step 4 — migrated database template (2026-11-13)
-
-Completed: one migrated template per pytest process and fresh scenario clones.
-Migration transitions and per-test business state are preserved; collisions,
-connection leaks and cleanup of owned resources are covered.
-
-Verification: `npm run check:fast` passed (1,908 API-fast + 414 component tests,
-229.539 s); full serial PostgreSQL passed (1,003 tests, 25m24s); final focused
-verification passed (62 tests). Previous test IDs are retained; resource cleanup,
-docs and diff checks passed. Evidence: `.harness/any822-step4-20261113/`.
-
-Limitations: full `check` was interrupted before the font-dependent web build.
-Timings overlapped other checks and are diagnostic. The ANY-766 source commit
-was unavailable locally; implementation follows this plan's contract.
-Parallelism, coverage, browsers, CI and final acceptance remain Steps 5–9 work.
-
-#### Step 5 — bounded PostgreSQL subprocess runner (2026-11-13)
-
-Completed: four PostgreSQL processes by default, serial API-fast, whole-module
-partitioning and `--workers 1–4`. Collection/JUnit accounting, mixed API failure
-handling and child-process cleanup are covered; npm aliases are preserved.
-
-Verification: `npm run check:fast` passed (1,941 API-fast + 414 component tests,
-134.075 s); full parallel PostgreSQL passed (1,003 tests, 418.608 s). All 33 new
-runner regressions passed; the same 29 real cases passed with one/four workers.
-All previous test IDs are retained; resource cleanup, docs and diff checks passed.
-Evidence: `.harness/any822-step5-20261113/` and `.harness/api-tests/`.
-
-Limitations: the first full run had two SQL statement timeouts, not reproduced
-in diagnostics or the final run. Their cause remains unexplained; retain this
-stability risk for Step 9. No deadlines were increased, retries added or assertions weakened.
-ANY-766 source objects were unavailable locally; exact port parity is unverified.
-Windows, full `check`, coverage, browsers and CI were not run. Timings are
-diagnostic; Steps 6–9 have not started.
-
-#### Step 6 — single-pass coverage and CI (2026-11-13)
-
-Completed: `check --coverage` runs API-fast and components once each; standalone
-coverage remains serial. CI uses this path, a 2 GiB PostgreSQL tmpfs and four
-workers, preserving coverage and failure artifacts.
-
-Verification: `npm run check:fast -- --coverage` passed (1,953 API-fast + 414
-component tests, 177.381 s); 342 focused checks and 27 PostgreSQL cases with
-four workers passed. CI configuration, resource cleanup, docs and diff checks
-passed. Evidence: `.harness/any822-step6-20261113/` and `.harness/api-tests/`.
-
-Limitations: complete-check routing and standalone coverage scope were checked
-by regressions; full `check`, full instrumented API, browsers and remote CI were
-not run. Final runtime/stability acceptance remains Step 9. Steps 7–9 not started.
-
-#### Step 7 — bounded test improvements (2026-11-13)
-
-Completed: all five bounded improvements in Section 4. The paid-reader test
-uses module-local persisted state and also checks grants/allowances beyond the
-display cap; other paid-read scenarios retain their business setup.
-
-Retained guarantee owners:
-
-- Expiry sources: existing fast calendar matrix; PostgreSQL retains three
-  publication stages, rollback/history assertions and the separate real lock wait.
-- Subscription wording: `SubscriptionStateGuard.test.ts` retains all original
-  inputs; real browser assertions share the unchanged regex.
-- Unverified email: `does not request paid access before email verification`
-  checks after React effects and also asserts that refresh is absent.
-
-Verification: `npm run check:fast` passed (1,953 API-fast + 414 components);
-15 PostgreSQL, 24 calendar and 54 desktop/mobile browser cases passed, including
-accessibility checks. Web typecheck, docs, lint/format and diff checks passed.
-The frozen 24-case control is retained. Evidence: `.harness/any822-step7-20261113/`.
-
-Limitations: browser verification used existing Manrope files served locally
-through Next's test hook because Google Fonts was unavailable. Final full-suite,
-coverage and timing acceptance remains Step 9; Steps 8–9 have not started.
-
-#### Step 8 — durable testing documentation (2026-11-13)
-
-Completed: updated Testing Strategy, README, Development, AGENTS and Agent
-Workflow with execution/ownership rules, test-level selection and verification
-guidance. Only documentation changed.
-
-Verification: 353 focused tooling tests passed (15.184 s); 16 command examples
-validated without dispatching database commands. Docs and diff checks passed.
-Evidence: `.harness/any822-step8-20261113/` and `.harness/api-tests/`.
-
-Limitations: full check, browsers, final measurements and stability acceptance
-remain Step 9, not started. Remote CI was not run.
-
-#### Step 9 — final acceptance and review fixes (2026-11-13)
-
-Verified on `8496803c50d9b5153444290bfbcdedbcd4cfd351` plus the local review
-fixes. Implementation and local acceptance were complete; remote CI had not run
-at that handoff.
-
-Review fixes: invalidate stale JUnit before startup checks, retain completed
-worker results after launch failures, avoid duplicate reports on interruption,
-and document test-server startup. Inventory tests now establish queue order
-explicitly; recovery tests use an isolated Kernel transport. Assertions,
-production deadlines and retries were not weakened.
-
-- **PASSED:** latest `npm run check -- --coverage`, **622.442 s**:
-  **1,967 API-fast**, **414 components**, documentation, generation,
-  architecture, lint/format and web build. Coverage ran once per applicable suite.
-- **PASSED:** PostgreSQL within that check, **997 tests**, four workers,
-  **407.486 s**, exact expected/JUnit IDs and no failures or skips.
-  Both absolute performance targets were met.
-- **PASSED:** regressions reproduced the runner and inventory defects before
-  fixes; afterwards **47 runner tests** and **33 affected PostgreSQL tests** passed.
-- **REUSED PASS:** web typecheck; Playwright **244 passed, 2 existing opt-in
-  skips**, plus **4 React runtime tests**, without retries. UI/browser sources
-  are unchanged by the review fixes. CI YAML/workflow contracts and shell syntax
-  were checked locally.
-- Frozen 24-case control: excluded warm-up **13.188 s**; measured runs
-  **13.334 / 13.373 / 13.243 s**, median **13.334 s**, versus the original
-  **73.228 s** median. Inputs/tools were retained; disk/serial changed to
-  tmpfs/templates/two actual workers. The noisy baseline does not establish
-  a stable speedup factor.
-
-An intermediate full check failed on inventory ordering and HTTP cleanup.
-The final check passed after the fixes above; the isolated cleanup timeout's
-original cause remains unestablished.
-
-Verification used isolated PostgreSQL 18.4 servers with a 2 GiB tmpfs and normal
-durability settings. Timings include collection and fixture cleanup, excluding
-server startup. Owned databases/containers were cleaned; existing resources
-were preserved. Builds/browser tests used cached Manrope fonts.
-At this handoff, remote CI, Windows, live-source opt-in journeys,
-production-image/network checks and full serial API coverage were unverified.
-
-Detailed results, source/environment fingerprints and startup timings remain in
-`.harness/any822-step9-20261113/`,
-`.harness/any822-review-fixes-81411570eab5/` and
-`.harness/any822-strong-fixes-6747e01dd3d5/`.
-
-#### Final implementation corrections (2026-11-14)
-
-Corrected the bootstrap runbook and duplicate PostgreSQL example. Documented
-S8705 as a reviewed false positive at the fixed `execv` call and added six
-real-reexec regression cases; launcher behavior is unchanged.
-
-`npm run check:fast -- --coverage` passed (1,974 API-fast, 414 components).
-Bootstrap commands were checked without database operations. Detailed evidence:
-`.harness/any822-final-review-20261114/`.
-
-#### Local PR reporting follow-up (2026-11-16)
-
-At `80da57f2` plus local changes, JUnit validates worker exit status and retains
-test results alongside infrastructure errors. CI uploads existing diagnostics
-on failure or cancellation; Docker-log collection remains failure-only.
-The [Testing Strategy](../../engineering/TESTING.md) describes current behavior.
-
-Seven focused regressions failed before the fixes; both affected modules passed
-afterwards (**117 tests**). **PASSED:** `npm run check -- --coverage`, **624.982 s**:
-**2,003 API-fast**, **997 PostgreSQL**, **414 components**, web build and static
-checks. The disposable tmpfs PostgreSQL resources were cleaned; the build used
-local fonts. Actual CI cancellation/upload was not exercised.
-Evidence: `.harness/any822-reporting-followup-20261116-a35232ff/` and
-`.harness/api-tests/`. Later documentation-only edits reuse this runtime evidence
-and are verified by documentation and diff checks.
-
-#### ANY-766 rebase verification (2026-11-16)
-
-Replayed all 13 commits on `ece3590b`; backup:
-`codex/any822-before-rebase-20261116-c13ebfe8` (verified full Git bundle also retained).
-The guarantee map above records consolidation; ANY-766 product code, migrations
-and generated contracts are preserved. Final collection has 3,623 IDs versus
-3,502 on main; all removed IDs have retained owners.
-
-**PASSED:** rebased `b5b17ef1` plus formatter-only test changes:
-`npm run check -- --coverage`, **887.182 s**; 2,411 API-fast,
-1,211 PostgreSQL passed plus one existing paired-Kernel prerequisite skip,
-454 components, static checks and web build. Whole PostgreSQL runner elapsed
-**597.834 s**, including collection/fixture cleanup, excluding server startup.
-Both targets passed in this sample; PostgreSQL margin is only **2.166 s**.
-Desktop/mobile Playwright: **246 passed, 2 existing live-source opt-in skips**,
-no retries; local manifest contract passed. Owned resources were cleaned.
-Main was rechecked unchanged. Remote CI and paired/live acceptance were not run.
-Detailed logs, inventory, timing and cleanup evidence: `.harness/any822-rebase-20261116/`.
+Earlier ANY-822 inputs: `1a58bfe` (settings), `4c0e71d` (single-pass coverage)
+and `ad586d5` (public-route waits); their old progress claims were not reused.
+Mechanics and guidance: [PostgreSQL templates](https://www.postgresql.org/docs/18/sql-createdatabase.html),
+[pytest-postgresql](https://github.com/dbfixtures/pytest-postgresql),
+[Docker tmpfs](https://docs.docker.com/engine/storage/tmpfs/),
+[pytest stability](https://docs.pytest.org/en/stable/explanation/flaky.html) and
+[Playwright practices](https://playwright.dev/docs/best-practices).

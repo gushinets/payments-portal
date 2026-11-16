@@ -189,11 +189,15 @@ with `DROP ... FORCE`, connection termination or cleanup of another run's data.
 
 ### Reports, failures and interruption
 
-Every harness `test api*` invocation prints its unique directory under
-`.harness/api-tests/`. It contains partition collection logs/manifests,
-`expected.json` assignments, worker `nodeids.txt`, `pytest.log`, `manifest.json`
-and `junit.xml`, plus a merged `junit.xml` and `result.json` at the run root.
-Inspect the printed path for this invocation, not a prior successful run.
+After command/environment preparation and argument validation, the `test api*`
+runner prints its unique directory under `.harness/api-tests/`. A completed
+run contains collection logs/manifests, `expected.json` assignments, worker
+`nodeids.txt`, `pytest.log`, `manifest.json` and `junit.xml`, plus merged
+`junit.xml` and `result.json` at the run root. Failed or interrupted runs may
+contain only artifacts from the stages reached. Early preparation/validation
+failures may have no run directory; a supplied `--junitxml` path records the
+startup state as described below. Inspect the current invocation's available
+artifacts, not a prior successful run.
 
 Collection errors, failed/crashed workers, missing reports or differences
 between expected IDs, worker collections and JUnit produce a nonzero result.
