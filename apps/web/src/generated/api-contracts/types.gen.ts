@@ -49,6 +49,96 @@ export type AcceptDocumentResponse = {
 };
 
 /**
+ * AccessSnapshotAllowance
+ */
+export type AccessSnapshotAllowance = {
+    /**
+     * Allowance Id
+     */
+    allowance_id: string;
+    /**
+     * Metric Key
+     */
+    metric_key: string;
+    /**
+     * Product Id
+     */
+    product_id: string;
+    /**
+     * Quantity
+     */
+    quantity: number;
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
+ * AccessSnapshotGrant
+ */
+export type AccessSnapshotGrant = {
+    /**
+     * Product Id
+     */
+    product_id: string;
+    /**
+     * Valid Until
+     */
+    valid_until: string | null;
+};
+
+/**
+ * AccessSnapshotResponse
+ */
+export type AccessSnapshotResponse = {
+    /**
+     * Access Revision
+     */
+    access_revision: number;
+    /**
+     * Allowances
+     */
+    allowances: Array<AccessSnapshotAllowance>;
+    /**
+     * Consumer Id
+     */
+    consumer_id: string;
+    /**
+     * Consumer Policy Revision
+     */
+    consumer_policy_revision: number;
+    /**
+     * Expires At
+     */
+    expires_at: string;
+    /**
+     * Grants
+     */
+    grants: Array<AccessSnapshotGrant>;
+    /**
+     * Refresh After
+     */
+    refresh_after: string;
+    /**
+     * Region
+     */
+    region: string;
+    /**
+     * Schema Version
+     */
+    schema_version: 3;
+    /**
+     * Tenant Id
+     */
+    tenant_id: string;
+    /**
+     * User Id
+     */
+    user_id: string;
+};
+
+/**
  * AccountPurchaseResponse
  */
 export type AccountPurchaseResponse = {
@@ -79,6 +169,207 @@ export type AccountPurchasesResponse = {
      * Purchases
      */
     purchases: Array<AccountPurchaseResponse>;
+};
+
+/**
+ * AllowanceExhaustion
+ */
+export type AllowanceExhaustion = {
+    /**
+     * Allowance Id
+     */
+    allowance_id: string;
+    /**
+     * Event Type
+     */
+    event_type: 'allowance_exhausted';
+    /**
+     * Metric Key
+     */
+    metric_key: string;
+    /**
+     * Occurred At
+     */
+    occurred_at: string;
+    /**
+     * Product Id
+     */
+    product_id: string;
+    /**
+     * Quantity
+     */
+    quantity: number;
+    /**
+     * Region
+     */
+    region: string;
+    /**
+     * Schema Version
+     */
+    schema_version: 1;
+    /**
+     * Tenant Id
+     */
+    tenant_id: string;
+    /**
+     * Unit
+     */
+    unit: string;
+    /**
+     * User Id
+     */
+    user_id: string;
+};
+
+/**
+ * BackendCodeRequest
+ */
+export type BackendCodeRequest = {
+    /**
+     * Code Challenge
+     */
+    code_challenge: string;
+    /**
+     * Code Challenge Method
+     */
+    code_challenge_method: 'S256';
+    /**
+     * Consumer Id
+     */
+    consumer_id: string;
+};
+
+/**
+ * BackendCodeResponse
+ */
+export type BackendCodeResponse = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Expires At
+     */
+    expires_at: string;
+};
+
+/**
+ * BackendErrorDetail
+ */
+export type BackendErrorDetail = {
+    /**
+     * Code
+     */
+    code: string;
+};
+
+/**
+ * BackendErrorResponse
+ */
+export type BackendErrorResponse = {
+    detail: BackendErrorDetail;
+};
+
+/**
+ * BackendExchangeRequest
+ */
+export type BackendExchangeRequest = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Code Verifier
+     */
+    code_verifier: string;
+};
+
+/**
+ * BackendExchangeResponse
+ */
+export type BackendExchangeResponse = {
+    /**
+     * Access Token
+     */
+    access_token: string;
+    /**
+     * Consumer Id
+     */
+    consumer_id: string;
+    /**
+     * Consumer Policy Revision
+     */
+    consumer_policy_revision: number;
+    /**
+     * Expires At
+     */
+    expires_at: string;
+    /**
+     * Region
+     */
+    region: string;
+    /**
+     * Schema Version
+     */
+    schema_version?: 2;
+    /**
+     * Tenant Id
+     */
+    tenant_id: string;
+    /**
+     * Token Type
+     */
+    token_type?: 'Bearer';
+    /**
+     * User Id
+     */
+    user_id: string;
+};
+
+/**
+ * BackendIntrospectionRequest
+ */
+export type BackendIntrospectionRequest = {
+    /**
+     * Access Token
+     *
+     * Secret delegated user bearer for this consumer. Service bearer stays in Authorization.
+     */
+    access_token: string;
+};
+
+/**
+ * BackendIntrospectionResponse
+ */
+export type BackendIntrospectionResponse = {
+    /**
+     * Consumer Id
+     */
+    consumer_id: string;
+    /**
+     * Consumer Policy Revision
+     */
+    consumer_policy_revision: number;
+    /**
+     * Region
+     */
+    region: string;
+    /**
+     * Schema Version
+     */
+    schema_version?: 2;
+    /**
+     * Tenant Id
+     */
+    tenant_id: string;
+    /**
+     * User Id
+     */
+    user_id: string;
+    /**
+     * Valid Until
+     */
+    valid_until: string;
 };
 
 /**
@@ -395,6 +686,57 @@ export type LogoutResponse = {
 };
 
 /**
+ * ObservedPaidUsage
+ */
+export type ObservedPaidUsage = {
+    /**
+     * Allowance Id
+     */
+    allowance_id: string;
+    /**
+     * Available
+     */
+    available: number;
+    classification: UsageClassification;
+    /**
+     * Metric Key
+     */
+    metric_key: string;
+    /**
+     * Product Id
+     */
+    product_id: string;
+    /**
+     * Quantity
+     */
+    quantity: number;
+    /**
+     * Read At
+     */
+    read_at: string;
+    /**
+     * Remaining
+     */
+    remaining: number;
+    /**
+     * Reserved
+     */
+    reserved: number;
+    /**
+     * Status
+     */
+    status: 'observed';
+    /**
+     * Successful Used
+     */
+    successful_used: number;
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
  * PaidAccessAllowanceResponse
  */
 export type PaidAccessAllowanceResponse = {
@@ -410,10 +752,7 @@ export type PaidAccessAllowanceResponse = {
      * Product Id
      */
     product_id: string;
-    /**
-     * Provenance
-     */
-    provenance: 'SIMULATED';
+    provenance: SourceProvenance;
     /**
      * Quantity
      */
@@ -493,6 +832,41 @@ export type PaidAccessResponse = {
      * Read At
      */
     read_at: string;
+};
+
+/**
+ * PaidUsageErrorDetail
+ */
+export type PaidUsageErrorDetail = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Request Id
+     */
+    request_id: string | null;
+};
+
+/**
+ * PaidUsageErrorResponse
+ */
+export type PaidUsageErrorResponse = {
+    detail: PaidUsageErrorDetail;
+};
+
+/**
+ * PaidUsageResponse
+ */
+export type PaidUsageResponse = {
+    /**
+     * Access Revision
+     */
+    access_revision: number;
+    /**
+     * Items
+     */
+    items: Array<ObservedPaidUsage | UnobservedPaidUsage | UnavailablePaidUsage>;
 };
 
 /**
@@ -654,10 +1028,7 @@ export type PurchaseTechnicalTermsResponse = {
      */
     digest: string;
     offer: TechnicalOffer;
-    /**
-     * Provenance
-     */
-    provenance: 'SIMULATED';
+    provenance: SourceProvenance;
     /**
      * Source Digest
      */
@@ -946,6 +1317,73 @@ export type TechnicalOffer = {
      */
     unit: string;
 };
+
+/**
+ * UnavailablePaidUsage
+ */
+export type UnavailablePaidUsage = {
+    /**
+     * Allowance Id
+     */
+    allowance_id: string;
+    classification: UsageClassification;
+    /**
+     * Metric Key
+     */
+    metric_key: string;
+    /**
+     * Product Id
+     */
+    product_id: string;
+    /**
+     * Quantity
+     */
+    quantity: number;
+    /**
+     * Status
+     */
+    status: 'unavailable';
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
+ * UnobservedPaidUsage
+ */
+export type UnobservedPaidUsage = {
+    /**
+     * Allowance Id
+     */
+    allowance_id: string;
+    classification: UsageClassification;
+    /**
+     * Metric Key
+     */
+    metric_key: string;
+    /**
+     * Product Id
+     */
+    product_id: string;
+    /**
+     * Quantity
+     */
+    quantity: number;
+    /**
+     * Status
+     */
+    status: 'unobserved';
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
+/**
+ * UsageClassification
+ */
+export type UsageClassification = 'current' | 'historical';
 
 /**
  * ValidationError
@@ -1282,6 +1720,47 @@ export type GetSessionApiAuthSessionGetResponses = {
 
 export type GetSessionApiAuthSessionGetResponse = GetSessionApiAuthSessionGetResponses[keyof GetSessionApiAuthSessionGetResponses];
 
+export type CreateBackendCodeApiBackendSessionCodesPostData = {
+    body: BackendCodeRequest;
+    path?: never;
+    query?: never;
+    url: '/api/backend-session-codes';
+};
+
+export type CreateBackendCodeApiBackendSessionCodesPostErrors = {
+    /**
+     * Unauthorized
+     */
+    401: BackendErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: BackendErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: BackendErrorResponse;
+    /**
+     * Issuance budget exhausted; Retry-After is seconds until retry.
+     */
+    429: BackendErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: BackendErrorResponse;
+};
+
+export type CreateBackendCodeApiBackendSessionCodesPostError = CreateBackendCodeApiBackendSessionCodesPostErrors[keyof CreateBackendCodeApiBackendSessionCodesPostErrors];
+
+export type CreateBackendCodeApiBackendSessionCodesPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: BackendCodeResponse;
+};
+
+export type CreateBackendCodeApiBackendSessionCodesPostResponse = CreateBackendCodeApiBackendSessionCodesPostResponses[keyof CreateBackendCodeApiBackendSessionCodesPostResponses];
+
 export type WidgetBootstrapApiBillingWidgetBootstrapPostData = {
     body: WidgetBootstrapRequest;
     headers?: {
@@ -1493,6 +1972,39 @@ export type PaidAccessApiPaidAccessGetResponses = {
 };
 
 export type PaidAccessApiPaidAccessGetResponse = PaidAccessApiPaidAccessGetResponses[keyof PaidAccessApiPaidAccessGetResponses];
+
+export type PaidUsageApiPaidUsageGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/paid-usage';
+};
+
+export type PaidUsageApiPaidUsageGetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: PaidUsageErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: PaidUsageErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: PaidUsageErrorResponse;
+};
+
+export type PaidUsageApiPaidUsageGetError = PaidUsageApiPaidUsageGetErrors[keyof PaidUsageApiPaidUsageGetErrors];
+
+export type PaidUsageApiPaidUsageGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: PaidUsageResponse;
+};
+
+export type PaidUsageApiPaidUsageGetResponse = PaidUsageApiPaidUsageGetResponses[keyof PaidUsageApiPaidUsageGetResponses];
 
 export type AccountPurchasesApiPurchaseIntentsGetData = {
     body?: never;
@@ -1707,3 +2219,173 @@ export type ReviewApiPurchasesReviewPostResponses = {
 };
 
 export type ReviewApiPurchasesReviewPostResponse = ReviewApiPurchasesReviewPostResponses[keyof ReviewApiPurchasesReviewPostResponses];
+
+export type AccessSnapshotInternalV1AccessSnapshotsUserIdGetData = {
+    body?: never;
+    path: {
+        /**
+         * User Id
+         */
+        user_id: string;
+    };
+    query: {
+        /**
+         * Tenant Id
+         */
+        tenant_id: string;
+        /**
+         * Region
+         */
+        region: string;
+    };
+    url: '/internal/v1/access-snapshots/{user_id}';
+};
+
+export type AccessSnapshotInternalV1AccessSnapshotsUserIdGetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: BackendErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: BackendErrorResponse;
+    /**
+     * Not Found
+     */
+    404: BackendErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: BackendErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: BackendErrorResponse;
+};
+
+export type AccessSnapshotInternalV1AccessSnapshotsUserIdGetError = AccessSnapshotInternalV1AccessSnapshotsUserIdGetErrors[keyof AccessSnapshotInternalV1AccessSnapshotsUserIdGetErrors];
+
+export type AccessSnapshotInternalV1AccessSnapshotsUserIdGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccessSnapshotResponse;
+};
+
+export type AccessSnapshotInternalV1AccessSnapshotsUserIdGetResponse = AccessSnapshotInternalV1AccessSnapshotsUserIdGetResponses[keyof AccessSnapshotInternalV1AccessSnapshotsUserIdGetResponses];
+
+export type AllowanceExhaustionInternalV1AllowanceExhaustionsPostData = {
+    body: AllowanceExhaustion;
+    path?: never;
+    query?: never;
+    url: '/internal/v1/allowance-exhaustions';
+};
+
+export type AllowanceExhaustionInternalV1AllowanceExhaustionsPostErrors = {
+    /**
+     * Unauthorized
+     */
+    401: BackendErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: BackendErrorResponse;
+    /**
+     * Conflict
+     */
+    409: BackendErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: BackendErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: BackendErrorResponse;
+};
+
+export type AllowanceExhaustionInternalV1AllowanceExhaustionsPostError = AllowanceExhaustionInternalV1AllowanceExhaustionsPostErrors[keyof AllowanceExhaustionInternalV1AllowanceExhaustionsPostErrors];
+
+export type AllowanceExhaustionInternalV1AllowanceExhaustionsPostResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type AllowanceExhaustionInternalV1AllowanceExhaustionsPostResponse = AllowanceExhaustionInternalV1AllowanceExhaustionsPostResponses[keyof AllowanceExhaustionInternalV1AllowanceExhaustionsPostResponses];
+
+export type ExchangeBackendCodeInternalV1BackendSessionsExchangePostData = {
+    body: BackendExchangeRequest;
+    path?: never;
+    query?: never;
+    url: '/internal/v1/backend-sessions/exchange';
+};
+
+export type ExchangeBackendCodeInternalV1BackendSessionsExchangePostErrors = {
+    /**
+     * Unauthorized
+     */
+    401: BackendErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: BackendErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: BackendErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: BackendErrorResponse;
+};
+
+export type ExchangeBackendCodeInternalV1BackendSessionsExchangePostError = ExchangeBackendCodeInternalV1BackendSessionsExchangePostErrors[keyof ExchangeBackendCodeInternalV1BackendSessionsExchangePostErrors];
+
+export type ExchangeBackendCodeInternalV1BackendSessionsExchangePostResponses = {
+    /**
+     * Successful Response
+     */
+    200: BackendExchangeResponse;
+};
+
+export type ExchangeBackendCodeInternalV1BackendSessionsExchangePostResponse = ExchangeBackendCodeInternalV1BackendSessionsExchangePostResponses[keyof ExchangeBackendCodeInternalV1BackendSessionsExchangePostResponses];
+
+export type IntrospectBackendTokenInternalV1BackendSessionsIntrospectPostData = {
+    body: BackendIntrospectionRequest;
+    path?: never;
+    query?: never;
+    url: '/internal/v1/backend-sessions/introspect';
+};
+
+export type IntrospectBackendTokenInternalV1BackendSessionsIntrospectPostErrors = {
+    /**
+     * Unauthorized
+     */
+    401: BackendErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: BackendErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: BackendErrorResponse;
+    /**
+     * Service Unavailable
+     */
+    503: BackendErrorResponse;
+};
+
+export type IntrospectBackendTokenInternalV1BackendSessionsIntrospectPostError = IntrospectBackendTokenInternalV1BackendSessionsIntrospectPostErrors[keyof IntrospectBackendTokenInternalV1BackendSessionsIntrospectPostErrors];
+
+export type IntrospectBackendTokenInternalV1BackendSessionsIntrospectPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: BackendIntrospectionResponse;
+};
+
+export type IntrospectBackendTokenInternalV1BackendSessionsIntrospectPostResponse = IntrospectBackendTokenInternalV1BackendSessionsIntrospectPostResponses[keyof IntrospectBackendTokenInternalV1BackendSessionsIntrospectPostResponses];

@@ -100,7 +100,7 @@ def canonical_case(
         subscription is None
         or case.reason_code not in {"subscription_identity_conflict", "subscription_commercial_mismatch"}
         or (case.scope_kind, case.scope_reference) != ("subscription", str(subscription.subscription_id))
-        or case.evidence_schema_version != "subscription-reconciliation:v1"
+        or case.evidence_schema_version not in ("subscription-reconciliation:v1", "subscription-reconciliation:v2")
         or not isinstance(case.evidence_document, dict)
     ):
         return False

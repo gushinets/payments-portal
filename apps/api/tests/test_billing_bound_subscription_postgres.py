@@ -147,7 +147,7 @@ async def test_bound_callers_commit_one_claimed_negative_without_rebinding(
     )
     with factory() as db:
         latest = db.get(BillingStateObservation, snapshot(factory)[-1])
-        assert latest.evidence_schema_version == "subscription-reconciliation:v1"
+        assert latest.evidence_schema_version == "subscription-reconciliation:v2"
         assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 0
 
 
@@ -232,7 +232,7 @@ async def test_payment_incomplete_agreement_inventory_never_mints_or_renews_trus
     with factory() as db:
         attempt = db.scalar(
             select(BillingStateObservation)
-            .where(BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v1")
+            .where(BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v2")
             .order_by(BillingStateObservation.observed_at.desc())
         )
         assert "agreement_inventory_incomplete" in attempt.evidence_document["reasons"]
@@ -319,7 +319,7 @@ async def test_payment_with_incomplete_paid_calendar_refreshes_only_product_trus
     with factory() as db:
         attempt = db.scalar(
             select(BillingStateObservation)
-            .where(BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v1")
+            .where(BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v2")
             .order_by(BillingStateObservation.observed_at.desc())
         )
         assert attempt.completeness_classification == "complete"
@@ -473,7 +473,7 @@ async def test_failed_or_cancelled_http_proof_never_returns_payment_or_rebinds(
     factory = postgres_session_factory
     activate(transport)
     before = snapshot(factory)
-    initial_count = observation_count(factory, "subscription-reconciliation:v1")
+    initial_count = observation_count(factory, "subscription-reconciliation:v2")
     if failure == "commit":
         apply = orchestration.apply_reconciliation
 
@@ -505,7 +505,7 @@ async def test_failed_or_cancelled_http_proof_never_returns_payment_or_rebinds(
                 await opening
         assert sources.billing.active_count == 0
     assert snapshot(factory) == before
-    assert observation_count(factory, "subscription-reconciliation:v1") == initial_count
+    assert observation_count(factory, "subscription-reconciliation:v2") == initial_count
     with factory() as db:
         sub = db.get(ExternalSubscription, before[0])
         assert sub.reconciliation_lease_owner is not None

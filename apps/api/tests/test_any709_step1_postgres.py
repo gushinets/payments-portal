@@ -500,7 +500,7 @@ def test_any709_step1_direct_cli_dry_run_publish_query_and_secret_redaction(
     from apps.api.tests.support.kernel import manifest_fixture
     from apps.api.tests.support.lbx import PASSWORD, USERNAME
 
-    configuration = step1_settings(mapping_operator_lock_file=tmp_path / "operator.lock")
+    configuration = step1_settings(mapping_operator_lock_file=tmp_path / "operator.lock", kernel_mock_enabled=False)
     source = recording()
     original = mapping_operator.fresh_link_evaluation
 
@@ -515,7 +515,22 @@ def test_any709_step1_direct_cli_dry_run_publish_query_and_secret_redaction(
     monkeypatch.setattr(cli, "fresh_link_evaluation", configured)
     monkeypatch.setattr(mapping_operator.os, "geteuid", lambda: 29001)
     monkeypatch.setattr("app.integrations.lbx.current_offer.utc_now", lambda: datetime(2026, 10, 26, tzinfo=UTC))
-    args = ["--product-id", "proposal_ai", "--tariff-id", "701", "--tariff-service-id", "1001", "--period-id", "901"]
+    args = [
+        "--product-id",
+        "proposal_ai",
+        "--tariff-id",
+        "701",
+        "--tariff-service-id",
+        "1001",
+        "--period-id",
+        "901",
+        "--metric-key",
+        "proposal_ai.test_generations",
+        "--unit",
+        "generation",
+        "--allowance-quantity",
+        "7",
+    ]
 
     def no_database() -> Session:
         raise AssertionError("dry-run opened a database")
@@ -539,13 +554,14 @@ def test_any709_step1_direct_cli_dry_run_publish_query_and_secret_redaction(
     )
     queried = json.loads(cli.execute(cli.parser().parse_args(["query", "--product-id", "proposal_ai"]), offline))
     assert queried["mapping_revision_id"] == json.loads(result)["mapping_revision_id"]
-    assert queried["revision_number"] == 1 and queried["document"]["schema_version"] == "product-link-v2"
+    assert queried["revision_number"] == 1 and queried["document"]["schema_version"] == "product-link-v4"
     assert queried["operator_audit"]["execution_principal"] == "os-euid:42"
     assert queried["document"]["publisher_principal"] == "os-euid:29001"
     rotated = step1_settings(
         lbx_server_username="rotated-user",
         lbx_server_password="rotated-password",
         mapping_operator_lock_file=tmp_path / "operator.lock",
+        kernel_mock_enabled=False,
     )
     repeated = json.loads(
         cli.execute(cli.parser().parse_args(["publish", *args, "--expected-previous-revision", "1"]), rotated)

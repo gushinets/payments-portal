@@ -1,7 +1,7 @@
 # Documentation Index
 
 Status: authoritative index
-Last updated: 2026-11-10
+Last updated: 2026-11-11
 
 Start with the smallest document that matches the task.
 
@@ -70,13 +70,25 @@ Start with the smallest document that matches the task.
 - [ANY-664 completed implementation plan](exec-plans/completed/ANY-664-implementation-plan.md)
   — all eight Portal steps DONE; implementation-commit CI evidence, retained
   real-enablement gates and handoff to ANY-504 program Step 7
+- [Common product backend API](contracts/product-backend-api/README.md)
+  — implemented identity/access, delivery and usage contracts, safe examples,
+  migration rules and local verification limits.
+- [ANY-766 paid integration target contracts](contracts/portal-kernel-paid/README.md)
+  — reviewed target schemas, producer/consumer copies and offline fixtures for
+  retained historical snapshot V2/identity V1 plus implemented V3/generic identity V2,
+  invalidation, usage/exhaustion and cabinet contracts;
+  implemented delegation, snapshot V3, coherent paid admission, recipient delivery,
+  recoverable paid browser launch and usage/exhaustion/cabinet readback; Steps 16/17
+  supply focused local acceptance and build/install preparation. Full and remote/live
+  acceptance remain deferred.
 - [Provisional Kernel Capability Manifest v1](contracts/kernel-capability-manifest/v1/README.md)
   — ANY-664 specification-derived schema, independent SIMULATED fixtures,
-  standalone development HTTP mock and human verification commands; actual
-  Kernel producer conformance remains a future enablement gate
+  standalone development HTTP mock and human verification commands; current
+  producer/consumer implementation and acceptance limits are in the integration map
 - [ANY-664 Step 8 local conformance handoff](contracts/kernel-capability-manifest/v1/step-8-handoff.md)
   — historical local CI PASS and 2026-10-19 real-API deferral; current producer
-  availability is in the integration map, with joint conformance still unverified
+  availability and later focused local acceptance are in the integration map;
+  this historical handoff does not establish live-service acceptance
 - [Portal identity, session, and legal baseline](architecture/portal-identity-session-legal-baseline.md)
   — as-built `ANY-504` Step 3 retained-schema contract and exact Step 4 handoff
 - [External Billing Persistence Reset](architecture/external-billing-persistence-reset.md)
@@ -90,7 +102,7 @@ Start with the smallest document that matches the task.
 - [Billing authority](architecture/billing-authority.md) — historical/superseded
   reference only; not current-state or target authority
 - [Payment Portal data model](architecture/payment-portal-data-model.md) —
-  authoritative current as-built 27-table schema reference
+  authoritative current as-built schema reference
 - [Platform Kernel contract boundary](architecture/platform-kernel-contract.md)
   — superseded planned contract; retained historical context
 
@@ -114,6 +126,8 @@ Start with the smallest document that matches the task.
 - [Security](SECURITY.md)
 - [Quality score](QUALITY_SCORE.md)
 - [Execution plans](exec-plans/README.md)
+- [ANY-766 active implementation plan](exec-plans/active/ANY-766-implementation-plan.md) — authoritative Portal/backend API and Kernel integration plan; Steps 1–17 and five PR corrections complete in the agreed local scope; PR readiness checklist pending; broader acceptance matrix deferred.
+- [Joint paid-runtime harness](../tools/joint_paid_runtime/README.md) — isolated real-app HTTP/PostgreSQL and desktop/mobile smoke, explicit external substitutes and run-owned cleanup.
 - [ANY-715 completed MVP rebuild plan](exec-plans/completed/ANY-715-mvp-rebuild-plan.md) — Stages 0–6 closed by owner decision; verification evidence, limitations and follow-ups under ANY-820 are retained.
 - [Background billing operations](engineering/billing-background-operations.md) — worker settings, scheduling, polling-only operation, retained inbox history, operator commands and diagnostics.
 

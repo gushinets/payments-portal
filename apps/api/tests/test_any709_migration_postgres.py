@@ -22,7 +22,7 @@ from apps.api.tests.test_target_persistence_postgres import (
 
 pytestmark = pytest.mark.postgres
 PREDECESSOR = "20261001_0002"
-HEAD = "20261031_0006"
+ANY709_REVISION = "20261031_0006"
 
 
 def _columns(engine: Engine) -> dict[str, list[str]]:
@@ -98,11 +98,11 @@ def test_any709_consolidated_upgrade_preserves_rows_and_backfills_only_scopes(
                 )
         columns = _columns(postgres_engine)
         before = _rows(postgres_engine, columns)
-        command.upgrade(config, "head")
+        command.upgrade(config, ANY709_REVISION)
 
     assert _rows(postgres_engine, columns) == before
     with postgres_engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == HEAD
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == ANY709_REVISION
         assert connection.execute(text("SELECT count(*) FROM commercial_product_heads")).scalar_one() == 0
         assert connection.execute(
             text("SELECT first_name, surname, patronymic FROM users WHERE id = :id"), {"id": USER_ID}
@@ -183,7 +183,7 @@ def test_any709_ambiguous_legacy_holds_abort_entire_consolidated_upgrade(
         columns = _columns(postgres_engine)
         before = _rows(postgres_engine, columns)
         with pytest.raises(IntegrityError) as caught:
-            command.upgrade(config, "head")
+            command.upgrade(config, ANY709_REVISION)
         assert caught.value.orig.diag.constraint_name == "billing_purchase_scope_holds_pkey"
     assert _columns(postgres_engine) == columns
     assert _rows(postgres_engine, columns) == before
@@ -201,32 +201,35 @@ def test_any709_consolidated_roundtrip_preserves_populated_main_rows(
             _seed_subscription_graph(connection)
         columns = _columns(postgres_engine)
         before = _rows(postgres_engine, columns)
-        command.upgrade(config, "head")
+        command.upgrade(config, ANY709_REVISION)
         assert "active_recovery_deadline_at" in _columns(postgres_engine)["billing_work_items"]
         command.downgrade(config, PREDECESSOR)
         assert _columns(postgres_engine) == columns
         assert _rows(postgres_engine, columns) == before
-        command.upgrade(config, "head")
+        command.upgrade(config, ANY709_REVISION)
     assert _rows(postgres_engine, columns) == before
 
 
 def test_any709_refused_downgrade_rolls_back_the_recovery_column_drop(
-    migrated_database: Engine, database_test_url: URL
+    postgres_engine: Engine, database_test_url: URL
 ) -> None:
-    with migrated_database.begin() as connection:
+    reset_public_schema(postgres_engine)
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, ANY709_REVISION)
+    with postgres_engine.begin() as connection:
         _seed_subscription_graph(connection)
         connection.execute(text("UPDATE external_subscriptions SET financial_access_status = 'unverified'"))
-    columns = _columns(migrated_database)
-    before = _rows(migrated_database, columns)
+    columns = _columns(postgres_engine)
+    before = _rows(postgres_engine, columns)
     with (
         alembic_test_config(database_test_url) as config,
         pytest.raises(DBAPIError, match="unverified preparation requires explicit migration decision"),
     ):
         command.downgrade(config, PREDECESSOR)
-    assert _columns(migrated_database) == columns
-    assert _rows(migrated_database, columns) == before
-    with migrated_database.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == HEAD
+    assert _columns(postgres_engine) == columns
+    assert _rows(postgres_engine, columns) == before
+    with postgres_engine.connect() as connection:
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == ANY709_REVISION
         assert (
             connection.execute(
                 text("SELECT count(*) FROM pg_trigger WHERE tgname = 'trg_guard_financial_create_evidence'")

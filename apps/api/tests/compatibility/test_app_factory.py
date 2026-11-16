@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from unittest.mock import MagicMock
 
 from apps.api.tests.support.settings import configure_api_test_environment
@@ -10,6 +11,22 @@ configure_api_test_environment(APP_ENV="development")
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+
+from app.core.settings import Settings  # noqa: E402
+from apps.api.tests.support.api import reset_api_database  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def initialized_schema(monkeypatch: pytest.MonkeyPatch) -> None:
+    from functools import partial
+    from app import main
+    from app.core.database import SessionLocal
+    from app.composition.delegation_cleanup import delegation_cleanup_resources
+
+    reset_api_database()
+    monkeypatch.setattr(
+        main, "delegation_cleanup_resources", partial(delegation_cleanup_resources, factory=SessionLocal)
+    )
 
 
 def test_app_factory_builds_independent_apps_with_stable_routes() -> None:
@@ -164,10 +181,17 @@ def test_app_factory_runs_lifespan_once(monkeypatch: pytest.MonkeyPatch) -> None
         assert region == "ru"
         lifecycle_events.append("documents_seeded")
 
+    def initialize_consumers(configuration: Settings, factory: Callable[[], MagicMock]) -> None:
+        assert_no_running_loop()
+        assert configuration is main_module.settings
+        assert factory is create_session
+        lifecycle_events.append("backend_consumers_initialized")
+
     session_context.__enter__.side_effect = enter_session
     session_context.__exit__.side_effect = exit_session
     monkeypatch.setattr(main_module, "SessionLocal", create_session)
     monkeypatch.setattr(main_module, "seed_legal_documents", seed_documents)
+    monkeypatch.setattr(main_module, "initialize_backend_consumers", initialize_consumers)
 
     app = main_module.create_app()
 
@@ -175,6 +199,7 @@ def test_app_factory_runs_lifespan_once(monkeypatch: pytest.MonkeyPatch) -> None
         assert test_client.get("/api/health/live").status_code == 200
 
     assert lifecycle_events == [
+        "backend_consumers_initialized",
         "session_created",
         "session_entered",
         "documents_seeded",

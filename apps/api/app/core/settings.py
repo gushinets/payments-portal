@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from pydantic import Field, SecretStr, StringConstraints, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from app.core.backend_consumers import BackendConsumer
 from app.core.url_validation import (
     validate_production_cors_origin,
     validate_production_public_url,
@@ -85,6 +86,7 @@ class Settings(BaseSettings):
     sentry_release: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
     kernel_base_url: str = ""
     kernel_service_token: SecretStr = SecretStr("")
+    backend_consumers: tuple[BackendConsumer, ...] = Field(default=(), max_length=16, repr=False)
     kernel_mock_enabled: bool = False
     purchase_test_terms_enabled: bool = False
     # Deployment supplies its supported clock guarantee; no guessed default.
@@ -102,6 +104,7 @@ class Settings(BaseSettings):
     billing_worker_enabled: bool = True
     billing_worker_urgent_concurrency: int = Field(default=2, ge=1, le=16)
     billing_worker_normal_concurrency: int = Field(default=1, ge=1, le=16)
+    billing_worker_delivery_concurrency: int = Field(default=1, ge=1, le=16)
     # Leave room for the claim/apply margin and refusal retry within urgent cadence.
     billing_worker_io_timeout_seconds: float = Field(default=60, gt=0, le=240, allow_inf_nan=False)
     billing_worker_scan_batch_size: int = Field(default=100, ge=1, le=100)
@@ -123,6 +126,46 @@ class Settings(BaseSettings):
     # Required by dry-run/publish only; query and the HTTP API do not use it.
     mapping_operator_lock_file: Path | None = None
     mapping_lock_timeout_seconds: float = Field(default=2.0, gt=0, le=10, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def validate_backend_consumers(self) -> Settings:
+        consumers, products, secrets, sources = set(), set(), set(), set()
+        for consumer in self.backend_consumers:
+            if consumer.consumer_id in consumers:
+                raise ValueError("Backend consumer IDs must be unique")
+            consumers.add(consumer.consumer_id)
+            if consumer.technical_source_id in sources:
+                raise ValueError("Each technical source must have one backend owner")
+            sources.add(consumer.technical_source_id)
+            if (consumer.tenant_id, consumer.region) != (self.instance_tenant_id, self.instance_region):
+                raise ValueError("Backend consumer must belong to the instance scope")
+            if products & consumer.allowed_products:
+                raise ValueError("Each product must have one backend owner")
+            products.update(consumer.allowed_products)
+            if any(
+                secret is not None and secret == self.kernel_service_token
+                for secret in (
+                    consumer.backend_to_portal_current_secret,
+                    consumer.backend_to_portal_previous_secret,
+                )
+            ):
+                raise ValueError("Backend incoming credentials must differ from the active Kernel outgoing key")
+            for secret in (
+                consumer.backend_to_portal_current_secret,
+                consumer.backend_to_portal_previous_secret,
+                consumer.portal_to_backend_current_secret,
+                consumer.portal_to_backend_previous_secret,
+            ):
+                if secret is None:
+                    continue
+                raw = secret.get_secret_value()
+                if raw in secrets:
+                    raise ValueError("Backend consumer credentials must not overlap")
+                secrets.add(raw)
+            if self.app_env == AppEnv.PRODUCTION:
+                validate_production_public_url(consumer.callback_url, "Backend callback")
+                validate_production_public_url(consumer.backend_base_url, "Backend origin")
+        return self
 
     @field_validator("paid_access_clock_skew_seconds", mode="before")
     @classmethod

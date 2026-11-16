@@ -1,0 +1,11 @@
+# Optional local peer transport. Create the explicitly named network before use.
+# PostgreSQL stays on the app-private backend network.
+services:
+  api:
+    networks:
+      peer:
+        aliases: [portal-api]
+networks:
+  peer:
+    external: true
+    name: ${PAID_RUNTIME_PEER_NETWORK:?set the existing peer network name}

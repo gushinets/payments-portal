@@ -33,7 +33,8 @@ async def live_original(
     if purchase.accepted.seller_id != int(configuration.lbx_seller_organization_id):
         await run_in_threadpool(financial.changed_unsent_terms, factory, purchase)
         return False
-    manifest = await sources.require_kernel().fetch_manifest(budget=budget)
+    source = sources.technical_source(purchase.accepted.selection.product_id, expected=purchase.accepted.ownership)
+    manifest = await source.client.fetch_manifest(budget=budget)
     try:
         require_enabled_product(manifest, purchase.accepted.selection.product_id)
         if technical := purchase.accepted.technical_terms:

@@ -9,8 +9,9 @@ from uuid import UUID
 from starlette.concurrency import run_in_threadpool
 
 from app.composition.sources import SourceResources
-from app.core.settings import AppEnv, Settings
+from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused
+from app.domains.billing.paid_policy import MeteringPolicy
 from app.domains.billing.reconciliation import apply_reconciliation, claim_reconciliation, read_source_time
 from app.domains.billing.reconciliation_contracts import (
     CommercialProof,
@@ -104,7 +105,7 @@ async def reconcile_subscription(
                         proof,
                         work_claim=work_claim,
                         clock_skew_seconds=configuration.paid_access_clock_skew_seconds,
-                        allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
+                        metering_policy=MeteringPolicy.for_environment(configuration.app_env),
                     )
                     raise InventoryStale()
                 from app.composition.purchase_inventory import collect_inventory
@@ -149,7 +150,7 @@ async def reconcile_subscription(
         work_claim=work_claim,
         resolution=resolution,
         clock_skew_seconds=configuration.paid_access_clock_skew_seconds,
-        allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
+        metering_policy=MeteringPolicy.for_environment(configuration.app_env),
     )
 
 

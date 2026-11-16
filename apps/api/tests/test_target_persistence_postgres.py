@@ -193,8 +193,8 @@ def test_database_supplies_approved_target_defaults(migrated_database: Engine) -
         connection.execute(
             text(
                 "INSERT INTO access_invalidation_outbox ("
-                "outbox_id, tenant_id, region, user_id, pending_revision, next_attempt_at) VALUES ("
-                ":id, 'anytoolai', 'ru', :user_id, 1, now())"
+                "outbox_id, recipient_id, tenant_id, region, user_id, pending_revision, next_attempt_at) VALUES ("
+                ":id, 'platform-kernel', 'anytoolai', 'ru', :user_id, 1, now())"
             ),
             {"id": default_outbox_id, "user_id": USER_ID},
         )
@@ -564,15 +564,15 @@ def test_allowance_subscription_and_work_item_structural_checks(
             {},
         ),
         (
-            "INSERT INTO access_invalidation_outbox (outbox_id, tenant_id, region, user_id, "
+            "INSERT INTO access_invalidation_outbox (outbox_id, recipient_id, tenant_id, region, user_id, "
             "pending_revision, delivered_revision, attempt_count, next_attempt_at) VALUES "
-            "(gen_random_uuid(), 'anytoolai', 'ru', :user_id, 0, 0, 0, now())",
+            "(gen_random_uuid(), 'platform-kernel', 'anytoolai', 'ru', :user_id, 0, 0, 0, now())",
             {},
         ),
         (
-            "INSERT INTO access_invalidation_outbox (outbox_id, tenant_id, region, user_id, "
+            "INSERT INTO access_invalidation_outbox (outbox_id, recipient_id, tenant_id, region, user_id, "
             "pending_revision, delivered_revision, attempt_count, next_attempt_at) VALUES "
-            "(gen_random_uuid(), 'anytoolai', 'ru', :user_id, 1, 2, 0, now())",
+            "(gen_random_uuid(), 'platform-kernel', 'anytoolai', 'ru', :user_id, 1, 2, 0, now())",
             {},
         ),
     ),

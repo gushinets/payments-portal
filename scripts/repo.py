@@ -113,6 +113,10 @@ class RuntimeConfig:
     def kernel_mock_port(self) -> int:
         return self.api_port + 9000
 
+    @property
+    def test_postgres_port(self) -> int:
+        return self.postgres_port + 10000
+
 
 @dataclass(frozen=True)
 class TrivyGateSummary:
@@ -444,6 +448,7 @@ def write_runtime(config: RuntimeConfig) -> None:
         "POSTGRES_PASSWORD": "anytoolai-local-only",
         "POSTGRES_HOST": "postgres",
         "POSTGRES_PORT": str(config.postgres_port),
+        "POSTGRES_PORT_TEST": str(config.test_postgres_port),
         "DATABASE_URL": (
             f"postgresql+psycopg://anytoolai:anytoolai-local-only@postgres:5432/"
             f"{config.database_name}"
@@ -453,6 +458,9 @@ def write_runtime(config: RuntimeConfig) -> None:
         "CADDY_PORT": str(runtime_caddy_port(config)),
         "KERNEL_MOCK_PORT": str(config.kernel_mock_port),
         "NEXT_PUBLIC_API_BASE_URL": caddy_origin,
+        "NEXT_PUBLIC_KERNEL_WEB_BASE_URL": os.environ.get(
+            "NEXT_PUBLIC_KERNEL_WEB_BASE_URL", local_env.get("NEXT_PUBLIC_KERNEL_WEB_BASE_URL", "")
+        ),
         "CORS_ALLOW_ORIGINS": cors_allow_origins,
         "APP_PUBLIC_BASE_URL": app_public_base_url,
         "SMTP_HOST": local_env.get("SMTP_HOST", ""),
@@ -470,10 +478,11 @@ def write_runtime(config: RuntimeConfig) -> None:
         "OTEL_EXPORTER_OTLP_ENDPOINT": "http://observability:4318",
         "OTEL_SERVICE_NAME": "payment-portal-api",
     }
-    # Normal private connection values pass through independently of the mock.
-    # Keep them out of runtime.json/doctor/stdout and the public web environment.
+    # Runtime settings pass through independently of the mock. Keep private values
+    # out of runtime.json/doctor/stdout and web; BACKEND_CALLBACKS is the public projection.
     for name in (
         "KERNEL_BASE_URL", "KERNEL_SERVICE_TOKEN", "PURCHASE_TEST_TERMS_ENABLED", "PAID_ACCESS_CLOCK_SKEW_SECONDS",
+        "BACKEND_CONSUMERS", "BACKEND_CALLBACKS",
         "PREFLIGHT_TOTAL_TIMEOUT_SECONDS",
         "LBX_BASE_URL", "LBX_SERVER_USERNAME", "LBX_SERVER_PASSWORD",
         "LBX_WIDGET_SIGNING_SECRET", "LBX_SELLER_ORGANIZATION_ID",
@@ -483,6 +492,7 @@ def write_runtime(config: RuntimeConfig) -> None:
         "LBX_RETRY_DELAY_SECONDS", "LBX_MAX_RETRY_DELAY_SECONDS",
         "BILLING_WORKER_ENABLED", "BILLING_WORKER_URGENT_CONCURRENCY",
         "BILLING_WORKER_NORMAL_CONCURRENCY", "BILLING_WORKER_IO_TIMEOUT_SECONDS",
+        "BILLING_WORKER_DELIVERY_CONCURRENCY",
         "BILLING_WORKER_SCAN_BATCH_SIZE",
         "MAPPING_OPERATOR_LOCK_FILE",
     ):
@@ -714,10 +724,14 @@ def cmd_down(_: argparse.Namespace) -> None:
 def cmd_test_db(args: argparse.Namespace) -> None:
     config = load_runtime()
     write_runtime(config)
+    command = [
+        tool("docker"), "compose", "--project-name", f"{config.compose_project}-tests",
+        "--env-file", str(RUNTIME_ENV), "-f", str(ROOT / "docker-compose.test.yml"),
+    ]
     if args.action == "up":
-        run([*compose_command(config), "up", "-d", "--no-deps", "--wait", "postgres"])
+        run([*command, "up", "-d", "--no-deps", "--wait", "postgres"])
         return
-    run([*compose_command(config), "stop", "postgres"])
+    run([*command, "stop", "postgres"])
 
 
 def cmd_reset(args: argparse.Namespace) -> None:
@@ -3307,7 +3321,7 @@ def cmd_billing_purchase(args: argparse.Namespace) -> None:
         args.action,
     ]
     for name in (
-        "user_id", "purchase_id",
+        "user_id", "purchase_id", "recipient_id",
         "resolution", "case_id", "expected_case_digest",
         "expected_observation_id", "expected_reconciliation_fence",
         "operation_id", "expected_operation_fence", "reason", "reference",
@@ -3390,14 +3404,15 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
         return environment
 
     runtime_env = read_runtime_env()
-    runtime_names = ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT")
+    runtime_names = ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT_TEST")
     missing_runtime_names = [name for name in runtime_names if not runtime_env.get(name)]
     if missing_runtime_names:
         raise HarnessError(
             "Cannot derive local PostgreSQL test configuration; runtime.env is missing: "
             + ", ".join(missing_runtime_names)
+            + ". Run python scripts/repo.py test-db up to refresh it."
         )
-    if port_is_free(int(runtime_env["POSTGRES_PORT"])):
+    if port_is_free(int(runtime_env["POSTGRES_PORT_TEST"])):
         raise HarnessError(
             "Local test PostgreSQL server is not running. Start it with:\n"
             "  python scripts/repo.py test-db up\n"
@@ -3408,6 +3423,7 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
     database_environment = {
         **runtime_env,
         "POSTGRES_DB": f"{runtime_env['POSTGRES_DB']}_tests",
+        "POSTGRES_PORT": runtime_env["POSTGRES_PORT_TEST"],
     }
     environment[test_database_url_name] = host_database_url_from_runtime(database_environment)
     return environment
@@ -3422,6 +3438,46 @@ def cmd_test(
         args.target,
         canonical_check_environment() if environment is None else environment,
     )
+    workers = getattr(args, "workers", None)
+    if workers is None:
+        workers = 1 if args.target == "api-fast" else 4
+    if workers < 1:
+        raise HarnessError("--workers must be positive")
+    if args.target == "api":
+        sys.path.insert(0, str(ROOT))
+        from scripts.pytest_parallel import merge_junit
+
+        reports_dir = HARNESS_DIR / "test-runs" / uuid.uuid4().hex
+        reports_dir.mkdir(parents=True)
+        reports = [reports_dir / "fast.xml", reports_dir / "postgres.xml"]
+        failure: subprocess.CalledProcessError | None = None
+        for target, count, report in zip(("api-fast", "api-postgres"), (1, workers), reports):
+            try:
+                cmd_test(
+                    argparse.Namespace(target=target, workers=count, junitxml=str(report)),
+                    environment=check_env,
+                )
+            except subprocess.CalledProcessError as exc:
+                failure = exc
+        available = [report for report in reports if report.exists()]
+        if args.junitxml:
+            merge_junit(available, Path(args.junitxml))
+        if failure is not None:
+            raise failure
+        if len(available) != len(reports):
+            raise HarnessError("Incomplete API test reports")
+        return
+    if args.target == "api-fast" and workers != 1:
+        raise HarnessError("api-fast runs serially; --workers applies to the PostgreSQL partition")
+    if workers > 1:
+        command = [sys.executable, "-m", "scripts.pytest_parallel", "--workers", str(workers)]
+        marker_args = api_test_marker_args(args.target)
+        if marker_args:
+            command.extend(["--marker", marker_args[1]])
+        if args.junitxml:
+            command.extend(["--junitxml", args.junitxml])
+        run([*command, API_TEST_PATH], env=check_env)
+        return
     command = api_pytest_command(*api_test_marker_args(args.target))
     if args.junitxml:
         command.insert(-1, f"--junitxml={args.junitxml}")
@@ -3493,6 +3549,17 @@ def cmd_observe(args: argparse.Namespace) -> None:
     print(json.dumps(fetch_json(url), ensure_ascii=True, indent=2))
 
 
+def cmd_image_up(args: argparse.Namespace) -> None:
+    # Importable both through the CLI and repository tests.
+    sys.path.insert(0, str(ROOT))
+    from scripts.image_deploy import deploy
+
+    try:
+        deploy(args)
+    except ValueError as exc:
+        raise HarnessError(str(exc)) from exc
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -3528,6 +3595,7 @@ def build_parser() -> argparse.ArgumentParser:
     test = sub.add_parser("test")
     test.add_argument("target", choices=("api-fast", "api-postgres", "api"))
     test.add_argument("--junitxml")
+    test.add_argument("--workers", type=int, help="pytest processes (default: 4, api-fast: 1); use 1 for debugging")
     test.set_defaults(func=cmd_test)
     coverage = sub.add_parser("coverage")
     coverage.add_argument("target", choices=("api", "api-fast"))
@@ -3545,10 +3613,14 @@ def build_parser() -> argparse.ArgumentParser:
     purchase = sub.add_parser(
         "billing-purchase", help="Billing evidence, GET-only rechecks and audited resolutions"
     )
-    purchase.add_argument("action", choices=("inspect", "inspect-operation", "recover", "reconcile", "resolve-review"))
+    purchase.add_argument("action", choices=(
+        "inspect", "inspect-operation", "inspect-invalidation", "retry-invalidation",
+        "recover", "reconcile", "resolve-review",
+    ))
     # The application CLI owns required options for each subcommand.
     purchase.add_argument("--user-id", type=uuid.UUID)
     purchase.add_argument("--purchase-id", type=uuid.UUID)
+    purchase.add_argument("--recipient-id")
     purchase.add_argument("--resolution", choices=("restore-original", "bind-original", "select-primary"))
     for name in ("case-id", "expected-observation-id", "operation-id", "expected-operation-fence"):
         purchase.add_argument("--" + name, type=uuid.UUID)
@@ -3562,6 +3634,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("check-api-lock").set_defaults(func=cmd_check_api_lock)
     sub.add_parser("migrate-api").set_defaults(func=cmd_migrate_api)
     sub.add_parser("validate-production-env").set_defaults(func=cmd_validate_production_env)
+    image_up = sub.add_parser("image-up")
+    image_up.add_argument("--env-file", type=Path, required=True)
+    image_up.add_argument("--project", required=True)
+    image_up.add_argument("--lock-file", type=Path, required=True)
+    image_up.add_argument("--network-overlay", type=Path, help="operator Compose overlay for shared edge networks")
+    image_up.add_argument("--frontend-only", action="store_true")
+    image_up.set_defaults(func=cmd_image_up)
     metadata = sub.add_parser("pr-metadata")
     metadata.add_argument("--title", default=os.environ.get("PR_TITLE", ""))
     metadata.add_argument("--body", default=os.environ.get("PR_BODY", ""))

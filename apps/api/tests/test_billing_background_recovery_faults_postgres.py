@@ -290,8 +290,8 @@ async def test_billing_background_recovery_lost_claim_ack_no_http(
     synthetic_prepare(factory, transport, purchase, uncertain=True)
     claim = work.claim_work
 
-    def lost(*args: object) -> object:
-        assert claim(*args) is not None
+    def lost(*args: object, **kwargs: object) -> object:
+        assert claim(*args, **kwargs) is not None
         raise RuntimeError("simulated lost claim acknowledgement")
 
     monkeypatch.setattr(work, "claim_work", lost)

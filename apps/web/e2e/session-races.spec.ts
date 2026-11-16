@@ -4,6 +4,7 @@ import { emptyPaidState } from "../tests/fixtures/paid-access";
 
 test.beforeEach(async ({ context }) => {
   await context.route("**/api/paid-access", (route) => route.fulfill({ json: emptyPaidState() }));
+  await context.route("**/api/paid-usage", (route) => route.fulfill({ json: { access_revision: 0, items: [] } }));
   await context.route("**/api/catalog/products", (route) => route.fulfill({ json: { products: [] } }));
   await context.route("**/api/purchase-intents", (route) => route.fulfill({ json: { purchases: [], next_cursor: null } }));
 });

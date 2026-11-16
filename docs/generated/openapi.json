@@ -62,6 +62,169 @@
         "title": "AcceptDocumentResponse",
         "type": "object"
       },
+      "AccessSnapshotAllowance": {
+        "additionalProperties": false,
+        "properties": {
+          "allowance_id": {
+            "format": "uuid",
+            "title": "Allowance Id",
+            "type": "string"
+          },
+          "metric_key": {
+            "minLength": 1,
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "product_id": {
+            "minLength": 1,
+            "title": "Product Id",
+            "type": "string"
+          },
+          "quantity": {
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "unit": {
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "allowance_id",
+          "product_id",
+          "metric_key",
+          "unit",
+          "quantity"
+        ],
+        "title": "AccessSnapshotAllowance",
+        "type": "object"
+      },
+      "AccessSnapshotGrant": {
+        "additionalProperties": false,
+        "properties": {
+          "product_id": {
+            "minLength": 1,
+            "title": "Product Id",
+            "type": "string"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          }
+        },
+        "required": [
+          "product_id",
+          "valid_until"
+        ],
+        "title": "AccessSnapshotGrant",
+        "type": "object"
+      },
+      "AccessSnapshotResponse": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "access_revision": 0,
+            "allowances": [],
+            "consumer_id": "platform-kernel",
+            "consumer_policy_revision": 1,
+            "expires_at": "2026-11-11T04:04:55Z",
+            "grants": [],
+            "refresh_after": "2026-11-11T04:01:00Z",
+            "region": "ru",
+            "schema_version": 3,
+            "tenant_id": "anytoolai",
+            "user_id": "00000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "properties": {
+          "access_revision": {
+            "minimum": 0.0,
+            "title": "Access Revision",
+            "type": "integer"
+          },
+          "allowances": {
+            "items": {
+              "$ref": "#/components/schemas/AccessSnapshotAllowance"
+            },
+            "title": "Allowances",
+            "type": "array"
+          },
+          "consumer_id": {
+            "pattern": "^[a-z][a-z0-9-]{0,63}$",
+            "title": "Consumer Id",
+            "type": "string"
+          },
+          "consumer_policy_revision": {
+            "maximum": 9007199254740991.0,
+            "minimum": 1.0,
+            "title": "Consumer Policy Revision",
+            "type": "integer"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "grants": {
+            "items": {
+              "$ref": "#/components/schemas/AccessSnapshotGrant"
+            },
+            "title": "Grants",
+            "type": "array"
+          },
+          "refresh_after": {
+            "format": "date-time",
+            "title": "Refresh After",
+            "type": "string"
+          },
+          "region": {
+            "minLength": 1,
+            "title": "Region",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 3,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "tenant_id": {
+            "minLength": 1,
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "consumer_id",
+          "consumer_policy_revision",
+          "tenant_id",
+          "region",
+          "user_id",
+          "access_revision",
+          "refresh_after",
+          "expires_at",
+          "grants",
+          "allowances"
+        ],
+        "title": "AccessSnapshotResponse",
+        "type": "object"
+      },
       "AccountPurchaseResponse": {
         "properties": {
           "created_at": {
@@ -118,6 +281,357 @@
           "next_cursor"
         ],
         "title": "AccountPurchasesResponse",
+        "type": "object"
+      },
+      "AllowanceExhaustion": {
+        "additionalProperties": false,
+        "properties": {
+          "allowance_id": {
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "title": "Allowance Id",
+            "type": "string"
+          },
+          "event_type": {
+            "const": "allowance_exhausted",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "metric_key": {
+            "minLength": 1,
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "product_id": {
+            "minLength": 1,
+            "title": "Product Id",
+            "type": "string"
+          },
+          "quantity": {
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "region": {
+            "minLength": 1,
+            "title": "Region",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "tenant_id": {
+            "minLength": 1,
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "unit": {
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          },
+          "user_id": {
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "event_type",
+          "tenant_id",
+          "region",
+          "user_id",
+          "allowance_id",
+          "product_id",
+          "metric_key",
+          "unit",
+          "quantity",
+          "occurred_at"
+        ],
+        "title": "AllowanceExhaustion",
+        "type": "object"
+      },
+      "BackendCodeRequest": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "code_challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+            "code_challenge_method": "S256",
+            "consumer_id": "platform-kernel"
+          }
+        ],
+        "properties": {
+          "code_challenge": {
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "title": "Code Challenge",
+            "type": "string"
+          },
+          "code_challenge_method": {
+            "const": "S256",
+            "examples": [
+              "S256"
+            ],
+            "title": "Code Challenge Method",
+            "type": "string"
+          },
+          "consumer_id": {
+            "examples": [
+              "platform-kernel"
+            ],
+            "pattern": "^[a-z][a-z0-9-]{0,63}$",
+            "title": "Consumer Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "consumer_id",
+          "code_challenge",
+          "code_challenge_method"
+        ],
+        "title": "BackendCodeRequest",
+        "type": "object"
+      },
+      "BackendCodeResponse": {
+        "examples": [
+          {
+            "code": "ccccccccccccccccccccccccccccccccccccccccccc",
+            "expires_at": "2026-11-09T04:01:00Z"
+          }
+        ],
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "expires_at"
+        ],
+        "title": "BackendCodeResponse",
+        "type": "object"
+      },
+      "BackendErrorDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "BackendErrorDetail",
+        "type": "object"
+      },
+      "BackendErrorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/BackendErrorDetail"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "BackendErrorResponse",
+        "type": "object"
+      },
+      "BackendExchangeRequest": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "code": "ccccccccccccccccccccccccccccccccccccccccccc",
+            "code_verifier": "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+          }
+        ],
+        "properties": {
+          "code": {
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "title": "Code",
+            "type": "string"
+          },
+          "code_verifier": {
+            "pattern": "^[A-Za-z0-9._~-]{43,128}$",
+            "title": "Code Verifier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "code_verifier"
+        ],
+        "title": "BackendExchangeRequest",
+        "type": "object"
+      },
+      "BackendExchangeResponse": {
+        "examples": [
+          {
+            "access_token": "ttttttttttttttttttttttttttttttttttttttttttt",
+            "consumer_id": "platform-kernel",
+            "consumer_policy_revision": 1,
+            "expires_at": "2026-11-09T04:30:00Z",
+            "region": "ru",
+            "schema_version": 2,
+            "tenant_id": "anytoolai",
+            "token_type": "Bearer",
+            "user_id": "00000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "consumer_id": {
+            "title": "Consumer Id",
+            "type": "string"
+          },
+          "consumer_policy_revision": {
+            "maximum": 9007199254740991.0,
+            "minimum": 1.0,
+            "title": "Consumer Policy Revision",
+            "type": "integer"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "token_type": {
+            "const": "Bearer",
+            "default": "Bearer",
+            "title": "Token Type",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "consumer_id",
+          "consumer_policy_revision",
+          "tenant_id",
+          "region",
+          "user_id",
+          "expires_at"
+        ],
+        "title": "BackendExchangeResponse",
+        "type": "object"
+      },
+      "BackendIntrospectionRequest": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "access_token": "ttttttttttttttttttttttttttttttttttttttttttt"
+          }
+        ],
+        "properties": {
+          "access_token": {
+            "description": "Secret delegated user bearer for this consumer. Service bearer stays in Authorization.",
+            "examples": [
+              "synthetic-delegation-ttttttttttttttttttttttttttttttttttttttttttt"
+            ],
+            "maxLength": 512,
+            "minLength": 43,
+            "title": "Access Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token"
+        ],
+        "title": "BackendIntrospectionRequest",
+        "type": "object"
+      },
+      "BackendIntrospectionResponse": {
+        "examples": [
+          {
+            "consumer_id": "platform-kernel",
+            "consumer_policy_revision": 1,
+            "region": "ru",
+            "schema_version": 2,
+            "tenant_id": "anytoolai",
+            "user_id": "00000000-0000-4000-8000-000000000001",
+            "valid_until": "2026-11-09T04:29:55Z"
+          }
+        ],
+        "properties": {
+          "consumer_id": {
+            "title": "Consumer Id",
+            "type": "string"
+          },
+          "consumer_policy_revision": {
+            "maximum": 9007199254740991.0,
+            "minimum": 1.0,
+            "title": "Consumer Policy Revision",
+            "type": "integer"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "valid_until": {
+            "format": "date-time",
+            "title": "Valid Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "consumer_id",
+          "consumer_policy_revision",
+          "tenant_id",
+          "region",
+          "user_id",
+          "valid_until"
+        ],
+        "title": "BackendIntrospectionResponse",
         "type": "object"
       },
       "BillingHealthResponse": {
@@ -637,6 +1151,81 @@
         "title": "LogoutResponse",
         "type": "object"
       },
+      "ObservedPaidUsage": {
+        "properties": {
+          "allowance_id": {
+            "title": "Allowance Id",
+            "type": "string"
+          },
+          "available": {
+            "minimum": 0.0,
+            "title": "Available",
+            "type": "integer"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/UsageClassification"
+          },
+          "metric_key": {
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "quantity": {
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "read_at": {
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          },
+          "remaining": {
+            "minimum": 0.0,
+            "title": "Remaining",
+            "type": "integer"
+          },
+          "reserved": {
+            "minimum": 0.0,
+            "title": "Reserved",
+            "type": "integer"
+          },
+          "status": {
+            "const": "observed",
+            "title": "Status",
+            "type": "string"
+          },
+          "successful_used": {
+            "minimum": 0.0,
+            "title": "Successful Used",
+            "type": "integer"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "allowance_id",
+          "product_id",
+          "metric_key",
+          "unit",
+          "quantity",
+          "classification",
+          "status",
+          "successful_used",
+          "reserved",
+          "remaining",
+          "available",
+          "read_at"
+        ],
+        "title": "ObservedPaidUsage",
+        "type": "object"
+      },
       "PaidAccessAllowanceResponse": {
         "properties": {
           "allowance_id": {
@@ -652,9 +1241,7 @@
             "type": "string"
           },
           "provenance": {
-            "const": "SIMULATED",
-            "title": "Provenance",
-            "type": "string"
+            "$ref": "#/components/schemas/SourceProvenance"
           },
           "quantity": {
             "minimum": 0.0,
@@ -819,6 +1406,83 @@
           "effective_until"
         ],
         "title": "PaidAccessResponse",
+        "type": "object"
+      },
+      "PaidUsageErrorDetail": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          }
+        },
+        "required": [
+          "code",
+          "request_id"
+        ],
+        "title": "PaidUsageErrorDetail",
+        "type": "object"
+      },
+      "PaidUsageErrorResponse": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/PaidUsageErrorDetail"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "PaidUsageErrorResponse",
+        "type": "object"
+      },
+      "PaidUsageResponse": {
+        "properties": {
+          "access_revision": {
+            "minimum": 0.0,
+            "title": "Access Revision",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "observed": "#/components/schemas/ObservedPaidUsage",
+                  "unavailable": "#/components/schemas/UnavailablePaidUsage",
+                  "unobserved": "#/components/schemas/UnobservedPaidUsage"
+                },
+                "propertyName": "status"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ObservedPaidUsage"
+                },
+                {
+                  "$ref": "#/components/schemas/UnobservedPaidUsage"
+                },
+                {
+                  "$ref": "#/components/schemas/UnavailablePaidUsage"
+                }
+              ]
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "access_revision",
+          "items"
+        ],
+        "title": "PaidUsageResponse",
         "type": "object"
       },
       "PasswordResetConfirmRequest": {
@@ -1096,9 +1760,7 @@
             "$ref": "#/components/schemas/TechnicalOffer"
           },
           "provenance": {
-            "const": "SIMULATED",
-            "title": "Provenance",
-            "type": "string"
+            "$ref": "#/components/schemas/SourceProvenance"
           },
           "source_digest": {
             "pattern": "^sha256:[0-9a-f]{64}$",
@@ -1564,6 +2226,104 @@
         "title": "TechnicalOffer",
         "type": "object"
       },
+      "UnavailablePaidUsage": {
+        "properties": {
+          "allowance_id": {
+            "title": "Allowance Id",
+            "type": "string"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/UsageClassification"
+          },
+          "metric_key": {
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "quantity": {
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "status": {
+            "const": "unavailable",
+            "title": "Status",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "allowance_id",
+          "product_id",
+          "metric_key",
+          "unit",
+          "quantity",
+          "classification",
+          "status"
+        ],
+        "title": "UnavailablePaidUsage",
+        "type": "object"
+      },
+      "UnobservedPaidUsage": {
+        "properties": {
+          "allowance_id": {
+            "title": "Allowance Id",
+            "type": "string"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/UsageClassification"
+          },
+          "metric_key": {
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "quantity": {
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "status": {
+            "const": "unobserved",
+            "title": "Status",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "allowance_id",
+          "product_id",
+          "metric_key",
+          "unit",
+          "quantity",
+          "classification",
+          "status"
+        ],
+        "title": "UnobservedPaidUsage",
+        "type": "object"
+      },
+      "UsageClassification": {
+        "enum": [
+          "current",
+          "historical"
+        ],
+        "title": "UsageClassification",
+        "type": "string"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -1728,6 +2488,18 @@
         ],
         "title": "WidgetPaymentTarget",
         "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "BackendServiceBearer": {
+        "description": "Backend-to-Portal service credential. Never the delegated user token or primary Portal bearer.",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "PortalUserBearer": {
+        "description": "Primary Portal session bearer. Never forwarded to a product backend.",
+        "scheme": "bearer",
+        "type": "http"
       }
     }
   },
@@ -2117,6 +2889,93 @@
         ]
       }
     },
+    "/api/backend-session-codes": {
+      "post": {
+        "description": "Requires PortalUserBearer. A hash-only, single-use code expires within 60 seconds and remains bound to the parent session and configured consumer. The registered callback is deployment-owned; callback/redirect body fields are refused. All responses use Cache-Control: no-store. At most 60 successful code issuances per user and consumer in a fixed one-hour window. 401: invalid parent session or unverified email; 403: unknown consumer; 422: invalid PKCE/body; 429: issuance budget exhausted with Retry-After; 503: policy/storage unavailable.",
+        "operationId": "create_backend_code_api_backend_session_codes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackendCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendCodeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Issuance budget exhausted; Retry-After is seconds until retry."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "PortalUserBearer": []
+          }
+        ],
+        "summary": "Issue a consumer-bound S256 authorization code",
+        "tags": [
+          "backend-session"
+        ]
+      }
+    },
     "/api/billing/widget-bootstrap": {
       "post": {
         "operationId": "widget_bootstrap_api_billing_widget_bootstrap_post",
@@ -2438,6 +3297,63 @@
         "summary": "Paid Access",
         "tags": [
           "paid-access"
+        ]
+      }
+    },
+    "/api/paid-usage": {
+      "get": {
+        "description": "Read actual usage for server-selected current or eligible historical allowances. Requires an active verified-email Portal session. No caller-selected owner or allowance IDs. No-store responses; backend outages and concurrent paid-state changes return retryable 503.",
+        "operationId": "paid_usage_api_paid_usage_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaidUsageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaidUsageErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaidUsageErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaidUsageErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "PortalUserBearer": []
+          }
+        ],
+        "summary": "Paid Usage",
+        "tags": [
+          "paid-usage"
         ]
       }
     },
@@ -2821,6 +3737,349 @@
         "summary": "Review",
         "tags": [
           "purchases"
+        ]
+      }
+    },
+    "/internal/v1/access-snapshots/{user_id}": {
+      "get": {
+        "description": "Requires BackendServiceBearer with access-snapshot:read. The credential selects consumer, products and current policy P; tenant_id/region can only narrow its scope. R is the whole-user paid revision. Included allowances must retain this consumer's technical source and backend ownership; policy changes cannot transfer existing allowances or usage. Only included products and their supporting facts bound completeness and expiry. Read-only local GET: no backend/LBX calls or usage writes. Known empty users return R0. All responses are no-store; browser Origin is refused. 401: service credential; 403: scope/permission/browser; 404: unknown scoped user; 422: malformed or missing scope; 503: retained allowance owner conflict, overdue included facts, stale policy, storage/capacity/clock unavailable. Quantity is the purchased ceiling. Backends must bind consumer/scope/P/R, preserve durable floors, and atomically reserve/finalize/release in their own usage storage; this read alone cannot admit execution.",
+        "operationId": "access_snapshot_internal_v1_access_snapshots__user_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "region",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Region",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "BackendServiceBearer": []
+          }
+        ],
+        "summary": "Read this consumer's committed paid authority (V3)",
+        "tags": [
+          "access-snapshot"
+        ]
+      }
+    },
+    "/internal/v1/allowance-exhaustions": {
+      "post": {
+        "description": "Requires BackendServiceBearer with allowance-exhaustion:write. Validates the sender's product and retained source/backend ownership plus the full issued tuple. 204 follows durable commit, including duplicates and historical cycles. All responses are no-store; browser Origin is refused. The hint can schedule GET-only reconciliation; it never revokes, refills or sends financial commands.",
+        "operationId": "allowance_exhaustion_internal_v1_allowance_exhaustions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllowanceExhaustion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "BackendServiceBearer": []
+          }
+        ],
+        "summary": "Durably accept one immutable allowance exhaustion hint (V1)",
+        "tags": [
+          "allowance-exhaustion"
+        ]
+      }
+    },
+    "/internal/v1/backend-sessions/exchange": {
+      "post": {
+        "description": "Requires BackendServiceBearer with backend-session:exchange. Consumer identity comes from the service credential; the body contains only the code and S256 verifier. Returns a V2 delegated user bearer, canonical UUID/scope, consumer and current policy revision. Lifetime is at most 30 minutes and parent expiry. No refresh token. All responses are no-store. 401: invalid/used/expired/foreign code, parent or unverified email; 403: scope/permission; 422: invalid body; 503: policy/storage unavailable. Origin-bearing browser requests are refused.",
+        "operationId": "exchange_backend_code_internal_v1_backend_sessions_exchange_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackendExchangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendExchangeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "BackendServiceBearer": []
+          }
+        ],
+        "summary": "Redeem this backend's code once",
+        "tags": [
+          "backend-session"
+        ]
+      }
+    },
+    "/internal/v1/backend-sessions/introspect": {
+      "post": {
+        "description": "Requires BackendServiceBearer with backend-session:introspect in Authorization. The secret access_token body field contains the delegated USER bearer, not the service credential. Validates consumer audience, active user, verified email, parent revocation/expiry and current policy. Read-only; no refresh or PII. valid_until includes the configured conservative clock budget. All responses are no-store. 401: backend_delegation_expired or backend_parent_authority_invalid; 403: scope/permission/browser; 422: invalid secret body; 503: policy/storage unavailable.",
+        "operationId": "introspect_backend_token_internal_v1_backend_sessions_introspect_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackendIntrospectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendIntrospectionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "BackendServiceBearer": []
+          }
+        ],
+        "summary": "Validate this backend's delegated user on every protected request",
+        "tags": [
+          "backend-session"
         ]
       }
     }

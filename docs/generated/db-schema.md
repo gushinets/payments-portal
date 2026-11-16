@@ -6,6 +6,7 @@ Generated from SQLAlchemy metadata. Do not edit directly.
 
 | Column | Type | Nullable | Key |
 |---|---|---:|---|
+| `recipient_id` | `TEXT` | no |  |
 | `outbox_id` | `CHAR(32)` | no | PK |
 | `tenant_id` | `TEXT` | no | FK |
 | `region` | `TEXT` | no | FK |
@@ -24,7 +25,7 @@ Indexes and constraints:
 - `ck_access_invalidation_outbox_pending_revision_positive`
 - `ck_access_invalidation_outbox_revision_order`
 - `fk_access_invalidation_outbox_user_scope`
-- `uq_access_invalidation_outbox_tenant_region_user`
+- `uq_access_invalidation_outbox_recipient_user`
 - `ix_access_invalidation_outbox_next_attempt_at`
 
 ## `auth_sessions`
@@ -50,6 +51,57 @@ Indexes and constraints:
 - `ix_auth_sessions_tenant_id`
 - `ix_auth_sessions_token_hash`
 - `ix_auth_sessions_user_id`
+
+## `backend_code_issuance_budgets`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `tenant_id` | `TEXT` | no | PK |
+| `region` | `TEXT` | no | PK |
+| `user_id` | `CHAR(32)` | no | PK |
+| `consumer_id` | `TEXT` | no | PK |
+| `issued_count` | `INTEGER` | no |  |
+| `window_expires_at` | `DATETIME` | no |  |
+
+Indexes and constraints:
+
+- `ck_backend_code_budget_count`
+- `fk_backend_code_budget_user_scope`
+- `ix_backend_code_issuance_budgets_window_expires_at`
+
+## `backend_consumer_policies`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `consumer_id` | `TEXT` | no | PK |
+| `tenant_id` | `TEXT` | no | PK |
+| `region` | `TEXT` | no | PK |
+| `consumer_policy_revision` | `BIGINT` | no |  |
+| `policy_digest` | `TEXT` | no |  |
+| `snapshot_delivery_enabled` | `BOOLEAN` | no |  |
+
+Indexes and constraints:
+
+- `ck_backend_policy_positive`
+
+## `backend_session_delegations`
+
+| Column | Type | Nullable | Key |
+|---|---|---:|---|
+| `id` | `CHAR(32)` | no | PK |
+| `auth_session_id` | `CHAR(32)` | no | FK |
+| `consumer_id` | `TEXT` | no |  |
+| `code_hash` | `TEXT` | no |  |
+| `code_challenge` | `TEXT` | no |  |
+| `code_expires_at` | `DATETIME` | no |  |
+| `exchanged_at` | `DATETIME` | yes |  |
+| `token_hash` | `TEXT` | yes |  |
+| `token_expires_at` | `DATETIME` | yes |  |
+
+Indexes and constraints:
+
+- `ck_backend_delegation_exchange_shape`
+- `ix_backend_session_delegations_auth_session_id`
 
 ## `billing_product_access_scopes`
 
@@ -113,6 +165,7 @@ Indexes and constraints:
 
 Indexes and constraints:
 
+- `ck_billing_observations_activation_shape`
 - `ck_billing_observations_revision_positive`
 - `ck_billing_state_observations_evidence_schema_nonempty`
 - `ck_billing_state_observations_kind`
@@ -137,6 +190,7 @@ Indexes and constraints:
 - `ix_billing_state_observations_subscription_time`
 - `ix_billing_state_observations_user_product_time`
 - `ix_billing_state_observations_work_item`
+- `uq_billing_observations_allowance_activation`
 
 ## `billing_work_items`
 
@@ -148,6 +202,7 @@ Indexes and constraints:
 | `work_kind` | `TEXT` | no |  |
 | `scope_kind` | `TEXT` | no |  |
 | `scope_reference` | `TEXT` | no |  |
+| `recipient_id` | `TEXT` | yes |  |
 | `coalescing_key` | `TEXT` | yes |  |
 | `payload_schema_version` | `TEXT` | no |  |
 | `payload_document` | `JSON` | no |  |
@@ -167,6 +222,7 @@ Indexes and constraints:
 - `ck_billing_work_items_generation_nonnegative`
 - `ck_billing_work_items_lease_pair`
 - `ck_billing_work_items_payload_schema_nonempty`
+- `ck_billing_work_items_recipient`
 - `ix_billing_work_items_claim_scan`
 - `ix_billing_work_items_coalescing_key`
 - `ix_billing_work_items_kind_state`

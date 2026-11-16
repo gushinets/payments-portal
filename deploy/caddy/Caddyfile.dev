@@ -1,4 +1,6 @@
 :80 {
+	@portal_service_api path /internal/v1/backend-sessions/exchange /internal/v1/backend-sessions/introspect /internal/v1/access-snapshots/* /internal/v1/allowance-exhaustions /docs /docs/* /openapi.json
+	reverse_proxy @portal_service_api api:8000
 	reverse_proxy /api/* api:8000
 	reverse_proxy {$WEB_UPSTREAM:host.docker.internal:3000}
 }

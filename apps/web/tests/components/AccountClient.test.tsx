@@ -71,7 +71,7 @@ describe("direct account authentication and session", () => {
     window.localStorage.clear();
     fetchMock.mockReset();
     purchasesFetchMock.mockReset().mockImplementation(async () => jsonResponse({ purchases: [{ ...savedPurchase, created_at: "2026-10-27T12:00:00Z" }], next_cursor: null }));
-    vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/paid-access") ? Promise.resolve(Response.json(paidState({ access_revision: 0, grants: [], allowances: [], products: [], effective_until: null }))) : String(input).endsWith("/api/purchase-intents")
+    vi.stubGlobal("fetch", ((input, init) => String(input).endsWith("/api/paid-access") ? Promise.resolve(Response.json(paidState({ access_revision: 0, grants: [], allowances: [], products: [], effective_until: null }))) : String(input).endsWith("/api/paid-usage") ? Promise.resolve(Response.json({ access_revision: 0, items: [] })) : String(input).endsWith("/api/purchase-intents")
       ? purchasesFetchMock(input, init) : String(input).includes("/api/purchase-intents/current?")
         ? Promise.resolve(jsonResponse({ purchase: null })) : fetchMock(input, init)) satisfies typeof fetch);
   });
@@ -80,6 +80,23 @@ describe("direct account authentication and session", () => {
     cleanup();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("gates authorization until email is rechecked without losing the request URL", async () => {
+    window.localStorage.setItem(sessionStorageKey, "parent-token");
+    window.history.replaceState({}, "", "/ru/backend/authorize?state=pending-pkce");
+    fetchMock.mockResolvedValueOnce(jsonResponse({ authenticated: true, user: { ...accountUser, email_verified: false } }));
+    renderWithIntl(<AccountClient languageTag="ru" requireVerifiedEmailForChildren><button>Authorize product</button></AccountClient>, {
+      locale: "ru", messages: ruMessages,
+    });
+    const recheck = await screen.findByRole("button", { name: ruMessages.Account.authenticated.checkVerificationAction });
+    expect(screen.queryByRole("button", { name: "Authorize product" })).not.toBeInTheDocument();
+    fetchMock.mockResolvedValueOnce(sessionResponse());
+    fireEvent.click(recheck);
+    expect(await screen.findByRole("button", { name: "Authorize product" })).toBeVisible();
+    expect(window.location.search).toBe("?state=pending-pkce");
+    expect(window.localStorage.getItem(sessionStorageKey)).toBe("parent-token");
+    window.history.replaceState({}, "", "/");
   });
 
   it("renders direct login and registration without loading commerce APIs", async () => {

@@ -7,7 +7,7 @@ from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused, CustomerOpen
 from app.domains.billing.paid_access import apply_paid_source, commit_paid_state, resolve_access_end
 from app.domains.billing.paid_deadlines import effective_deadline
-from app.domains.billing.paid_policy import PaidDecision, paid_decision
+from app.domains.billing.paid_policy import MeteringPolicy, PaidDecision, paid_decision
 from app.domains.billing.customers import lock_customer, lock_user, mark_customer_identity_conflict
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.reconciliation_contracts import (
@@ -170,7 +170,7 @@ def apply_reconciliation(
     work_claim: WorkClaim | None = None,
     resolution: ReviewResolution | None = None,
     clock_skew_seconds: int | None = None,
-    allow_simulated_metering: bool = True,
+    metering_policy: MeteringPolicy = MeteringPolicy.NONPRODUCTION,
 ) -> ReconciliationResult:
     """Recheck permanent provenance and current fences before any fact changes."""
     with factory() as db:
@@ -258,7 +258,7 @@ def apply_reconciliation(
                 user,
                 None,
                 now,
-                allow_simulated_metering=allow_simulated_metering,
+                metering_policy=metering_policy,
                 schedule_deadlines=False,
             )
         resolved_case = None
@@ -406,7 +406,7 @@ def apply_reconciliation(
             skew_seconds=clock_skew_seconds,
             access_end_at=access_end_at,
             review=bool(conflict) or known_review or customer_conflict,
-            allow_simulated_metering=allow_simulated_metering,
+            metering_policy=metering_policy,
         )
         current.reconciliation_lease_owner = None
         current.reconciliation_lease_expires_at = None
@@ -438,7 +438,7 @@ def apply_reconciliation(
                     "read_finished_at": proof.read_finished_at.isoformat(),
                 },
             )
-        commit_paid_state(db, user, observation, now, allow_simulated_metering=allow_simulated_metering)
+        commit_paid_state(db, user, observation, now, metering_policy=metering_policy)
         if (
             clock_skew_seconds is not None
             and scope.primary_subscription_id is None

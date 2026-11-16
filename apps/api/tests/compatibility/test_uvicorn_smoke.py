@@ -5,6 +5,7 @@ import socket
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import httpx2
 
@@ -30,13 +31,26 @@ def _stop_process(process: subprocess.Popen[str]) -> str:
     return output or ""
 
 
-def test_uvicorn_serves_application_with_production_proxy_flags() -> None:
+def test_uvicorn_serves_application_with_production_proxy_flags(tmp_path: Path) -> None:
     port = _available_port()
     environment = {
         **os.environ,
         **api_test_environment(),
+        "DATABASE_URL": f"sqlite+pysqlite:///{tmp_path / 'uvicorn-smoke.db'}",
+        "PYTHONPATH": "apps/api",
         "OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:4318",
     }
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import app.models; from app.core.database import Base, engine; Base.metadata.create_all(engine)",
+        ],
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     process = subprocess.Popen(
         [
             sys.executable,

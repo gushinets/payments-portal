@@ -33,6 +33,7 @@
     "**/*.ts",
     "**/*.tsx",
     "../../playwright.config.ts",
+    "../../playwright.joint.config.ts",
     "../../playwright.react-runtime.config.ts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"

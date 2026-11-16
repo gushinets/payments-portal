@@ -6,8 +6,9 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
-from app.core.settings import AppEnv, Settings
+from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused
+from app.domains.billing.paid_policy import MeteringPolicy
 from app.domains.billing.customers import lock_user
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.work_contracts import WorkClaim, WorkLane
@@ -22,6 +23,7 @@ from app.models import (
     BillingStateObservation,
     BillingStateObservationKind,
     BillingWorkItem,
+    BillingWorkKind,
     ExternalSubscription,
     ExternalSubscriptionFinancialAccessStatus as Financial,
 )
@@ -97,13 +99,16 @@ def enroll_batch(factory: SessionFactory, configuration: Settings) -> int:
 
 def repair_paid_deadlines(factory: SessionFactory, configuration: Settings) -> int:
     """Bounded missing set is its own progress marker; no source config or HTTP."""
+    policy = MeteringPolicy.for_environment(configuration.app_env)
     with factory() as db:
         users = paid_access.missing_deadline_users(
             db,
             configuration.instance_tenant_id,
             configuration.instance_region,
             configuration.billing_worker_scan_batch_size,
-            allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
+            permitted_provenances=tuple(provenance.value for provenance in policy.provenances)
+            if policy == MeteringPolicy.CONFIGURED_ONLY
+            else None,
         )
     repaired = 0
     for identity in users:
@@ -115,7 +120,7 @@ def repair_paid_deadlines(factory: SessionFactory, configuration: Settings) -> i
                     user,
                     None,
                     as_utc(billing_reconciliation.database_now(db)),
-                    allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
+                    metering_policy=policy,
                 )
                 db.commit()
                 repaired += 1
@@ -154,23 +159,30 @@ def ensure_sweep(factory: SessionFactory, configuration: Settings) -> None:
         db.commit()
 
 
-def claim_work(factory: SessionFactory, configuration: Settings, lane: WorkLane) -> WorkClaim | None:
+def claim_work(
+    factory: SessionFactory, configuration: Settings, lane: WorkLane, *, recipient_id: str | None = None
+) -> WorkClaim | None:
+    if lane == WorkLane.DELIVERY and recipient_id is None:
+        raise ValueError("Delivery claims require a recipient")
     with factory() as db:
         now = as_utc(billing_reconciliation.database_now(db))
         row = queries.claimable(
             db,
-            (SWEEP, EXPIRY, "external_create_deadline")
+            (SWEEP, EXPIRY, "external_create_deadline", BillingWorkKind.ALLOWANCE_EXHAUSTION)
             if lane == WorkLane.LOCAL
+            else (BillingWorkKind.ACCESS_INVALIDATION,)
+            if lane == WorkLane.DELIVERY
             else (RECONCILIATION, "external_create_recovery", "customer_inventory"),
             now,
-            urgent=None if lane == WorkLane.LOCAL else lane == WorkLane.URGENT,
+            urgent=None if lane in (WorkLane.LOCAL, WorkLane.DELIVERY) else lane == WorkLane.URGENT,
             account=configuration.lbx_external_billing_account_id
-            if lane == WorkLane.LOCAL
+            if lane in (WorkLane.LOCAL, WorkLane.DELIVERY)
             else connection_account(db, configuration),
             sweep_key=configuration.lbx_external_billing_account_id,
             local_scope=(configuration.instance_tenant_id, configuration.instance_region)
-            if lane == WorkLane.LOCAL
+            if lane in (WorkLane.LOCAL, WorkLane.DELIVERY)
             else None,
+            recipient_id=recipient_id,
             urgent_before=now + URGENT_TRUST_WINDOW,
             urgent_attempt_before=now - timedelta(seconds=URGENT_SECONDS),
         )
@@ -189,6 +201,7 @@ def claim_work(factory: SessionFactory, configuration: Settings, lane: WorkLane)
             row.enqueue_generation,
             now,
             row.lease_expires_at,
+            row.recipient_id,
         )
         db.commit()
         # A failed/uncertain commit cannot return ownership or start HTTP.
@@ -203,6 +216,7 @@ def verify_claim(db: Session, claim: WorkClaim) -> BillingWorkItem:
         or row.work_state != "running"
         or row.work_kind != claim.kind
         or row.scope_reference != claim.reference
+        or row.recipient_id != claim.recipient_id
         or row.lease_owner != claim.owner
         or row.lease_expires_at is None
         or as_utc(row.lease_expires_at) <= now

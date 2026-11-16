@@ -57,6 +57,8 @@ class Operation(StrEnum):
     HTTP_REQUEST = "http_request"
     PASSWORD_RESET_EMAIL = "password_reset_email"
     BILLING_WORKER = "billing_worker"
+    DELEGATION_CLEANUP = "delegation_cleanup"
+    BACKEND_INTROSPECTION = "backend_introspection"
     BILLING_OPERATOR = "billing_operator"
 
 

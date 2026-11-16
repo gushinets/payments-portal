@@ -1,7 +1,7 @@
 # AnyToolAI Portal Architecture
 
 Status: authoritative current-state map
-Last updated: 2026-11-10
+Last updated: 2026-11-11
 
 ## System boundary
 
@@ -10,7 +10,9 @@ sessions, email verification, password recovery,
 legal-document/version/acceptance records, the AnyToolAI Portal UI, and a
 provider-neutral billing observation and paid-access projection boundary. It
 does not own workflow execution, artifacts, usage consumption, or quota
-enforcement; those belong to the separate Platform Kernel repository.
+enforcement; those belong to each product's configured backend. Platform Kernel
+is the first implemented consumer; real external backend adoption remains with
+its owning team.
 
 The current Portal combines public discovery, product detail, account/auth and
 an owned-purchase cabinet. ANY-709 implements direct product links, live current
@@ -19,10 +21,24 @@ Buy/Continue/Manage with one shared payment-capable Widget. It remains
 pre-production. ANY-715 supplies embedded lifecycle polling and GET-only
 recovery/inventory. ANY-765 adds local paid grants/allowances, semantic revisions,
 an invalidation outbox, autonomous expiry and authenticated cabinet reads.
-Kernel delivery/enforcement, actual usage and production enablement remain later
-work. Delivery and acceptance evidence are recorded in
-[ANY-709](https://linear.app/paveldik/issue/ANY-709) and the
-[ANY-765 handoff](docs/engineering/billing-background-operations.md#step-10-handoff--any-765).
+ANY-766 Step 5 adds configured-source allowance derivation. Step 12 now serves
+authenticated consumer-filtered V3 snapshots and enforces independent policy/access
+floors in Kernel. Its [serving and provenance rules](docs/engineering/billing-background-operations.md#any-766-step-5--production-allowances-and-snapshot-serving)
+reuse the existing paid writer and do not enable sales.
+ANY-766 Step 13 partitions the Step 7 invalidation outbox/work by backend
+recipient, with atomic whole-user fan-out, independent bounded delivery lanes,
+exact sent-revision ACK and restart repair. Migration `20261111_0010` retains
+queued Kernel revisions/history and retires pre-cutover claims while workers
+are stopped. Step 12 supplies local TCP
+auth/access evidence. Step 14 adds owner-checked immutable exhaustion hints and
+Kernel usage readback. Step 15 adds separate bounded cabinet usage with saved-owner
+routing, eligible historical selection and a post-I/O revision/session recheck.
+Steps 16/17 supply focused local paid browser/execution acceptance and
+build/install preparation. The full matrix, remote/live acceptance and
+production enablement remain ANY-767 work. The
+[active plan](docs/exec-plans/active/ANY-766-implementation-plan.md) records the
+remaining scope and gates; the [billing operations guide](docs/engineering/billing-background-operations.md)
+defines current serving and delivery behavior.
 
 Each production deployment serves exactly one contour. Region Resolver is a
 separate planned service for contour selection; it is not implemented here.
@@ -30,9 +46,9 @@ See [contours](docs/architecture/contours.md) and the
 [Region Resolver contract](docs/architecture/region-resolver-contract.md).
 The [Platform Kernel integration map](docs/integrations/platform-kernel.md)
 records pinned peer implementation and the remaining enablement gates. Manifest
-HTTP reads are implemented, with an optional development mock. Dashed paid-access
-arrows below remain future integration; source inspection is not conformance or
-production acceptance.
+HTTP reads are implemented, with an optional development mock. Snapshot and
+invalidation transport are implemented; Step 16 supplies focused assembled local
+acceptance, followed by remote/live acceptance in ANY-767.
 
 ```mermaid
 flowchart LR
@@ -42,8 +58,8 @@ flowchart LR
   Web --> API["Portal backend · FastAPI"]
   API --> DB[("PostgreSQL")]
   API -->|"current GET capability-manifest"| Kernel["Platform Kernel"]
-  Kernel -. "future GET access-snapshots/{user_id}" .-> API
-  API -. "future POST access-invalidations" .-> Kernel
+  Kernel -->|"authenticated GET access-snapshots/{user_id}"| API
+  API -->|"claimed POST access-invalidations"| Kernel
   API -->|"optional dev/test Manifest source"| Mock["Optional Kernel Manifest mock"]
   API -->|"source/customer/preparation HTTP"| Billing["External Billing"]
 ```
@@ -58,9 +74,11 @@ explicit acceptance and bounded preparation;
 browser Buy/Continue/Manage uses the same owned purchase. Catalog details read
 current selected offers; catalog/preparation evidence alone grants no paid access.
 
-The current migrated schema contains 27 application tables: ten retained
+The current migrated schema contains 30 application tables: ten retained
 identity/session/legal tables, fifteen original target billing tables, a current
-product-link pointer and a purchase hold. The billing tables start empty. Direct
+product-link pointer, a purchase hold, a consumer-bound session-delegation table
+and a backend policy guard, plus a scoped code-issuance budget.
+The billing tables start empty. Direct
 link publication and explicit customer/purchase flows populate their owned
 records. Source-catalog projection slots have no runtime readers/writers.
 Shared authoritative subscription reconciliation uses
@@ -106,21 +124,28 @@ narrowly supersedes those baselines' source-catalog mirroring/new-sale TTL.
 ADR 0005 links the exact dated ANY-504 C1-C4 exceptions and ANY-709 results. Apply
 those decisions before the affected baseline clauses; the following describes
 the current implementation, while the accepted specification bodies stay intact.
-Each publication and genuinely new purchase requires live Kernel and complete
-selected-offer LBX reads. ANY-709 Step 1 separates immutable product links from transient current offers
+Each publication and genuinely new purchase requires its live configured
+technical source and complete selected-offer LBX reads. ANY-709 Step 1 separates immutable product links from transient current offers
 and immutable accepted purchase snapshots. PostgreSQL retains links/history. Catalog
-listing reads enabled Kernel products once; selected detail reads current LBX
-values with bounded work. A current offer does not grant access. New purchase admission independently
+listing reads enabled products from configured backend-owned manifests;
+selected detail reads current LBX values with bounded work. A current offer does not grant access. New purchase admission independently
 revalidates it and pins exact terms and append-only legal evidence. See the [normal connection/link runbook](docs/engineering/ANY-709-billing-runbook.md). There are no periodic source-catalog synchronization jobs.
+ANY-766 Step 11 routes source reads by configured product ownership and writes
+versioned source/backend metadata without converting historical documents or
+allowance identities. The [source/history guide](docs/contracts/product-backend-api/README.md#implemented-step-11-technical-sources-and-history)
+records version and reader compatibility; Kernel execution and manifest V1 stay
+unchanged. Steps 12/13 implement consumer-scoped snapshots and recipient
+delivery; Steps 14/15 add generic usage/exhaustion and independent cabinet readback.
 Paid-access derivation, subscription reconciliation/trust and AccessSnapshot
 deadlines are unchanged.
 External Billing owns commercial billing truth and lifecycle. The AnyToolAI
 Portal owns implemented identity/legal acceptance and the external-billing
 anti-corruption, subscription observation/projection, reconciliation and recovery
-boundary and provider-neutral paid-access projection. Kernel delivery remains
-future work.
-Platform Kernel owns technical product and metric vocabulary, durable actual
-usage, and quota enforcement.
+boundary and provider-neutral paid-access projection. Kernel invalidation delivery
+uses the existing outbox/work queue and embedded worker with an independent lane.
+Each configured product backend owns its technical product/metric vocabulary,
+durable actual usage and quota enforcement. Kernel retains its existing
+execution implementation and manifest producer.
 
 The component historically named “Payments Portal” in those accepted records
 maps to the Portal backend boundary implemented here. ADR 0005 and the accepted
@@ -186,7 +211,7 @@ See the [Step 3 runbook](docs/engineering/ANY-709-billing-runbook.md#purchase-ap
   implemented. ANY-715 adds embedded polling/reconciliation/recovery and audited operator
   resolutions. ANY-765 adds local paid projection, allowances, revisions/outbox,
   deadline reductions and `GET /api/paid-access`. Webhook inbox rows are retained
-  history without a runtime writer; Kernel delivery remains later work.
+  history without a runtime writer; ANY-766 Step 7 implements claimed Kernel delivery.
 - **Presentation** — locale-prefixed product-first home, catalog,
   product detail pages, pricing placeholder, direct account/auth entry,
   product-centric cabinet, recovery, verification, and
@@ -220,9 +245,10 @@ confirm and resume the original held purchase; no product-execution URL is fabri
 Home, catalog and product detail read published products through the Portal
 catalog API. The cabinet instead lists the authenticated user’s held accepted
 purchases from PostgreSQL through bounded `GET /api/purchase-intents` pages; it
-never substitutes the public catalog for owned inventory. Listing reads enabled Kernel products;
-selected detail/review reads current LBX terms. Detail routes use Kernel
-`product_id`; PostgreSQL preserves immutable links and accepted purchase history. The former static
+never substitutes the public catalog for owned inventory. Listing reads enabled
+products from their configured technical sources; selected detail/review reads
+current LBX terms. Detail routes use opaque source `product_id` values;
+PostgreSQL preserves immutable links and accepted purchase history. The former static
 `document-summary` and `prompt-optimizer` slugs belong to the historical 4F
 presentation and are not the current catalog identity source. Brief owned cards
 link to product details; incomplete accepted purchases remain resumable. Product
@@ -231,9 +257,12 @@ details own review, consent and preparation. Prepared purchases link to
 Every payment entry uses the same original-purchase bootstrap and fresh proof.
 ANY-715 reconciles subscription facts and recovers uncertain operations in the
 background. ANY-765 presents the separately committed paid projection, including
-confirmed/absent/unavailable evidence and SIMULATED purchased limits. The local
+confirmed/absent/unavailable evidence and provenance-labelled purchased limits. The local
 paid read remains independent of purchase listing and source availability.
-Actual usage/remaining and Kernel paid execution remain ANY-766.
+ANY-766 Steps 6/8 implement Kernel paid execution and recoverable browser launch;
+Steps 14/15 implement actual cabinet usage/remaining from each saved backend
+owner. Step 11 does not add another
+backend's product UI or browser launch.
 
 `/pricing` and public Pricing navigation are presentation-only: localized
 metadata, an honest unavailable/not-ready state and home/products links. The
@@ -524,7 +553,8 @@ commercial behavior:
 - subscription and observation rows use shared ANY-715 reconciliation;
   ANY-765 derives immutable allowances from accepted terms and proven cycles;
 - the whole-user paid writer atomically commits semantic state/revision, causal
-  observations and coalesced invalidation work. HTTP delivery remains ANY-766.
+  observations and coalesced invalidation work. The embedded worker delivers
+  captured revisions through an independent lane and acknowledges only the sent N.
 
 `external_billing_account_id` is an opaque server-resolved connection scope,
 derived from normalized LBX origin within the existing tenant/region deployment,
@@ -574,7 +604,7 @@ payment state, or manual operator input alone never grant paid access.
 | Password-reset confirmation | `confirm_password_reset()` atomically commits token claim, password change, outstanding-token invalidation, and active-session revocation. |
 | Email-verification confirmation | `confirm_email_verification()` atomically commits the mailbox-verification fact, token claim, and invalidation of other outstanding verification capabilities. |
 | Email-verification resend/rotation | `prepare_email_verification_resend()` atomically commits invalidation of the previous outstanding capability and creation of its replacement after the cooldown/lock checks. |
-| Commercial mapping publication | `publish_product_link()` appends a v2 immutable revision and CAS-updates one product head after live checks; same identity is a no-op across price changes. Catalog HTTP runs outside short resource-owning worker DB units. |
+| Commercial mapping publication | `publish_product_link()` appends the evaluated immutable revision (`product-link-v4` for metered publication; legacy v2 only for the original unmetered Kernel path) and CAS-updates one product head after live checks. Source/owner transfer is refused; same identity is a no-op across price changes. Catalog HTTP runs outside short resource-owning worker DB units. |
 | Accepted purchase | `pin_purchase()` atomically commits immutable terms, consent, local customer slot, permanent financial identities and one product hold after source reads. |
 | Financial preparation | `claim_financial()` commits permanent possible-send evidence/work before HTTP; fenced point-read apply owns separate short binding/observation transactions. |
 | Subscription reconciliation | Claims commit before source reads; shared fenced apply atomically writes observations, facts, paid changes and work. Audited operator resolutions use that same apply/bind transaction. |

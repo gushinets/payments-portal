@@ -32,13 +32,14 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-# This liveness-only smoke has no migrated schema for background work.
+# Prepare a disposable schema for startup policy initialization. PostgreSQL
+# migrations are verified separately by the production gate.
 container_id=$(docker run --detach --publish 127.0.0.1::8000 \
   --env APP_ENV=test \
   --env APP_PUBLIC_BASE_URL=http://localhost:3000 \
   --env INSTANCE_TENANT_ID=anytoolai \
   --env INSTANCE_REGION=ru \
-  --env DATABASE_URL=sqlite+pysqlite:///:memory: \
+  --env DATABASE_URL=sqlite+pysqlite:////tmp/api-runtime-smoke.db \
   --env POSTGRES_DB=anytoolai_test \
   --env POSTGRES_USER=anytoolai \
   --env POSTGRES_PASSWORD=anytoolai \
@@ -48,15 +49,17 @@ container_id=$(docker run --detach --publish 127.0.0.1::8000 \
   --env SKIP_LEGAL_SEED=true \
   --env BILLING_WORKER_ENABLED=false \
   --env OTEL_SDK_DISABLED=true \
-  "$image_ref" \
-  python -m uvicorn app.main:app --app-dir apps/api \
-  --host 0.0.0.0 --port 8000 --proxy-headers \
-  --forwarded-allow-ips 127.0.0.1 --no-access-log --log-level warning)
+  "$image_ref" sh -ec '
+    PYTHONPATH=apps/api python -c "import app.models; from app.core.database import Base, engine; Base.metadata.create_all(engine)"
+    exec python -m uvicorn app.main:app --app-dir apps/api \
+      --host 0.0.0.0 --port 8000 --proxy-headers \
+      --forwarded-allow-ips 127.0.0.1 --no-access-log --log-level warning
+  ')
 
 endpoint=$(docker port "$container_id" 8000/tcp)
 response=""
 attempt=0
-while [ "$attempt" -lt 50 ]; do
+while [ "$attempt" -lt 150 ]; do
   if response=$(curl --connect-timeout 1 --max-time 2 \
     --fail --silent --show-error "http://${endpoint}/api/health/live" 2>/dev/null); then
     break

@@ -1,14 +1,14 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-11-10 (ANY-765 accepted terms and paid-access schema; ANY-812 policy clarification)
+Last updated: 2026-11-13 (ANY-766 retained allowance activation)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 (head)
+20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 -> 20261110_0008 -> 20261111_0009 -> 20261111_0010 -> 20261111_0011 -> 20261113_0012 -> 20261113_0013 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
@@ -58,16 +58,26 @@ and request-driven recovery. ANY-715 adds shared reconciliation, embedded durabl
 polling and audited operations. ANY-765 connects paid derivation to shared
 reconciliation and first-primary selection to complete relevant shared inventory.
 The existing local worker executes and repairs paid deadlines without source
-configuration. Kernel invalidation delivery remains ANY-766 work.
+configuration. ANY-766 Step 7 adds claimed Kernel delivery and restart repair
+through the existing work table; it stores no Portal usage ledger.
 
 ## Physical baseline
 
-A fresh database has exactly 27 application tables: ten retained
+A fresh database has exactly 30 application tables: ten retained
 identity/session/legal tables, fifteen original external-billing persistence
-tables, one current product-link pointer and one purchase mutex. Alembic has
-five revisions in one linear chain and one current head. Revision
+tables, one current product-link pointer, one purchase mutex, one session
+delegation table, one backend policy guard and one code-issuance budget table. Alembic has twelve revisions in
+one linear chain and one current head. Revision
 `20261029_0003` belongs to ANY-709, `20261028_0005` to ANY-715 and
-`20261031_0006` to ANY-765.
+`20261031_0006` to ANY-765 and `20261110_0007`/`20261110_0008`/`20261111_0009`/`20261111_0010` to ANY-766.
+Revision `20261110_0007` adds only `kernel_session_delegations`; revision
+`20261110_0008` extends recurring-work uniqueness to `access_invalidation`.
+Revision `20261111_0009` renames that delegation table and its audience column,
+preserving all credentials/parent bindings, and adds the monotonic consumer
+policy guard. `20261111_0010` adds recipient-specific invalidation identity
+and configured snapshot-recipient membership, preserving historical Kernel
+outbox revisions and retiring old running claims during the quiesced cutover.
+Migrations are not applied automatically by the API.
 
 There is no Portal-owned product, plan, order, payment, refund, subscription,
 entitlement, trial, provider-account, or direct-payment webhook table. There is
@@ -81,6 +91,9 @@ to a Portal-managed routing catalog.
 | `country_region_rules` | Identity/contour | Country membership, market enablement, strict mismatch, and legal document-set selection. |
 | `users` | Identity | Canonical contour-scoped Portal user. |
 | `auth_sessions` | Identity | Hashed, expiring and revocable authenticated sessions. |
+| `backend_session_delegations` | Identity | Hash-only single-use PKCE codes/tokens bound to a configured consumer; parent-session deletion cascades. |
+| `backend_code_issuance_budgets` | Identity | Successful code issuance count per tenant/region/user/consumer, fixed one-hour window; scoped user deletion cascades. |
+| `backend_consumer_policies` | Integration configuration | Monotonic consumer/tenant/region policy revision and digest; no secrets or user usage. |
 | `magic_link_tokens` | Identity | Purpose-bound hash-only password-reset and email-verification capabilities, including decoy-safe nullable user binding for password reset. |
 | `password_reset_rate_limits` | Identity | Durable password-reset rate-limit windows. |
 | `legal_entities` | Legal | Contour operator metadata. |
@@ -103,7 +116,7 @@ to a Portal-managed routing catalog.
 | `billing_work_items` | Operations | Shared durable scheduling/lease substrate; not business authority. |
 | `manual_review_cases` | Operations | Durable conflict/uncertainty evidence and audited resolution slots. |
 | `paid_access_states` | Access | Provider-neutral whole-user paid-access document and semantic revision, written atomically with supporting source facts. |
-| `access_invalidation_outbox` | Access | Durable pending/delivered revision slots for later paid-access invalidation delivery. |
+| `access_invalidation_outbox` | Access | Durable coalesced pending/delivered revisions for claimed paid-access invalidation delivery. |
 
 The documentation checker requires every implemented SQLAlchemy metadata table
 to have a row in this inventory.
@@ -163,8 +176,10 @@ document-version material.
 account. Their schema/version/timestamp/JSON columns remain physical storage
 only. Both tables are inert: no startup/periodic synchronization or admission
 reader is planned under the accepted amendment. Publication/new purchase read
-sources live. ANY-709 discovery reads enabled Kernel products and selected
-current LBX values; PostgreSQL retains immutable links/history.
+sources live. Step 11 routes discovery to configured product backends using
+manifest V1, retaining the legacy Kernel source when the consumer registry is
+empty. Selected detail reads current LBX values; PostgreSQL retains immutable
+links/history.
 
 `commercial_mapping_revisions` is append-only publication evidence. A revision
 is unique within `(external_billing_account_id, billing_offer_id)`, has a
@@ -184,7 +199,13 @@ is explicitly the **link identity digest**, not a price or whole-catalog digest.
 The versioned document pins connection scope, selected Kernel product and LBX
 service/tariff/period/quantity, independent source provenance, manifest evidence
 and operator audit. It contains no price, approval certificates or invented
-technical allowance. `commercial_product_heads` has primary key
+technical allowance. ANY-766 Step 3 adds `product-link-v3` in the same table;
+its identity also pins one explicit fixed-per-cycle product/metric/unit/quantity
+offer, with configured Kernel/LBX provenance. Step 11 writes metered
+`product-link-v4` with explicit technical source/backend owner and neutral
+manifest provenance, using the same table and product-head CAS. Historical
+documents are unchanged and missing ownership resolves to Kernel only in memory.
+`commercial_product_heads` has primary key
 `(external_billing_account_id, product_id)`, a restrictive composite FK to the
 immutable revision in the same account, and a positive product revision counter.
 Nullable `provider_origin` records only a proven canonical origin. Its unique
@@ -222,6 +243,27 @@ from full source/audit digests. Historical v2 full-digest acceptances and v1 sta
 readable without invented limits; exact replay uses saved evidence rather than current
 source configuration. The development fixture is disabled by default and
 rejected in production.
+
+ANY-766 Step 3 writes `accepted-purchase:v3` for v3 links, containing required
+`purchased-technical-terms:v2` with `CONFIGURED_SOURCE` provenance. Terms pin the
+mapping identity digest/revision, complete source/audit digest, account/selection,
+commercial fingerprint and fresh manifest evidence. Buyer confirmation continues
+to pin selected meaning separately. Quantities are strict integers in 0…2^53−1;
+LBX commercial quantity retains its separate meaning. These versions require no
+new table or migration. Readers predating Step 3 cannot consume these documents;
+the reader compatibility floor must accompany the unchanged migration head.
+Existing accepted subscriptions keep their quantity across republished links
+and proven new cycles. Step 5 implemented configured-source derivation and
+snapshot V2 serving, superseded by consumer-scoped V3 in Step 12. Step 7
+implemented invalidation delivery, partitioned by recipient in Step 13.
+Step 11 writes `accepted-purchase:v4` for v4 links with required
+`purchased-technical-terms:v3` and `selected-technical-terms:v2` consent. These
+bind source/backend owner and neutral manifest evidence without changing prior
+serializers, saved consent digests or allowance `terms_document`. Same-cycle IDs
+and accepted renewal quantities remain unchanged. There is no Step 11 migration
+or historical JSON conversion; old readers cannot consume the new formats even
+when migration heads match. See the
+[source/history compatibility guide](../contracts/product-backend-api/README.md#implemented-step-11-technical-sources-and-history).
 
 `external_create_operations` records customer, agreement, or subscription
 create work. Customer creation has no purchase intent; agreement and
@@ -294,8 +336,9 @@ financial status and an immediately expired projection, plus normalized effectiv
 terms and nullable/sentinel calendar observations. It creates no access-primary,
 paid state, grant or allowance, and never extends paid trust on Manage.
 
-ANY-715 Step 1 uses the existing reconciliation lease/fence columns and appends
-`subscription-reconciliation:v1` evidence through shared claim/read/apply logic.
+The shared claim/read/apply logic introduced in ANY-715 Step 1 uses the existing
+reconciliation lease/fence columns and now appends `subscription-reconciliation:v2`
+evidence (V1 remains readable).
 It creates/reuses a product scope without selecting a primary. Complete matching
 positive proof anchors at most six hours of source trust to read-set start; incomplete
 attempts preserve the existing deadline and complete support, while decisive
@@ -309,7 +352,7 @@ operations described below. See the
 `billing_state_observations` stores evidence whose core fields are immutable.
 Its closed kinds are
 `authoritative_subscription_read`, `target_product_discovery`,
-`primary_selection`, and `deterministic_access_boundary`; database checks
+`primary_selection`, `deterministic_access_boundary`, and `allowance_activation`; database checks
 enforce each kind's minimum provenance shape. DELETE is forbidden, and all
 fields except `resulting_access_revision` are immutable. That field may be
 assigned exactly once from `NULL` to a non-null value; once assigned, it cannot
@@ -320,8 +363,8 @@ Versioned `target-product-discovery:v2` and `paid-access-cause:v1` evidence may
 retain purchase provenance without an access scope.
 `target-product-discovery:v3` stores scoped candidate conclusions and references
 to the observations already committed by leased reconciliation. Inventory does
-not apply those source facts again. A `primary-selection:v1` observation links
-the chosen source to its discovery; selection, paid state, causal revision and
+not apply those source facts again. New `primary-selection:v2` observations link
+the chosen source to its discovery (V1 remains readable); selection, paid state, causal revision and
 outbox share the final inventory transaction. Later inventory failures cannot
 roll back earlier authoritative source/paid transactions.
 Customer and financial restrictions retain their existing fence/lease
@@ -343,13 +386,29 @@ PostgreSQL triggers prevent updates/deletes, including all new fields.
 stores a complete effective-state document with a non-null `access_revision`
 slot. Migration `20261031_0006` enforces positive revisions, unchanged meaning
 within a revision, increments of exactly one and no identity changes or deletes.
-`access_invalidation_outbox` has the same unique scope. Its physical checks
+`access_invalidation_outbox` is unique by `(tenant_id, region, user_id, recipient_id)`.
+Migration `20261111_0010` adds immutable recipient identity to the existing guard,
+binds historical rows to Kernel and preserves exact pending/delivered revisions. Its physical checks
 require a positive pending revision and forbid `delivered_revision` from
 exceeding it. Migration `20261031_0006` also requires nonnegative delivered
 revisions and rejects identity changes, revision regression and deletion;
 these guards do not implement delivery. The caller-transaction paid writer
 canonicalizes the whole-user state, increments its revision and coalesces the
-pending outbox revision atomically with source facts. Delivery remains later work.
+pending outbox revision atomically with source facts. ANY-766 Step 7 schedules
+one recurring `access_invalidation` item per recipient/user in that transaction
+as of Step 13. The installed policy guard's `snapshot_delivery_enabled` records
+active snapshot-recipient membership; the writer fans out R only to active
+recipients within its existing transaction, including grant removal. Writer
+no-ops and repair also skip inactive recipients, retaining their outbox/queue
+history and leases. Reactivation resumes saved delivery; parked rows require
+explicit retry. Queue rows carry `recipient_id`
+only for invalidation, use `recipient_id:user_id` keys and copy the recipient into
+claims. Migration `20261111_0010` retires running pre-cutover claims while
+preserving pending/delivered history and parking. Capture
+and ACK lock User → outbox → queue with HTTP outside SQL; a live-claim ACK
+advances only through the sent revision. Queue generations preserve newer hints,
+`invalid` parks permanent failures, and bounded local repair restores missing
+scheduling. The outbox retains revision/attempt/error bookkeeping, never usage.
 
 ## Durable operational tables
 
@@ -441,6 +500,8 @@ prohibitions remain independent. The guard is not a runtime assignment checker
 or Python typechecker. This clarification does not implement enum narrowing,
 change physical constraints or migrate any stored value.
 
+<a id="persistence-readiness-for-external-billing"></a>
+
 ## Bootstrap and runtime boundary
 
 The first revision owns schema creation and deterministic bootstrap of the
@@ -459,3 +520,85 @@ outbound command success, or payment state alone never grant paid access.
 The discarded Alembic history has no upgrade bridge into this baseline. Reset,
 compatibility and recovery procedures are documented in
 [Deployment Architecture](deployment.md#one-time-step-4-recreate-and-bootstrap).
+
+## Backend session delegation (ANY-766 Steps 4/10)
+
+`backend_session_delegations` references `auth_sessions.id` with `ON DELETE CASCADE`.
+It stores unique SHA-256 code/token hashes, the S256 challenge, a configured
+consumer identity fixed for that delegation (historical rows retain
+`platform-kernel`) and separate code/exchange/token deadlines. A check
+constraint requires exchange time, token hash and token expiry to be either all
+absent or all present. Raw credentials and a second user directory are absent.
+
+Code issuance and atomic exchange acquire User → AuthSession → delegation locks
+(the last lock applies to exchange), then recheck active status and parent
+revocation/expiry. Codes last at most 60 seconds; tokens last at most 30 minutes
+and never outlive the parent. `UserStatus.INACTIVE` is an explicit non-active
+storage value; no deactivation endpoint is introduced. Existing password reset
+revokes the parent sessions and logout deletes its parent.
+
+`backend_code_issuance_budgets` has a composite tenant/region/user/consumer primary
+key, a scoped User foreign key, count constrained to 1–60 and an indexed window
+expiry. Issuance increments it under the User lock in the same transaction as
+the code. Cleanup uses that lock and rechecks expiration before removal, so a
+concurrently renewed budget is preserved. Independent startup/minute cleanup
+also removes expired unexchanged codes and credentials of invalid parents;
+exchanged-token expiry evidence stays while the parent is valid. See the
+[retention and limit contract](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).
+
+Introspection checks the current persisted consumer policy and uses a joined read
+of delegation/session/user; it never updates
+`last_seen_at` and never commits. Its deadline subtracts the configured
+Portal–Kernel clock budget once. Internal reads share validation with existing
+Portal identity without adopting public last-seen bookkeeping. Scope comes from
+the existing user/session, and service permissions come from receiver settings.
+The [current backend identity guide](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover)
+records configuration, errors and remaining integration boundaries.
+
+
+## Backend consumer policy guard (ANY-766 Step 10)
+
+`backend_consumer_policies` uses `(consumer_id, tenant_id, region)` as its key.
+It stores strict positive `consumer_policy_revision`, the canonical policy digest
+and `snapshot_delivery_enabled`. The digest includes consumer/scope, sorted product
+scope, the complete sorted permissions and technical source. Startup installs
+policy and recipient activity under row locks in one transaction; changed meaning
+at reused P and rollback are refused, with activity changes rolled back too. Identity reads
+fail closed when a process's configured P/digest no longer matches the committed
+guard. Credentials, callbacks and backend instance address are outside the digest.
+The expanded digest requires higher configured P when upgrading existing policies,
+without a migration. No paid revision, purchase document, outbox, allowance or
+backend usage is rewritten. See the [common guide](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).
+
+
+### ANY-766 Step 14 exhaustion hints
+
+Migration `20261111_0011` extends the existing recurring-work unique index with
+`allowance_exhaustion`; all prior work rows/leases/generations remain intact.
+The receiver inserts with conflict-do-nothing, preserving the first V1 payload
+and completed state. Its key binds tenant/region/user/allowance/event type;
+`scope_kind=allowance`, `scope_reference=allowance_id`, and `recipient_id` is null.
+The full issued tuple and retained backend/source owner are validated before
+commit. The local lane schedules existing reconciliation only for a current
+allowance. No usage ledger or additional table is introduced.
+
+
+## Retained allowance activation
+
+Migration `20261113_0012` adds `allowance_activation` to the existing immutable
+observation store and `uq_billing_observations_allowance_activation`, unique by
+JSON allowance UUID for that kind. Typed `allowance-activation:v1` evidence has
+exactly the schema marker and allowance ID; the existing subject, effective time,
+observed time and resulting R columns retain its provenance. No allowance fields
+or evidence immutability triggers change. The sole paid-state writer appends
+missing facts for previous committed membership before replacing it, including
+on a no-op, then for newly committed active membership in the same transaction.
+It resolves the saved allowance/subscription, never a replacement primary.
+
+New reconciliation and primary-selection writers emit V2; all existing readers
+also accept V1. Exact activation evidence establishes timestamp-history eligibility.
+The conservative V1 fallback compares cycle meaning against saved period, first
+anchor and target allowance; V2 requires an exact fact. Future issuance, elapsed
+time and a new configuration cannot establish activation. Cabinet reads remain
+read-only; already-lost unprovable old history stays unavailable. Downgrade is
+blocked after activation or V2 evidence exists.

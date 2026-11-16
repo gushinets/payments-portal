@@ -11,10 +11,15 @@ from app.models import (
     BillingProductAccessScope,
     BillingStateObservation,
     BillingWorkItem,
+    BillingWorkKind,
+    BillingWorkState,
     ExternalSubscription,
     ExternalBillingCustomer,
     ExternalCreateOperation,
     User,
+    AccessInvalidationOutbox,
+    PurchasedAllowance,
+    BackendConsumerPolicy,
 )
 
 
@@ -31,7 +36,9 @@ def trust_observation(db: Session, subscription_id: UUID, read_started_at: datet
         select(BillingStateObservation)
         .where(
             BillingStateObservation.subscription_id == subscription_id,
-            BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v1",
+            BillingStateObservation.evidence_schema_version.in_(
+                ("subscription-reconciliation:v1", "subscription-reconciliation:v2")
+            ),
             BillingStateObservation.completeness_classification == "complete",
             BillingStateObservation.result_classification == "COMPLETE_MATCH",
             BillingStateObservation.evidence_document["read_started_at"].as_string().cast(DateTime(timezone=True))
@@ -62,6 +69,7 @@ def claimable(
     urgent_before: datetime,
     urgent_attempt_before: datetime,
     local_scope: tuple[str, str] | None = None,
+    recipient_id: str | None = None,
 ) -> BillingWorkItem | None:
     account_scope = or_(
         (BillingWorkItem.work_kind == "billing_enrollment_sweep") & (BillingWorkItem.coalescing_key == sweep_key),
@@ -93,6 +101,20 @@ def claimable(
                 User.tenant_id == tenant,
                 User.region == region,
             ),
+            (BillingWorkItem.work_kind == BillingWorkKind.ACCESS_INVALIDATION)
+            & exists().where(
+                func.cast(User.id, Text) == BillingWorkItem.scope_reference,
+                User.tenant_id == tenant,
+                User.region == region,
+            ),
+            (BillingWorkItem.work_kind == BillingWorkKind.ALLOWANCE_EXHAUSTION)
+            & exists().where(
+                func.cast(PurchasedAllowance.allowance_id, Text) == BillingWorkItem.scope_reference,
+                PurchasedAllowance.subscription_id == ExternalSubscription.subscription_id,
+                ExternalSubscription.user_id == User.id,
+                User.tenant_id == tenant,
+                User.region == region,
+            ),
         )
     due = BillingWorkItem.next_attempt_at <= now
     query = select(BillingWorkItem).where(
@@ -101,6 +123,8 @@ def claimable(
         account_scope,
         or_(BillingWorkItem.lease_expires_at.is_(None), BillingWorkItem.lease_expires_at <= now),
     )
+    if recipient_id is not None:
+        query = query.where(BillingWorkItem.recipient_id == recipient_id)
     if urgent is not None:
         # A normal job can become urgent while waiting, independently of another
         # source attempt or an enrollment sweep. Only the queue row is locked.
@@ -167,10 +191,39 @@ def missing_subscriptions(
     )
 
 
-def by_key(db: Session, kind: str, key: str) -> BillingWorkItem | None:
-    return db.scalar(
-        select(BillingWorkItem).where(BillingWorkItem.work_kind == kind, BillingWorkItem.coalescing_key == key)
+def by_key(db: Session, kind: str, key: str, *, lock: bool = False) -> BillingWorkItem | None:
+    query = select(BillingWorkItem).where(BillingWorkItem.work_kind == kind, BillingWorkItem.coalescing_key == key)
+    return db.scalar(query.with_for_update().execution_options(populate_existing=True) if lock else query)
+
+
+def missing_invalidations(db: Session, tenant: str, region: str, limit: int) -> list[tuple[str, UUID]]:
+    enrolled = exists().where(
+        BillingWorkItem.work_kind == BillingWorkKind.ACCESS_INVALIDATION,
+        BillingWorkItem.recipient_id == AccessInvalidationOutbox.recipient_id,
+        BillingWorkItem.scope_reference == func.cast(AccessInvalidationOutbox.user_id, Text),
+        BillingWorkItem.work_state.in_((BillingWorkState.PENDING, BillingWorkState.RUNNING, BillingWorkState.INVALID)),
     )
+    return [
+        (recipient_id, user_id)
+        for recipient_id, user_id in db.execute(
+            select(AccessInvalidationOutbox.recipient_id, AccessInvalidationOutbox.user_id)
+            .join(
+                BackendConsumerPolicy,
+                (BackendConsumerPolicy.consumer_id == AccessInvalidationOutbox.recipient_id)
+                & (BackendConsumerPolicy.tenant_id == AccessInvalidationOutbox.tenant_id)
+                & (BackendConsumerPolicy.region == AccessInvalidationOutbox.region),
+            )
+            .where(
+                BackendConsumerPolicy.snapshot_delivery_enabled.is_(True),
+                AccessInvalidationOutbox.tenant_id == tenant,
+                AccessInvalidationOutbox.region == region,
+                AccessInvalidationOutbox.pending_revision > AccessInvalidationOutbox.delivered_revision,
+                ~enrolled,
+            )
+            .order_by(AccessInvalidationOutbox.recipient_id, AccessInvalidationOutbox.user_id)
+            .limit(limit)
+        )
+    ]
 
 
 def backlog(
@@ -201,6 +254,8 @@ def backlog(
                     "external_create_recovery",
                     "external_create_deadline",
                     "customer_inventory",
+                    BillingWorkKind.ACCESS_INVALIDATION,
+                    BillingWorkKind.ALLOWANCE_EXHAUSTION,
                 )
             ),
             or_(
@@ -222,6 +277,24 @@ def backlog(
                     User.region == region,
                 ),
                 source_scope,
+                (BillingWorkItem.work_kind == BillingWorkKind.ALLOWANCE_EXHAUSTION)
+                & exists().where(
+                    func.cast(PurchasedAllowance.allowance_id, Text) == BillingWorkItem.scope_reference,
+                    PurchasedAllowance.subscription_id == ExternalSubscription.subscription_id,
+                    ExternalSubscription.user_id == User.id,
+                    User.tenant_id == tenant,
+                    User.region == region,
+                ),
+                (BillingWorkItem.work_kind == BillingWorkKind.ACCESS_INVALIDATION)
+                & exists().where(
+                    func.cast(User.id, Text) == BillingWorkItem.scope_reference,
+                    User.tenant_id == tenant,
+                    User.region == region,
+                    BackendConsumerPolicy.consumer_id == BillingWorkItem.recipient_id,
+                    BackendConsumerPolicy.tenant_id == User.tenant_id,
+                    BackendConsumerPolicy.region == User.region,
+                    BackendConsumerPolicy.snapshot_delivery_enabled.is_(True),
+                ),
             ),
         )
         .group_by(BillingWorkItem.work_state)
@@ -248,7 +321,7 @@ def missing_deadlines(db: Session, tenant: str, region: str, limit: int) -> list
                 User.tenant_id == tenant,
                 User.region == region,
                 BillingStateObservation.evidence_schema_version.in_(
-                    ("subscription-reconciliation:v1", "bound-source-negative:v1")
+                    ("subscription-reconciliation:v1", "subscription-reconciliation:v2", "bound-source-negative:v1")
                 ),
                 BillingStateObservation.access_scope_id.is_not(None),
                 ExternalSubscription.projection_valid_until > ExternalSubscription.last_authoritative_read_at,

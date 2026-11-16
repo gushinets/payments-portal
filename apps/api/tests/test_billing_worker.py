@@ -130,6 +130,7 @@ def test_billing_worker_settings_propagate_and_match_documentation() -> None:
         "BILLING_WORKER_ENABLED": "true",
         "BILLING_WORKER_URGENT_CONCURRENCY": "2",
         "BILLING_WORKER_NORMAL_CONCURRENCY": "1",
+        "BILLING_WORKER_DELIVERY_CONCURRENCY": "1",
         "BILLING_WORKER_IO_TIMEOUT_SECONDS": "60",
         "BILLING_WORKER_SCAN_BATCH_SIZE": "100",
     }
@@ -155,7 +156,9 @@ async def test_billing_worker_disabled_creates_no_resources() -> None:
         assert worker is None
 
 
-async def test_billing_worker_health_named_schema_and_readiness(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_billing_worker_health_named_schema_and_readiness(
+    monkeypatch: pytest.MonkeyPatch, lifespan_database: None
+) -> None:
     monkeypatch.setattr(health, "database_is_ready", lambda: True)
     app = create_app()
     with TestClient(app) as client:

@@ -202,7 +202,7 @@ async def test_concurrent_widget_opens_ignore_diagnostics_but_reject_real_confli
                     with factory() as db:
                         attempt = db.scalar(
                             select(BillingStateObservation)
-                            .where(BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v1")
+                            .where(BillingStateObservation.evidence_schema_version == "subscription-reconciliation:v2")
                             .order_by(BillingStateObservation.observed_at.desc())
                         )
                         assert attempt.result_classification == "INCOMPLETE"

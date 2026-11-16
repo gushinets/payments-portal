@@ -6,8 +6,9 @@ Verification: historical local conformance CI PASS and
 `REAL_KERNEL_CONFORMANCE=DEFERRED_NOT_IMPLEMENTED` are recorded in the
 [2026-10-19 Step 8 handoff](step-8-handoff.md). The
 [current pinned implementation map](../../../integrations/platform-kernel.md#observed-implementation)
-records the subsequently implemented Kernel producer; joint conformance remains
-unverified. These records do not certify every manual procedure below or a new
+records the subsequently implemented Kernel producer and current verification
+limits. Current inventory fixtures are listed below.
+These historical records do not certify every manual procedure below or a new
 verification run.
 
 This directory describes the documented manifest boundary and explicit local
@@ -18,6 +19,15 @@ its Integration-boundary validation independently; there is no shared runtime
 schema package.
 
 ## Authority and provenance
+
+ANY-766 Step 2 adds two Kernel-owned current inventory copies for independent
+consumer verification: [default-disabled-manifest.json](fixtures/default-disabled-manifest.json)
+and [current-test-enabled-manifest.json](fixtures/current-test-enabled-manifest.json).
+Both contain six products and six metrics, including four disabled production
+declarations. The second enables only the original two TEST-ONLY metrics and
+their products in isolated tests. The existing positive fixture/digest, mock
+behavior and SIMULATED purchase history remain unchanged. Current fixture
+consumption does not authorize production sales, quantities or LBX associations.
 
 The [accepted access-contract design](../../../superpowers/specs/2026-09-15-portal-kernel-access-contract-design.md#capability-manifest)
 defines the request, response fields, enabled semantics and service-auth/HTTP

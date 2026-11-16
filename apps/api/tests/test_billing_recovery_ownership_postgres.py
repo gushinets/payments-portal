@@ -113,7 +113,7 @@ async def test_worker_drains_apply_after_concurrent_first_binding_and_waiter_can
         with factory() as db:
             sub = db.scalar(select(ExternalSubscription))
             observation = db.get(BillingStateObservation, sub.latest_observation_id)
-            assert observation.evidence_schema_version == "subscription-reconciliation:v1"
+            assert observation.evidence_schema_version == "subscription-reconciliation:v2"
         assert worker.cleanup_pending == 0
     finally:
         continue_candidate.set()

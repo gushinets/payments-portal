@@ -10,7 +10,8 @@ from app.composition.purchase_inventory import collect_inventory
 from app.composition.sources import SourceResources
 from app.core.errors import AppError
 from app.domains.billing.contracts import BillingRefused
-from app.core.settings import AppEnv, Settings
+from app.domains.billing.paid_policy import MeteringPolicy
+from app.core.settings import Settings
 from app.domains.billing.discovery import persist_discoveries, apply_inventory
 from app.domains.billing import background_recovery as recovery, work
 from app.domains.billing.work_contracts import WorkClaim
@@ -141,5 +142,5 @@ async def _inventory_customer(
         result,
         reason,
         clock_skew_seconds=configuration.paid_access_clock_skew_seconds,
-        allow_simulated_metering=configuration.app_env != AppEnv.PRODUCTION,
+        metering_policy=MeteringPolicy.for_environment(configuration.app_env),
     )

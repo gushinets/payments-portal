@@ -62,3 +62,32 @@ def test_schema_reset_validates_before_connecting() -> None:
         postgres_support.reset_public_schema(engine)
 
     engine.begin.assert_not_called()
+
+
+def test_session_database_names_are_unique_and_never_reuse_configured_database() -> None:
+    configured = make_url("postgresql+psycopg://owner@localhost/existing_tests")
+    first = postgres_support.unique_test_database_url(configured)
+    second = postgres_support.unique_test_database_url(configured)
+    assert first.database != second.database != configured.database
+    assert first.set(database=configured.database) == configured
+    assert postgres_support.validate_test_database_url(first) == first
+
+
+def test_template_copy_rejects_unsafe_source_before_connecting(monkeypatch: pytest.MonkeyPatch) -> None:
+    connect = Mock()
+    monkeypatch.setattr(postgres_support, "create_engine", connect)
+    target = make_url("postgresql+psycopg://owner@localhost/new_tests")
+    with pytest.raises(ValueError, match="Refusing destructive"):
+        postgres_support.create_test_database(
+            target, target.set(database="postgres"), template_url=target.set(database="production")
+        )
+    connect.assert_not_called()
+
+
+def test_template_restore_rejects_checked_out_connections() -> None:
+    engine = Mock()
+    engine.url = make_url("postgresql+psycopg://owner@localhost/owned_tests")
+    engine.pool.checkedout.return_value = 1
+    with pytest.raises(RuntimeError, match="checked-out"):
+        postgres_support.restore_test_database(engine, engine.url.set(database="template_tests"))
+    engine.dispose.assert_not_called()
