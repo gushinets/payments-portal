@@ -461,7 +461,10 @@ def test_instrumented_request_preserves_trace_and_request_correlation(
         server_request_hook=observability._sanitize_http_server_span,
     )
     try:
-        with caplog.at_level(logging.INFO, logger="payment_portal.http"):
+        with (
+            caplog.at_level(logging.INFO, logger="payment_portal.http"),
+            caplog.at_level(logging.WARNING, logger="httpx"),
+        ):
             response = asyncio.run(
                 _get(
                     application,
@@ -502,10 +505,13 @@ def test_configured_otlp_exporters_and_production_composition() -> None:
     import sys
     from pathlib import Path
 
+    import os
+
     root = Path(__file__).resolve().parents[3]
     result = subprocess.run(
         [sys.executable, str(root / "security/trivy/verify-api-telemetry.py")],
         cwd=root,
+        env={**os.environ, "PYTHONPATH": str(root / "apps/api")},
         capture_output=True,
         text=True,
         timeout=60,
