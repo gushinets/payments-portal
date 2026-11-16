@@ -16,14 +16,26 @@ from app.composition.reconciliation import read_subscription_proof, reconcile_su
 from app.domains.billing.discovery import apply_inventory, persist_discoveries
 from app.domains.billing.inventory_history import retain_inventory_relationship, retained_subscription_relationships
 from app.domains.billing.operator_diagnostics import inspect_evidence
+from app.domains.billing.paid_policy import CandidateConclusion
 from app.domains.billing.reconciliation import apply_reconciliation, claim_reconciliation, read_source_time
-from app.domains.billing.reconciliation_contracts import ReadInterval, ReconciliationResult, SubscriptionRelationship
+from app.domains.billing.reconciliation_contracts import (
+    CommercialProof,
+    ReadInterval,
+    ReconciliationResult,
+    SubscriptionRelationship,
+)
 from app.domains.purchases import service
 from app.domains.purchases.contracts import PurchaseInventoryIncomplete, PurchaseRefused
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.errors import LbxUnavailable
 from app.integrations.lbx.financial import Subscription
-from app.models import BillingProductAccessScope, BillingStateObservation, ExternalSubscription, ManualReviewCase
+from app.models import (
+    BillingProductAccessScope,
+    BillingStateObservation,
+    ExternalSubscription,
+    ManualReviewCase,
+    PurchaseIntentState,
+)
 from apps.api.tests.factories.billing_operator import resolution_request
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.test_billing_scoped_inventory_postgres import (
@@ -158,13 +170,19 @@ async def test_primary_receipt_is_strict_but_unrelated_relationships_are_semanti
     claim = claim_inventory(Scenario(factory, config, transport, sources, second_id))
     result = await inventory(sources, factory, first, claim=claim)
     result = persist_discoveries(factory, claim, result)
-    assert not next(
+    # A commercial mismatch is complete negative proof; review still blocks A's primary.
+    first_source = next(source for source in result.sources if source.purchase.id == first.id)
+    assert first_source.proof.complete and first_source.proof.commercial == CommercialProof.MISMATCH
+    first_product = next(
         product for product in result.products if product.product_id == first.accepted.selection.product_id
-    ).complete
+    )
+    assert first_product.complete
+    assert len(first_product.candidates) == 1
+    assert first_product.candidates[0].conclusion == CandidateConclusion.INELIGIBLE
     assert next(
         product for product in result.products if product.product_id == second.accepted.selection.product_id
     ).complete
-    assert service.read_purchase(factory, first.user_id, first.id).state == "manual_review"
+    assert service.read_purchase(factory, first.user_id, first.id).state == PurchaseIntentState.MANUAL_REVIEW
 
     async def unavailable_point(*, subscription_id: int, budget: PreflightBudget) -> Subscription:
         if subscription_id == (568 if late_poll == "selected-unavailable" else 567):
@@ -188,6 +206,15 @@ async def test_primary_receipt_is_strict_but_unrelated_relationships_are_semanti
                 BillingProductAccessScope.product_id == second.accepted.selection.product_id
             )
         ) == (None if late_poll == "selected-unavailable" else second_id)
+        assert (
+            db.scalar(
+                select(BillingProductAccessScope.primary_subscription_id).where(
+                    BillingProductAccessScope.product_id == first.accepted.selection.product_id
+                )
+            )
+            is None
+        )
+    assert service.read_purchase(factory, first.user_id, first.id).state == PurchaseIntentState.MANUAL_REVIEW
     assert all(request.method == "GET" for request in transport.requests)
 
 
