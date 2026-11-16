@@ -4,8 +4,8 @@ Issue: https://linear.app/paveldik/issue/ANY-743
 
 ## Scope
 
-The owner extended the OpenTelemetry work to remove the local verification
-limitations and make the three canonical commands pass on this Windows machine.
+Remove the local verification limitations so the canonical commands can run on
+Windows while preserving their readiness, privacy and deadline assertions.
 Starting implementation: `d36065c5da39c505e13e3fc4f605b39f78bea373`.
 No production application, dependency, billing contract or schema change is
 intended. Existing local services are preserved; PostgreSQL verification uses the
@@ -50,14 +50,25 @@ worktree-specific disposable Compose project.
 
 ## Final verification
 
-- [ ] `npm run test:api:fast`
-- [ ] `npm run check:fast`
+- [x] `npm run test:api:fast`: **2262 passed, 43 skipped**, exit 0.
+- [x] `npm run check:fast`: exit 0, including **454 frontend component tests**
+  and **2262 API tests** (43 existing platform/environment skips).
 - [ ] `npm run check`, including production web build and PostgreSQL tests
 - [ ] Final diff/privacy review and PR evidence update
 
-The full fast suite is running without fail-fast so remaining independent local
-failures can be collected together. Initial stopped runs are diagnostic failures,
-not completed verification. Final counts and results will be recorded below.
+Completed fast commands ran against `7f32b64001b9055e7d60465a38ccaec566c3bd3d`.
+Initial stopped runs are diagnostic failures, not completed verification.
+The complete gate passed its API suite, then Next.js 16.4.2 stopped the build
+with its security-upgrade reminder. An ordinary `npm run build:web` retry passed;
+the reminder can recur, so that retry is not a durable resolution of this
+separate dependency notice. No upgrade policy was disabled.
+
+Separate PostgreSQL verification reproduced `purchase_history_unproven` and
+`subscription_reconciliation_stale` refusals. A bounded five-sample comparison
+measured Docker's database clock 3.4–3.6 seconds ahead of Windows. This crosses
+the existing proof timestamp checks; changing those checks would conceal the
+environment defect. Clock repair requires approval because it affects the
+Docker VM. No running service or system clock was changed.
 
 ## Additional full-suite findings
 
@@ -77,3 +88,11 @@ not completed verification. Final counts and results will be recorded below.
   synthetic timings were expanded while keeping retry delay beyond the work
   deadline, safe timeout assertions and zero released resource counts.
 - Combined Kernel/LBX network and deployment selection: **257 passed**.
+- Native ACL execution now captures bytes silently with a bounded timeout,
+  preserving localized Windows command output without a UTF-8 decode failure.
+  A non-UTF-8-output regression failed before the fix; 18 affected privacy/mock
+  cases passed after it.
+- The expired-queue regression now waits for the actual cleanup event and task
+  completion within explicit bounds instead of assuming two scheduler turns
+  suffice. Its deadline, no-source-work and held-capacity assertions remain.
+  Twelve focused cases passed, followed by three concurrent repeats.
