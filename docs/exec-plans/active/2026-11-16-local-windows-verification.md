@@ -96,3 +96,12 @@ Docker VM. No running service or system clock was changed.
   completion within explicit bounds instead of assuming two scheduler turns
   suffice. Its deadline, no-source-work and held-capacity assertions remain.
   Twelve focused cases passed, followed by three concurrent repeats.
+- A subsequent full-gate retry reproduced one more test-only shutdown race:
+  the pending-POST regression passed its deadline and retained-ownership
+  assertions, then its 30ms client-close allowance expired. Give this synthetic
+  scenario a 1s total / 0.5s cleanup budget and bound its cancellation-event wait.
+  The real deadline, exactly-one-POST, pending ownership and released-slot
+  assertions remain. All 27 affected deadline/error cases and lint/format passed;
+  independent review found no actionable issue. This later test-only adjustment
+  has not yet completed another full canonical run; prior fast results above
+  are explicitly tied to their tested revision.
