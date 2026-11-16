@@ -200,13 +200,15 @@ def test_ci_postgres_uses_ram_and_retains_parallel_runner_diagnostics() -> None:
     options = gate["services"]["postgres"]["options"]
     assert "--tmpfs /var/lib/postgresql:rw,size=2g" in options
     assert "--health-cmd" in options
-    postgres_step = next(step for step in gate["steps"] if step.get("name") == "Run PostgreSQL tests and migration cycles")
+    postgres_step = next(
+        step for step in gate["steps"] if step.get("name") == "Run PostgreSQL tests and migration cycles"
+    )
     assert "python scripts/repo.py test api-postgres --workers 4" in postgres_step["run"]
     assert '--junitxml="$CI_ARTIFACTS/postgres-junit.xml"' in postgres_step["run"]
     assert "--cov" not in postgres_step["run"]
     assert "continue-on-error" not in postgres_step
     diagnostics = next(step for step in gate["steps"] if step.get("name") == "Upload failure diagnostics")
-    assert diagnostics["if"] == "failure()"
+    assert diagnostics["if"] == "failure() || cancelled()"
     assert diagnostics["with"]["include-hidden-files"] is True
     assert set(diagnostics["with"]["path"].splitlines()) == {".harness/ci/", ".harness/api-tests/"}
 

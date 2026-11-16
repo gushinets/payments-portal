@@ -217,7 +217,7 @@ jobs:
           docker ps --all --format '{{.Names}}\t{{.Image}}\t{{.Status}}' \
             > "$CI_ARTIFACTS/docker-containers.txt" || true
       - name: Upload failure diagnostics
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: production-gate-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}

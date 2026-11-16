@@ -323,6 +323,42 @@ def test_postgres_pass():
     assert (result.directory / "postgres/worker-1/manifest.json").is_file()
 
 
+@pytest.mark.parametrize(
+    "worker_exit,test_fails",
+    [(1, False), (2, False), (3, False), (4, False), (5, False), (3, True)],
+)
+def test_worker_exit_status_errors_retain_test_results_and_explain_failure(
+    suite: Path, worker_exit: int, test_fails: bool
+) -> None:
+    source(suite, "test_result.py", f"def test_result():\n    assert {not test_fails}\n")
+    source(
+        suite,
+        "conftest.py",
+        f"""import pytest
+@pytest.hookimpl(wrapper=True)
+def pytest_runtestloop(session):
+    result = yield
+    if not session.config.option.collectonly:
+        pytest.exit("controlled post-test worker exit", returncode={worker_exit})
+    return result
+""",
+    )
+
+    result = run_suite(suite, target="api-fast", workers=1)
+
+    assert result.returncode == 1
+    state = json.loads((result.directory / "result.json").read_text())
+    assert state["process_returncodes"] == [0, worker_exit]
+    assert len(state["errors"]) == 1
+    assert f"exit {worker_exit}" in state["errors"][0]
+    report = ET.parse(suite / "current.xml")
+    assert report_nodes(suite / "current.xml") == ["apps/api/tests/test_result.py::test_result"]
+    assert len(report.findall(".//failure")) == int(test_fails)
+    assert len(report.findall(".//error")) == 1
+    error = report.find(".//testsuite[@name='api-runner']/testcase/error")
+    assert error is not None and error.attrib["message"] == state["errors"][0]
+
+
 @pytest.mark.parametrize("failure", ["call", "setup", "teardown", "call-and-teardown"])
 def test_requested_early_stop_retains_failures_and_cleanup_without_infrastructure_error(
     suite: Path, failure: str, capsys: pytest.CaptureFixture[str]
@@ -417,7 +453,15 @@ def test_collection_failure_replaces_previous_report_and_still_runs_other_partit
 
 @pytest.mark.parametrize(
     "defect",
-    ["crash", "zero-exit", "manifest-missing", "manifest-mismatch", "junit-missing", "junit-mismatch", "unexpected-early-stop"],
+    [
+        "crash",
+        "zero-exit",
+        "manifest-missing",
+        "manifest-mismatch",
+        "junit-missing",
+        "junit-mismatch",
+        "unexpected-early-stop",
+    ],
 )
 def test_worker_protocol_defects_fail_without_losing_other_worker_reports(suite: Path, defect: str) -> None:
     body = {

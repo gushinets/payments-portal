@@ -4,7 +4,8 @@ Status: **COMPLETE — implementation and local acceptance passed**
 Created: 2026-11-13
 Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
 Execution branch: `ANY-822`
-Base: `2d278f62f0a2f7c4b40fb322618b268580de2301`
+Original base: `2d278f62f0a2f7c4b40fb322618b268580de2301`
+Rebased on main: `ece3590b857adb120182949dfe291116ca8ba510` (ANY-766, 2026-11-16)
 
 ## 1. Objective, decisions and preparation
 
@@ -623,3 +624,38 @@ real-reexec regression cases; launcher behavior is unchanged.
 `npm run check:fast -- --coverage` passed (1,974 API-fast, 414 components).
 Bootstrap commands were checked without database operations. Detailed evidence:
 `.harness/any822-final-review-20261114/`.
+
+#### Local PR reporting follow-up (2026-11-16)
+
+At `80da57f2` plus local changes, JUnit validates worker exit status and retains
+test results alongside infrastructure errors. CI uploads existing diagnostics
+on failure or cancellation; Docker-log collection remains failure-only.
+The [Testing Strategy](../../engineering/TESTING.md) describes current behavior.
+
+Seven focused regressions failed before the fixes; both affected modules passed
+afterwards (**117 tests**). **PASSED:** `npm run check -- --coverage`, **624.982 s**:
+**2,003 API-fast**, **997 PostgreSQL**, **414 components**, web build and static
+checks. The disposable tmpfs PostgreSQL resources were cleaned; the build used
+local fonts. Actual CI cancellation/upload was not exercised.
+Evidence: `.harness/any822-reporting-followup-20261116-a35232ff/` and
+`.harness/api-tests/`. Later documentation-only edits reuse this runtime evidence
+and are verified by documentation and diff checks.
+
+#### ANY-766 rebase verification (2026-11-16)
+
+Replayed all 13 commits on `ece3590b`; backup:
+`codex/any822-before-rebase-20261116-c13ebfe8` (verified full Git bundle also retained).
+The guarantee map above records consolidation; ANY-766 product code, migrations
+and generated contracts are preserved. Final collection has 3,623 IDs versus
+3,502 on main; all removed IDs have retained owners.
+
+**PASSED:** rebased `b5b17ef1` plus formatter-only test changes:
+`npm run check -- --coverage`, **887.182 s**; 2,411 API-fast,
+1,211 PostgreSQL passed plus one existing paired-Kernel prerequisite skip,
+454 components, static checks and web build. Whole PostgreSQL runner elapsed
+**597.834 s**, including collection/fixture cleanup, excluding server startup.
+Both targets passed in this sample; PostgreSQL margin is only **2.166 s**.
+Desktop/mobile Playwright: **246 passed, 2 existing live-source opt-in skips**,
+no retries; local manifest contract passed. Owned resources were cleaned.
+Main was rechecked unchanged. Remote CI and paired/live acceptance were not run.
+Detailed logs, inventory, timing and cleanup evidence: `.harness/any822-rebase-20261116/`.

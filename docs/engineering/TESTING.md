@@ -95,9 +95,10 @@ API coverage is written to `.harness/coverage/api/coverage.xml`; component
 coverage is under `.harness/coverage/web-components/`. CI quality uses
 `npm run check:fast -- --coverage` and publishes both coverage artifacts. The
 production-gate job runs PostgreSQL with four workers on a separate 2 GiB tmpfs
-service and retains failure diagnostics, including runner artifacts. See the
-[CI workflow](../../.github/workflows/ci.yml) for the exact commands; local
-checks do not establish remote CI success.
+service. Its diagnostics upload includes available `.harness/ci/` and
+`.harness/api-tests/` files on failure or cancellation; Docker logs are collected
+only on failure. See the [CI workflow](../../.github/workflows/ci.yml) for the
+exact commands; local checks do not establish remote CI success.
 
 ## Test environment and server lifecycle
 
@@ -196,6 +197,9 @@ Inspect the printed path for this invocation, not a prior successful run.
 
 Collection errors, failed/crashed workers, missing reports or differences
 between expected IDs, worker collections and JUnit produce a nonzero result.
+Worker exit 0 requires no JUnit failures/errors; exit 1 requires at least one.
+Other worker exit codes or inconsistent results add an `api-runner`
+infrastructure error to merged JUnit while retaining available test results.
 Failures and skips remain in the merged report. Once the `test` command options
 are parsed, a caller-supplied `--junitxml` path is marked incomplete before
 worker-count validation and test-environment preparation. Expected startup

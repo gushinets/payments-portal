@@ -340,8 +340,13 @@ def check_junit(
         or not duplicates.issubset(valid_teardown_duplicates)
     ):
         raise RunnerError("JUnit node IDs do not match the expected collection")
-    if returncode == 0 and (root.findall(".//failure") or root.findall(".//error")):
+    has_failures = bool(root.findall(".//failure") or root.findall(".//error"))
+    if returncode not in {0, 1}:
+        raise RunnerError(f"Unexpected pytest worker exit {returncode}")
+    if returncode == 0 and has_failures:
         raise RunnerError("Successful worker contains JUnit failures")
+    if returncode == 1 and not has_failures:
+        raise RunnerError("Pytest worker exit 1 without JUnit failures")
     return len(counts)
 
 
