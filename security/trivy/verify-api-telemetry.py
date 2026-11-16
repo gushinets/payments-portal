@@ -63,8 +63,15 @@ def main() -> None:
     collector = ThreadingHTTPServer(("127.0.0.1", 0), Collector)
     thread = threading.Thread(target=collector.serve_forever, daemon=True)
     thread.start()
+    # Isolate this synthetic verification from inherited telemetry destinations,
+    # credentials, resource attributes and header-capture settings.
+    for key in tuple(os.environ):
+        if key.startswith(("OTEL_", "SENTRY_")):
+            del os.environ[key]
     os.environ.update(
         {
+            "SENTRY_DSN": "",
+            "SENTRY_RELEASE": "",
             "APP_ENV": "test",
             "APP_PUBLIC_BASE_URL": "http://localhost:3000",
             "INSTANCE_TENANT_ID": "anytoolai",
@@ -85,13 +92,6 @@ def main() -> None:
             "OTEL_EXPORTER_OTLP_COMPRESSION": "none",
         }
     )
-    # Do not inherit header-capture or exporter credentials from the caller.
-    for key in tuple(os.environ):
-        if key.startswith("OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS") or key.endswith(
-            "_HEADERS"
-        ):
-            if key.startswith("OTEL_"):
-                del os.environ[key]
     from app.main import app
     from app.core import observability
 
