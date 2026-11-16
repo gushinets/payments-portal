@@ -495,6 +495,7 @@
     "reviewRequired": "Questo acquisto richiede una verifica. Conserva il riferimento per l’assistenza.",
     "reference": "Riferimento acquisto: {id}",
     "acceptedTerms": "Condizioni accettate inizialmente",
+    "resolvedNext": "Puoi iniziare un nuovo acquisto alle condizioni attuali. Per assistenza, comunica questo riferimento al supporto.",
     "awaitingVerification": "Il pagamento attende una verifica autorevole. Il controllo dello stato salvato legge solo i dati del Portale e non aggiorna i dati di fatturazione.",
     "technicalLimit": "Limite per ciclo confermato",
     "simulatedTerms": "SIMULATED · condizioni di test",
@@ -507,6 +508,7 @@
       "awaiting_external_result": "L’esito della fatturazione è sconosciuto. L’acquisto originale resta riservato.",
       "linked": "Abbonamento predisposto",
       "resolved_no_external_effect": "L’acquisto è stato risolto senza effetti esterni.",
+      "resolved_external_terminal": "L’acquisto è concluso dopo la chiusura del contratto o dell’abbonamento.",
       "failed_before_external_effect": "L’acquisto si è fermato prima della creazione di oggetti finanziari.",
       "manual_review": "L’acquisto richiede recupero o verifica dell’operatore."
     },

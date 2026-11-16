@@ -198,6 +198,12 @@ def select_primaries(
         }
         candidates = {item.identity: PrimaryCandidate(item.identity, item.conclusion) for item in product.candidates}
         for sub in local:
+            owner = purchases.owned(db, cause.user_id, sub.purchase_intent_id) if sub.purchase_intent_id else None
+            if owner is not None and owner.state.resolved:
+                candidates[sub.external_subscription_id] = PrimaryCandidate(
+                    sub.external_subscription_id, CandidateConclusion.INELIGIBLE
+                )
+                continue
             source = sources.get(sub.subscription_id)
             if source is not None:
                 candidate = next(

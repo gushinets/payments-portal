@@ -495,6 +495,7 @@
     "reviewRequired": "This purchase needs review. Keep its reference when contacting support.",
     "reference": "Purchase reference: {id}",
     "acceptedTerms": "Originally accepted terms",
+    "resolvedNext": "You can start a new purchase with current terms. For help, give support this purchase reference.",
     "awaitingVerification": "Payment status is awaiting authoritative verification. Checking saved status reads Portal records only; it does not refresh billing facts.",
     "technicalLimit": "Limit per confirmed cycle",
     "simulatedTerms": "SIMULATED · test terms",
@@ -507,6 +508,7 @@
       "awaiting_external_result": "The billing outcome is unknown. The original purchase remains reserved.",
       "linked": "Subscription prepared",
       "resolved_no_external_effect": "This purchase was resolved without an external effect.",
+      "resolved_external_terminal": "The purchase is complete after its agreement or subscription was closed.",
       "failed_before_external_effect": "This purchase stopped before any financial creation.",
       "manual_review": "The purchase needs recovery or operator review."
     },

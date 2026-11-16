@@ -975,7 +975,7 @@ export type PurchaseIntentResponse = {
 /**
  * PurchaseIntentState
  */
-export type PurchaseIntentState = 'created' | 'preparing' | 'awaiting_external_result' | 'linked' | 'resolved_no_external_effect' | 'failed_before_external_effect' | 'manual_review';
+export type PurchaseIntentState = 'created' | 'preparing' | 'awaiting_external_result' | 'linked' | 'resolved_no_external_effect' | 'resolved_external_terminal' | 'failed_before_external_effect' | 'manual_review';
 
 /**
  * PurchaseReviewRequest

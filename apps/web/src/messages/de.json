@@ -495,6 +495,7 @@
     "reviewRequired": "Dieser Kauf muss geprüft werden. Bewahren Sie die Referenz für den Support auf.",
     "reference": "Kaufreferenz: {id}",
     "acceptedTerms": "Ursprünglich akzeptierte Bedingungen",
+    "resolvedNext": "Sie können einen neuen Kauf zu den aktuellen Bedingungen beginnen. Nennen Sie dem Support bei Fragen diese Kaufreferenz.",
     "awaitingVerification": "Der Zahlungsstatus wartet auf eine verbindliche Prüfung. Die Statusabfrage liest nur Portal-Daten und aktualisiert keine Abrechnungsdaten.",
     "technicalLimit": "Limit je bestätigtem Zyklus",
     "simulatedTerms": "SIMULATED · Testbedingungen",
@@ -507,6 +508,7 @@
       "awaiting_external_result": "Das Abrechnungsergebnis ist unbekannt. Der ursprüngliche Kauf bleibt reserviert.",
       "linked": "Abonnement vorbereitet",
       "resolved_no_external_effect": "Dieser Kauf wurde ohne externe Auswirkung abgeschlossen.",
+      "resolved_external_terminal": "Der Kauf ist nach Beendigung des Vertrags oder Abonnements abgeschlossen.",
       "failed_before_external_effect": "Dieser Kauf wurde vor der Erstellung von Finanzobjekten gestoppt.",
       "manual_review": "Der Kauf erfordert Wiederherstellung oder eine Prüfung durch einen Mitarbeiter."
     },

@@ -24,6 +24,16 @@ const open = () => fireEvent.click(screen.getByRole("button", { name: ru.Billing
 const selector = () => screen.getByRole("combobox", { name: ru.Billing.selectedPurchase });
 const payloads = () => bootstrap.mock.calls.map(([init]) => JSON.parse(init.body));
 
+it.each(["resolved_no_external_effect", "resolved_external_terminal", "failed_before_external_effect"] as const)("shows a released %s purchase on its original deep link without opening payment", async (state) => {
+  status.mockResolvedValue(json({ ...savedPurchase, state, scope_held: false }));
+  renderCabinet(first.purchase_intent_id);
+  expect(await screen.findByText(ru.Purchase.states[state])).toBeVisible();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: ru.Billing.open })).toBeDisabled();
+  expect(bootstrap).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: ru.Purchase.manage })).not.toBeInTheDocument();
+});
+
 it("shows a neutral selected-purchase placeholder while its deep link is loading", async () => {
   list.mockImplementationOnce(() => new Promise<Response>(() => {}));
   status.mockImplementationOnce(() => new Promise<Response>(() => {}));
@@ -240,8 +250,8 @@ it("keeps explicit account viewing when a delayed inventory later finds one purc
   expect(payloads()).toEqual([{}]);
 });
 
-it("refuses released purchase deep links while retaining owned history separately", async () => {
-  status.mockResolvedValue(json({ ...savedPurchase, state: "failed_before_external_effect", scope_held: false }));
+it("refuses a nonterminal purchase with a missing hold", async () => {
+  status.mockResolvedValue(json({ ...savedPurchase, state: "linked", scope_held: false }));
   renderCabinet(first.purchase_intent_id);
   expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.selectionUnavailable);
   expect(screen.getByRole("button", { name: ru.Billing.open })).toBeDisabled();

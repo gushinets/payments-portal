@@ -13,6 +13,7 @@ from app.core.settings import Settings
 from app.domains.billing.discovery import DiscoveredCandidate, ProductDiscovery, scope_versions
 from app.domains.billing.paid_policy import CandidateConclusion as Conclusion, PaidDecision, paid_decision
 from app.domains.billing.background_recovery import customer_snapshot
+from app.domains.billing.terminal_resolution import released_object_owners, record_late_object
 from app.domains.billing.contracts import CustomerOpen
 from app.domains.billing.customer_conflicts import record_customer_conflict
 from app.domains.billing.reconciliation_contracts import (
@@ -42,7 +43,7 @@ from app.integrations.lbx.errors import (
     LbxAttemptsExhausted,
     LbxProviderRejected,
 )
-from app.integrations.lbx.financial import Subscription, agreement_is_closed, subscription_lifecycle
+from app.integrations.lbx.financial import Subscription, agreement_is_closed, subscription_lifecycle, prove_agreement
 from app.integrations.lbx.reconciliation import MAX_RELEVANT_SUBSCRIPTIONS, timely_point
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State
 from app.models import ExternalSubscriptionLifecycleStatus as Lifecycle, PurchaseIntentState
@@ -181,11 +182,36 @@ async def collect_inventory(
         rows = await timely_point(
             lambda: client.discover_subscriptions(user_id=int(current.provider_id), budget=budget), budget
         )
+        retired = await delegate(
+            released_object_owners,
+            factory,
+            current.customer_id,
+            tuple(str(row.agreement_id) for row in rows),
+            tuple(str(row.subscription_id) for row in rows),
+        )
+        retired_agreements = {
+            op.bound_id: purchase
+            for purchase in retired
+            for op in purchase.operations
+            if op.kind == Kind.AGREEMENT and op.bound_id is not None
+        }
+        retired_subscriptions = {
+            op.bound_id: purchase
+            for purchase in retired
+            for op in purchase.operations
+            if op.kind == Kind.SUBSCRIPTION and op.bound_id is not None
+        }
         tariffs = {purchase.accepted.selection.tariff_id for purchase in initial}
         relevant: dict[str, Subscription | None] = {
             str(row.subscription_id): row
             for row in rows
-            if (row.tariff_id in tariffs or str(row.subscription_id) in bindings or str(row.agreement_id) in agreements)
+            if (
+                row.tariff_id in tariffs
+                or str(row.subscription_id) in bindings
+                or str(row.agreement_id) in agreements
+                or str(row.agreement_id) in retired_agreements
+                or str(row.subscription_id) in retired_subscriptions
+            )
         }
         # Canonical contradictions need point checks even when discovery omits
         # the known ID. Do not invent listing fields or treat it as UNKNOWN.
@@ -298,6 +324,7 @@ async def collect_inventory(
                         else:
                             complete = False
                         continue
+            historical_read_started = await delegate(read_source_time, factory)
             point = await _candidate_point(
                 lambda: client.get_subscription(subscription_id=int(provider_id), budget=budget), budget
             )
@@ -323,6 +350,56 @@ async def collect_inventory(
             if agreement.user_id != int(current.provider_id):
                 complete = False
                 continue
+            historical = retired_subscriptions.get(provider_id) or retired_agreements.get(str(point.agreement_id))
+            if historical is not None:
+                original_agreement = next(op for op in historical.operations if op.kind == Kind.AGREEMENT)
+                if historical.accepted.provider_origin != configuration.lbx_provider_origin:
+                    raise PurchaseInventoryIncomplete()
+                prove_agreement(
+                    agreement,
+                    user_id=int(current.provider_id),
+                    seller_id=historical.accepted.seller_id,
+                    number=original_agreement.key,
+                )
+                ended = agreement_is_closed(agreement) or subscription_lifecycle(point)[0] == Lifecycle.ENDED
+                product = historical.accepted.selection.product_id
+                for unrelated in affected - {product}:
+                    candidates[unrelated] = [item for item in candidates[unrelated] if item.identity != provider_id]
+                affected = {product} & candidates.keys()
+                if product in candidates and not any(item.identity == provider_id for item in candidates[product]):
+                    candidates[product].append(
+                        DiscoveredCandidate(
+                            identity=provider_id,
+                            agreement_id=str(point.agreement_id),
+                            purchase_id=historical.id,
+                            conclusion=Conclusion.INCOMPLETE,
+                        )
+                    )
+                if not ended:
+                    operation = next(op for op in historical.operations if op.kind == Kind.SUBSCRIPTION)
+                    if operation.bound_id in {None, provider_id}:
+                        await delegate(
+                            record_late_object, factory, historical, operation.id, provider_id, historical_read_started
+                        )
+                    else:
+                        await delegate(
+                            record_late_object,
+                            factory,
+                            historical,
+                            original_agreement.id,
+                            str(point.agreement_id),
+                            historical_read_started,
+                        )
+                    complete = False
+                    conflicts.update(item.id for item in initial if item.accepted.selection.product_id == product)
+                    for affected_product in affected:
+                        product_complete[affected_product] = False
+                else:
+                    for affected_product in affected:
+                        candidates[affected_product][-1] = candidates[affected_product][-1].model_copy(
+                            update={"conclusion": Conclusion.INELIGIBLE}
+                        )
+                continue
             if agreement_is_closed(agreement) or subscription_lifecycle(point)[0] == Lifecycle.ENDED:
                 for product in affected:
                     candidates[product][-1] = candidates[product][-1].model_copy(
@@ -344,7 +421,12 @@ async def collect_inventory(
         for product in candidates:
 
             def relevant_to_product(row: Subscription) -> bool:
-                bound = bindings.get(str(row.subscription_id)) or agreements.get(str(row.agreement_id))
+                bound = (
+                    bindings.get(str(row.subscription_id))
+                    or agreements.get(str(row.agreement_id))
+                    or retired_subscriptions.get(str(row.subscription_id))
+                    or retired_agreements.get(str(row.agreement_id))
+                )
                 if bound is not None:
                     return bound.accepted.selection.product_id == product
                 return any(

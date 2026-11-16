@@ -15,6 +15,7 @@ import { PaidProductAccess } from "./PaidProductAccess";
 import { PaidProductUsage } from "./PaidProductUsage";
 import { usePaidUsage } from "./use-paid-usage";
 import { PaidReadStatus } from "./use-paid-read";
+import { isResolvedPurchase } from "./purchase-state";
 
 type SelectionState = { status: "loading" | "ready" } | { status: "error"; requestId: string };
 
@@ -47,7 +48,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
       if (!operation.token) throw new Error("session_required");
       const result = await purchaseStatus(operation.token, initialPurchaseId!, requestId);
       if (operation.isCurrent()) {
-        if (!result.scope_held) { setSelectionState({ status: "error", requestId }); return; }
+        if (!result.scope_held && !isResolvedPurchase(result.state)) { setSelectionState({ status: "error", requestId }); return; }
         setDeepPurchase(result);
         setSelectionState({ status: "ready" });
       }
@@ -63,16 +64,19 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
     setSelectionState({ status: "error", requestId: "" });
   }), [cancel]);
 
-  const options = deepPurchase && !purchases.items.some((item) => item.purchase_intent_id === deepPurchase.purchase_intent_id)
-    ? [deepPurchase, ...purchases.items] : purchases.items;
-  const defaultPurchase = purchases.status === "ready" && !purchases.cursor && purchases.items.length === 1 ? purchases.items[0] : undefined;
+  const activeItems = deepPurchase && !deepPurchase.scope_held
+    ? purchases.items.filter((item) => item.purchase_intent_id !== deepPurchase.purchase_intent_id) : purchases.items;
+  const options = deepPurchase
+    ? [deepPurchase, ...activeItems.filter((item) => item.purchase_intent_id !== deepPurchase.purchase_intent_id)] : activeItems;
+  const defaultPurchase = purchases.status === "ready" && !purchases.cursor && activeItems.length === 1 ? activeItems[0] : undefined;
   const selection = selectedId === undefined ? defaultPurchase : options.find((item) => item.purchase_intent_id === selectedId);
   const selectionBlocked = selectionState.status !== "ready" || (!!selectedId && !selection);
-  const canPay = selection?.state === "linked";
+  const released = selection && deepPurchase?.purchase_intent_id === selection.purchase_intent_id && !deepPurchase.scope_held;
+  const canPay = selection?.state === "linked" && !released;
   const paidOnlyProducts = [...new Set([
     ...(paid.state.status === PaidReadStatus.Ready ? [...paid.state.data.grants, ...paid.state.data.products].map((item) => item.product_id) : []),
     ...(usage.state.status === PaidReadStatus.Ready ? usage.state.data.items.map((item) => item.product_id) : []),
-  ])].filter((id) => !purchases.items.some((item) => item.product_id === id));
+  ])].filter((id) => !activeItems.some((item) => item.product_id === id));
 
   function refreshPaid() {
     void paid.refresh();
@@ -113,7 +117,11 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
         {selectionState.status === "loading" && <p role="status">{p("loading")}</p>}
         {selectionBlocked && selectionState.status !== "loading" && <div className="notice error" role="alert"><p>{b("selectionUnavailable")}</p>{selectionState.status === "error" && selectionState.requestId && <p>{b("requestId", { id: selectionState.requestId })}</p>}</div>}
         {selection && <p className="billing-selected-product">{b("selectedProduct", { product: selection.product_id })}</p>}
-        {selection && !canPay && <p>{b("preparationRequired")} <Link href={`/products/${encodeURIComponent(selection.product_id)}`}>{p("continue")}</Link></p>}
+        {selection && released && <>
+          <p role="status">{p(`states.${selection.state}`)}</p>
+          <p>{p("resolvedNext")} <Link href={`/products/${encodeURIComponent(selection.product_id)}`}>{p("buy")}</Link></p>
+        </>}
+        {selection && !canPay && !released && <p>{b("preparationRequired")} <Link href={`/products/${encodeURIComponent(selection.product_id)}`}>{p("continue")}</Link></p>}
       </div>}
       <button className="btn-primary" type="button" aria-describedby={widget.state.status === "open" ? "billing-refresh-hint" : undefined} disabled={!emailVerified || selectionBlocked || (!!selection && !canPay) || widget.state.status === "loading"} onClick={openSelected}>
         {widget.state.status === "loading" ? b("loading") : widget.state.status === "open" ? b("refresh") : b("open")}
@@ -141,9 +149,9 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
         {purchases.requestId && <p>{b("requestId", { id: purchases.requestId })}</p>}
         <button className="btn-secondary" type="button" onClick={() => void purchases.load(purchases.cursor ?? undefined)}>{p("retry")}</button>
       </div>}
-      {purchases.status === "ready" && !purchases.items.length && <p className="card-copy">{t("empty")}</p>}
+      {purchases.status === "ready" && !activeItems.length && <p className="card-copy">{t("empty")}</p>}
       <div className="account-products-grid">
-        {purchases.items.map((item) => <article className="account-product-card" key={item.purchase_intent_id}>
+        {activeItems.map((item) => <article className="account-product-card" key={item.purchase_intent_id}>
           <div className="account-product-heading"><h3><Link href={`/products/${encodeURIComponent(item.product_id)}`}>{item.product_id}</Link></h3></div>
           <p className="card-copy">{item.state === "linked" ? t("prepared") : t("pending")}</p>
           {emailVerified && <PaidProductAccess productId={item.product_id} paid={paid} />}

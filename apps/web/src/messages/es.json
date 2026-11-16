@@ -495,6 +495,7 @@
     "reviewRequired": "Esta compra necesita revisión. Conserva su referencia para contactar con soporte.",
     "reference": "Referencia de compra: {id}",
     "acceptedTerms": "Condiciones aceptadas originalmente",
+    "resolvedNext": "Puedes iniciar una nueva compra con las condiciones actuales. Para obtener ayuda, facilita esta referencia al soporte.",
     "awaitingVerification": "El pago espera una verificación autorizada. Consultar el estado guardado solo lee los registros del Portal y no actualiza los datos de facturación.",
     "technicalLimit": "Límite por ciclo confirmado",
     "simulatedTerms": "SIMULATED · condiciones de prueba",
@@ -507,6 +508,7 @@
       "awaiting_external_result": "El resultado de facturación es desconocido. La compra original sigue reservada.",
       "linked": "Suscripción preparada",
       "resolved_no_external_effect": "La compra se resolvió sin efectos externos.",
+      "resolved_external_terminal": "La compra ha finalizado tras el cierre del contrato o de la suscripción.",
       "failed_before_external_effect": "La compra se detuvo antes de crear objetos financieros.",
       "manual_review": "La compra necesita recuperación o revisión de un operador."
     },

@@ -494,6 +494,8 @@ not that payment or positive source proof was established. Exit 1 returns only
 
 - `inspect`: local read-only evidence; no source I/O, row changes or leases.
   Output includes original operations/fences, current subscription facts/trust,
+  `expected_resolution_digest`, financial request correlation keys and known
+  external object/receipt IDs for request-specific support confirmation,
   recent observation summaries, work and review IDs/digests. Work/review lists
   cap at 100 with truncation flags; observations contain the latest 20 records.
   No customer keys, raw requests, credentials or accepted amounts are exposed.
@@ -504,7 +506,8 @@ not that payment or positive source proof was established. Exit 1 returns only
 - `recover`: bounded GET-only recovery of the original possible-send operation.
   It may prove a binding or close deadline-only review, but cannot send CREATE,
   adopt PENDING/PROVEN_NOT_SENT or clear known conflicts. For a bound subscription,
-  use `reconcile`.
+  use `reconcile`. For a completed purchase it only inspects original objects
+  and records unexpected live objects for review; it never rebinds or resumes it.
 - `reconcile`: bounded authoritative recheck of the canonical subscription.
   It records waiting/active/blocked/ended/incomplete/conflicting evidence and
   schedules follow-up. Known conflicts remain open. The budget is
@@ -515,6 +518,71 @@ not that payment or positive source proof was established. Exit 1 returns only
   `--case-id`, `--expected-case-digest`, `--reason` and `--reference`. Copy the current
   case ID and `sha256:` digest from `inspect`. Reason/reference are nonempty bounded
   single-line text (500/300 characters); include no secrets or personal data.
+- `resolve-purchase`: audited terminal completion. Requires `--expected-digest`
+  from `inspect`'s `expected_resolution_digest`, `--evidence-file`, `--reason`
+  and `--reference`. It opens no provider resources and sends no CREATE.
+
+### Terminal completion (ANY-821)
+
+Cancellation is operator-only. Inspect the exact original purchase and obtain
+request-specific evidence for both agreement and subscription operations.
+`not_sent` is accepted only for PENDING/PROVEN_NOT_SENT with no saved receipt or
+binding. An empty discovery result, timeout or the two-hour pause proves nothing.
+
+For any possible send, stop the actual Portal API/worker sender processes through
+the normal authorized deployment procedure. Disabling worker scheduling, rotating
+a fence, cancelling an HTTP waiter or waiting for a timeout is insufficient.
+Only after shutdown obtain documented final LBX confirmation that the exact
+request had no effect and cannot still apply, or that its created objects are
+irreversibly terminal. An unpaid/inactive/blocked subscription is not terminal.
+For partial preparation, confirm both the created agreement and the uncertain
+subscription; the command does not close LBX objects itself. If confirmation is
+unavailable, retain the hold and restart normal operation; investigate again later.
+
+The UTF-8 evidence file (maximum 32 KiB) contains one entry per original operation.
+Replace UUID/ID/timestamp examples with inspected identities and actual evidence:
+
+```json
+{
+  "schema_version": "purchase-terminal-resolution:v1",
+  "senders_stopped_at": "2026-11-16T10:00:00Z",
+  "confirmed_at": "2026-11-16T10:05:00Z",
+  "operations": [
+    {"operation_id": "11111111-1111-4111-8111-111111111111", "outcome": "external_terminal", "external_object_id": "456"},
+    {"operation_id": "22222222-2222-4222-8222-222222222222", "outcome": "no_external_effect"}
+  ]
+}
+```
+
+Use `not_sent` with no object ID for a locally proven no-send operation.
+All-no-send completion needs neither timestamp; otherwise confirmation must
+follow sender shutdown and the latest possible-send attempt, and cannot be in
+the future. Reference the retained LBX support confirmation in `--reference`;
+do not paste provider payloads, secrets or personal data into reason/reference.
+
+```bash
+.venv/bin/python scripts/repo.py billing-purchase resolve-purchase --user-id <portal-user-uuid> --purchase-id <purchase-intent-uuid> --expected-digest <sha256:digest> --evidence-file <confirmation.json> --reason 'Customer requests restart; original outcome confirmed' --reference 'LBX support confirmation reference'
+```
+
+The transaction retains original accepted terms, requests and binding history,
+records operator/evidence audit, revokes old work and releases only this purchase's
+hold. `resolved_no_external_effect` means proven absence of effect;
+`resolved_external_terminal` retains created objects that have ended. Exact replay
+returns the saved result even after a replacement purchase exists. Changed or
+stale evidence refuses. `purchase_resolution_confirmation_required` and
+`purchase_resolution_proof_incomplete` require better evidence, never a force flag.
+
+Return to normal operation after resolution. The customer can inspect the old
+result at the localized `/account?purchase=<id>#billing` link and start a new
+purchase with current terms; there is no automatic charge, access grant or quota
+reset. A late live original discovered by `recover` or inventory opens a
+`purchase_late_external_object` case on the original purchase without changing
+its terminal history or adopting it into the replacement. Correct the source,
+obtain fresh final confirmation and run the same action with `--case-id` and a
+fresh digest to close that exact case. An old delayed GET cannot reopen a case
+whose confirmation supersedes that read. Fresh contradictory evidence can.
+
+### Existing original-object resolutions
 
 Examples; replace placeholders with local IDs and current expectations:
 
@@ -671,9 +739,9 @@ Operator procedure:
    `resolve-review` actions above after establishing their required proof. These
    actions cannot adopt an arbitrary ID or assert payment.
 6. If no original object can be proved, retain the hold and investigate with
-   LBX using the saved original-operation evidence. This build has no supported
-   "declare absent / reset unknown purchase" operation (ANY-821). Do not delete
-   work/operation rows or force-release the hold to start a replacement.
+   LBX using the saved original-operation evidence. Use `resolve-purchase` only
+   through the stop-confirm-resolve procedure above. Do not delete work/operation
+   rows or force-release the hold to start a replacement.
 
 An explicit user's "Continue recovery" also remains available after the pause.
 It can prove the original through GET but cannot repeat an uncertain financial
