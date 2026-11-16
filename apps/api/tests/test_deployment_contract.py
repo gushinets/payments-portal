@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -29,7 +30,7 @@ def load_env_example(path: str) -> dict[str, str]:
 
 
 def write_executable(path: Path, content: str) -> None:
-    path.write_text(content, encoding="utf-8")
+    path.write_text(content, encoding="utf-8", newline="\n")
     path.chmod(0o755)
 
 
@@ -218,7 +219,7 @@ def write_browser_evidence_fixture(root: Path, *, attempt_suffix: str = "") -> N
 def run_browser_evidence_validator(root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
-            "bash",
+            shutil.which("bash") or "bash",
             "--noprofile",
             "--norc",
             "-e",
@@ -388,13 +389,23 @@ printf '%s\\n' '{"status":"ready"}'
     environment = {
         **os.environ,
         "CI_ENV_FILE": str(ci_env_file),
+        "TEST_BIN_DIR": bin_dir.as_posix(),
         "COMMAND_LOG": str(command_log),
         "COMPOSE_PROJECT_NAME": "payment-portal-ci-test",
         "CURL_LOG": str(curl_log),
         "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
     }
     result = subprocess.run(
-        ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", smoke_script],
+        [
+            shutil.which("bash") or "bash",
+            "--noprofile",
+            "--norc",
+            "-e",
+            "-o",
+            "pipefail",
+            "-c",
+            'PATH="$(cd "$TEST_BIN_DIR" && pwd):$PATH"\n' + smoke_script,
+        ],
         cwd=ROOT,
         env=environment,
         capture_output=True,

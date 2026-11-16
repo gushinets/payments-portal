@@ -11,6 +11,8 @@ from typing import Any
 
 import httpx
 import pytest
+
+from apps.api.tests.support.filesystem import assert_private_path
 from pydantic import ValidationError
 
 from app.cli.commercial_mappings import parser
@@ -508,9 +510,9 @@ def test_any709_step1_harness_connection_pass_through_is_private_and_mock_indepe
     assert "LBX_BILLING_TIMEZONE" not in written
     assert written["MAPPING_OPERATOR_LOCK_FILE"] == (lock_file or "/run/payments-portal/operator.lock")
     assert "LBX_SERVER_PASSWORD" not in json.loads(repo.RUNTIME_JSON.read_text())
-    assert repo.RUNTIME_ENV.stat().st_mode & 0o077 == 0
+    assert_private_path(repo.RUNTIME_ENV)
     assert (harness / "operator").is_dir()
-    assert (harness / "operator").stat().st_mode & 0o077 == 0
+    assert_private_path(harness / "operator")
     assert secret not in capsys.readouterr().out
     for filename in ("docker-compose.yml", "docker-compose.agent.yml", "docker-compose.prod.yml"):
         text = (repo.ROOT / filename).read_text()

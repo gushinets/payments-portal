@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from apps.api.tests.support.filesystem import assert_private_path
+
 from app.core.settings import Settings
 from app.integrations.lbx.customer import sign_widget_jwt
 from scripts import repo
@@ -83,7 +85,7 @@ def test_real_dotenv_forwards_backend_consumers_privately(
     assert configured.consumer_policy_revision == (2 if override else 1)
     assert configured.backend_to_portal_current_secret.get_secret_value() == incoming
     assert configured.portal_to_backend_current_secret.get_secret_value() == outgoing
-    assert repo.RUNTIME_ENV.stat().st_mode & 0o077 == 0
+    assert_private_path(repo.RUNTIME_ENV)
     public_values = [repo.RUNTIME_JSON.read_text(), capsys.readouterr().out]
     public_values.extend(value for name, value in forwarded.items() if name.startswith("NEXT_PUBLIC_"))
     for public in public_values:
@@ -193,7 +195,7 @@ def test_real_dotenv_preserves_lbx_credentials_through_settings_and_widget_signa
         .decode()
     )
     assert hmac.compare_digest(signature, expected)
-    assert repo.RUNTIME_ENV.stat().st_mode & 0o077 == 0
+    assert_private_path(repo.RUNTIME_ENV)
     for public in (repo.RUNTIME_JSON.read_text(), capsys.readouterr().out):
         assert password not in public and signing not in public and credential not in public
 

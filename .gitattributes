@@ -1,0 +1,4 @@
+# Byte-retained contract fixtures and generated artifacts must match their
+# canonical LF representation on Windows as well as POSIX checkouts.
+docs/contracts/** text eol=lf
+apps/web/src/generated/api-contracts/** text eol=lf
