@@ -1,14 +1,16 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-11-13 (ANY-766 retained allowance activation)
+Last updated: 2026-11-17 (ANY-821 integration with ANY-766)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 -> 20261110_0008 -> 20261111_0009 -> 20261111_0010 -> 20261111_0011 -> 20261113_0012 -> 20261113_0013 (head)
+20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 -> 20261110_0008 -> 20261111_0009 -> 20261111_0010 -> 20261111_0011 -> 20261113_0012 -> 20261113_0013
+20261031_0006 -> 20261116_821
+(20261113_0013, 20261116_821) -> 20261117_821_merge (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
@@ -66,8 +68,8 @@ through the existing work table; it stores no Portal usage ledger.
 A fresh database has exactly 30 application tables: ten retained
 identity/session/legal tables, fifteen original external-billing persistence
 tables, one current product-link pointer, one purchase mutex, one session
-delegation table, one backend policy guard and one code-issuance budget table. Alembic has twelve revisions in
-one linear chain and one current head. Revision
+delegation table, one backend policy guard and one code-issuance budget table. Alembic has fourteen revisions, including the
+no-DDL merge of the published ANY-766 and ANY-821 branches, and one current head. Revision
 `20261029_0003` belongs to ANY-709, `20261028_0005` to ANY-715 and
 `20261031_0006` to ANY-765 and `20261110_0007`/`20261110_0008`/`20261111_0009`/`20261111_0010` to ANY-766.
 Revision `20261110_0007` adds only `kernel_session_delegations`; revision
@@ -235,7 +237,7 @@ characters; existing users receive no fabricated names.
 mapping revision, exact legal acceptance event, accepted commercial
 fingerprint, immutable accepted snapshot, and client idempotency key. Its
 closed states are `created`, `preparing`, `awaiting_external_result`, `linked`,
-`resolved_no_external_effect`, `failed_before_external_effect`, and
+`resolved_no_external_effect`, `resolved_external_terminal`, `failed_before_external_effect`, and
 `manual_review`. PostgreSQL triggers keep the accepted evidence/provenance
 fields immutable. ANY-765 writes `accepted-purchase:v2`, including the optional
 SIMULATED technical terms and selected-meaning confirmation digest, separately
@@ -264,6 +266,16 @@ and accepted renewal quantities remain unchanged. There is no Step 11 migration
 or historical JSON conversion; old readers cannot consume the new formats even
 when migration heads match. See the
 [source/history compatibility guide](../contracts/product-backend-api/README.md#implemented-step-11-technical-sources-and-history).
+
+ANY-821 adds `resolved_external_terminal` through migration `20261116_821` after
+`20261031_0006`. Audited operator completion uses existing `manual_review_cases`,
+sets `resolved_at` and releases the exact purchase hold without deleting accepted
+history or external objects. `purchase-terminal-resolution:v1` retains command
+expectations, per-operation evidence, sender shutdown/confirmation times and
+principal; `purchase-late-object:v1` records later contradictions without rebinding.
+Downgrade refuses while the new terminal state is retained.
+`20261117_821_merge` joins this revision with published ANY-766 head
+`20261113_0013` without changing either migration or adding DDL.
 
 `external_create_operations` records customer, agreement, or subscription
 create work. Customer creation has no purchase intent; agreement and

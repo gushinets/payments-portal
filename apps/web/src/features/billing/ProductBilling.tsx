@@ -1,5 +1,7 @@
 "use client";
 
+import { isResolvedPurchase } from "./purchase-state";
+
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import type { PurchaseIntentResponse, PurchaseReviewResponse, SessionUserResponse } from "@/generated/api-contracts/types.gen";
@@ -213,7 +215,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
 
   const purchase = state.kind === "purchase" ? state.purchase : null;
   const resumable = purchase && purchase.scope_held && purchase.state !== "linked";
-  const released = purchase && !purchase.scope_held && (purchase.state === "resolved_no_external_effect" || purchase.state === "failed_before_external_effect");
+  const released = purchase && !purchase.scope_held && isResolvedPurchase(purchase.state);
   if (purchase?.state === "linked") return <section className="purchase-panel purchase-complete" aria-label={t("title")}>
     <Heading>{t("states.linked")}</Heading>
     <p className="card-copy">{t("managedInAccount")}</p>
@@ -257,7 +259,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
         <p className="catalog-product-id">{t("reference", { id: purchase.purchase_intent_id })}</p>
         <details><summary>{t("acceptedTerms")}</summary><PurchaseTerms review={purchase.accepted} /></details>
         {resumable && <button className="btn-primary" type="button" disabled={working} onClick={() => void run((token, id, current) => prepare(token, purchase, id, current))}>{t(purchase.state === "created" ? "continue" : "recover")}</button>}
-        <p>{t("awaitingVerification")}</p>
+        <p>{t(released ? "resolvedNext" : "awaitingVerification")}</p>
       </div>}
       {failure && <div className="notice error" role="alert">{b(`errors.${failure.message}`)}{failure.requestId && <p>{b("requestId", { id: failure.requestId })}</p>}</div>}
       <p className="card-copy">{t("accessInAccount")}</p>

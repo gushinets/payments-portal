@@ -172,7 +172,7 @@ async def test_commit_ack_duplicate_after_completion_never_revives_or_mutates(
         with pytest.raises(RuntimeError, match="Activation/V2 evidence requires the new reader"):
             command.downgrade(migration, "20261111_0010")
     with factory() as db:
-        assert db.scalar(text("SELECT version_num FROM alembic_version")) == "20261113_0013"
+        assert db.scalar(text("SELECT version_num FROM alembic_version")) == "20261117_821_merge"
     assert hint(factory).payload_document == body
     assert hint(factory).work_state == BillingWorkState.COMPLETED
     assert hint(factory).enqueue_generation == done.enqueue_generation
@@ -222,7 +222,10 @@ def test_exhaustion_history_blocks_downgrade_at_0011(migrated_database: Engine) 
         with pytest.raises(RuntimeError, match="Exhaustion history downgrade is unsafe"):
             command.downgrade(migration, "20261111_0010")
         with migrated_database.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20261111_0011"
+            assert set(connection.scalars(text("SELECT version_num FROM alembic_version"))) == {
+                "20261111_0011",
+                "20261116_821",
+            }
             assert connection.scalar(retained, {"id": identity}) == before
 
 

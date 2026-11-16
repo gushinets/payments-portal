@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from sqlalchemy import Text, and_, cast, or_, select
+from sqlalchemy import Text, and_, cast, exists, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -13,6 +13,8 @@ from app.models import (
     ExternalSubscription,
     ManualReviewCase,
     PurchaseIntent,
+    PurchaseIntentState,
+    ExternalCreateOperationKind,
 )
 
 
@@ -85,6 +87,35 @@ def reviews(
 
 def subscription(db: Session, purchase_id: UUID) -> ExternalSubscription | None:
     return db.scalar(select(ExternalSubscription).where(ExternalSubscription.purchase_intent_id == purchase_id))
+
+
+def released_object_owners(
+    db: Session, customer_id: UUID, agreement_ids: tuple[str, ...], subscription_ids: tuple[str, ...]
+) -> list[PurchaseIntent]:
+    return list(
+        db.scalars(
+            select(PurchaseIntent)
+            .where(
+                PurchaseIntent.customer_id == customer_id,
+                PurchaseIntent.state.in_(tuple(state for state in PurchaseIntentState if state.resolved)),
+                exists().where(
+                    ExternalCreateOperation.purchase_intent_id == PurchaseIntent.purchase_intent_id,
+                    or_(
+                        and_(
+                            ExternalCreateOperation.operation_kind == ExternalCreateOperationKind.AGREEMENT,
+                            ExternalCreateOperation.bound_external_object_id.in_(agreement_ids),
+                        ),
+                        and_(
+                            ExternalCreateOperation.operation_kind == ExternalCreateOperationKind.SUBSCRIPTION,
+                            ExternalCreateOperation.bound_external_object_id.in_(subscription_ids),
+                        ),
+                    ),
+                ),
+            )
+            .order_by(PurchaseIntent.purchase_intent_id)
+            .limit(101)
+        )
+    )
 
 
 def observations(db: Session, subscription_id: UUID) -> list[BillingStateObservation]:

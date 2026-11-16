@@ -20,6 +20,8 @@ from app.models import (
     AccessInvalidationOutbox,
     PurchasedAllowance,
     BackendConsumerPolicy,
+    PurchaseIntent,
+    PurchaseIntentState,
 )
 
 
@@ -183,6 +185,10 @@ def missing_subscriptions(
                 ExternalSubscription.purchase_intent_id.is_not(None),
                 ExternalSubscription.external_subscription_id.is_not(None),
                 ExternalSubscription.external_agreement_id.is_not(None),
+                ~exists().where(
+                    PurchaseIntent.purchase_intent_id == ExternalSubscription.purchase_intent_id,
+                    PurchaseIntent.state.in_(tuple(state for state in PurchaseIntentState if state.resolved)),
+                ),
                 ~enrolled,
             )
             .order_by(ExternalSubscription.subscription_id)

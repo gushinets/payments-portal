@@ -164,6 +164,8 @@ def _repair_operation(factory: SessionFactory, configuration: Settings, identity
             op = billing_customers.customer_operation(db, customer.customer_id)
         else:
             row = purchases.owned(db, customer.user_id, op.purchase_intent_id, lock=True)
+            if row.state.resolved:
+                return False
             operations = purchases.operations(db, row.purchase_intent_id, lock=True)
             op = next(item for item in operations if item.create_operation_id == identity)
         db.refresh(op)

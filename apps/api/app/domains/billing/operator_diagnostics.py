@@ -12,6 +12,7 @@ from app.infrastructure.queries import billing_operator as queries, billing_reco
 from app.infrastructure.queries.billing_customers import diagnostic_user
 from app.infrastructure.queries.billing_background import operation_subject
 from app.domains.billing.customer_scope import connection_account
+from app.domains.billing.terminal_resolution import state_digest
 
 
 def inspect_operation(factory: SessionFactory, configuration: Settings, operation_id: UUID) -> dict:
@@ -81,12 +82,16 @@ def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: 
             "state": purchase.state,
             "reason": purchase.reason,
             "scope_held": purchase.held,
+            "expected_resolution_digest": state_digest(db, row),
             "operations": [
                 {
                     "create_operation_id": str(op.id),
                     "kind": op.kind,
                     "state": op.state,
                     "send_fence": str(op.fence) if op.fence else None,
+                    "request_correlation_key": op.key,
+                    "external_object_id": op.bound_id,
+                    "receipt_candidate_id": op.candidate_id,
                     "bound": op.bound_id is not None,
                     "receipt_saved": op.candidate_id is not None,
                     "deadline": op.deadline.isoformat() if op.deadline else None,

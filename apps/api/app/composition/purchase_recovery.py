@@ -29,11 +29,16 @@ from app.integrations.lbx.financial import (
     NewSubscription,
     Subscription,
     agreement_is_closed,
+    subscription_lifecycle,
     prove_agreement,
     prove_effective_terms,
 )
 from app.integrations.lbx.reconciliation import normalize_subscription, timely_point
-from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State
+from app.models import (
+    ExternalCreateOperationKind as Kind,
+    ExternalCreateOperationState as State,
+    ExternalSubscriptionLifecycleStatus as Lifecycle,
+)
 
 
 def original_command(
@@ -303,6 +308,35 @@ async def recover_financial(
 
     purchase = await delegate(service.inspect_purchase, factory, configuration, user_id, purchase_id)
     _connection(purchase, configuration)
+    if not purchase.held and purchase.state.resolved and work_claim is None and sources.billing is not None:
+        from app.domains.billing.terminal_resolution import record_late_object
+
+        await delegate(service.verify_original_consent, factory, purchase)
+        current = await delegate(service.customer_for_purchase, factory, configuration, purchase)
+        async with _budget(sources.billing, budget) as active_budget:
+            client = sources.require_lbx()
+            read_started = await delegate(read_source_time, factory)
+            user = await timely_point(
+                lambda: client.get_user(user_id=int(current.provider_id), budget=active_budget), active_budget
+            )
+            if user.outer_id != current.outer_key:
+                raise PurchaseRefused("billing_identity_unproven", 409)
+            for operation in purchase.operations:
+                if operation_id is not None and operation.id != operation_id:
+                    continue
+                if not operation.bound_id and operation.state in {State.PENDING, State.PROVEN_NOT_SENT}:
+                    continue
+                original = replace(operation, bound_id=None, candidate_id=operation.bound_id or operation.candidate_id)
+                found = await find_financial(client, purchase, original, current, budget=active_budget)
+                if found is not None:
+                    provider_id, agreement, point = found
+                    if not agreement_is_closed(agreement) and (
+                        point is None or subscription_lifecycle(point)[0] != Lifecycle.ENDED
+                    ):
+                        await delegate(
+                            record_late_object, factory, purchase, operation.id, str(provider_id), read_started
+                        )
+        return await delegate(service.read_purchase, factory, user_id, purchase_id)
     if not purchase.held or sources.billing is None:
         raise PurchaseRefused("purchase_scope_released", 409)
     await delegate(service.verify_original_consent, factory, purchase)

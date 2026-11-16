@@ -26,6 +26,14 @@ function renderProduct(user = purchaseUser) {
   return renderWithIntl(<ProductBilling productId="proposal_ai" offerAvailable user={user} />, { locale: "ru", messages });
 }
 
+it("does not describe a resolved purchase as still awaiting payment verification", async () => {
+  owned = { ...savedPurchase, state: "resolved_no_external_effect", scope_held: false };
+  renderProduct();
+  expect(await screen.findByText(ru.Purchase.states.resolved_no_external_effect)).toBeVisible();
+  expect(screen.queryByText(ru.Purchase.awaitingVerification)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: ru.Purchase.recover })).not.toBeInTheDocument();
+});
+
 it("keeps incomplete inventory retryable without a support conflict or another confirmation", async () => {
   advance.mockImplementationOnce(async () => {
     owned = { ...savedPurchase, state: "awaiting_external_result" };
