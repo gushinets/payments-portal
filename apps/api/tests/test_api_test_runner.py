@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import signal
@@ -34,13 +35,16 @@ def environment() -> dict[str, str]:
     return {**os.environ, "PYTHONPATH": str(repo.ROOT), "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}
 
 
-def run_suite(root: Path, *, target: str = "api-postgres", workers: int = 4) -> runner.RunnerResult:
+def run_suite(
+    root: Path, *, target: str = "api-postgres", workers: int = 4, arguments: tuple[str, ...] = ()
+) -> runner.RunnerResult:
     return runner.run_api_tests(
         root=root,
         artifacts=root / "reports",
         target=target,
         workers=workers,
         environment=environment(),
+        arguments=arguments,
         junitxml=root / "current.xml",
     )
 
@@ -319,6 +323,87 @@ def test_postgres_pass():
     assert (result.directory / "postgres/worker-1/manifest.json").is_file()
 
 
+@pytest.mark.parametrize("failure", ["call", "setup", "teardown", "call-and-teardown"])
+def test_requested_early_stop_retains_failures_and_cleanup_without_infrastructure_error(
+    suite: Path, failure: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source(
+        suite,
+        "test_stop.py",
+        f"""from pathlib import Path
+import pytest
+pytestmark = pytest.mark.postgres
+@pytest.fixture
+def resource():
+    if {failure!r} == "setup":
+        raise RuntimeError("setup failure")
+    yield
+    Path("cleaned").touch()
+    if {failure!r} in {{"teardown", "call-and-teardown"}}:
+        raise RuntimeError("teardown failure")
+@pytest.mark.skip(reason="intentional sample skip")
+def test_skip():
+    pass
+def test_pass():
+    pass
+def test_failure(resource):
+    assert {failure!r} not in {{"call", "call-and-teardown"}}
+def test_unexecuted():
+    Path("unexpected").touch()
+""",
+    )
+    result = run_suite(suite, workers=1, arguments=("-x",))
+
+    assert result.returncode == 1
+    report = ET.parse(suite / "current.xml")
+    assert len(report.findall(".//failure")) == int(failure in {"call", "call-and-teardown"})
+    assert len(report.findall(".//error")) == int(failure in {"setup", "teardown", "call-and-teardown"})
+    assert len(report.findall(".//skipped")) == 1
+    assert report.find(".//testsuite[@name='api-runner']") is None
+    assert set(report_nodes(suite / "current.xml")) == {
+        f"apps/api/tests/test_stop.py::{name}" for name in ("test_skip", "test_pass", "test_failure")
+    }
+    assert not (suite / "unexpected").exists()
+    assert (suite / "cleaned").exists() is (failure != "setup")
+    state = json.loads((result.directory / "result.json").read_text())
+    assert state["errors"] == [] and state["process_returncodes"] == [0, 1]
+    worker = result.directory / "postgres/worker-1/manifest.json"
+    collection = result.directory / "postgres/collection/manifest.json"
+    assert json.loads(worker.read_text())["stopped_after_failure"] is True
+    assert json.loads(collection.read_text())["stopped_after_failure"] is False
+    assert "3/4 cases" in capsys.readouterr().out
+
+
+def test_early_stop_preserves_other_workers_and_partitions(suite: Path) -> None:
+    source(suite, "test_fast.py", "def test_failure():\n    assert False\ndef test_unexecuted():\n    pass\n")
+    for module in ("first", "second"):
+        source(suite, f"test_{module}.py", "import pytest\n@pytest.mark.postgres\ndef test_pass():\n    pass\n")
+    result = run_suite(suite, target="api", workers=2, arguments=("-x",))
+    assert result.returncode == 1
+    assert set(report_nodes(suite / "current.xml")) == {
+        "apps/api/tests/test_fast.py::test_failure",
+        "apps/api/tests/test_first.py::test_pass",
+        "apps/api/tests/test_second.py::test_pass",
+    }
+    assert ET.parse(suite / "current.xml").find(".//testsuite[@name='api-runner']") is None
+    assert len(list(result.directory.glob("postgres/worker-*/junit.xml"))) == 2
+
+
+@pytest.mark.parametrize("fail_last", [False, True])
+def test_early_stop_option_accepts_complete_reports(suite: Path, fail_last: bool) -> None:
+    source(
+        suite,
+        "test_complete.py",
+        f"def test_first():\n    pass\ndef test_last():\n    assert {not fail_last}\n",
+    )
+    result = run_suite(suite, target="api-fast", workers=1, arguments=("-x",))
+    assert result.returncode == int(fail_last)
+    report = ET.parse(suite / "current.xml")
+    assert len(report_nodes(suite / "current.xml")) == 2
+    assert len(report.findall(".//failure")) == int(fail_last)
+    assert not report.findall(".//error")
+
+
 def test_collection_failure_replaces_previous_report_and_still_runs_other_partition(suite: Path) -> None:
     source(suite, "test_broken.py", "raise RuntimeError('collection defect')")
     (suite / "current.xml").write_text('<testsuites tests="999"/>')
@@ -331,10 +416,15 @@ def test_collection_failure_replaces_previous_report_and_still_runs_other_partit
 
 
 @pytest.mark.parametrize(
-    "defect", ["crash", "zero-exit", "manifest-missing", "manifest-mismatch", "junit-missing", "junit-mismatch"]
+    "defect",
+    ["crash", "zero-exit", "manifest-missing", "manifest-mismatch", "junit-missing", "junit-mismatch", "unexpected-early-stop"],
 )
 def test_worker_protocol_defects_fail_without_losing_other_worker_reports(suite: Path, defect: str) -> None:
-    body = {"crash": "import os; os._exit(7)", "zero-exit": "import os; os._exit(0)"}.get(defect, "assert True")
+    body = {
+        "crash": "import os; os._exit(7)",
+        "zero-exit": "import os; os._exit(0)",
+        "unexpected-early-stop": "assert False",
+    }.get(defect, "assert True")
     source(
         suite, "test_broken.py", f"import pytest\npytestmark = pytest.mark.postgres\ndef test_worker():\n    {body}\n"
     )
@@ -361,6 +451,9 @@ def pytest_unconfigure(config):
     elif defect == "manifest-mismatch":
         value["nodeids"] = ["apps/api/tests/test_broken.py::wrong"]
         manifest.write_text(json.dumps(value))
+    elif defect == "unexpected-early-stop":
+        value["stopped_after_failure"] = True
+        manifest.write_text(json.dumps(value))
     elif defect == "junit-missing":
         Path(config.option.xmlpath).unlink()
     else:
@@ -372,6 +465,9 @@ def pytest_unconfigure(config):
     assert result.returncode == 1
     assert ET.parse(suite / "current.xml").findall(".//error")
     assert any(node.endswith("::test_good") for node in report_nodes(suite / "current.xml"))
+    if defect == "unexpected-early-stop":
+        errors = ET.parse(suite / "current.xml").findall(".//error")
+        assert any("without a requested -x" in error.attrib.get("message", "") for error in errors)
 
 
 def test_partial_worker_start_retains_completed_results_and_previous_partition(
@@ -430,12 +526,14 @@ def test_interruption_during_report_validation_does_not_duplicate_completed_resu
     validate = runner.check_junit
     checked = 0
 
-    def interrupt_validation(root: ET.Element, expected: list[str], returncode: int) -> None:
+    def interrupt_validation(
+        root: ET.Element, expected: list[str], returncode: int, *, stopped_after_failure: bool = False
+    ) -> int:
         nonlocal checked
         checked += 1
         if checked == 2:
             raise KeyboardInterrupt
-        validate(root, expected, returncode)
+        return validate(root, expected, returncode, stopped_after_failure=stopped_after_failure)
 
     monkeypatch.setattr(runner, "check_junit", interrupt_validation)
     result = run_suite(suite, workers=2)
@@ -530,10 +628,14 @@ def test_fast_command_rejects_parallel_setting_before_resolving_database(monkeyp
     "value",
     [
         {},
-        {"exit_code": True, "nodeids": []},
-        {"exit_code": 0, "nodeids": [3]},
-        {"exit_code": 0, "nodeids": ["a::b", "a::b"]},
-        {"exit_code": 2, "nodeids": []},
+        {"exit_code": True, "nodeids": [], "stopped_after_failure": False},
+        {"exit_code": 0, "nodeids": [3], "stopped_after_failure": False},
+        {"exit_code": 0, "nodeids": ["a::b", "a::b"], "stopped_after_failure": False},
+        {"exit_code": 2, "nodeids": [], "stopped_after_failure": False},
+        {"exit_code": 0, "nodeids": []},
+        {"exit_code": 0, "nodeids": [], "stopped_after_failure": 0},
+        {"exit_code": 0, "nodeids": [], "stopped_after_failure": "false"},
+        {"exit_code": 0, "nodeids": [], "stopped_after_failure": True},
     ],
 )
 def test_manifest_decoder_rejects_invalid_protocol(tmp_path: Path, value: object) -> None:
@@ -541,6 +643,34 @@ def test_manifest_decoder_rejects_invalid_protocol(tmp_path: Path, value: object
     path.write_text(json.dumps(value))
     with pytest.raises(runner.RunnerError):
         runner.read_manifest(path, 0)
+
+
+@pytest.mark.parametrize(
+    "defect",
+    ["unconfirmed", "success", "interrupted", "gap", "foreign-node", "no-failure", "earlier-failure", "duplicate"],
+)
+def test_early_stop_does_not_accept_incomplete_or_corrupt_reports(defect: str) -> None:
+    expected = ["sample.py::first", "sample.py::second", "sample.py::third"]
+    report = ET.fromstring(
+        '<testsuites><testsuite><testcase name="first"><properties>'
+        '<property name="nodeid" value="sample.py::first"/></properties></testcase>'
+        '<testcase name="second"><properties><property name="nodeid" value="sample.py::second"/>'
+        '</properties><failure message="deliberate"/></testcase></testsuite></testsuites>'
+    )
+    cases = report.findall(".//testcase")
+    code = {"success": 0, "interrupted": 2}.get(defect, 1)
+    if defect == "gap":
+        expected.insert(1, "sample.py::missing")
+    elif defect == "foreign-node":
+        cases[-1].find("properties/property").set("value", "sample.py::foreign")
+    elif defect == "no-failure":
+        cases[-1].remove(cases[-1].find("failure"))
+    elif defect == "earlier-failure":
+        ET.SubElement(cases[0], "failure")
+    elif defect == "duplicate":
+        report.find("testsuite").insert(0, copy.deepcopy(cases[0]))
+    with pytest.raises(runner.RunnerError):
+        runner.check_junit(report, expected, code, stopped_after_failure=defect != "unconfirmed")
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX signal escalation")

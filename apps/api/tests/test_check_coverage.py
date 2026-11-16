@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -151,3 +152,48 @@ def test_standalone_api_coverage_retains_serial_scope(check_calls: CheckCalls, t
             repo.api_test_environment(target, check_calls.environment),
         )
     ]
+
+
+def test_check_coverage_cannot_hide_failure_with_ambient_addopts(
+    check_calls: CheckCalls, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tests = tmp_path / "apps/api/tests"
+    application = tmp_path / "apps/api/app"
+    tests.mkdir(parents=True)
+    application.mkdir(parents=True)
+    (tmp_path / "pytest.ini").write_text("[pytest]\nmarkers =\n    postgres: database partition\n", encoding="utf-8")
+    (application / "sample.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (tests / "test_selection.py").write_text(
+        "from runpy import run_path\n"
+        "sample = run_path('apps/api/app/sample.py')\n"
+        "def test_selected():\n    assert sample['VALUE'] == 1\n"
+        "def test_regression():\n    assert False, 'coverage must retain this failure'\n",
+        encoding="utf-8",
+    )
+    check_calls.environment.update(
+        {
+            "PATH": os.environ["PATH"],
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+            "PYTEST_PLUGINS": "pytest_cov.plugin",
+            "PYTEST_ADDOPTS": "-k selected",
+            "COVERAGE_FILE": str(tmp_path / ".coverage"),
+        }
+    )
+    capture_run = repo.run
+
+    def execute_api(command: list[str], *, env: dict[str, str] | None = None, **kwargs: object) -> None:
+        capture_run(command, env=env, **kwargs)
+        if "pytest" in command:
+            subprocess.run(command, cwd=tmp_path, env=env, capture_output=True, text=True, check=True, timeout=15)
+
+    monkeypatch.setattr(repo, "run", execute_api)
+    args = repo.build_parser().parse_args(["check", "--fast", "--coverage"])
+    with pytest.raises(subprocess.CalledProcessError) as caught:
+        args.func(args)
+
+    assert caught.value.returncode == 1
+    assert "1 failed, 1 passed" in caught.value.stdout
+    assert "deselected" not in caught.value.stdout
+    assert (tmp_path / ".harness/coverage/api/coverage.xml").is_file()
+    assert sum("pytest" in command for command, _ in check_calls.commands) == 1
+    assert check_calls.environment["PYTEST_ADDOPTS"] == "-k selected"

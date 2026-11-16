@@ -36,6 +36,7 @@ class Partition(StrEnum):
 class Manifest(TypedDict):
     nodeids: list[str]
     exit_code: int
+    stopped_after_failure: bool
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,8 @@ def read_manifest(path: Path, returncode: int) -> Manifest:
         not isinstance(value, dict)
         or type(value.get("exit_code")) is not int
         or value["exit_code"] != returncode
+        or type(value.get("stopped_after_failure")) is not bool
+        or (value["stopped_after_failure"] and returncode != 1)
         or not isinstance(value.get("nodeids"), list)
         or any(
             not isinstance(node, str) or "::" not in node for node in value["nodeids"]
@@ -76,7 +79,11 @@ def read_manifest(path: Path, returncode: int) -> Manifest:
         or len(set(value["nodeids"])) != len(value["nodeids"])
     ):
         raise RunnerError(f"Invalid collection/exit code in manifest: {path}")
-    return Manifest(nodeids=value["nodeids"], exit_code=value["exit_code"])
+    return Manifest(
+        nodeids=value["nodeids"],
+        exit_code=value["exit_code"],
+        stopped_after_failure=value["stopped_after_failure"],
+    )
 
 
 def partition_modules(nodeids: Sequence[str], workers: int) -> list[list[str]]:
@@ -290,12 +297,34 @@ def read_junit(path: Path) -> ET.Element:
     return root
 
 
-def check_junit(root: ET.Element, expected: Sequence[str], returncode: int) -> None:
+def check_junit(
+    root: ET.Element,
+    expected: Sequence[str],
+    returncode: int,
+    *,
+    stopped_after_failure: bool = False,
+) -> int:
     cases = root.findall(".//testcase")
     actual: list[str | None] = []
     for case in cases:
         prop = case.find("properties/property[@name='nodeid']")
         actual.append(None if prop is None else prop.get("value"))
+    if stopped_after_failure:
+        executed = list(dict.fromkeys(actual))
+        failed_nodes = {
+            node
+            for case, node in zip(cases, actual, strict=True)
+            if case.find("failure") is not None or case.find("error") is not None
+        }
+        if (
+            returncode != 1
+            or not executed
+            or executed != list(expected[: len(executed)])
+            or failed_nodes != {executed[-1]}
+        ):
+            raise RunnerError("Invalid JUnit stop-after-failure report")
+        # Only a confirmed -x stop may omit the unexecuted collection tail.
+        expected = expected[: len(executed)]
     # pytest can emit a second case for a teardown error after a call failure.
     counts = Counter(actual)
     duplicates = {node for node, count in counts.items() if count > 1}
@@ -313,6 +342,7 @@ def check_junit(root: ET.Element, expected: Sequence[str], returncode: int) -> N
         raise RunnerError("JUnit node IDs do not match the expected collection")
     if returncode == 0 and (root.findall(".//failure") or root.findall(".//error")):
         raise RunnerError("Successful worker contains JUnit failures")
+    return len(counts)
 
 
 def merge_junit(
@@ -459,17 +489,29 @@ def run_api_tests(
                             report_path = invocation.directory / "junit.xml"
                             report = read_junit(report_path)
                             reports[report_path] = report
-                            actual = read_manifest(
+                            manifest = read_manifest(
                                 invocation.directory / "manifest.json", code
-                            )["nodeids"]
-                            if actual != nodes:
+                            )
+                            if manifest["nodeids"] != nodes:
                                 raise RunnerError(
                                     f"Worker collection differs from expected: {invocation.directory}"
                                 )
-                            check_junit(report, nodes, code)
+                            if (
+                                manifest["stopped_after_failure"]
+                                and "-x" not in arguments.options
+                            ):
+                                raise RunnerError(
+                                    "Worker stopped after failure without a requested -x"
+                                )
+                            completed = check_junit(
+                                report,
+                                nodes,
+                                code,
+                                stopped_after_failure=manifest["stopped_after_failure"],
+                            )
                             print(
                                 f"{partition.name.lower()}/{invocation.directory.name}: "
-                                f"{len(nodes)} cases, exit {code}; log: {invocation.directory / 'pytest.log'}",
+                                f"{completed}/{len(nodes)} cases, exit {code}; log: {invocation.directory / 'pytest.log'}",
                                 flush=True,
                             )
                         except RunnerError as exc:

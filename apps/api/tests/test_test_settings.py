@@ -15,6 +15,14 @@ from apps.api.tests.support.settings import DEFAULT_API_TEST_ENV, api_test_envir
 from scripts import repo
 
 
+def test_pytest_options_are_cleared_before_launch_and_in_child_environment() -> None:
+    with patch.dict(os.environ, {"PYTEST_ADDOPTS": "-k selected"}, clear=True):
+        assert api_test_environment()["PYTEST_ADDOPTS"] == ""
+        assert os.environ["PYTEST_ADDOPTS"] == "-k selected"
+        configure_api_test_environment()
+        assert os.environ["PYTEST_ADDOPTS"] == ""
+
+
 def test_configuration_removes_inherited_integrations_before_scenario_overrides() -> None:
     with patch.dict(
         os.environ,

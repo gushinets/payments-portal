@@ -147,3 +147,46 @@ def test_query_database_override_cannot_redirect_owned_resources(monkeypatch: py
         with pytest.raises(ValueError, match="query.*dbname"):
             operation()
     create_engine.assert_not_called()
+
+
+def test_explicit_query_routing_preserves_owned_database_lifecycle(monkeypatch: pytest.MonkeyPatch) -> None:
+    configured = make_url(
+        "postgresql+psycopg://url_user:synthetic@127.0.0.1:5432/configured_tests"
+        "?host=test-server&port=6543&user=query_user&password=query_synthetic&connect_timeout=2"
+    )
+    database_url = postgres_support.session_test_database_url(configured)
+    admin_url = database_url.set(database="postgres")
+    engine = MagicMock()
+    connection = engine.connect.return_value.__enter__.return_value
+    connection.dialect.identifier_preparer.quote.side_effect = lambda name: name
+    create_engine = Mock(return_value=engine)
+    migrate = Mock()
+    monkeypatch.setattr(postgres_support, "create_engine", create_engine)
+    monkeypatch.setattr(postgres_support, "run_migrations", migrate)
+
+    with postgres_support.postgres_test_database(database_url, admin_url) as database:
+        template_url = database.template_url
+        database.restore()
+
+    migrate.assert_called_once_with(template_url)
+    assert configured.database not in {database_url.database, template_url.database}
+    assert database_url.query == admin_url.query == template_url.query == configured.query
+    dialect = configured.get_dialect()()
+    for url in (database_url, admin_url, template_url, *(call.args[0] for call in create_engine.call_args_list)):
+        _, arguments = dialect.create_connect_args(url)
+        assert arguments == {
+            "host": "test-server",
+            "port": "6543",
+            "user": "query_user",
+            "password": "query_synthetic",
+            "connect_timeout": "2",
+            "dbname": url.database,
+        }
+    assert [str(call.args[0]) for call in connection.execute.call_args_list] == [
+        f"CREATE DATABASE {database_url.database}",
+        f"CREATE DATABASE {template_url.database}",
+        f"DROP DATABASE {database_url.database}",
+        f"CREATE DATABASE {database_url.database} TEMPLATE {template_url.database}",
+        f"DROP DATABASE {database_url.database}",
+        f"DROP DATABASE {template_url.database}",
+    ]

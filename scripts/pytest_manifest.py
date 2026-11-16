@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from scripts.api_test_runner import Manifest
+
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--runner-manifest", required=True)
@@ -25,14 +27,17 @@ def pytest_collection_finish(session: pytest.Session) -> None:
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    manifest = Manifest(
+        nodeids=[item.nodeid for item in session.items],
+        exit_code=int(exitstatus),
+        stopped_after_failure=(
+            exitstatus == pytest.ExitCode.TESTS_FAILED
+            and session.config.getoption("maxfail") == 1
+            and session.testsfailed > 0
+            and bool(session.shouldfail)
+        ),
+    )
     Path(session.config.getoption("--runner-manifest")).write_text(
-        json.dumps(
-            {
-                "nodeids": [item.nodeid for item in session.items],
-                "exit_code": int(exitstatus),
-            },
-            indent=2,
-        )
-        + "\n",
+        json.dumps(manifest, indent=2) + "\n",
         encoding="utf-8",
     )

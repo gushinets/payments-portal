@@ -1,7 +1,7 @@
 # Testing Strategy
 
 Status: authoritative
-Last verified: 2026-11-14
+Last verified: 2026-11-16
 
 ## Layers
 
@@ -76,9 +76,11 @@ only `1`. Selectors must reference existing Python tests beneath
 Diagnostic options include `-k`, verbosity, traceback and duration flags. The
 only accepted explicit marker expressions are `-m postgres` for
 `api-postgres` and `-m 'not postgres'` for `api-fast`; omit `-m` for `api`.
-Unsupported options fail rather than bypass collection accounting. The runner
-clears `PYTEST_ADDOPTS` and rejects scheduler, coverage, configuration and report
-overrides; use the harness's `--junitxml` and coverage commands instead.
+Unsupported options fail rather than bypass collection accounting. The shared
+API test environment clears inherited `PYTEST_ADDOPTS`, including for coverage;
+explicit command-line selectors remain supported. The runner rejects scheduler,
+coverage, configuration and report overrides; use the harness's `--junitxml`
+and coverage commands instead.
 
 ### Coverage and CI
 
@@ -203,6 +205,15 @@ so an older success cannot represent the new run. Report-write errors remain
 visible failures. If a later worker cannot start, available reports from the
 started workers are retained alongside the infrastructure error. Reports
 already collected are included only once when execution is interrupted.
+
+An explicit `--pytest-args -x` stops each worker after its first failing test,
+including setup or teardown errors. Other workers and API partitions still run.
+The worker manifest must confirm that pytest stopped after failure; only then
+may JUnit omit the unexecuted collection tail. Its cases must form a nonempty
+prefix ending at the failed test. Collection manifests still match the complete
+assigned selection, the real failures remain, and the command exits nonzero
+without an additional infrastructure error. Worker summaries show executed
+versus selected case counts; unexecuted cases are not reported as passes or skips.
 
 On Ctrl-C or termination, the runner interrupts children and gives pytest up to
 15 seconds for fixture cleanup, then allows 5 seconds after termination before
