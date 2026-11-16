@@ -90,6 +90,7 @@ async def test_expired_queue_entry_never_starts_source_work() -> None:
     entered = asyncio.Event()
     release_cleanup = asyncio.Event()
     cleanup_started = asyncio.Event()
+    source_tasks: list[asyncio.Task[None]] = []
 
     async def slow_close() -> None:
         entered.set()
@@ -102,7 +103,7 @@ async def test_expired_queue_entry_never_starts_source_work() -> None:
     async def holder() -> None:
         with pytest.raises(PreflightDeadlineExceeded):
             async with owner.operation() as budget:
-                await budget.run(slow_close)
+                await budget.run(slow_close, on_schedule=source_tasks.append)
 
     holder_task = asyncio.create_task(holder())
     await entered.wait()
@@ -110,12 +111,12 @@ async def test_expired_queue_entry_never_starts_source_work() -> None:
         async with owner.operation():
             pytest.fail("queued source work must not start after its deadline")
     await holder_task
+    await asyncio.wait_for(cleanup_started.wait(), timeout=1)
     assert cleanup_started.is_set()
     assert owner.active_count == 1
     assert owner.waiting_count == 0
     release_cleanup.set()
-    await asyncio.sleep(0)
-    await asyncio.sleep(0)
+    await asyncio.wait_for(asyncio.gather(*source_tasks, return_exceptions=True), timeout=1)
     assert owner.active_count == 0
     await owner.aclose()
 
