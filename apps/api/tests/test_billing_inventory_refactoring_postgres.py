@@ -214,6 +214,79 @@ async def test_candidate_normalization_failure_does_not_block_an_unrelated_produ
     assert all(request.method == "GET" for request in transport.requests)
 
 
+@pytest.mark.parametrize("contradictory,unavailable", [(False, False), (True, False), (True, True)])
+async def test_disputed_bound_repeat_failure_blocks_both_products_only(
+    background_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    contradictory: bool,
+    unavailable: bool,
+) -> None:
+    transport, sources, purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings(paid_access_clock_skew_seconds=10)
+    first = synthetic_prepare(factory, transport, purchase, uncertain=False)
+    second = historical_link(factory, first, transport, "brief_decoder", 1, tariff_id=702)
+    third = historical_link(factory, first, transport, "acceptance_builder", 2, tariff_id=703)
+    for point in transport.subscriptions:
+        point.update(state=2, last_tariffication_period_start="2026-10-01", last_tariffication_period_end="2026-10-31")
+    client = sources.require_lbx()
+    read, discover = client.get_subscription, client.discover_subscriptions
+    first_reads = 0
+    listings: list[tuple[Subscription, ...]] = []
+
+    async def read_candidate(*, subscription_id: int, budget: PreflightBudget) -> Subscription:
+        nonlocal first_reads
+        if subscription_id == 567:
+            first_reads += 1
+            if unavailable and first_reads > 1:
+                raise LbxUnavailable()
+        return await read(subscription_id=subscription_id, budget=budget)
+
+    async def listing(*, user_id: int, budget: PreflightBudget) -> tuple[Subscription, ...]:
+        rows = await discover(user_id=user_id, budget=budget)
+        if contradictory:
+            rows = tuple(
+                row.model_copy(update={"agreement_id": 457, "tariff_id": 702}) if row.subscription_id == 567 else row
+                for row in rows
+            )
+        listings.append(rows)
+        return rows
+
+    monkeypatch.setattr(client, "get_subscription", read_candidate)
+    monkeypatch.setattr(client, "discover_subscriptions", listing)
+    third_id = service.linked_subscription_id(factory, third)
+    claim = claim_inventory(Scenario(factory, config, transport, sources, third_id))
+    result = await inventory(sources, factory, first, claim=claim)
+    assert first_reads == (2 if contradictory else 1)
+    assert len(listings) == 2 and listings[0] == listings[1]
+    # The canonical read succeeded; only the repeat of its disputed ownership fails.
+    source = next(item for item in result.sources if item.purchase.id == first.id)
+    assert source.proof.complete and source.proof.identity == IdentityProof.MATCH
+    assert source.proof.point_relationship == SubscriptionRelationship("456", 701)
+    result = persist_discoveries(factory, claim, result)
+    apply_inventory(factory, claim, result, "inventory_incomplete" if contradictory else None, clock_skew_seconds=10)
+    assert result.complete is (not contradictory)
+    for target in (first, second):
+        product = next(item for item in result.products if item.product_id == target.accepted.selection.product_id)
+        assert product.complete is (not contradictory)
+        if contradictory:
+            with pytest.raises(PurchaseInventoryIncomplete):
+                result.require_clear(target, primary=True)
+        else:
+            result.require_clear(target, primary=True)
+    result.require_clear(third, primary=True)
+    with factory() as db:
+        selected = {
+            scope.product_id
+            for scope in db.scalars(select(BillingProductAccessScope))
+            if scope.primary_subscription_id is not None
+        }
+        assert selected == (
+            {"acceptance_builder"} if contradictory else {"proposal_ai", "brief_decoder", "acceptance_builder"}
+        )
+    assert all(request.method == "GET" for request in transport.requests)
+
+
 @pytest.mark.parametrize("bound_point_relationship_scenario", [True], indirect=True)
 @pytest.mark.parametrize("failure", [LbxAuthenticationFailed, LbxScopeForbidden])
 async def test_canonical_authentication_failure_keeps_discovery_globally_incomplete(

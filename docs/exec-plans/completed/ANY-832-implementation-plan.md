@@ -1,7 +1,7 @@
 # ANY-832 implementation record
 
 Status: **IMPLEMENTED LOCALLY; focused verification passed; full-suite verification incomplete.**
-Updated: 2026-11-13.
+Updated: 2026-11-16.
 Issue: [ANY-832](https://linear.app/paveldik/issue/ANY-832/fix-deferred-pr-164-inventory-completeness-and-calendar-allowance-edge).
 Predecessor: [PR #164](https://github.com/gushinets/payments-portal/pull/164).
 Branch: `ANY-832`; PR base: `main`.
@@ -121,6 +121,29 @@ The following results were recorded on 2026-11-13. The earlier code correction
 covered REV-6 (ordinary read lost after refused apply) and REV-7 (strict admission
 accepted a stale source receipt). Earlier REV-3/4/5 and PLAN-1/2 regressions remain
 in the affected suites.
+
+### PR #168 failed repeat-read correction — 2026-11-16
+
+The [confirmed review finding](https://github.com/gushinets/payments-portal/pull/168#discussion_r4582990040)
+exposed a successful canonical read followed by contradictory agreement ownership
+in both discovery lists and an unavailable repeat point GET. The collector now
+marks the bound subscription uncertain before that repeat I/O, so failure cannot
+leave either implicated product complete. An independent third product remains
+eligible for primary selection.
+
+The permanent regression in `test_billing_inventory_refactoring_postgres.py`
+failed **1 case with 2 passing controls** before the fix. All three cases pass
+afterward and assert both product completeness and actual primary application.
+
+Verification against `3b067fe8` plus the local correction:
+
+- **134 PostgreSQL cases passed** across inventory refactoring, scoped inventory,
+  retained history and operator primary-selection suites. These used the available
+  local PostgreSQL **18.6** image and simulated LBX, not the pinned 18.4 image or
+  live-provider acceptance.
+- **1940 API fast tests passed**; architecture and focused Ruff/format checks passed.
+- Full `npm run check` stopped at the missing `@hey-api/openapi-ts` package in this
+  worktree. No dependencies were installed; full-suite/frontend PASS is not claimed.
 
 ### REV-8 local correction
 

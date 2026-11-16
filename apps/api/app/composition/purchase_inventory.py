@@ -359,6 +359,11 @@ async def collect_inventory(
                                 conflicts.add(owner.id)
                             complete = False
                         continue
+            if known is not None:
+                # This bound object already contradicted its canonical proof or
+                # discovery ownership. A failed or terminal repeat read cannot
+                # clear any implicated product's uncertainty.
+                facts.incomplete.add(provider_id)
             point_started = await delegate(read_source_time, factory)
             point = await _candidate_point(
                 lambda: client.get_subscription(subscription_id=int(provider_id), budget=budget), budget
@@ -373,11 +378,6 @@ async def collect_inventory(
                 ReadInterval(point_started, await delegate(read_source_time, factory)),
             )
             include_candidate(str(point.agreement_id), point.tariff_id)
-            if known is not None:
-                # This bound object already contradicted its canonical proof or
-                # discovery ownership. A later terminal read cannot clear any
-                # newly implicated product's uncertainty.
-                facts.incomplete.add(provider_id)
             if candidate is not None and (point.agreement_id, point.tariff_id) != (
                 candidate.agreement_id,
                 candidate.tariff_id,
