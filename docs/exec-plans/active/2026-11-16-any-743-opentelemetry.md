@@ -23,9 +23,9 @@ Branch: `codex/any-743-patch-opentelemetry`; initial HEAD equals base; clean.
 - [x] Align direct pins and regenerate lock with pinned uv, preserving certifi.
 - [x] Verify valid/malformed/oversized/pathological state and request correlation.
 - [x] Exercise actual configured trace, metric and log exporters against loopback.
-- [ ] Build and verify final production image; obtain fresh filesystem/image scans.
-- [ ] Run focused/canonical checks; review diff and record limitations.
-- [ ] Fetch main again, reconcile if needed, prepare focused PR for human review.
+- [x] Build and verify final production image; obtain fresh filesystem/image scans.
+- [x] Run focused/canonical checks; review diff and record limitations.
+- [x] Fetch main again, reconcile if needed, prepare focused PR for human review.
 
 ## Upstream and compatibility
 
@@ -63,7 +63,7 @@ raw malicious header logging or fragile millisecond threshold is used.
 
 ## Verification ledger
 
-Patched focused suite: 17 passed. Tests assert valid state injection, remote
+Patched observability suite: 19 passed; combined dependency selection: 77 passed. Tests assert valid state injection, remote
 parent trace/span IDs, malformed/duplicate/oversized rejection, HTTP success,
 X-Request-ID and JSON trace/request correlation, and absence of synthetic secrets
 from captured server logs/spans/events. Pathological space/tab input is bounded.
@@ -99,7 +99,9 @@ No schema, customer UI, billing, contour or peer contract changes are intended.
   failure was recorded before this task in ANY-740; no claim all local tests pass.
 - `npm run check:fast`: docs/generation/architecture, lint/format, web boundaries,
   454 component tests and web lint passed; same localhost API smoke failed.
-- `npm run check`: running; final result and CI evidence will follow.
+- `npm run check`: failed at the same localhost smoke (75 passed); preceding
+  docs/generation/architecture/lint/web checks passed. Web production build and
+  PostgreSQL stages were unreached locally. Fresh PR CI is pending.
 - Initial compatibility assertion failure was resolved by updating only the
   five existing OTel expected pins. Initial generated artifact failures were
   CRLF checkout differences; canonical `npm run generate` normalized them with
@@ -116,3 +118,8 @@ change applies. Existing telemetry behavior remains configuration-dependent;
 these tests explicitly enable instrumentation and exporters. Availability checks
 are bounded synthetic checks, not an assertion about deployed gateway limits or
 an exploited endpoint. Human merge review remains required.
+
+Runtime/lock source: `8437b5e27f3aa80b783f0f5edad744aa69713e36`.
+[PR #174](https://github.com/gushinets/payments-portal/pull/174) is a draft pending
+fresh CI; no merge or deployment. The image was built from the identical
+manifest/lock/application content before that commit was recorded.

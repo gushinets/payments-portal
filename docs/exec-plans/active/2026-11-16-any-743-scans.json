@@ -58,5 +58,6 @@
   "limitations": [
     "Other findings remain under separate owners; zero target findings does not mean zero vulnerabilities.",
     "Local image was not deployed or published. Raw sanitized reports retained in ignored .harness."
-  ]
+  ],
+  "runtime_source_commit": "8437b5e27f3aa80b783f0f5edad744aa69713e36"
 }
