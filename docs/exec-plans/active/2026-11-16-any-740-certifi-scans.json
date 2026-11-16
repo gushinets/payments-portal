@@ -1,0 +1,52 @@
+{
+  "source_commit": "70e587d2d041af0862ab9e20a1d6e5d6b11aee74",
+  "certifi": "2026.10.19",
+  "image_id": "sha256:6e02c78484c91e534bf89a0459a599f2745a9ff435e9b94fd93cf6495dcfe98f",
+  "repo_digest": "payment-portal-api@sha256:6e02c78484c91e534bf89a0459a599f2745a9ff435e9b94fd93cf6495dcfe98f",
+  "reports": {
+    "filesystem": {
+      "sha256": "b43a0055ef0cfb7c4113e5f5f0e807a3f05e164f1c9d15e78ac4cd3909c5c578",
+      "target_advisory": [],
+      "total_findings": 7,
+      "created_at": "2026-11-16T12:58:41.789112019Z"
+    },
+    "api-image": {
+      "sha256": "6d8cdc9540eaffa6fff75445b25dea898f46931fac99340df3674fdf3600fb38",
+      "target_advisory": [],
+      "total_findings": 220,
+      "created_at": "2026-11-16T13:00:35.092155254Z",
+      "image_config_id": "sha256:d08ace9cc532439253a567a6a6a2a49f9383d1da1209c098e133915dffefc491",
+      "os": {
+        "Family": "debian",
+        "Name": "13.7"
+      }
+    },
+    "baseline-api-image": {
+      "sha256": "02a97b258dc5b324461a2ce610883ace201ffeec0a3377e62e804fa60e12c4b1",
+      "target_advisory": [
+        {
+          "id": "GHSA-6q48-6c7w-9gw2",
+          "package": "certifi",
+          "version": "2026.7.22"
+        }
+      ],
+      "total_findings": 221,
+      "created_at": "2026-11-16T12:56:40.591891833Z"
+    }
+  },
+  "scanner": "Trivy 0.72.0 (repository-pinned version)",
+  "scanner_image_digest": "sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f",
+  "bundle": "/opt/api-venv/lib/python3.12/site-packages/certifi/cacert.pem",
+  "bundle_sha256": "50f79f98dac192b20dbf73f35c56f0b0c557ab267ff5199d1117cc1180b70785",
+  "scope": {
+    "filesystem": "vulnerability scan; includes dev dependencies; repository ignores unchanged",
+    "api-image": "vulnerability and secret scans; repository ignores unchanged",
+    "baseline-api-image": "vulnerability and secret scans; certifi 2026.7.22"
+  },
+  "limitations": [
+    "Full filesystem vuln,secret,misconfig scan timed out in Dockerfile configuration analysis; separate filesystem vulnerability scan completed.",
+    "Other findings remain under separate owners. Counts include all severities; absence here applies only to GHSA-6q48-6c7w-9gw2.",
+    "Raw sanitized reports retained locally in ignored .harness/any-740; this file records their SHA-256 digests and extracted results.",
+    "Local immutable image digest is recorded; image was not pushed to a production registry or deployed."
+  ]
+}
