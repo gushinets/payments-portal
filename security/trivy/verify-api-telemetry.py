@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.metadata import version
@@ -79,7 +80,7 @@ def main() -> None:
             "DATABASE_URL": "sqlite+pysqlite:///:memory:",
             "POSTGRES_DB": "anytoolai_test",
             "POSTGRES_USER": "anytoolai",
-            "POSTGRES_PASSWORD": "synthetic",
+            "POSTGRES_PASSWORD": secrets.token_urlsafe(24),
             "POSTGRES_HOST": "postgres",
             "POSTGRES_PORT": "5432",
             "CORS_ALLOW_ORIGINS": "http://localhost:3000",
