@@ -436,10 +436,12 @@ def test_instrumented_request_preserves_trace_and_request_correlation(
     state: str,
     expected: str,
     caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import json
     from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
+    monkeypatch.setattr(logging.getLogger("httpx"), "level", logging.WARNING)
     formatted: list[dict[str, str]] = []
     exporter = InMemorySpanExporter()
     provider = make_tracer_provider(exporter)
@@ -461,10 +463,7 @@ def test_instrumented_request_preserves_trace_and_request_correlation(
         server_request_hook=observability._sanitize_http_server_span,
     )
     try:
-        with (
-            caplog.at_level(logging.INFO, logger="payment_portal.http"),
-            caplog.at_level(logging.WARNING, logger="httpx"),
-        ):
+        with caplog.at_level(logging.INFO, logger="payment_portal.http"):
             response = asyncio.run(
                 _get(
                     application,
