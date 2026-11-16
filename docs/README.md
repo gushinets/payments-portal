@@ -67,6 +67,8 @@ Start with the smallest document that matches the task.
   and acceptance limits; verification history is in the linked porting plan.
 - [ANY-765 completed porting plan](exec-plans/completed/ANY-765-implementation-plan-refactor.md)
   — DONE and archived by owner request on 2026-11-09; verification and live-evidence limits retained.
+- [ANY-864 monthly LBX allowance fix](exec-plans/active/ANY-864-implementation-plan.md)
+  — bounded midnight/date normalization, worker regressions and live-acceptance limits.
 - [ANY-664 completed implementation plan](exec-plans/completed/ANY-664-implementation-plan.md)
   — all eight Portal steps DONE; implementation-commit CI evidence, retained
   real-enablement gates and handoff to ANY-504 program Step 7

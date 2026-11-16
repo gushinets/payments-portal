@@ -831,6 +831,18 @@ For supported calendar-month timestamp evidence, Integration normalizes activati
 to the first day at midnight in its explicit offset. Date-only evidence remains
 date-only; naive/mixed timestamps acquire no invented zone or UTC deadline.
 
+For the observed one-month `instance_start` profile only, date-only cycle bounds
+may accompany naive midnight subscription/instance starts such as
+`2026-11-13 00:00:00`. Integration interprets these starts as calendar dates,
+checks that neither interpreted start follows the cycle start, and retains the
+original fields in observation evidence. The allowance uses `calendar:v1` without
+UTC bounds. Nonzero time or microseconds, explicit offsets and other period
+profiles do not acquire this interpretation. Original start/end and terminal
+boundary checks retain their precision; the cycle classifier still owns cadence,
+frozen-anchor conflicts and same/later-cycle identity. See the
+[ANY-864 implementation record](../exec-plans/active/ANY-864-implementation-plan.md)
+for regression evidence and outstanding live acceptance.
+
 ### Revision, outbox and current wire boundary
 
 Absent state is immutable empty revision 0 with no outbox row. The first material
