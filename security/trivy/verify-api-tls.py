@@ -94,28 +94,38 @@ async def main() -> None:
     try:
         with tempfile.TemporaryDirectory(prefix="portal-tls-") as directory:
             certificate, key = Path(directory) / "peer.pem", Path(directory) / "peer.key"
-            subprocess.run(
-                [
-                    "openssl",
-                    "req",
-                    "-x509",
-                    "-newkey",
-                    "rsa:2048",
-                    "-nodes",
-                    "-days",
-                    "1",
-                    "-subj",
-                    "/CN=localhost",
-                    "-addext",
-                    "subjectAltName=DNS:localhost",
-                    "-keyout",
-                    str(key),
-                    "-out",
-                    str(certificate),
-                ],
-                check=True,
-                capture_output=True,
+            command = [
+                "openssl",
+                "req",
+                "-x509",
+                "-newkey",
+                "rsa:2048",
+                "-nodes",
+                "-days",
+                "1",
+                "-subj",
+                "/CN=localhost",
+                "-addext",
+                "subjectAltName=DNS:localhost",
+                "-keyout",
+                str(key),
+                "-out",
+                str(certificate),
+            ]
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
             )
+            try:
+                returncode = await process.wait()
+            except asyncio.CancelledError:
+                if process.returncode is None:
+                    process.kill()
+                await process.wait()
+                raise
+            if returncode != 0:
+                raise subprocess.CalledProcessError(returncode, command)
             server = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             server.load_cert_chain(certificate, key)
             for name, pool in pools.items():
