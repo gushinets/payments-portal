@@ -226,3 +226,53 @@ async def test_monthly_instance_worker_resolves_prior_cycle_review_from_fresh_pr
         assert db.scalar(select(func.count()).select_from(PurchasedAllowance)) == 1
     await run_due_worker(scenario)
     assert effective(scenario.factory) == (current_revision, current)
+
+
+@pytest.mark.parametrize(
+    "sentinel",
+    ["1970-01-01T00:00:00", "1970-01-01 00:00:00.000000", "1970-01-01T00:00:00.0"],
+)
+async def test_epoch_sentinel_worker_never_issues_or_resets_allowance(monthly_brief: Scenario, sentinel: str) -> None:
+    scenario = monthly_brief
+    point = scenario.transport.subscriptions[0]
+    point.update(
+        subscription_start_date="2026-11-01 00:00:00",
+        subscription_instance_start_date=sentinel,
+        last_tariffication_period_start="2026-11-01",
+        last_tariffication_period_end="2026-11-30",
+    )
+    await run_due_worker(scenario)
+    revision, document = effective(scenario.factory)
+    assert len(document["grants"]) == 1 and document["allowances"] == []
+    with scenario.factory() as db:
+        assert db.scalar(select(func.count()).select_from(PurchasedAllowance)) == 0
+        source = db.get(ExternalSubscription, scenario.subscription_id)
+        observation = db.get(BillingStateObservation, source.latest_observation_id)
+        assert observation.evidence_document["calendar"]["subscription_instance_start_date"] == sentinel
+        assert observation.evidence_document["cycle"] is None
+        assert db.scalars(select(ManualReviewCase.reason_code)).one() == "allowance_cycle_conflict"
+    await run_due_worker(scenario)
+    assert effective(scenario.factory) == (revision, document)
+
+    point["subscription_instance_start_date"] = "2026-11-01 00:00:00"
+    await run_due_worker(scenario)
+    _, valid = effective(scenario.factory)
+    assert len(valid["allowances"]) == 1 and valid["allowances"][0]["quantity"] == 300
+    with scenario.factory() as db:
+        original = db.scalars(select(PurchasedAllowance)).one()
+        original_id, original_calendar = original.allowance_id, original.calendar_document
+
+    point.update(
+        subscription_instance_start_date=sentinel,
+        last_tariffication_period_start="2026-12-01",
+        last_tariffication_period_end="2026-12-31",
+    )
+    await run_due_worker(scenario)
+    assert effective(scenario.factory)[1] == document
+    with scenario.factory() as db:
+        original = db.scalars(select(PurchasedAllowance)).one()
+        assert (original.allowance_id, original.calendar_document, original.quantity) == (
+            original_id,
+            original_calendar,
+            300,
+        )

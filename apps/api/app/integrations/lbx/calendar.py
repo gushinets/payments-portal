@@ -60,6 +60,9 @@ def normalize_calendar(calendar: dict[str, str | None], period: CommercialPeriod
             parsed_anchor = date.fromisoformat(anchor) if len(anchor) == 10 else datetime.fromisoformat(anchor)
             calendar_anchor = monthly_instance_start_date(parsed_anchor, period)
             if calendar_anchor is not None:
+                # Epoch is missing evidence, including equivalent midnight spellings.
+                if calendar_anchor == date(1970, 1, 1):
+                    return None
                 anchor = calendar_anchor.isoformat()
         values = [start, end] + ([anchor] if anchor not in EMPTY_CALENDAR else [])
         if all(len(value) == 10 for value in values):

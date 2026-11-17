@@ -67,7 +67,11 @@ def normalized_proof(
     )
 
 
-@pytest.mark.parametrize("suffix", [" 00:00:00", "T00:00:00", " 00:00:00.000000", "T00:00:00.0"])
+@pytest.mark.parametrize(
+    "suffix",
+    [" 00:00:00", "T00:00:00"]
+    + [separator + "00:00:00." + "0" * digits for separator in (" ", "T") for digits in range(1, 7)],
+)
 def test_monthly_instance_midnight_is_calendar_evidence_without_rewriting_raw_fields(suffix: str) -> None:
     raw = "2026-11-13" + suffix
     proof = normalized_proof(subscription_start=raw, instance_start=raw)
@@ -89,7 +93,13 @@ def test_monthly_instance_midnight_is_calendar_evidence_without_rewriting_raw_fi
 
 @pytest.mark.parametrize(
     "start,end",
-    [("2026-01-31", "2026-02-27"), ("2024-01-31", "2024-02-28"), ("2024-02-29", "2024-03-28")],
+    [
+        ("2026-01-31", "2026-02-27"),
+        ("2024-01-31", "2024-02-28"),
+        ("2024-02-29", "2024-03-28"),
+        ("1970-01-02", "1970-02-01"),
+        ("1969-12-31", "1970-01-30"),
+    ],
 )
 def test_monthly_instance_midnight_retains_month_end_and_leap_arithmetic(start: str, end: str) -> None:
     proof = normalized_proof(
@@ -145,6 +155,26 @@ def test_monthly_instance_unproven_anchor_never_creates_a_cycle(instance_start: 
     proof = normalized_proof(instance_start=instance_start)
     period = subject_factory().purchase.accepted.offer.period
     assert classify_cycle(proof.cycle, period).kind == CycleKind.AMBIGUOUS
+
+
+@pytest.mark.parametrize(
+    "sentinel",
+    ["1970-01-01T00:00:00"]
+    + ["1970-01-01" + separator + "00:00:00." + "0" * digits for separator in (" ", "T") for digits in range(1, 7)],
+)
+def test_epoch_sentinel_spelling_never_creates_monthly_cycle(sentinel: str) -> None:
+    proof = normalized_proof(
+        start="2026-11-01",
+        end="2026-11-30",
+        subscription_start="2026-11-01 00:00:00",
+        instance_start=sentinel,
+    )
+
+    assert not proof.calendar_complete or proof.cycle is None
+    assert classify_cycle(proof.cycle, subject_factory().purchase.accepted.offer.period).kind == CycleKind.AMBIGUOUS
+    assert proof.calendar["subscription_instance_start_date"] == sentinel
+    assert proof.document()["calendar"] == proof.calendar
+    assert proof.access_end_at is None
 
 
 @pytest.mark.parametrize("end", [None, "0000-00-00", "2026-11-12", "2026-02-30", "2026-12-13T00:00:00Z"])

@@ -21,7 +21,8 @@ enablement is part of this fix.
 - Pass the accepted `CommercialPeriod` into LBX calendar normalization. Enable
   the new representation only for `month / 1 / instance_start` with date-only
   current-cycle bounds and a naive, exactly-midnight start. Other profiles and
-  nonzero times/offsets retain their existing behavior.
+  nonzero times/offsets retain their existing behavior. Equivalent epoch-midnight
+  spellings never establish an anchor.
 - Share the bounded start-date interpretation between normalization and
   completeness. In the new path both present calendar starts must be no later
   than the cycle start. Preserve original start/end checks and `_calendar_ordered`;
@@ -53,10 +54,9 @@ enablement is part of this fix.
   consent and accepted terms through ordinary purchase preparation; it does not
   preselect a primary or write paid flags. API reads make no source requests.
 - [x] Run relevant existing suites, canonical checks and inspect the final diff.
-  Canonical non-PostgreSQL stages PASS. The complete 997-test PostgreSQL
-  selection ran: 994 PASS / 3 FAIL in parallel; both affected existing modules
-  then PASS all 15 tests serially without source, assertion or timeout changes.
-  Retain this parallel-run limitation instead of claiming one clean full run.
+  Latest local `npm run check`: PASS (2360 backend fast tests, 1215 PostgreSQL
+  tests, frontend checks and production build). Live LBX acceptance and browser
+  E2E remain NOT_RUN.
 - [x] Record combined-branch evidence or its exact limitation.
   An isolated ANY-832 + ANY-766 + ANY-864 source combination passes 516 unit
   checks and all 96 selected PostgreSQL cases after fixture adaptations described
