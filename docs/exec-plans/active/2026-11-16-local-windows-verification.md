@@ -54,7 +54,7 @@ worktree-specific disposable Compose project.
 - [x] `npm run check:fast`: exit 0, including **454 frontend component tests**
   and **2262 API tests** (43 existing platform/environment skips).
 - [ ] `npm run check`, including production web build and PostgreSQL tests
-- [ ] Final diff/privacy review and PR evidence update
+- [x] Final diff/privacy review and PR evidence update
 
 Completed fast commands ran against `7f32b64001b9055e7d60465a38ccaec566c3bd3d`.
 Initial stopped runs are diagnostic failures, not completed verification.
@@ -67,8 +67,8 @@ Separate PostgreSQL verification reproduced `purchase_history_unproven` and
 `subscription_reconciliation_stale` refusals. A bounded five-sample comparison
 measured Docker's database clock 3.4–3.6 seconds ahead of Windows. This crosses
 the existing proof timestamp checks; changing those checks would conceal the
-environment defect. Clock repair requires approval because it affects the
-Docker VM. No running service or system clock was changed.
+environment defect. The later approved synchronization attempts and remaining
+limitation are recorded below.
 
 ## Additional full-suite findings
 
@@ -102,6 +102,50 @@ Docker VM. No running service or system clock was changed.
   scenario a 1s total / 0.5s cleanup budget and bound its cancellation-event wait.
   The real deadline, exactly-one-POST, pending ownership and released-slot
   assertions remain. All 27 affected deadline/error cases and lint/format passed;
-  independent review found no actionable issue. This later test-only adjustment
-  has not yet completed another full canonical run; prior fast results above
-  are explicitly tied to their tested revision.
+  independent review found no actionable issue. Final reruns below include this
+  adjustment.
+
+## Final follow-up — 2026-11-17
+
+Tested implementation: `83830c40164098071f5adf3b4c39cbced2b79e83`.
+Fresh origin/main remained `96d07236d25d17c9c5dca5f8884488dc4cabb682`.
+
+| Local command | Result |
+| --- | --- |
+| `npm run test:api:fast` | Passed: 2262 passed, 43 existing skips, exit 0 |
+| `npm run check:fast` | Passed: 454 frontend and 2262 API tests, 43 existing API skips, exit 0 |
+| `npm run check` | Failed: all preceding checks and 2262 API tests passed, then Next.js 16.4.2 raised its security-upgrade reminder; exit 1, PostgreSQL stage unreached |
+| Targeted PostgreSQL case after clock synchronization | Failed: `purchase_history_unproven`; existing timestamp fencing preserved |
+
+The owner explicitly excluded Next.js upgrades from this PR. No dependency,
+build-upgrade policy, timestamp check or scanner exception was changed to make
+the complete command green. Its failure remains a separate dependency notice.
+
+The owner approved Docker clock synchronization without service restarts.
+Hardware-clock synchronization returned success but the offset persisted. A
+temporary network-isolated helper using the existing tested API image and only
+the required time-setting capability measured a correction to approximately
+-11ms, followed by a jump back to +3.36s; the final measurement was +3.16s. The
+helper was removed. Clock-source diagnostics showed `tsc` and enabled implicit
+Hyper-V time synchronization; the source of the repeated correction needs
+separate environment investigation. No time service was disabled, persistent
+clock configuration changed, or running service restarted. Docker was already
+stopped when this follow-up resumed; it and only the isolated test database were
+started for verification. The PostgreSQL limitation remains unresolved.
+
+Exact implementation CI is green:
+[CI 43954014123](https://github.com/gushinets/payments-portal/actions/runs/43954014123)
+and [security 43954014091](https://github.com/gushinets/payments-portal/actions/runs/43954014091),
+plus PR metadata. CI ran 2305 API tests for both fast/coverage selections, 454
+frontend tests and 1209 PostgreSQL tests (one existing skip), migration cycles,
+production runtime, browser and Windows/Linux harness checks.
+
+Downloaded and SHA-256 verified sanitized
+[artifact 14269342294](https://github.com/gushinets/payments-portal/actions/runs/43954014091/artifacts/14269342294):
+`9d43b38a9046eca3ef92d7efc152457f32984ca6eebeed061a9bbe13186f3fc3`.
+Filesystem and API-image reports inventory API 1.45.1 and certifi 2026.10.19 with
+zero CVE-2026-114603 / GHSA-xcq7-p3pf-p88h findings. CI scanned API image identity:
+`payment-portal-api@sha256:52775f38ffac72b8f2c09b59120a9199888ecb37696216c3cd0867dc0841b9f7`.
+The earlier locally tested image remains identified in the OTel execution ledger.
+This evidence does not establish full local acceptance: the complete local gate
+and local PostgreSQL timestamp checks retain the limitations above.

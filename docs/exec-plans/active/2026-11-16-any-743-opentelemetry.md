@@ -120,6 +120,11 @@ are bounded synthetic checks, not an assertion about deployed gateway limits or
 an exploited endpoint. Human merge review remains required.
 
 Runtime/lock source: `8437b5e27f3aa80b783f0f5edad744aa69713e36`.
-[PR #174](https://github.com/gushinets/payments-portal/pull/174) is a draft pending
-fresh CI; no merge or deployment. The image was built from the identical
-manifest/lock/application content before that commit was recorded.
+[PR #174](https://github.com/gushinets/payments-portal/pull/174) is ready for human
+review; no merge or deployment. The image was built from the identical
+manifest/lock/application content before that commit was recorded. Earlier
+pending-CI/local-failure entries above describe their original execution snapshot.
+The [local Windows follow-up](2026-11-16-local-windows-verification.md#final-follow-up--2026-11-17)
+records passing final fast commands, green implementation CI and fresh scan
+evidence, plus the separate Next.js notice and recurring Docker clock limitation
+that prevent claiming full local acceptance.
