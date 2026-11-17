@@ -96,4 +96,3 @@ The subsequent evidence-only commit changes no application, lock, Docker or test
 The PR is [ANY-827 - Patch dnspython DNS decompression DoS](https://github.com/gushinets/payments-portal/pull/177).
 Local full canonical PASS remains unavailable for the recorded pre-existing Windows smoke limitation; no full local acceptance is claimed.
 Fresh main remains 96d07236d25d17c9c5dca5f8884488dc4cabb682. No unrelated PR import, merge, deployment or issue Done transition.
-
