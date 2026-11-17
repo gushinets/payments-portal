@@ -383,3 +383,159 @@ def test_http_server_span_query_values_are_sanitized_without_header_capture() ->
                 assert path_bearing_attributes
     finally:
         FastAPIInstrumentor.uninstrument_app(application)
+
+
+@pytest.mark.parametrize("padding", [" ", "\t"])
+def test_tracestate_oversized_header_is_discarded_in_bounded_subprocess(padding: str) -> None:
+    """Upstream GHSA-xcq7-p3pf-p88h: reject before parsing long whitespace."""
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import logging
+import sys
+from opentelemetry.trace import TraceState, get_current_span
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+logging.disable(logging.CRITICAL)
+propagator = TraceContextTextMapPropagator()
+for state in ('vendor=value' + sys.argv[1] * 8192, sys.argv[1] * 100_000 + '!'):
+    context = propagator.extract({
+        'traceparent': '00-1234567890abcdef1234567890abcdef-1234567890abcdef-01',
+        'tracestate': state,
+    })
+    span = get_current_span(context).get_span_context()
+    assert span.is_valid
+    assert len(span.trace_state) == 0, 'oversized tracestate must be discarded'
+assert len(TraceState.from_header([sys.argv[1] * 100_000 + '!'])) == 0
+""",
+            padding,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "state, expected",
+    [
+        ("vendor=value,other=second", "vendor=value,other=second"),
+        ("vendor=value,vendor=duplicate", ""),
+        ("invalid-member", ""),
+        ("vendor=value" + " " * 8192, ""),
+    ],
+    ids=["valid", "duplicate", "malformed", "oversized"],
+)
+def test_instrumented_request_preserves_trace_and_request_correlation(
+    state: str,
+    expected: str,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+    from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+
+    monkeypatch.setattr(logging.getLogger("httpx"), "level", logging.WARNING)
+    formatted: list[dict[str, str]] = []
+    exporter = InMemorySpanExporter()
+    provider = make_tracer_provider(exporter)
+    application = FastAPI()
+    application.middleware("http")(observability.request_context_middleware)
+
+    @application.get("/propagation")
+    async def propagation() -> dict[str, str]:
+        carrier: dict[str, str] = {}
+        TraceContextTextMapPropagator().inject(carrier)
+        record = logging.LogRecord("payment_portal.http", logging.INFO, __file__, 1, "synthetic_correlation", (), None)
+        formatted.append(json.loads(JsonFormatter().format(record)))
+        logging.getLogger("payment_portal.http").info("synthetic_correlation")
+        return carrier
+
+    FastAPIInstrumentor.instrument_app(
+        application,
+        tracer_provider=provider,
+        server_request_hook=observability._sanitize_http_server_span,
+    )
+    try:
+        with caplog.at_level(logging.INFO, logger="payment_portal.http"):
+            response = asyncio.run(
+                _get(
+                    application,
+                    "/propagation?token=synthetic-query-marker",
+                    headers={
+                        "traceparent": "00-1234567890abcdef1234567890abcdef-1234567890abcdef-01",
+                        "tracestate": state,
+                        "X-Request-ID": "synthetic-request-743",
+                        "Authorization": "Bearer synthetic-auth-marker",
+                        "Cookie": "synthetic-cookie-marker",
+                    },
+                )
+            )
+        assert response.status_code == 200
+        assert response.headers["X-Request-ID"] == "synthetic-request-743"
+        assert response.json()["traceparent"].split("-")[1] == "1234567890abcdef1234567890abcdef"
+        assert response.json().get("tracestate", "") == expected
+        server = next(span for span in exporter.get_finished_spans() if span.kind is SpanKind.SERVER)
+        assert server.parent.span_id == int("1234567890abcdef", 16)
+        assert server.context.trace_state.to_header() == expected
+        record = next(record for record in caplog.records if record.getMessage() == "synthetic_correlation")
+        assert record.name == "payment_portal.http"
+        assert formatted[0]["trace_id"] == "1234567890abcdef1234567890abcdef"
+        assert formatted[0]["span_id"] == f"{server.context.span_id:016x}"
+        assert formatted[0]["request_id"] == "synthetic-request-743"
+        for marker in ("synthetic-query-marker", "synthetic-auth-marker", "synthetic-cookie-marker"):
+            for span in exporter.get_finished_spans():
+                assert_span_does_not_expose(span, marker)
+            assert marker not in caplog.text
+    finally:
+        FastAPIInstrumentor.uninstrument_app(application)
+        provider.shutdown()
+
+
+def test_configured_otlp_exporters_and_production_composition() -> None:
+    """Fresh globals and a disposable collector exercise all configured signals."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import os
+
+    root = Path(__file__).resolve().parents[3]
+    result = subprocess.run(
+        [sys.executable, str(root / "security/trivy/verify-api-telemetry.py")],
+        cwd=root,
+        env={**os.environ, "PYTHONPATH": str(root / "apps/api")},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert '"result": "passed"' in result.stdout
+
+
+def test_tracestate_combined_header_length_boundary() -> None:
+    from opentelemetry.trace import get_current_span
+    from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+
+    propagator = TraceContextTextMapPropagator()
+    for headers, expected in [
+        (["vendor=value" + " " * (8192 - len("vendor=value"))], "vendor=value"),
+        (["vendor=value", " " * (8192 - len("vendor=value"))], ""),
+        (["vendor=value", "other=second"], "vendor=value,other=second"),
+    ]:
+        context = propagator.extract(
+            {
+                "traceparent": "00-1234567890abcdef1234567890abcdef-1234567890abcdef-01",
+                "tracestate": headers,
+            }
+        )
+        span = get_current_span(context).get_span_context()
+        assert span.is_valid
+        assert span.trace_state.to_header() == expected

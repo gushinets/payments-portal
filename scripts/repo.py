@@ -220,6 +220,15 @@ def canonical_check_environment(
     temp_dir.mkdir(parents=True, exist_ok=True)
     for variable in ("TEMP", "TMP", "TMPDIR"):
         environment[variable] = str(temp_dir)
+    # Repository source and engineering artifacts are UTF-8 on every host.
+    environment["PYTHONUTF8"] = "1"
+    if os.name == "nt":
+        git = shutil.which("git", path=environment.get("PATH", ""))
+        if git:
+            bash = Path(git).resolve().parents[1] / "bin" / "bash.exe"
+            if bash.is_file():
+                # Prefer native Git Bash over Windows' WSL bash launcher.
+                environment["PATH"] = str(bash.parent) + os.pathsep + environment.get("PATH", "")
     environment["BILLING_WORKER_ENABLED"] = "false"
     environment["PURCHASE_TEST_TERMS_ENABLED"] = "false"
     environment["OTEL_EXPORTER_OTLP_ENDPOINT"] = ""
@@ -337,12 +346,17 @@ def validate_production_deployment_environment(*, environ: dict[str, str] | None
     validate_production_caddy_domain(environment.get("CADDY_DOMAIN", ""))
 
 
+def run_private_acl(command: list[str]) -> subprocess.CompletedProcess[bytes]:
+    """Apply private-path ACLs without publishing local metadata to stdout."""
+    return subprocess.run(command, check=True, capture_output=True, timeout=15)
+
+
 def protect_private_directory(
     path: Path,
     *,
     os_name: str | None = None,
     environ: dict[str, str] | None = None,
-    runner: Callable[[list[str]], object] = run,
+    runner: Callable[[list[str]], object] = run_private_acl,
     icacls_path: str | None = None,
 ) -> None:
     if (os.name if os_name is None else os_name) != "nt":
@@ -377,7 +391,7 @@ def protect_windows_path_acl(
     permission: str,
     failure_message: str,
     environ: dict[str, str] | None = None,
-    runner: Callable[[list[str]], object] = run,
+    runner: Callable[[list[str]], object] = run_private_acl,
     icacls_path: str | None = None,
 ) -> None:
     principal = windows_current_user(environ=environ)
@@ -390,7 +404,7 @@ def protect_windows_path_acl(
     ]
     try:
         runner(command)
-    except (HarnessError, OSError, subprocess.CalledProcessError) as exc:
+    except (HarnessError, OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         raise HarnessError(failure_message) from exc
 
 
@@ -399,7 +413,7 @@ def protect_runtime_env_file(
     *,
     os_name: str | None = None,
     environ: dict[str, str] | None = None,
-    runner: Callable[[list[str]], object] = run,
+    runner: Callable[[list[str]], object] = run_private_acl,
     icacls_path: str | None = None,
 ) -> None:
     if (os.name if os_name is None else os_name) != "nt":

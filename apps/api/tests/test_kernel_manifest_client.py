@@ -349,10 +349,10 @@ async def test_retry_delay_cannot_restart_whole_deadline() -> None:
 
     async with source_resources(
         kernel_settings(
-            preflight_total_timeout_seconds=0.08,
-            preflight_cleanup_timeout_seconds=0.01,
+            preflight_total_timeout_seconds=0.5,
+            preflight_cleanup_timeout_seconds=0.2,
             kernel_max_retries=2,
-            kernel_retry_delay_seconds=0.1,
+            kernel_retry_delay_seconds=1.0,
         ),
         kernel_transport=httpx.MockTransport(respond),
     ) as sources:
@@ -390,57 +390,72 @@ async def test_streamed_body_without_content_length_is_size_bounded_and_closed()
 
 
 async def test_real_http_trickling_body_exceeds_absolute_deadline_despite_read_progress() -> None:
-    peer_closed = asyncio.Event()
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from threading import Event, Thread
+
+    peer_closed = Event()
+    stop = Event()
     fragments = 0
 
-    async def serve(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        nonlocal fragments
-        try:
-            await reader.readuntil(b"\r\n\r\n")
-            writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 10000\r\n\r\n")
-            # Every fragment arrives well inside the 0.1s individual read wait;
-            # the full body would take 100s without a whole-operation bound.
-            for _ in range(10000):
-                if reader.at_eof():
-                    break
-                writer.write(b" ")
-                await writer.drain()
-                fragments += 1
-                await asyncio.sleep(0.01)
-        except (ConnectionError, asyncio.IncompleteReadError):
-            pass
-        finally:
-            writer.close()
-            try:
-                await writer.wait_closed()
-            except ConnectionError:
-                pass
-            peer_closed.set()
+    # A threaded test peer avoids the CPython Windows Proactor server's reset
+    # shutdown failure. The real async HTTP client and absolute budget remain.
+    class TricklingPeer(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+        timeout = 1
 
-    server = await asyncio.start_server(serve, "127.0.0.1", 0)
-    port = server.sockets[0].getsockname()[1]
-    try:
-        async with source_resources(
-            kernel_settings(
-                kernel_base_url=f"http://127.0.0.1:{port}",
-                preflight_total_timeout_seconds=0.2,
-                preflight_cleanup_timeout_seconds=0.03,
-                kernel_read_timeout_seconds=0.1,
-            )
-        ) as sources:
-            loop = asyncio.get_running_loop()
-            started = loop.time()
-            with pytest.raises(PreflightDeadlineExceeded):
-                async with sources.preflight.operation() as budget:
-                    await sources.require_kernel().fetch_manifest(budget=budget)
-            elapsed = loop.time() - started
-            assert elapsed < 0.35  # scheduling tolerance; not a per-read timeout
-            assert fragments >= 2
-            assert sources.preflight.active_count == sources.preflight.waiting_count == 0
-            await asyncio.wait_for(peer_closed.wait(), timeout=1)
-    finally:
-        server.close()
-        await server.wait_closed()
+        def do_GET(self) -> None:
+            nonlocal fragments
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", "10000")
+                self.end_headers()
+                # Individual reads keep progressing; a complete body takes 100s.
+                for _ in range(10000):
+                    if stop.is_set():
+                        break
+                    self.wfile.write(b" ")
+                    self.wfile.flush()
+                    fragments += 1
+                    stop.wait(0.01)
+            except (ConnectionError, TimeoutError):
+                pass
+            finally:
+                peer_closed.set()
+
+        def log_message(self, format: str, *args: object) -> None:
+            pass
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), TricklingPeer) as server:
+        server.daemon_threads = False
+        worker = Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+        worker.start()
+        try:
+            async with source_resources(
+                kernel_settings(
+                    kernel_base_url=f"http://127.0.0.1:{server.server_port}",
+                    preflight_total_timeout_seconds=1.0,
+                    preflight_cleanup_timeout_seconds=0.3,
+                    kernel_read_timeout_seconds=0.2,
+                )
+            ) as sources:
+                loop = asyncio.get_running_loop()
+                started = loop.time()
+                with pytest.raises(PreflightDeadlineExceeded):
+                    async with sources.preflight.operation() as budget:
+                        await sources.require_kernel().fetch_manifest(budget=budget)
+                elapsed = loop.time() - started
+                assert elapsed < 1.5  # generous scheduling tolerance, still a whole-read bound
+                assert fragments >= 2
+                assert sources.preflight.active_count == sources.preflight.waiting_count == 0
+                async with asyncio.timeout(2):
+                    while not peer_closed.is_set():
+                        await asyncio.sleep(0.01)
+        finally:
+            stop.set()
+            server.shutdown()
+            worker.join(timeout=2)
+            assert not worker.is_alive()
 
 
 async def test_client_consumes_accepted_step_one_mock_over_actual_http() -> None:
