@@ -1,0 +1,51 @@
+{
+  "source_head": "745890c4b01f051d74b6df6edba83622f67ebcbc",
+  "source_base": "96d07236d25d17c9c5dca5f8884488dc4cabb682",
+  "security_run": "https://github.com/gushinets/payments-portal/actions/runs/44054365383",
+  "job_id": 133939769645,
+  "artifact_id": 14314254352,
+  "artifact_sha256": "7a3a8b0a6d30f6c6c391cbb0386004cefbe536d9f2fef8d241578d671a108cc4",
+  "runtime_verification": "security/trivy/verify-api-runtime.sh passed in security workflow; configured app/non-root UID and liveness verified",
+  "reports": [
+    {
+      "name": "filesystem.json",
+      "sha256": "97840ba26db06334f1fd1fc93866bc239e8376c8afa76e3fde99259f411b451b",
+      "created_at": "2026-11-17T09:19:42.300631925Z",
+      "artifact_name": ".",
+      "source_commit": "5f551f5e1c9e87efcfc82fc5902d95b9e0c31abd",
+      "image_id": null,
+      "repo_digests": null,
+      "runtime_user": null,
+      "packages": [
+        {
+          "target": "apps/api/uv.lock",
+          "name": "dnspython",
+          "version": "2.9.2",
+          "path": null
+        }
+      ],
+      "target_advisories_absent": true
+    },
+    {
+      "name": "api-image.json",
+      "sha256": "c8d6062cab595847d24919ae4b004ca53113d6c67ac2fdc847084e8545cdcb0c",
+      "created_at": "2026-11-17T09:21:45.658102793Z",
+      "artifact_name": "payment-portal-api:trivy-5f551f5e1c9e87efcfc82fc5902d95b9e0c31abd",
+      "source_commit": null,
+      "image_id": "sha256:54765a518754344968485b760ea3e16254b61a24212b188883f274df81372de6",
+      "repo_digests": [
+        "payment-portal-api@sha256:54765a518754344968485b760ea3e16254b61a24212b188883f274df81372de6"
+      ],
+      "runtime_user": "app",
+      "packages": [
+        {
+          "target": "Python",
+          "name": "dnspython",
+          "version": "2.9.2",
+          "path": "opt/api-venv/lib/python3.12/site-packages/dnspython-2.9.2.dist-info/METADATA"
+        }
+      ],
+      "target_advisories_absent": true
+    }
+  ]
+}
