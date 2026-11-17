@@ -154,8 +154,11 @@ def test_standalone_api_coverage_retains_serial_scope(check_calls: CheckCalls, t
     ]
 
 
-def test_check_coverage_cannot_hide_failure_with_ambient_addopts(
-    check_calls: CheckCalls, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    "arguments", [["check", "--fast", "--coverage"], ["coverage", "api-fast"], ["coverage", "api"]]
+)
+def test_coverage_cannot_hide_failure_with_ambient_pytest_configuration(
+    check_calls: CheckCalls, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, arguments: list[str]
 ) -> None:
     tests = tmp_path / "apps/api/tests"
     application = tmp_path / "apps/api/app"
@@ -163,6 +166,16 @@ def test_check_coverage_cannot_hide_failure_with_ambient_addopts(
     application.mkdir(parents=True)
     (tmp_path / "pytest.ini").write_text("[pytest]\nmarkers =\n    postgres: database partition\n", encoding="utf-8")
     (application / "sample.py").write_text("VALUE = 1\n", encoding="utf-8")
+    plugin = tmp_path / "hide_tests.py"
+    plugin.write_text(
+        "from pathlib import Path\n"
+        "Path(__file__).with_suffix('.loaded').touch()\n"
+        "def pytest_collection_modifyitems(config, items):\n"
+        "    hidden = [item for item in items if item.name == 'test_regression']\n"
+        "    items[:] = [item for item in items if item not in hidden]\n"
+        "    config.hook.pytest_deselected(items=hidden)\n",
+        encoding="utf-8",
+    )
     (tests / "test_selection.py").write_text(
         "from runpy import run_path\n"
         "sample = run_path('apps/api/app/sample.py')\n"
@@ -174,7 +187,7 @@ def test_check_coverage_cannot_hide_failure_with_ambient_addopts(
         {
             "PATH": os.environ["PATH"],
             "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
-            "PYTEST_PLUGINS": "pytest_cov.plugin",
+            "PYTEST_PLUGINS": "hide_tests",
             "PYTEST_ADDOPTS": "-k selected",
             "COVERAGE_FILE": str(tmp_path / ".coverage"),
         }
@@ -184,10 +197,12 @@ def test_check_coverage_cannot_hide_failure_with_ambient_addopts(
     def execute_api(command: list[str], *, env: dict[str, str] | None = None, **kwargs: object) -> None:
         capture_run(command, env=env, **kwargs)
         if "pytest" in command:
+            # This probe disables autoload; select its required coverage plugin explicitly.
+            command = [*command[:3], "-p", "pytest_cov.plugin", *command[3:]]
             subprocess.run(command, cwd=tmp_path, env=env, capture_output=True, text=True, check=True, timeout=15)
 
     monkeypatch.setattr(repo, "run", execute_api)
-    args = repo.build_parser().parse_args(["check", "--fast", "--coverage"])
+    args = repo.build_parser().parse_args(arguments)
     with pytest.raises(subprocess.CalledProcessError) as caught:
         args.func(args)
 
@@ -197,3 +212,5 @@ def test_check_coverage_cannot_hide_failure_with_ambient_addopts(
     assert (tmp_path / ".harness/coverage/api/coverage.xml").is_file()
     assert sum("pytest" in command for command, _ in check_calls.commands) == 1
     assert check_calls.environment["PYTEST_ADDOPTS"] == "-k selected"
+    assert check_calls.environment["PYTEST_PLUGINS"] == "hide_tests"
+    assert not plugin.with_suffix(".loaded").exists()

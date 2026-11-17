@@ -1,47 +1,45 @@
 # ANY-822 — Rebuild test execution acceleration from main
 
-Status: implementation complete; local acceptance passed; remote CI pending
+Status: implementation complete; local verification recorded; current CI linked below
 Created: 2026-11-13
 Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
 Execution branch: `ANY-822`
 Original base: `2d278f62f0a2f7c4b40fb322618b268580de2301`
-Rebased on main: `ece3590b857adb120182949dfe291116ca8ba510` (ANY-766, 2026-11-16)
+Rebased on main: `2e6d3adc63bd3d633709f6a5168fc14fb7141cdc` (ANY-740/743, 2026-11-17)
 
-## 1. Current acceptance — rebased branch (2026-11-16)
+## 1. Current acceptance (2026-11-17)
 
-All 13 ANY-822 commits were replayed on main. The original head `c13ebfe8`
-is preserved by `codex/any822-before-rebase-20261116-c13ebfe8` and a verified
-full Git bundle. ANY-766 product code, migrations and generated contracts are
-preserved; its older test accelerator is superseded by the single ANY-822
-runner and `PostgresTestDatabase`. Final collection: **3,623 IDs**, versus
-**3,502 on main**; all removed IDs have retained guarantee owners below.
+The full local result below predates the latest rebase and covers source based
+on `5062d7fb5c78990a20ea926356ccdb64337af3b2`. Current base main:
+`2e6d3adc63bd3d633709f6a5168fc14fb7141cdc`; its certifi/OpenTelemetry pins
+are outside the scope of that earlier local run.
 
-Verified runtime/test source: `b5b17ef1` plus formatter-only test changes,
-committed as `12b15287`. Subsequent changes to this plan are documentation-only.
+- **PASSED locally before the latest rebase:** `npm run check -- --coverage`, **850.734 s**:
+  **2,417 API-fast**, **1,212 PostgreSQL**, **454 components**, static checks
+  and web build; no test skips or failures. PostgreSQL used four workers,
+  isolated tmpfs storage and normal durability. Server startup was **2.976 s**,
+  excluded from the check; builds used cached local Manrope fonts. Owned test
+  databases and the disposable container were cleaned up.
+- **PASSED after rebase:** 467 focused infrastructure/smoke tests, offline
+  lock validation and documentation checks. The local environment retains
+  older dependency versions; CI verifies the new pins.
+- **Current CI:** [PR #170 checks](https://github.com/gushinets/payments-portal/pull/170/checks)
+  report verification of the latest pushed source.
+- **PASSED in baseline CI:** [run 43855533270](https://github.com/gushinets/payments-portal/actions/runs/43855533270)
+  for commit `5062d7fb5c78990a20ea926356ccdb64337af3b2`, tested as merge
+  ref `d095e5395d77a9020ef7e4888628448301a4fd5b`. Quality, production gate,
+  browser and Linux/Windows harness-smoke jobs passed. Windows evidence covers
+  harness smoke only. This run does not cover the latest test-infrastructure changes.
+- **UNVERIFIED:** actual CI cancellation and diagnostic upload on cancellation,
+  the complete Windows API runner,
+  full paired/live acceptance and complete serial API coverage. Browser
+  evidence is from baseline CI, not the latest local check.
 
-- **PASSED:** `npm run check -- --coverage`, **887.182 s**: **2,411 API-fast**,
-  **1,211 PostgreSQL passed + 1 prerequisite skip**, **454 components**, static
-  checks and web build. The PostgreSQL skip requires the prepared paired
-  Kernel checkout (`ANY766_KERNEL_ROOT`); it is an existing ANY-766 condition.
-- **PASSED:** whole PostgreSQL runner, **597.834 s**, four workers. This spans
-  collection-log creation through runner-result writing, including fixture
-  cleanup. Server startup was **2.189 s**, outside the check interval.
-  Both absolute targets passed in this sample; PostgreSQL margin is only
-  **2.166 s**, not evidence of a stable timing guarantee.
-- **PASSED:** desktop/mobile Playwright, **246 passed + 2 existing live-source
-  opt-in skips**, no retries; local manifest contract check with a loopback mock.
-  These checks do not establish live-source or real-Kernel acceptance.
-- **PASSED:** source/history, collection/JUnit and documentation/diff checks;
-  owned test databases and containers were cleaned. Builds used cached local
-  Manrope fonts. Main was rechecked unchanged after verification.
-- **UNVERIFIED:** remote CI, actual CI cancellation/artifact upload, Windows,
-  paired/live acceptance and complete serial API coverage.
-
-Detailed commands, source/environment fingerprints, inventory, logs, timings
-and cleanup results: `.harness/any822-rebase-20261116/` and the printed run
-under `.harness/api-tests/`. Earlier checkpoints below are historical evidence,
-not acceptance of the rebased source. Current execution instructions belong to
-the [Testing Strategy](../../engineering/TESTING.md).
+Recorded local logs, source fingerprints and cleanup results:
+`.harness/any822-p1-p3-20261117/` and the recorded `.harness/api-tests/` run.
+Post-rebase checks: `.harness/any822-rebase-20261117-58bbaa56/`.
+Earlier measurements below describe historical source states. Current execution
+instructions belong to the [Testing Strategy](../../engineering/TESTING.md).
 
 ## 2. Objective, scope and decisions
 
@@ -258,6 +256,13 @@ Full step-by-step details remain in Git at `12b15287` and in the evidence paths.
   seven regressions failed before the fix, both affected modules then passed
   (**117 tests**). Complete coverage check **624.982 s**: **2,003 fast**,
   **997 PostgreSQL**, **414 components**; build/static checks and cleanup passed.
+
+- **2026-11-16 post-rebase acceptance:** `12b15287`; complete coverage check
+  **887.182 s**: **2,411 fast**, **1,211 PostgreSQL passed + 1 prerequisite
+  skip**, **454 components**. Whole PostgreSQL runner **597.834 s**; server
+  startup **2.189 s**, separately. Both timing targets passed in this sample,
+  with only **2.166 s** PostgreSQL margin; this is not a stable timing guarantee.
+  Evidence: `.harness/any822-rebase-20261116/`.
 
 Intermediate SQL statement timeouts, inventory-ordering and HTTP-cleanup
 failures were retained in diagnostics. Final checks passed after the ordering

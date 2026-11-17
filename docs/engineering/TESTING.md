@@ -1,7 +1,7 @@
 # Testing Strategy
 
 Status: authoritative
-Last verified: 2026-11-16
+Last verified: 2026-11-17
 
 ## Layers
 
@@ -77,10 +77,12 @@ Diagnostic options include `-k`, verbosity, traceback and duration flags. The
 only accepted explicit marker expressions are `-m postgres` for
 `api-postgres` and `-m 'not postgres'` for `api-fast`; omit `-m` for `api`.
 Unsupported options fail rather than bypass collection accounting. The shared
-API test environment clears inherited `PYTEST_ADDOPTS`, including for coverage;
-explicit command-line selectors remain supported. The runner rejects scheduler,
-coverage, configuration and report overrides; use the harness's `--junitxml`
-and coverage commands instead.
+API test environment clears inherited `PYTEST_ADDOPTS` and `PYTEST_PLUGINS`
+before pytest starts, including for coverage. The runner also clears both
+when called directly. Installed-plugin autoload remains unchanged, and explicit
+command-line selectors remain supported.
+The runner rejects scheduler, coverage, configuration and report overrides;
+use the harness's `--junitxml` and coverage commands instead.
 
 ### Coverage and CI
 

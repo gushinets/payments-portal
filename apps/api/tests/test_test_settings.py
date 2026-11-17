@@ -15,12 +15,13 @@ from apps.api.tests.support.settings import DEFAULT_API_TEST_ENV, api_test_envir
 from scripts import repo
 
 
-def test_pytest_options_are_cleared_before_launch_and_in_child_environment() -> None:
-    with patch.dict(os.environ, {"PYTEST_ADDOPTS": "-k selected"}, clear=True):
-        assert api_test_environment()["PYTEST_ADDOPTS"] == ""
-        assert os.environ["PYTEST_ADDOPTS"] == "-k selected"
+@pytest.mark.parametrize("variable,value", [("PYTEST_ADDOPTS", "-k selected"), ("PYTEST_PLUGINS", "hide_tests")])
+def test_pytest_configuration_is_cleared_before_launch_and_in_child_environment(variable: str, value: str) -> None:
+    with patch.dict(os.environ, {variable: value}, clear=True):
+        assert api_test_environment()[variable] == ""
+        assert os.environ[variable] == value
         configure_api_test_environment()
-        assert os.environ["PYTEST_ADDOPTS"] == ""
+        assert os.environ[variable] == ""
 
 
 def test_configuration_removes_inherited_integrations_before_scenario_overrides() -> None:

@@ -25,6 +25,7 @@ DEFAULT_API_TEST_ENV = {
     "KERNEL_MOCK_ENABLED": "0",
     "PURCHASE_TEST_TERMS_ENABLED": "false",
     "PYTEST_ADDOPTS": "",
+    "PYTEST_PLUGINS": "",
 }
 
 

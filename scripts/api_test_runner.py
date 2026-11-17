@@ -409,8 +409,8 @@ def run_api_tests(
             merge_junit([], junitxml, [f"API test startup failed: {exc}"])
         raise
     print(f"API test artifacts: {directory}", flush=True)
-    # Clear ambient addopts so -n/--lf/report overrides cannot silently change this run.
-    environment = {**environment, "PYTEST_ADDOPTS": ""}
+    # Ambient options/plugins must not silently change collection or reporting.
+    environment = {**environment, "PYTEST_ADDOPTS": "", "PYTEST_PLUGINS": ""}
     partitions = (
         [Partition.FAST, Partition.POSTGRES]
         if target == "api"

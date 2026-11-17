@@ -53,6 +53,39 @@ def report_nodes(path: Path) -> list[str]:
     return [prop.attrib["value"] for prop in ET.parse(path).findall(".//testcase/properties/property[@name='nodeid']")]
 
 
+@pytest.mark.parametrize("target,workers", [("api-fast", 1), ("api-postgres", 1), ("api-postgres", 4)])
+def test_inherited_plugin_cannot_hide_failure(
+    suite: Path, monkeypatch: pytest.MonkeyPatch, target: str, workers: int
+) -> None:
+    plugin = suite / "hide_tests.py"
+    plugin.write_text(
+        "from pathlib import Path\n"
+        "Path(__file__).with_suffix('.loaded').touch()\n"
+        "def pytest_collection_modifyitems(config, items):\n"
+        "    hidden = [item for item in items if item.name == 'test_regression']\n"
+        "    items[:] = [item for item in items if item not in hidden]\n"
+        "    config.hook.pytest_deselected(items=hidden)\n",
+        encoding="utf-8",
+    )
+    marker = "import pytest\npytestmark = pytest.mark.postgres\n" if target == "api-postgres" else ""
+    source(suite, "test_good.py", marker + "def test_good():\n    assert True\n")
+    source(suite, "test_bad.py", marker + "def test_regression():\n    assert False, 'must run'\n")
+    monkeypatch.setenv("PYTEST_PLUGINS", "hide_tests")
+
+    result = run_suite(suite, target=target, workers=workers)
+
+    assert result.returncode == 1
+    expected = {"apps/api/tests/test_good.py::test_good", "apps/api/tests/test_bad.py::test_regression"}
+    assert set(report_nodes(suite / "current.xml")) == expected
+    assert len(ET.parse(suite / "current.xml").findall(".//failure")) == 1
+    partition = "fast" if target == "api-fast" else "postgres"
+    manifest = json.loads((result.directory / partition / "collection/manifest.json").read_text())
+    assert set(manifest["nodeids"]) == expected
+    assert json.loads((result.directory / "result.json").read_text())["errors"] == []
+    assert not plugin.with_suffix(".loaded").exists()
+    assert os.environ["PYTEST_PLUGINS"] == "hide_tests"
+
+
 @pytest.fixture
 def previous_report(tmp_path: Path) -> Path:
     path = tmp_path / "current.xml"
