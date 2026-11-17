@@ -34,6 +34,130 @@ supports Python >=3.10. Choose this small patched release over the initial 1.4.2
 fix; Alembic and MarkupSafe constraints remain compatible. Upstream evidence is
 not an independent local verification of vulnerability-specific behavior.
 
+### Immutable upstream provenance
+
+Source inspected on 2026-11-17, using GitHub commit metadata/diffs and raw files
+at the full commit IDs (not just the mutable changelog):
+
+- Runtime fix: [000ed85e4e48771eff460bf4fc721fb43de80e08](https://github.com/sqlalchemy/mako/commit/000ed85e4e48771eff460bf4fc721fb43de80e08).
+  In [Template URI validation](https://github.com/sqlalchemy/mako/blob/000ed85e4e48771eff460bf4fc721fb43de80e08/mako/template.py#L268-L280),
+  normalization changes from host-dependent `os.path` to `posixpath`, matching
+  lookup resolution. This is the runtime behavior correction associated with
+  CVE-2026-102991 / GHSA-5639-2j2p-m4mx, shipped in 1.4.2.
+- That commit adds/consolidates the
+  [lookup regression matrix and in-root positive control](https://github.com/sqlalchemy/mako/blob/000ed85e4e48771eff460bf4fc721fb43de80e08/test/test_lookup.py#L136-L192)
+  and [Template validation and accepted-URI matrices](https://github.com/sqlalchemy/mako/blob/000ed85e4e48771eff460bf4fc721fb43de80e08/test/test_template.py#L1469-L1530).
+  Both exercise POSIX and Windows path semantics in upstream test source.
+- Subsequent Windows test correction:
+  [0d9f2d299816c8e3333828a32bbda7c90237761b](https://github.com/sqlalchemy/mako/commit/0d9f2d299816c8e3333828a32bbda7c90237761b),
+  included between release tags `rel_1_4_2` and `rel_1_4_3`.
+  [Corrected lookup parametrization](https://github.com/sqlalchemy/mako/blob/0d9f2d299816c8e3333828a32bbda7c90237761b/test/test_lookup.py#L136-L155)
+  skips POSIX-emulation lookup rows on a Windows filesystem while retaining
+  native `ntpath` rows there. Its diff touches only tests and a release note;
+  it does not alter runtime code. This test-execution correction supports
+  choosing 1.4.3 over the initial 1.4.2 patch.
+
+These are inspected upstream sources, not upstream tests executed locally or a
+claim that upstream CI results were independently verified. Local executions
+cover ordinary compatibility only; they do not independently prove the
+vulnerability-specific behavior. No local vulnerability reproduction was performed.
+
+### Reproducible final production-image checks
+
+Evidence follow-up on 2026-11-17 continues clean branch
+`codex/any-741-patch-mako` at `52b131ce77bc9a6435bef96679f04ec94d3382cb`.
+`git fetch origin` succeeded; fetched main remained
+`2e6d3adc63bd3d633709f6a5168fc14fb7141cdc`. The image already exists;
+no rebuild or dependency update is needed for this documentation-only change.
+
+Shell: **PowerShell 7.6.9 on Windows**, from the checkout root. The following exact
+block was executed successfully on 2026-11-17. It resolves and checks the local
+image identity before running both disposable containers by that identity.
+
+```powershell
+$imageTag = 'payment-portal-api:any-741-mako'
+$imageId = docker image inspect $imageTag --format '{{.Id}}'
+if ($LASTEXITCODE -ne 0) { throw 'Production image is unavailable' }
+if ($imageId -ne 'sha256:0d63ec140692c95515e0eee889a491082b5b98eac805624b183a1f2394597390') {
+    throw 'Production image identity changed; inspect before reusing evidence'
+}
+docker image inspect $imageId --format '{{.Id}} user={{.Config.User}} repoDigests={{json .RepoDigests}}'
+if ($LASTEXITCODE -ne 0) { throw 'Image inspection failed' }
+docker run --rm --entrypoint python $imageId -c "from importlib.metadata import version; value = version('Mako'); assert value == '1.4.3', value; print('Mako=' + value)"
+if ($LASTEXITCODE -ne 0) { throw 'Installed Mako version check failed' }
+@'
+import ast
+import os
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from alembic import command
+from alembic.config import Config
+
+assert os.getuid() != 0, 'Expected normal non-root runtime user'
+with TemporaryDirectory(prefix='any741-image-') as temporary:
+    root = Path(temporary)
+    config = Config(str(root / 'alembic.ini'))
+    command.init(config, str(root / 'migrations'), template='generic')
+    revision = command.revision(
+        config, message='ordinary image compatibility', rev_id='741image'
+    )
+    assert revision is not None
+    generated = Path(revision.path).read_text(encoding='utf-8')
+    tree = ast.parse(generated)
+    compile(tree, revision.path, 'exec')
+    assert ast.get_docstring(tree).startswith('ordinary image compatibility')
+    assert revision.revision == revision.module.revision == '741image'
+    assert revision.down_revision is revision.module.down_revision is None
+    assert revision.module.branch_labels is None
+    assert revision.module.depends_on is None
+    assert callable(revision.module.upgrade)
+    assert callable(revision.module.downgrade)
+    assert revision.module.upgrade() is None
+    assert revision.module.downgrade() is None
+    print('Alembic generic revision=741image down_revision=None: PASS')
+    print('Generated Python, message, metadata, upgrade/downgrade: PASS')
+print('Temporary environment removed; non-root execution: PASS')
+'@ | docker run --rm -i --entrypoint python $imageId -
+if ($LASTEXITCODE -ne 0) { throw 'Alembic production-image check failed' }
+```
+
+Both `docker run` commands exited **0**. Concise expected output, excluding
+Alembic's temporary-path creation messages:
+
+```text
+Mako=1.4.3
+Alembic generic revision=741image down_revision=None: PASS
+Generated Python, message, metadata, upgrade/downgrade: PASS
+Temporary environment removed; non-root execution: PASS
+```
+
+`docker image inspect` reports local `.Id`
+`sha256:0d63ec140692c95515e0eee889a491082b5b98eac805624b183a1f2394597390`,
+configured user `app`, and local RepoDigests entry
+`payment-portal-api@sha256:0d63ec140692c95515e0eee889a491082b5b98eac805624b183a1f2394597390`.
+This is a locally built production image and Docker's local content identity;
+the local RepoDigests record does not establish publication to a registry.
+No remote registry digest was verified in this follow-up. The separately built
+historical CI image below has a different reported digest (`65bdafb3...`);
+these executions do not reuse or reverify that CI image.
+
+The commands preserve the image's default non-root user (no `--user` override),
+override only the entrypoint, and use no mounts, database, application credentials
+or repository migrations. Alembic uses its **installed generic template** inside
+an automatically removed container-local temporary directory. Its generated
+migration functions are empty, so checking/calling them requires no database.
+
+Fresh follow-up checks: both image commands, documentation checks and PR diff
+whitespace check passed. Broader API, PostgreSQL, frontend, runtime-liveness and
+scanner checks below are earlier evidence attributed to their original revision;
+they were not rerun for this evidence-only change because dependency, application,
+test and image inputs are unchanged. Earlier local full-check limitations remain.
+Historical automatic rechecks on `52b131ce77bc9a6435bef96679f04ec94d3382cb`
+also finished successfully: [CI 44081695496](https://github.com/gushinets/payments-portal/actions/runs/44081695496)
+and [security 44081695494](https://github.com/gushinets/payments-portal/actions/runs/44081695494).
+Their statuses were read during this follow-up; they are not fresh local runs.
+
 ## Evidence
 
 - Before update: lock check passed; four ordinary compatibility cases passed on
@@ -48,7 +172,7 @@ not an independent local verification of vulnerability-specific behavior.
 - Local production image `payment-portal-api:any-741-mako` built successfully;
   installed Mako is 1.4.3, ordinary Alembic generation inside Linux passed, and
   unchanged `security/trivy/verify-api-runtime.sh` passed (non-root and liveness).
-- Image identity: `sha256:0d63ec140692c95515e0eee889a491082b5b98eac805624b183a1f2394597390`.
+- Local Docker `.Id`: `sha256:0d63ec140692c95515e0eee889a491082b5b98eac805624b183a1f2394597390`.
   Build inputs are baseline plus the targeted lock update; remaining source changes
   are tests and this evidence file and are not copied into the production target.
 - PyPI JSON confirms Python >=3.10 and both 1.4.3 artifacts are non-yanked.
