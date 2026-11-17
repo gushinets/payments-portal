@@ -129,7 +129,9 @@ def test_any709_step2_running_post_after_deadline_is_not_reported_unsent() -> No
             finished.set()
             return httpx.Response(201, json={"code": 201, "response": {"user_id": 345}})
 
-        config = step1_settings(preflight_total_timeout_seconds=0.2, preflight_cleanup_timeout_seconds=0.03)
+        # Exercise a real expired POST without making client shutdown depend on
+        # a few Windows scheduler ticks under full-suite load.
+        config = step1_settings(preflight_total_timeout_seconds=1, preflight_cleanup_timeout_seconds=0.5)
         async with source_resources(config, lbx_transport=httpx.MockTransport(transport)) as sources:
             try:
                 with pytest.raises(PreflightDeadlineExceeded):
@@ -138,7 +140,7 @@ def test_any709_step2_running_post_after_deadline_is_not_reported_unsent() -> No
                         await sources.lbx.create_user(
                             NewCustomer(outer_id="opaque", email="synthetic@example.com"), budget=budget
                         )
-                await still_running.wait()
+                await asyncio.wait_for(still_running.wait(), timeout=1)
                 assert sources.billing.active_count == 1
                 assert posts == ["POST"]
             finally:

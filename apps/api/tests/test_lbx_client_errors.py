@@ -368,7 +368,8 @@ async def test_refresh_lock_wait_uses_waiting_callers_deadline_without_cancellin
             await allow_auth.wait()
         return respond_with_fixture(request)
 
-    short_owner = admission(lbx_settings(preflight_total_timeout_seconds=0.08, preflight_cleanup_timeout_seconds=0.01))
+    # Keep the waiting deadline short, with enough reserve to drain on coarse host timers.
+    short_owner = admission(lbx_settings(preflight_total_timeout_seconds=0.4, preflight_cleanup_timeout_seconds=0.2))
     async with lbx_source(httpx.MockTransport(respond)) as (client, owner):
 
         async def read_owner() -> None:
@@ -404,10 +405,10 @@ async def test_retry_after_and_backoff_cannot_extend_absolute_deadline(hint: str
 
     async with lbx_source(
         httpx.MockTransport(respond),
-        preflight_total_timeout_seconds=0.1,
-        preflight_cleanup_timeout_seconds=0.01,
-        lbx_retry_delay_seconds=0.3,
-        lbx_max_retry_delay_seconds=0.3,
+        preflight_total_timeout_seconds=0.5,
+        preflight_cleanup_timeout_seconds=0.2,
+        lbx_retry_delay_seconds=1.0,
+        lbx_max_retry_delay_seconds=1.0,
     ) as (client, owner):
         with pytest.raises(PreflightDeadlineExceeded):
             async with owner.operation() as budget:

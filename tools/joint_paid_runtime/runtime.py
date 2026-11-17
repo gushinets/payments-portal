@@ -14,6 +14,7 @@ import secrets
 import signal
 import socket
 import subprocess
+import sys
 import tempfile
 from contextlib import ExitStack
 from pathlib import Path
@@ -26,6 +27,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.engine import URL, make_url
 
 PORTAL = Path(__file__).resolve().parents[2]
+# Keep the documented direct-script invocation able to reuse repository tooling.
+if str(PORTAL) not in sys.path:
+    sys.path.insert(0, str(PORTAL))
+from scripts.repo import write_protected_runtime_env_file  # noqa: E402
+
 KERNEL = Path(
     os.environ.get("ANY766_KERNEL_ROOT", PORTAL.parent / "anytoolai-platform")
 )
@@ -176,11 +182,11 @@ class JointRuntime:
         password = secrets.token_urlsafe(32)
         prefix = "POSTGRES" if owner == "portal" else "ANYTOOLAI_POSTGRES"
         path = self.run / (owner + ".env")
-        path.write_text(
+        write_protected_runtime_env_file(
+            path,
             f"{prefix}_USER=joint\n{prefix}_PASSWORD={password}\n"
-            f"{prefix}_DB=joint_{owner}_tests\n{prefix}_PORT={port}\n"
+            f"{prefix}_DB=joint_{owner}_tests\n{prefix}_PORT={port}\n",
         )
-        path.chmod(0o600)
         # Also clean a partially started, uniquely named project after startup failure.
         self.stack.callback(
             self.compose, owner, "down", "--volumes", "--remove-orphans"

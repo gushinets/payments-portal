@@ -365,21 +365,32 @@ async def test_source_failure_and_production_gate_never_fall_back() -> None:
 
 
 @pytest.mark.anyio
-async def test_kernel_and_selected_lbx_reads_share_one_nonrenewable_budget() -> None:
+async def test_kernel_and_selected_lbx_reads_share_one_nonrenewable_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+    from app.infrastructure import preflight
+
+    elapsed = 0.0
+    # Advance only the budget clock, leaving asyncio's scheduler clock real.
+    # This checks cumulative budget consumption without a sub-tick cleanup race.
+    monkeypatch.setattr(preflight, "time", SimpleNamespace(monotonic=lambda: elapsed))
     reviewed = await reviewed_fixture()
     recording = SelectedOfferRecording()
 
     async def kernel_response(request: httpx.Request) -> httpx.Response:
-        await asyncio.sleep(0.03)
+        nonlocal elapsed
+        elapsed += 0.4
+        await asyncio.sleep(0)
         return httpx.Response(200, json=manifest_fixture())
 
     async def lbx_response(request: httpx.Request) -> httpx.Response:
-        await asyncio.sleep(0.03)
+        nonlocal elapsed
+        elapsed += 0.4
+        await asyncio.sleep(0)
         return recording.respond(request)
 
     with pytest.raises(PreflightDeadlineExceeded):
         await fresh_mapping_evaluation(
-            operator_settings(preflight_total_timeout_seconds=0.1, preflight_cleanup_timeout_seconds=0.01),
+            operator_settings(preflight_total_timeout_seconds=1.5, preflight_cleanup_timeout_seconds=0.5),
             proposal=reviewed.proposal,
             approval=reviewed.approval,
             source_inputs=simulated_inputs(),

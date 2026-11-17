@@ -10,6 +10,8 @@ from urllib.parse import quote
 
 import httpx
 import pytest
+
+from apps.api.tests.support.filesystem import assert_private_path
 from fastapi.testclient import TestClient
 from sqlalchemy.engine import make_url
 
@@ -35,7 +37,7 @@ def test_disposable_databases_use_independent_consistent_credentials(
         assert password
         assert url.password == password == connect.call_args.kwargs["password"]
         assert url.database == values[f"{prefix}_DB"] == connect.call_args.kwargs["dbname"]
-        assert (tmp_path / f"{owner}.env").stat().st_mode & 0o077 == 0
+        assert_private_path(tmp_path / f"{owner}.env")
         passwords.append(password)
 
     assert passwords[0] != passwords[1]

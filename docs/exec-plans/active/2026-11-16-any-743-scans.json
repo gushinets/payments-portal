@@ -1,0 +1,63 @@
+{
+  "base_commit": "96d07236d25d17c9c5dca5f8884488dc4cabb682",
+  "image_id": "sha256:c731829cf40890164f930fd519feabc1334d754b148f7429863b08dbcbd8a383",
+  "repo_digest": "payment-portal-api@sha256:c731829cf40890164f930fd519feabc1334d754b148f7429863b08dbcbd8a383",
+  "scanner": "Trivy 0.72.0",
+  "reports": {
+    "filesystem": {
+      "created_at": "2026-11-16T16:26:40.75006121Z",
+      "sha256": "26068ff2ca1b695f0e25ee4b8061ae951dc006b9c51ec7d33675f067ecdefbb6",
+      "target_advisory": [],
+      "versions": {
+        "opentelemetry-api": "1.45.1",
+        "opentelemetry-exporter-otlp-proto-http": "1.45.1",
+        "opentelemetry-instrumentation-fastapi": "0.66b1",
+        "opentelemetry-instrumentation-sqlalchemy": "0.66b1",
+        "opentelemetry-sdk": "1.45.1",
+        "certifi": "2026.10.19",
+        "opentelemetry-exporter-http-transport": "0.66b1",
+        "opentelemetry-exporter-otlp-common": "0.66b1",
+        "opentelemetry-exporter-otlp-proto-common": "1.45.1",
+        "opentelemetry-instrumentation": "0.66b1",
+        "opentelemetry-instrumentation-asgi": "0.66b1",
+        "opentelemetry-proto": "1.45.1",
+        "opentelemetry-semantic-conventions": "0.66b1",
+        "opentelemetry-util-http": "0.66b1"
+      },
+      "total_findings": 6
+    },
+    "api-image": {
+      "created_at": "2026-11-16T16:25:10.082478725Z",
+      "sha256": "d623f2125aa7f5d65db63009f7fa55439ece0e7ea0b9f53c3c98eabb5a7d015a",
+      "target_advisory": [],
+      "versions": {
+        "certifi": "2026.10.19",
+        "opentelemetry-api": "1.45.1",
+        "opentelemetry-exporter-http-transport": "0.66b1",
+        "opentelemetry-exporter-otlp-common": "0.66b1",
+        "opentelemetry-exporter-otlp-proto-common": "1.45.1",
+        "opentelemetry-exporter-otlp-proto-http": "1.45.1",
+        "opentelemetry-instrumentation": "0.66b1",
+        "opentelemetry-instrumentation-asgi": "0.66b1",
+        "opentelemetry-instrumentation-fastapi": "0.66b1",
+        "opentelemetry-instrumentation-sqlalchemy": "0.66b1",
+        "opentelemetry-proto": "1.45.1",
+        "opentelemetry-sdk": "1.45.1",
+        "opentelemetry-semantic-conventions": "0.66b1",
+        "opentelemetry-util-http": "0.66b1"
+      },
+      "total_findings": 219,
+      "image_config_id": "sha256:3fbb48642aa75e8f37f0c58fdeb28bdb022f631fd3c1cbfa5172bfee7ffe2faf"
+    }
+  },
+  "lock_sha256": "66e5783ac6efcd6fa6568baec58474f71283a6f6e440b0507c76d98ac0f63bd1",
+  "scope": {
+    "filesystem": "vulnerability scan including dev dependencies, canonical directory exclusions; no policy changes",
+    "api-image": "vulnerability and secret scan of saved final image; reports sanitized with repository redactor"
+  },
+  "limitations": [
+    "Other findings remain under separate owners; zero target findings does not mean zero vulnerabilities.",
+    "Local image was not deployed or published. Raw sanitized reports retained in ignored .harness."
+  ],
+  "runtime_source_commit": "8437b5e27f3aa80b783f0f5edad744aa69713e36"
+}
