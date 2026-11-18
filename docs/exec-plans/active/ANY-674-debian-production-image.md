@@ -15,7 +15,8 @@ Existing Dockerfile already refreshes indexes and upgrades packages. Existing de
 - [x] Build candidate and compare inventories and scans using one pinned scanner/database snapshot. Explain every historical advisory and new Debian finding without equating disappearance with a fix.
 - [x] Verify normal non-root startup/readiness with disposable PostgreSQL, offline imports, runtime libraries and Alembic entrypoints; run focused image/deployment/migration contracts.
 - [x] Run npm run check:fast and broadest supported npm run check, attributing limitations to revisions.
-- [x] Review diff and current origin/main overlap; publish focused PR with immutable evidence and human residual-risk decisions.
+- [x] Review diff and current origin/main overlap; publish focused PR with immutable evidence.
+- [ ] Obtain and record accountable human ownership and scoped residual-risk decisions for every unresolved advisory (acceptance blocker).
 
 ## Evidence and decisions
 Evidence is retained under .harness/any-674 during execution. Checked-in remediation report will include commands, identities, hashes, package/advisory comparison and dated residual review requests. Missing owner assignments remain explicit human decisions.
@@ -24,4 +25,7 @@ Evidence is retained under .harness/any-674 during execution. Checked-in remedia
 Runtime source 15363f4d is built and characterized. Fresh baseline and candidate contain identical Debian versions and 218 records / 96 IDs; supported repositories offer zero pending upgrades. Python base advances 3.12.14 to 3.12.16 on unchanged Trixie. All 71 historical IDs and 27 newly reported IDs have a disposition; two historical zlib IDs are already fixed before the fresh baseline. Runtime/readiness/Alembic and 25 focused migration tests pass; 99 image/deployment/dependency contracts pass. Canonical checks were run and failed outside the Dockerfile change; full local PostgreSQL characterization completed with 953 passed, 226 failed, 25 errors and 6 skipped (host limitations and proof/timing failures, not repaired here). Draft PR179 is open. Human residual owner assignment and risk decisions remain outstanding, proposed review date 2026-12-02. See docs/engineering/ANY-674-debian-image-evidence.md. ANY-742 is Planned at inspection; no active worktree for it. No pip-specific changes are included.
 
 ## Handoff
-Draft PR179; image remediation/evidence prepared. Human residual-owner assignment, acceptance and handling of failed broad local checks remain pending. Independent evidence review correction completed; no outstanding reviewer findings.
+Draft PR179; image remediation/evidence prepared. Human residual-owner assignment, acceptance and handling of failed broad local checks remain pending. Earlier independent evidence review corrections completed. Subsequent human review identified the unresolved residual-decision acceptance blocker and the version-column defect addressed below.
+
+## Review follow-up
+At reviewed head `7d805e02`, reproduced the 73/87 incomplete Debian version rows and regenerated all 348 version fields from retained dpkg inventories; evidence hashes refreshed. P1 remains an acceptance blocker pending a real human decision; the explicit 96-ID scope and required fields are in docs/engineering/ANY-674-residual-risk-decision.md. No runtime, lock or policy change or new image claim.
