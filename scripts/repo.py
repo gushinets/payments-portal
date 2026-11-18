@@ -3433,12 +3433,16 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
             )
         from sqlalchemy.engine import URL
 
+        try:
+            test_port = int(environment["POSTGRES_PORT_TEST"])
+        except ValueError as exc:
+            raise HarnessError("POSTGRES_PORT_TEST must be an integer") from exc
         environment[test_database_url_name] = URL.create(
             "postgresql+psycopg",
             username=environment["POSTGRES_USER_TEST"],
             password=environment["POSTGRES_PASSWORD_TEST"],
             host=environment.get("POSTGRES_HOST_TEST", "localhost"),
-            port=int(environment["POSTGRES_PORT_TEST"]),
+            port=test_port,
             database=environment["POSTGRES_DB_TEST"],
         ).render_as_string(hide_password=False)
         return environment

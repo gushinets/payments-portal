@@ -135,7 +135,7 @@ def test_runner_startup_failure_replaces_previous_report(
     assert_startup_error(previous_report, message)
 
 
-@pytest.mark.parametrize("failure", ["partial-config", "stopped-server", "invalid-workers"])
+@pytest.mark.parametrize("failure", ["partial-config", "stopped-server", "invalid-workers", "invalid-port"])
 def test_command_startup_failure_replaces_previous_report(
     previous_report: Path, monkeypatch: pytest.MonkeyPatch, failure: str
 ) -> None:
@@ -155,10 +155,18 @@ def test_command_startup_failure_replaces_previous_report(
     monkeypatch.setattr(repo, "port_is_free", lambda port: True)
     target, workers = ("api-fast", 2) if failure == "invalid-workers" else ("api-postgres", 4)
     inherited = {"POSTGRES_USER_TEST": "synthetic"} if failure == "partial-config" else {}
+    if failure == "invalid-port":
+        inherited = {
+            "POSTGRES_USER_TEST": "synthetic",
+            "POSTGRES_PASSWORD_TEST": "synthetic",
+            "POSTGRES_DB_TEST": "synthetic_tests",
+            "POSTGRES_PORT_TEST": "not-a-port",
+        }
     message = {
         "partial-config": "Incomplete PostgreSQL test configuration",
         "stopped-server": "Local test PostgreSQL server is not running",
         "invalid-workers": "api-fast supports only",
+        "invalid-port": "POSTGRES_PORT_TEST must be an integer",
     }[failure]
     with pytest.raises(repo.HarnessError, match=message):
         repo.cmd_test(
@@ -168,17 +176,38 @@ def test_command_startup_failure_replaces_previous_report(
     assert_startup_error(previous_report, message)
 
 
-@pytest.mark.parametrize("target", ["api-fast", "api-postgres"])
-def test_cli_startup_failure_returns_error_with_current_report(previous_report: Path, target: str) -> None:
+@pytest.mark.parametrize(
+    "target,failure",
+    [
+        ("api-fast", "unsupported-option"),
+        ("api-postgres", "partial-config"),
+        ("api-postgres", "invalid-port"),
+        ("api", "invalid-port"),
+    ],
+)
+def test_cli_startup_failure_returns_error_with_current_report(
+    previous_report: Path, target: str, failure: str
+) -> None:
     inherited = {
         name: value
         for name, value in environment().items()
         if name != "TEST_POSTGRES_DATABASE_URL" and not (name.startswith("POSTGRES_") and name.endswith("_TEST"))
     }
-    arguments = ["--pytest-args", "--unsupported"] if target == "api-fast" else []
-    message = "Unsupported pytest argument" if target == "api-fast" else "Incomplete PostgreSQL test configuration"
-    if target == "api-postgres":
+    arguments = ["--pytest-args", "--unsupported"] if failure == "unsupported-option" else []
+    message = {
+        "unsupported-option": "Unsupported pytest argument",
+        "partial-config": "Incomplete PostgreSQL test configuration",
+        "invalid-port": "POSTGRES_PORT_TEST must be an integer",
+    }[failure]
+    if failure == "partial-config":
         inherited["POSTGRES_USER_TEST"] = "synthetic"
+    elif failure == "invalid-port":
+        inherited.update(
+            POSTGRES_USER_TEST="synthetic",
+            POSTGRES_PASSWORD_TEST="synthetic",
+            POSTGRES_DB_TEST="synthetic_tests",
+            POSTGRES_PORT_TEST="not-a-port",
+        )
     result = subprocess.run(
         [
             sys.executable,
@@ -196,6 +225,7 @@ def test_cli_startup_failure_returns_error_with_current_report(previous_report: 
         timeout=15,
     )
     assert result.returncode == 1 and message in result.stderr
+    assert "Traceback" not in result.stderr
     assert_startup_error(previous_report, message)
 
 

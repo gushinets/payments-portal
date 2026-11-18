@@ -1,17 +1,17 @@
 # ANY-822 — Rebuild test execution acceleration from main
 
-Status: implementation complete; local verification recorded; current CI linked below
+Status: implementation complete; local verification and CI scope recorded below
 Created: 2026-11-13
 Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
 Execution branch: `ANY-822`
 Original base: `2d278f62f0a2f7c4b40fb322618b268580de2301`
-Rebased on main: `2e6d3adc63bd3d633709f6a5168fc14fb7141cdc` (ANY-740/743, 2026-11-17)
+Rebased on main: `aa9d8f996cba91feaaaad6a9937eef0c590ae4fa` (ANY-827, 2026-11-18)
 
-## 1. Current acceptance (2026-11-17)
+## 1. Current acceptance (2026-11-18)
 
 The full local result below predates the latest rebase and covers source based
 on `5062d7fb5c78990a20ea926356ccdb64337af3b2`. Current base main:
-`2e6d3adc63bd3d633709f6a5168fc14fb7141cdc`; its certifi/OpenTelemetry pins
+`aa9d8f996cba91feaaaad6a9937eef0c590ae4fa`; its dependency updates
 are outside the scope of that earlier local run.
 
 - **PASSED locally before the latest rebase:** `npm run check -- --coverage`, **850.734 s**:
@@ -20,11 +20,12 @@ are outside the scope of that earlier local run.
   isolated tmpfs storage and normal durability. Server startup was **2.976 s**,
   excluded from the check; builds used cached local Manrope fonts. Owned test
   databases and the disposable container were cleaned up.
-- **PASSED after rebase:** 467 focused infrastructure/smoke tests, offline
+- **PASSED on previous base `2e6d3adc`:** 467 focused infrastructure/smoke tests, offline
   lock validation and documentation checks. The local environment retains
   older dependency versions; CI verifies the new pins.
-- **Current CI:** [PR #170 checks](https://github.com/gushinets/payments-portal/pull/170/checks)
-  report verification of the latest pushed source.
+- **Earlier CI:** [run 44085844288](https://github.com/gushinets/payments-portal/actions/runs/44085844288)
+  passed for `378af431f22fb9090105a8ed18c84aa4dda8b292`; it does not cover
+  subsequent changes.
 - **PASSED in baseline CI:** [run 43855533270](https://github.com/gushinets/payments-portal/actions/runs/43855533270)
   for commit `5062d7fb5c78990a20ea926356ccdb64337af3b2`, tested as merge
   ref `d095e5395d77a9020ef7e4888628448301a4fd5b`. Quality, production gate,
@@ -33,7 +34,7 @@ are outside the scope of that earlier local run.
 - **UNVERIFIED:** actual CI cancellation and diagnostic upload on cancellation,
   the complete Windows API runner,
   full paired/live acceptance and complete serial API coverage. Browser
-  evidence is from baseline CI, not the latest local check.
+  evidence is from CI, not the latest local check.
 
 Recorded local logs, source fingerprints and cleanup results:
 `.harness/any822-p1-p3-20261117/` and the recorded `.harness/api-tests/` run.
@@ -70,6 +71,39 @@ Follow [root AGENTS](../../../AGENTS.md), [documentation AGENTS](../../AGENTS.md
 [Coding Conventions](../../engineering/CODING_CONVENTIONS.md), including the
 API/web subtree instructions and the owner's explicit-authorization rules.
 
+### Acceleration candidate decisions
+
+Costs below use the historical samples in Sections 5–6 and Step 7 evidence;
+combined changes and single runs do not establish isolated speedup factors.
+
+1. **Coverage — select:** run API-fast/components once, retaining scope and
+   artifacts. Duplicate-suite time was not isolated; baseline fast check:
+   134.121 s. Low effort/maintenance; guard against omitted checks with
+   [coverage contracts](../../../apps/api/tests/test_check_coverage.py).
+2. **PostgreSQL setup — select templates:** amortize the baseline's
+   43.610–107.437 s setup per 24-case run. Medium effort/maintenance, one lifecycle
+   owner. Shared rollback cannot isolate independent commits; selective cleanup
+   must track seeds/schema/sequences. Test stale state, leaks and ownership.
+3. **PostgreSQL parallelism — select four processes:** overlap the dominant
+   partition (1,003 cases: serial 25m24s; parallel 418.608 s). Medium effort/
+   maintenance for module assignment and reporting. Isolate worker databases,
+   verify one/four-worker equivalence and cleanup, and require RAM headroom.
+4. **Billing setup — select one reader fixture; defer broad extraction:** avoid
+   unrelated purchase setup while retaining real persisted state and HTTP.
+   Low local effort/maintenance; broad extraction risks hiding stage interactions.
+   Combined reader/expiry sample: 33.580 / 28.317 / 33.396 s; no stable saving.
+5. **Concurrent verification stages — defer:** targets were met by addressing
+   PostgreSQL and duplication; incremental benefit is unmeasured. Baseline fast
+   check: 134.121 s, versus serial PostgreSQL 25m24s. Medium/high scheduling and
+   maintenance cost; generation ordering, shared outputs and CPU/RAM contention
+   outweigh an unproven gain. Keep existing independent CI jobs.
+6. **Frontend/browser — select focused level/readiness fixes; defer environment
+   and build caching:** remove unnecessary contexts and background-network waits.
+   Post-change: 54 browser cases in 88.599 s, separate build 25.901 s; individual
+   setup/before timings unavailable. Low effort/maintenance for existing helpers;
+   caching adds unmeasured benefit and invalidation risk. Preserve real rendered,
+   hydrated, font-ready and accessible page assertions.
+
 ## 3. Completed implementation
 
 - [x] **Settings:** safe configuration before application imports; no personal
@@ -103,29 +137,61 @@ API/web subtree instructions and the owner's explicit-authorization rules.
   Development, AGENTS and Agent Workflow link it and agree on commands,
   ownership, test levels, clocks/readiness and evidence reuse.
 
-## 4. Retained test guarantees
+## 4. Test audit decisions and retained guarantees
 
-These owners were identified before consolidation; fewer cases alone were not
-an acceptance criterion. Distinct transaction, migration and recovery paths
-retain real PostgreSQL coverage.
+The bounded candidates below cover expensive, overlapping and unstable tests,
+including retained controls. Step 7 evidence is in
+`.harness/any822-step7-20261113/` (before/after/final JUnit and browser reports).
+JUnit times include setup/call/teardown; separate setup cost is unavailable
+unless stated. Missing timings are not claimed as savings.
 
-- **Expiry:** the original 3x3 matrix becomes three PostgreSQL publication
-  stages (`before_database`, `after_history`, `after_flush`) with rollback and
-  immutable-history assertions. Account-day, policy and price calculations
-  remain in `test_evaluation_carries_exclusive_account_calendar_boundary`;
-  the separate real PostgreSQL lock-wait test remains.
-- **Bounded paid reader:** only
-  `test_paid_read_bounds_display_evidence_without_truncating_effective_contents`
-  uses module-local typed, FK-valid persisted state and technical terms. The
-  real HTTP read still checks the 100-product cap, complete grants/allowances
-  beyond that cap and no billing writes. Other scenarios retain full
-  purchase/reconciliation setup.
-- **Subscription wording:** `SubscriptionStateGuard.test.ts` retains every
-  original regex input; real browser assertions share the same helper.
-- **Unverified email:** the stronger component test checks after React effects
-  and also rejects refresh; only the weaker synchronous duplicate was removed.
-- **Public routes:** relevant response, hydration/visible state and font waits
-  replace `networkidle`; desktop/mobile and accessibility assertions remain.
+- **Consolidate — expiry matrix:** nine PostgreSQL cases (6.621 s) become three
+  (3.203 s; final 4.980 s). [Expiry tests](../../../apps/api/tests/test_mapping_publication_expiry_postgres.py)
+  retain publication-stage refusal, rollback/history and the real lock wait.
+  [Calendar tests](../../../apps/api/tests/test_mapping_billing_calendar.py)
+  retain all deadline sources in `test_evaluation_carries_exclusive_account_calendar_boundary`.
+  Two explicit owners avoid repeating setup without losing source/wiring coverage.
+- **Accelerate — bounded paid reader:** use local typed, FK-valid persisted
+  state; retain PostgreSQL/HTTP, the 100-product cap, complete grants/allowances
+  and no-write snapshots in [paid-read tests](../../../apps/api/tests/test_paid_access_read_postgres.py).
+  Case time: 1.833 → 0.380 s in-module; 1.945 s isolated. Fixture/provenance drift
+  is the maintenance risk; keep technical terms and the beyond-cap paid product.
+- **Retain — other paid-read journeys:** full purchase/reconciliation setup
+  protects stage interactions, committed authority and saturation behavior in
+  [paid-read tests](../../../apps/api/tests/test_paid_access_read_postgres.py).
+  Keep PostgreSQL/HTTP and function-scoped data; broad extraction has no measured
+  benefit and would hide distinct interaction failures.
+- **Move — subscription wording:** every regex input remains in
+  [SubscriptionStateGuard.test.ts](../../../apps/web/tests/components/SubscriptionStateGuard.test.ts).
+  [Portal browser tests](../../../apps/web/e2e/portal-ru.spec.ts) retain real page
+  assertions using the same helper. Pure strings need no browser; one predicate
+  owner prevents divergence and duplicate maintenance.
+- **Remove — synchronous unverified-email duplicate:** it added no failure mode
+  beyond [the effect-settled component test](../../../apps/web/tests/components/any765-paid-access.test.tsx),
+  which retains both no-request and no-refresh assertions. Keep component level;
+  waiting for effects prevents the earlier weak assertion from passing too soon.
+- **Rewrite — public-route waits:** [browser tests](../../../apps/web/e2e/public-routes.spec.ts)
+  retain desktop/mobile responses, hydration, fonts, accessibility and error
+  assertions. Relevant readiness conditions replace `networkidle`; checking
+  too early remains the risk. Cost is the 54-case sample above, with no before
+  comparison; explicit conditions own readiness rather than network activity.
+- **Retain — committed-state/migration controls:** the frozen 24-case control
+  spent 53.665 s in setup in its median baseline run. Keep real commits,
+  constraints and races in [identity/legal](../../../apps/api/tests/test_identity_legal_persistence_postgres.py)
+  and [email verification](../../../apps/api/tests/test_email_verification_persistence_postgres.py).
+  [Template lifecycle](../../../apps/api/tests/compatibility/test_postgres_template_lifecycle.py)
+  and [database fixtures](../../../apps/api/tests/compatibility/test_database_fixtures.py)
+  retain schema/seed/sequence restoration, mixed migration order and leak checks.
+  Shared lifecycle ownership reduces setup; rollback/mocks would lose these guarantees.
+- **Rewrite — unstable worker setup:** [inventory scheduling](../../../apps/api/tests/test_billing_inventory_scheduling_postgres.py)
+  establishes queue order; [customer recovery](../../../apps/api/tests/test_billing_background_recovery_faults_postgres.py)
+  rejects unintended Kernel calls. Keep real PostgreSQL worker effects, lane/
+  due-time, competing reconciliation, binding and no-send assertions. Failure
+  frequency/setup cost were not isolated; repair local setup instead of deleting
+  valuable tests or relaxing deadlines/retries.
+
+Infrastructure compatibility owners remain:
+
 - **ANY-766 DB safety:** unique names/routing and unsafe-template rejection
   remain in database-safety tests; real template-lifecycle tests reject
   checked-out connections. ANY-766 database-fixture tests retain committed
@@ -136,9 +202,6 @@ retain real PostgreSQL coverage.
   dispatch tests preserve fast-before-PostgreSQL execution and combined
   success/failure reports. Stale success after collection interruption is
   intentionally replaced by the current incomplete/error status.
-- **Stability fixes:** inventory tests explicitly establish queue order and
-  retain competing reconciliation checks; customer recovery rejects Kernel
-  transport calls. Production deadlines, retries and assertions are unchanged.
 
 Focused checks cover one/four-worker equivalence, real migration/ordinary test
 ordering across processes, seeds, unsafe targets, collisions, cleanup failures,
