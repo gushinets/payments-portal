@@ -1,3 +1,5 @@
+Follow-up: [verified runtime minimization](ANY-674-runtime-minimization.md) adds a separate comparison and High-first investigation. The historical results below are preserved.
+
 # ANY-674 — Production API Debian update evidence
 
 Issue: https://linear.app/paveldik/issue/ANY-674

@@ -1,0 +1,270 @@
+CANDIDATE libacl1
+Reading package lists...
+Building dependency tree...
+Reading state information...
+Solving dependencies...
+Some packages could not be installed. This may mean that you have
+requested an impossible situation or if you are using the unstable
+distribution that some required packages have not yet been created
+or been moved out of Incoming.
+The following information may help to resolve the situation:
+
+The following packages have unmet dependencies:
+ coreutils : PreDepends: libacl1 (>= 2.2.23) but it is not going to be installed
+ sed : PreDepends: libacl1 (>= 2.2.23) but it is not going to be installed
+ tar : PreDepends: libacl1 (>= 2.2.23) but it is not going to be installed
+E: Error, pkgProblemResolver::Resolve generated breaks, this may be caused by held packages.
+E: The following information from --solver 3.0 may provide additional context:
+   Unable to satisfy dependencies. Reached two conflicting decisions:
+   1. libacl1:amd64 is selected for removal
+   2. libacl1:amd64 is selected for install because:
+      1. coreutils:amd64 is selected for install
+      2. coreutils:amd64 PreDepends libacl1 (>= 2.2.23)
+SIMULATION_EXIT 100
+CANDIDATE libsystemd0
+Reading package lists...
+Building dependency tree...
+Reading state information...
+Solving dependencies...
+Some packages could not be installed. This may mean that you have
+requested an impossible situation or if you are using the unstable
+distribution that some required packages have not yet been created
+or been moved out of Incoming.
+The following information may help to resolve the situation:
+
+The following packages have unmet dependencies:
+ apt : Depends: libapt-pkg7.0 (>= 3.0.4) but it is not going to be installed
+       Depends: libsystemd0 but it is not going to be installed
+ bsdutils : PreDepends: libsystemd0 (>= 254) but it is not going to be installed
+            Recommends: bsdextrautils but it is not installable
+ coreutils : PreDepends: libsystemd0 (>= 254) but it is not going to be installed
+ login : Depends: libpam-modules but it is not going to be installed
+         Depends: libpam-runtime but it is not going to be installed
+ util-linux : PreDepends: libpam-modules but it is not going to be installed
+              PreDepends: libpam-runtime but it is not going to be installed
+              PreDepends: libsystemd0 but it is not going to be installed
+              Recommends: sensible-utils but it is not installable
+E: Error, pkgProblemResolver::Resolve generated breaks, this may be caused by held packages.
+E: The following information from --solver 3.0 may provide additional context:
+   Unable to satisfy dependencies. Reached two conflicting decisions:
+   1. libsystemd0:amd64 is selected for removal
+   2. libsystemd0:amd64 is selected for install because:
+      1. coreutils:amd64 is selected for install
+      2. coreutils:amd64 PreDepends libsystemd0 (>= 254)
+SIMULATION_EXIT 100
+CANDIDATE libudev1
+Reading package lists...
+Building dependency tree...
+Reading state information...
+Solving dependencies...
+Some packages could not be installed. This may mean that you have
+requested an impossible situation or if you are using the unstable
+distribution that some required packages have not yet been created
+or been moved out of Incoming.
+The following information may help to resolve the situation:
+
+The following packages have unmet dependencies:
+ apt : Depends: libapt-pkg7.0 (>= 3.0.4) but it is not going to be installed
+ util-linux : PreDepends: libudev1 (>= 183) but it is not going to be installed
+              Recommends: sensible-utils but it is not installable
+E: Error, pkgProblemResolver::Resolve generated breaks, this may be caused by held packages.
+E: The following information from --solver 3.0 may provide additional context:
+   Unable to satisfy dependencies. Reached two conflicting decisions:
+   1. libudev1:amd64 is selected for removal
+   2. libudev1:amd64 is selected for install because:
+      1. util-linux:amd64 is selected for install
+      2. util-linux:amd64 PreDepends libudev1 (>= 183)
+SIMULATION_EXIT 100
+CANDIDATE libncursesw6
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following packages will be REMOVED:
+  libncursesw6*
+0 upgraded, 0 newly installed, 1 to remove and 0 not upgraded.
+Purg libncursesw6 [6.5+20250216-2]
+SIMULATION_EXIT 0
+CANDIDATE ncurses-bin
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following packages will be REMOVED:
+  ncurses-bin*
+WARNING: The following essential packages will be removed.
+This should NOT be done unless you know exactly what you are doing!
+  ncurses-bin
+0 upgraded, 0 newly installed, 1 to remove and 0 not upgraded.
+Purg ncurses-bin [6.5+20250216-2]
+SIMULATION_EXIT 0
+CANDIDATE perl-base
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following packages will be REMOVED:
+  perl-base*
+WARNING: The following essential packages will be removed.
+This should NOT be done unless you know exactly what you are doing!
+  perl-base
+0 upgraded, 0 newly installed, 1 to remove and 0 not upgraded.
+Purg perl-base [5.40.1-6+deb13u1]
+SIMULATION_EXIT 0
+CANDIDATE util-linux
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following package was automatically installed and is no longer required:
+  liblastlog2-2
+Use 'apt autoremove' to remove it.
+The following packages will be REMOVED:
+  util-linux*
+WARNING: The following essential packages will be removed.
+This should NOT be done unless you know exactly what you are doing!
+  util-linux
+0 upgraded, 0 newly installed, 1 to remove and 0 not upgraded.
+Purg util-linux [2.41.5-0+deb13u1]
+SIMULATION_EXIT 0
+CANDIDATE login
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following packages will be REMOVED:
+  login*
+WARNING: The following essential packages will be removed.
+This should NOT be done unless you know exactly what you are doing!
+  login
+0 upgraded, 0 newly installed, 1 to remove and 0 not upgraded.
+Purg login [1:4.16.0-2+really2.41.5-0+deb13u1]
+SIMULATION_EXIT 0
+CANDIDATE bash
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following packages will be REMOVED:
+  bash*
+WARNING: The following essential packages will be removed.
+This should NOT be done unless you know exactly what you are doing!
+  bash
+0 upgraded, 0 newly installed, 1 to remove and 0 not upgraded.
+Purg bash [5.2.37-2+b10]
+SIMULATION_EXIT 0
+CANDIDATE libc6
+Reading package lists...
+Building dependency tree...
+Reading state information...
+Solving dependencies...
+Some packages could not be installed. This may mean that you have
+requested an impossible situation or if you are using the unstable
+distribution that some required packages have not yet been created
+or been moved out of Incoming.
+The following information may help to resolve the situation:
+
+The following packages have unmet dependencies:
+ apt : Depends: sqv (>= 1.3.0) but it is not going to be installed
+       Depends: libapt-pkg7.0 (>= 3.0.4) but it is not going to be installed
+       Depends: libc6 (>= 2.38) but it is not going to be installed
+       Depends: libseccomp2 (>= 2.4.2) but it is not going to be installed
+       Depends: libssl3t64 (>= 3.0.0) but it is not going to be installed
+       Depends: libstdc++6 (>= 13.1) but it is not going to be installed
+       Depends: libsystemd0 but it is not going to be installed
+       Recommends: ca-certificates but it is not going to be installed
+ base-files : PreDepends: awk
+ base-passwd : Depends: libc6 (>= 2.34) but it is not going to be installed
+               Depends: libdebconfclient0 (>= 0.145) but it is not going to be installed
+               Depends: libselinux1 (>= 3.1~) but it is not going to be installed
+ bash : PreDepends: libc6 (>= 2.38) but it is not going to be installed
+        PreDepends: libtinfo6 (>= 6) but it is not going to be installed
+        Recommends: bash-completion but it is not installable
+ bsdutils : PreDepends: libc6 (>= 2.38) but it is not going to be installed
+            PreDepends: libsystemd0 (>= 254) but it is not going to be installed
+            Recommends: bsdextrautils but it is not installable
+ coreutils : PreDepends: libacl1 (>= 2.2.23) but it is not going to be installed
+             PreDepends: libattr1 (>= 1:2.4.48) but it is not going to be installed
+             PreDepends: libc6 (>= 2.38) but it is not going to be installed
+             PreDepends: libcap2 (>= 1:2.10) but it is not going to be installed
+             PreDepends: libgmp10 (>= 2:6.3.0+dfsg) but it is not going to be installed
+             PreDepends: libselinux1 (>= 3.1~) but it is not going to be installed
+             PreDepends: libssl3t64 (>= 3.0.0) but it is not going to be installed
+             PreDepends: libsystemd0 (>= 254) but it is not going to be installed
+ dash : PreDepends: libc6 (>= 2.38) but it is not going to be installed
+ debianutils : PreDepends: libc6 (>= 2.38) but it is not going to be installed
+ diffutils : PreDepends: libc6 (>= 2.38) but it is not going to be installed
+ dpkg : PreDepends: libbz2-1.0 but it is not going to be installed
+        PreDepends: libc6 (>= 2.38) but it is not going to be installed
+        PreDepends: liblzma5 (>= 5.4.0) but it is not going to be installed
+        PreDepends: libmd0 (>= 0.0.0) but it is not going to be installed
+        PreDepends: libselinux1 (>= 3.1~) but it is not going to be installed
+        PreDepends: libzstd1 (>= 1.5.5) but it is not going to be installed
+        PreDepends: zlib1g (>= 1:1.1.4) but it is not going to be installed
+ findutils : PreDepends: libc6 (>= 2.38) but it is not going to be installed
+             PreDepends: libselinux1 (>= 3.1~) but it is not going to be installed
+ grep : PreDepends: libc6 (>= 2.34) but it is not going to be installed
+        PreDepends: libpcre2-8-0 (>= 10.32) but it is not going to be installed
+ gzip : PreDepends: libc6 (>= 2.38) but it is not going to be installed
+ hostname : PreDepends: libc6 (>= 2.34) but it is not going to be installed
+ libc-bin : Depends: libc6 (> 2.41) but it is not going to be installed
+            Depends: libc6 (< 2.42) but it is not going to be installed
+            Recommends: manpages but it is not installable
+ libgcc-s1 : Depends: libc6 (>= 2.35) but it is not going to be installed
+ login : Depends: libpam-modules but it is not going to be installed
+         Depends: libpam-runtime but it is not going to be installed
+         Depends: libaudit1 (>= 1:2.2.1) but it is not going to be installed
+         Depends: libc6 (>= 2.38) but it is not going to be installed
+         Depends: libcrypt1 (>= 1:4.1.0) but it is not going to be installed
+         Depends: libpam0g (>= 0.99.7.1) but it is not going to be installed
+ ncurses-bin : PreDepends: libc6 (>= 2.34) but it is not going to be installed
+               PreDepends: libtinfo6 (>= 6.4+20230603) but it is not going to be installed
+ perl-base : PreDepends: libc6 (>= 2.38) but it is not going to be installed
+             PreDepends: libcrypt1 (>= 1:4.1.0) but it is not going to be installed
+ sed : PreDepends: libacl1 (>= 2.2.23) but it is not going to be installed
+       PreDepends: libc6 (>= 2.38) but it is not going to be installed
+       PreDepends: libselinux1 (>= 3.1~) but it is not going to be installed
+ sysvinit-utils : Depends: libc6 (>= 2.38) but it is not going to be installed
+ tar : PreDepends: libacl1 (>= 2.2.23) but it is not going to be installed
+       PreDepends: libc6 (>= 2.38) but it is not going to be installed
+       PreDepends: libselinux1 (>= 3.1~) but it is not going to be installed
+ util-linux : PreDepends: libpam-modules but it is not going to be installed
+              PreDepends: libpam-runtime but it is not going to be installed
+              PreDepends: libblkid1 (= 2.41.5-0+deb13u1) but it is not going to be installed
+              PreDepends: libc6 (>= 2.41) but it is not going to be installed
+              PreDepends: libcap-ng0 (>= 0.7.9) but it is not going to be installed
+              PreDepends: libcrypt1 (>= 1:4.1.0) but it is not going to be installed
+              PreDepends: liblastlog2-2 (= 2.41.5-0+deb13u1) but it is not going to be installed
+              PreDepends: libmount1 (= 2.41.5-0+deb13u1) but it is not going to be installed
+              PreDepends: libpam0g (>= 0.99.7.1) but it is not going to be installed
+              PreDepends: libselinux1 (>= 3.1~) but it is not going to be installed
+              PreDepends: libsmartcols1 (= 2.41.5-0+deb13u1) but it is not going to be installed
+              PreDepends: libsystemd0 but it is not going to be installed
+              PreDepends: libtinfo6 (>= 6) but it is not going to be installed
+              PreDepends: libudev1 (>= 183) but it is not going to be installed
+              PreDepends: libuuid1 (= 2.41.5-0+deb13u1) but it is not going to be installed
+              Recommends: sensible-utils but it is not installable
+E: Error, pkgProblemResolver::Resolve generated breaks, this may be caused by held packages.
+E: The following information from --solver 3.0 may provide additional context:
+   Unable to satisfy dependencies. Reached two conflicting decisions:
+   1. libc6:amd64 is selected for removal
+   2. libc6:amd64 is selected for install because:
+      1. dpkg:amd64 is selected for install
+      2. dpkg:amd64 PreDepends libc6 (>= 2.38)
+SIMULATION_EXIT 100
+CANDIDATE libstdc++6
+Reading package lists...
+Building dependency tree...
+Reading state information...
+Solving dependencies...
+Some packages could not be installed. This may mean that you have
+requested an impossible situation or if you are using the unstable
+distribution that some required packages have not yet been created
+or been moved out of Incoming.
+The following information may help to resolve the situation:
+
+The following packages have unmet dependencies:
+ apt : Depends: libapt-pkg7.0 (>= 3.0.4) but it is not going to be installed
+       Depends: libstdc++6 (>= 13.1) but it is not going to be installed
+E: Error, pkgProblemResolver::Resolve generated breaks, this may be caused by held packages.
+E: The following information from --solver 3.0 may provide additional context:
+   Unable to satisfy dependencies. Reached two conflicting decisions:
+   1. libstdc++6:amd64 is selected for removal
+   2. libstdc++6:amd64 is selected for install because:
+      1. apt:amd64 is selected for install
+      2. apt:amd64 Depends libstdc++6 (>= 13.1)
+SIMULATION_EXIT 100

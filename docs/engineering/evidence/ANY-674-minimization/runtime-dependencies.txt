@@ -1,0 +1,444 @@
+adduser	3.152	adduser	3.152	no	no	important	passwd (>= 1:4.17.2-5)
+apt	3.0.4	apt	3.0.4	no	no	required	base-passwd (>= 3.6.1) | adduser, sqv (>= 1.3.0), libapt-pkg7.0 (>= 3.0.4), debian-archive-keyring, libc6 (>= 2.38), libgcc-s1 (>= 3.0), libseccomp2 (>= 2.4.2), libssl3t64 (>= 3.0.0), libstdc++6 (>= 13.1), libsystemd0
+base-files	13.8+deb13u7	base-files	13.8+deb13u7	yes	no	required		awk
+base-passwd	3.6.7	base-passwd	3.6.7	yes	no	required	libc6 (>= 2.34), libdebconfclient0 (>= 0.145), libselinux1 (>= 3.1~)
+bash	5.2.37-2+b10	bash	5.2.37-2	yes	no	required	base-files (>= 2.1.12), debianutils (>= 5.6-0.1)	libc6 (>= 2.38), libtinfo6 (>= 6)
+bsdutils	1:2.41.5-0+deb13u1	util-linux	2.41.5-0+deb13u1	yes	no	required		libc6 (>= 2.38), libsystemd0 (>= 254)
+ca-certificates	20250419+deb13u1	ca-certificates	20250419+deb13u1	no	no	standard	openssl (>= 1.1.1), debconf (>= 0.5) | debconf-2.0
+coreutils	9.7-3	coreutils	9.7-3	yes	no	required		libacl1 (>= 2.2.23), libattr1 (>= 1:2.4.48), libc6 (>= 2.38), libcap2 (>= 1:2.10), libgmp10 (>= 2:6.3.0+dfsg), libselinux1 (>= 3.1~), libssl3t64 (>= 3.0.0), libsystemd0 (>= 254)
+dash	0.5.12-12	dash	0.5.12-12	yes	no	required	debianutils (>= 5.6-0.1)	libc6 (>= 2.38)
+debconf	1.5.91	debconf	1.5.91	no	no	required
+debian-archive-keyring	2025.1	debian-archive-keyring	2025.1	no	no	important
+debianutils	5.23.2	debianutils	5.23.2	yes	no	required		libc6 (>= 2.38)
+diffutils	1:3.10-4	diffutils	1:3.10-4	yes	no	required		libc6 (>= 2.38)
+dpkg	1.22.22	dpkg	1.22.22	yes	no	required	tar (>= 1.28-1)	libbz2-1.0, libc6 (>= 2.38), liblzma5 (>= 5.4.0), libmd0 (>= 0.0.0), libselinux1 (>= 3.1~), libzstd1 (>= 1.5.5), zlib1g (>= 1:1.1.4)
+findutils	4.10.0-3	findutils	4.10.0-3	yes	no	required		libc6 (>= 2.38), libselinux1 (>= 3.1~)
+gcc-14-base:amd64	14.2.0-19	gcc-14	14.2.0-19	no	no	optional
+grep	3.11-4	grep	3.11-4	yes	no	required		libc6 (>= 2.34), libpcre2-8-0 (>= 10.32)
+gzip	1.13-1+deb13u1	gzip	1.13-1+deb13u1	yes	no	required		libc6 (>= 2.38)
+hostname	3.25	hostname	3.25	yes	no	required		libc6 (>= 2.34)
+init-system-helpers	1.69~deb13u1	init-system-helpers	1.69~deb13u1	yes	no	required
+libacl1:amd64	2.3.2-2+b1	acl	2.3.2-2	no	no	optional	libc6 (>= 2.38)
+libapt-pkg7.0:amd64	3.0.4	apt	3.0.4	no	no	optional	libbz2-1.0, libc6 (>= 2.38), libgcc-s1 (>= 3.0), liblz4-1 (>= 0.0~r127), liblzma5 (>= 5.1.1alpha+20120614), libssl3t64 (>= 3.0.0), libstdc++6 (>= 14), libsystemd0 (>= 221), libudev1 (>= 183), libxxhash0 (>= 0.8), libzstd1 (>= 1.5.5), zlib1g (>= 1:1.2.2.3)
+libattr1:amd64	1:2.5.2-3	attr	1:2.5.2-3	no	no	optional	libc6 (>= 2.4)
+libaudit-common	1:4.0.2-2+deb13u1	audit	1:4.0.2-2+deb13u1	no	no	optional
+libaudit1:amd64	1:4.0.2-2+deb13u1	audit	1:4.0.2-2+deb13u1	no	no	optional	libaudit-common (>= 1:4.0.2-2+deb13u1), libc6 (>= 2.38), libcap-ng0 (>= 0.7.9)
+libblkid1:amd64	2.41.5-0+deb13u1	util-linux	2.41.5-0+deb13u1	no	no	optional	libc6 (>= 2.38)
+libbsd0:amd64	0.12.2-2	libbsd	0.12.2-2	no	no	optional	libc6 (>= 2.38), libmd0 (>= 1.0.3-2)
+libbz2-1.0:amd64	1.0.8-6	bzip2	1.0.8-6	no	no	optional	libc6 (>= 2.4)
+libc-bin	2.41-12+deb13u4	glibc	2.41-12+deb13u4	yes	no	required	libc6 (>> 2.41), libc6 (<< 2.42)
+libc6:amd64	2.41-12+deb13u4	glibc	2.41-12+deb13u4	no	no	optional	libgcc-s1
+libcap-ng0:amd64	0.8.5-4+b1	libcap-ng	0.8.5-4	no	no	optional	libc6 (>= 2.38)
+libcap2:amd64	1:2.75-10+deb13u1+b3	libcap2	1:2.75-10+deb13u1	no	no	optional	libc6 (>= 2.38)
+libcrypt1:amd64	1:4.4.38-1	libxcrypt	1:4.4.38-1	no	no	optional	libc6 (>= 2.38)
+libdb5.3t64:amd64	5.3.28+dfsg2-9	db5.3	5.3.28+dfsg2-9	no	no	optional	libc6 (>= 2.38)
+libdebconfclient0:amd64	0.280	cdebconf	0.280	no	no	optional	libc6 (>= 2.38)
+libffi8:amd64	3.4.8-2	libffi	3.4.8-2	no	no	optional	libc6 (>= 2.34)
+libgcc-s1:amd64	14.2.0-19	gcc-14	14.2.0-19	no	yes	optional	gcc-14-base (= 14.2.0-19), libc6 (>= 2.35)
+libgdbm6t64:amd64	1.24-2	gdbm	1.24-2	no	no	optional	libc6 (>= 2.34)
+libgmp10:amd64	2:6.3.0+dfsg-3	gmp	2:6.3.0+dfsg-3	no	no	optional	libc6 (>= 2.38)
+libhogweed6t64:amd64	3.10.1-1	nettle	3.10.1-1	no	no	optional	libc6 (>= 2.14), libgmp10 (>= 2:6.3.0+dfsg), libnettle8t64
+liblastlog2-2:amd64	2.41.5-0+deb13u1	util-linux	2.41.5-0+deb13u1	no	no	optional	libc6 (>= 2.38), libsqlite3-0 (>= 3.5.9)
+liblz4-1:amd64	1.10.0-4	lz4	1.10.0-4	no	no	optional	libc6 (>= 2.14), libxxhash0 (>= 0.6.5)
+liblzma5:amd64	5.8.1-1+deb13u2	xz-utils	5.8.1-1+deb13u2	no	no	optional	libc6 (>= 2.34)
+libmd0:amd64	1.1.0-2+b1	libmd	1.1.0-2	no	no	optional	libc6 (>= 2.33)
+libmount1:amd64	2.41.5-0+deb13u1	util-linux	2.41.5-0+deb13u1	no	no	optional	libblkid1 (= 2.41.5-0+deb13u1), libc6 (>= 2.38), libselinux1 (>= 3.1~)
+libncursesw6:amd64	6.5+20250216-2	ncurses	6.5+20250216-2	no	no	optional	libtinfo6 (= 6.5+20250216-2), libc6 (>= 2.34)
+libnettle8t64:amd64	3.10.1-1	nettle	3.10.1-1	no	no	optional	libc6 (>= 2.17)
+libpam-modules:amd64	1.7.0-5	pam	1.7.0-5	no	no	required		libaudit1 (>= 1:2.2.1), libc6 (>= 2.38), libcrypt1 (>= 1:4.3.0), libdb5.3t64, libpam0g (>= 1.4.1), libselinux1 (>= 3.1~), libsystemd0 (>= 254), debconf (>= 0.5) | debconf-2.0, libpam-modules-bin (= 1.7.0-5)
+libpam-modules-bin	1.7.0-5	pam	1.7.0-5	no	no	required	libaudit1 (>= 1:2.2.1), libc6 (>= 2.38), libcrypt1 (>= 1:4.3.0), libpam0g (>= 0.99.7.1), libselinux1 (>= 3.1~), libsystemd0 (>= 254)
+libpam-runtime	1.7.0-5	pam	1.7.0-5	no	no	required	debconf (>= 0.5) | debconf-2.0, debconf (>= 1.5.19) | cdebconf, libpam-modules (>= 1.0.1-6)
+libpam0g:amd64	1.7.0-5	pam	1.7.0-5	no	no	optional	libaudit1 (>= 1:2.2.1), libc6 (>= 2.34), debconf (>= 0.5) | debconf-2.0
+libpcre2-8-0:amd64	10.46-1~deb13u3	pcre2	10.46-1~deb13u3	no	no	optional	libc6 (>= 2.34)
+libreadline8t64:amd64	8.2-6	readline	8.2-6	no	no	optional	readline-common, libc6 (>= 2.38), libtinfo6 (>= 6)
+libseccomp2:amd64	2.6.0-2	libseccomp	2.6.0-2	no	no	optional	libc6 (>= 2.14)
+libselinux1:amd64	3.8.1-1	libselinux	3.8.1-1	no	no	optional	libc6 (>= 2.38), libpcre2-8-0 (>= 10.22)
+libsemanage-common	3.8.1-1	libsemanage	3.8.1-1	no	no	optional
+libsemanage2:amd64	3.8.1-1	libsemanage	3.8.1-1	no	no	optional	libsemanage-common (>= 3.8.1-1), libaudit1 (>= 1:2.2.1), libbz2-1.0, libc6 (>= 2.38), libselinux1 (>= 3.8.1), libsepol2 (>= 3.8.1)
+libsepol2:amd64	3.8.1-1	libsepol	3.8.1-1	no	no	optional	libc6 (>= 2.38)
+libsmartcols1:amd64	2.41.5-0+deb13u1	util-linux	2.41.5-0+deb13u1	no	no	optional	libc6 (>= 2.38)
+libsqlite3-0:amd64	3.46.1-7+deb13u2	sqlite3	3.46.1-7+deb13u2	no	no	optional	libc6 (>= 2.38)
+libssl3t64:amd64	3.5.7-1~deb13u3	openssl	3.5.7-1~deb13u3	no	no	optional	libc6 (>= 2.38), libzstd1 (>= 1.5.5), zlib1g (>= 1:1.1.4), openssl-provider-legacy
+libstdc++6:amd64	14.2.0-19	gcc-14	14.2.0-19	no	no	optional	gcc-14-base (= 14.2.0-19), libc6 (>= 2.38), libgcc-s1 (>= 4.3)
+libsystemd0:amd64	257.13-1~deb13u1	systemd	257.13-1~deb13u1	no	no	optional	libc6 (>= 2.39), libcap2 (>= 1:2.10)
+libtinfo6:amd64	6.5+20250216-2	ncurses	6.5+20250216-2	no	no	optional	libc6 (>= 2.34)
+libudev1:amd64	257.13-1~deb13u1	systemd	257.13-1~deb13u1	no	no	optional	libc6 (>= 2.38), libcap2 (>= 1:2.10)
+libuuid1:amd64	2.41.5-0+deb13u1	util-linux	2.41.5-0+deb13u1	no	no	optional	libc6 (>= 2.38)
+libxxhash0:amd64	0.8.3-2	xxhash	0.8.3-2	no	no	optional	libc6 (>= 2.14)
+libzstd1:amd64	1.5.7+dfsg-1	libzstd	1.5.7+dfsg-1	no	no	optional	libc6 (>= 2.34)
+login	1:4.16.0-2+really2.41.5-0+deb13u1	util-linux	2.41.5-0+deb13u1	no	yes	required	libpam-modules, libpam-runtime, libaudit1 (>= 1:2.2.1), libc6 (>= 2.38), libcrypt1 (>= 1:4.1.0), libpam0g (>= 0.99.7.1)	login.defs (>= 1:4.16.0-1~)
+login.defs	1:4.17.4-2	shadow	1:4.17.4-2	no	no	required
+mawk	1.3.4.20250131-1	mawk	1.3.4.20250131-1	no	no	required	libc6 (>= 2.38)
+mount	2.41.5-0+deb13u1	util-linux	2.41.5-0+deb13u1	no	no	required		libblkid1 (= 2.41.5-0+deb13u1), libc6 (>= 2.38), libmount1 (= 2.41.5-0+deb13u1), libselinux1 (>= 3.1~), libsmartcols1 (= 2.41.5-0+deb13u1)
+ncurses-base	6.5+20250216-2	ncurses	6.5+20250216-2	yes	no	required
+ncurses-bin	6.5+20250216-2	ncurses	6.5+20250216-2	yes	no	required		libc6 (>= 2.34), libtinfo6 (>= 6.4+20230603)
+netbase	6.5	netbase	6.5	no	no	important
+openssl	3.5.7-1~deb13u3	openssl	3.5.7-1~deb13u3	no	no	optional	libc6 (>= 2.34), libssl3t64 (>= 3.5.0)
+openssl-provider-legacy	3.5.7-1~deb13u3	openssl	3.5.7-1~deb13u3	no	no	optional	libc6 (>= 2.14), libssl3t64 (>= 3.0.3)
+passwd	1:4.17.4-2	shadow	1:4.17.4-2	no	no	required	base-passwd (>= 3.6.4), libpam-modules, login.defs, libacl1 (>= 2.2.23), libattr1 (>= 1:2.4.44), libaudit1 (>= 1:2.2.1), libbsd0 (>= 0.11.0), libc6 (>= 2.38), libcrypt1 (>= 1:4.1.0), libpam0g (>= 0.99.7.1), libselinux1 (>= 3.1~), libsemanage2 (>= 2.0.32)
+perl-base	5.40.1-6+deb13u1	perl	5.40.1-6+deb13u1	yes	no	required		libc6 (>= 2.38), libcrypt1 (>= 1:4.1.0)
+readline-common	8.2-6	readline	8.2-6	no	no	optional
+sed	4.9-2+deb13u1	sed	4.9-2+deb13u1	yes	no	required		libacl1 (>= 2.2.23), libc6 (>= 2.38), libselinux1 (>= 3.1~)
+sqv	1.3.0-3+b2	rust-sequoia-sqv	1.3.0-3	no	no	optional	libc6 (>= 2.38), libgcc-s1 (>= 4.2), libgmp10 (>= 2:6.3.0+dfsg), libhogweed6t64, libnettle8t64 (>= 3.9~)
+sysvinit-utils	3.14-4	sysvinit	3.14-4	yes	no	required	libc6 (>= 2.38)
+tar	1.35+dfsg-3.1	tar	1.35+dfsg-3.1	yes	no	required		libacl1 (>= 2.2.23), libc6 (>= 2.38), libselinux1 (>= 3.1~)
+tzdata	2026f-0+deb13u1	tzdata	2026f-0+deb13u1	no	no	required	debconf (>= 0.5) | debconf-2.0
+util-linux	2.41.5-0+deb13u1	util-linux	2.41.5-0+deb13u1	yes	no	required		libpam-modules, libpam-runtime, libblkid1 (= 2.41.5-0+deb13u1), libc6 (>= 2.41), libcap-ng0 (>= 0.7.9), libcrypt1 (>= 1:4.1.0), liblastlog2-2 (= 2.41.5-0+deb13u1), libmount1 (= 2.41.5-0+deb13u1), libpam0g (>= 0.99.7.1), libselinux1 (>= 3.1~), libsmartcols1 (= 2.41.5-0+deb13u1), libsystemd0, libtinfo6 (>= 6), libudev1 (>= 183), libuuid1 (= 2.41.5-0+deb13u1)
+zlib1g:amd64	1:1.3.dfsg+really1.3.1-1+deb13u1	zlib	1:1.3.dfsg+really1.3.1-1+deb13u1	no	no	required	libc6 (>= 2.14)
+
+PYTHON NATIVE LINKS
+/usr/local/bin/python3.12:
+	linux-vdso.so.1 (0x00007ffc63683000)
+	libpython3.12.so.1.0 => /usr/local/bin/../lib/libpython3.12.so.1.0 (0x0000724b937a4000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x0000724b935ae000)
+	libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x0000724b934be000)
+	/lib64/ld-linux-x86-64.so.2 (0x0000724b93e00000)
+/usr/local/lib/python3.12/lib-dynload/_asyncio.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffd05de6000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007990f03c6000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007990f05cf000)
+/usr/local/lib/python3.12/lib-dynload/_bisect.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffe01dd5000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x0000792b7266a000)
+	/lib64/ld-linux-x86-64.so.2 (0x0000792b72869000)
+/usr/local/lib/python3.12/lib-dynload/_blake2.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffea57b0000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x0000756ec16ac000)
+	/lib64/ld-linux-x86-64.so.2 (0x0000756ec18b1000)
+/usr/local/lib/python3.12/lib-dynload/_bz2.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffcdbcff000)
+	libbz2.so.1.0 => /lib/x86_64-linux-gnu/libbz2.so.1.0 (0x000077ba5254c000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000077ba52358000)
+	/lib64/ld-linux-x86-64.so.2 (0x000077ba5256b000)
+/usr/local/lib/python3.12/lib-dynload/_codecs_cn.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007fff633c4000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x0000771812247000)
+	/lib64/ld-linux-x86-64.so.2 (0x0000771812466000)
+/usr/local/lib/python3.12/lib-dynload/_codecs_hk.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffea85fc000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000077579d6c3000)
+	/lib64/ld-linux-x86-64.so.2 (0x000077579d8e4000)
+/usr/local/lib/python3.12/lib-dynload/_codecs_iso2022.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffc4e3c9000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007babdfc01000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007babdfe01000)
+/usr/local/lib/python3.12/lib-dynload/_codecs_jp.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffc928b4000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007b436345c000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007b4363697000)
+/usr/local/lib/python3.12/lib-dynload/_codecs_kr.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffc1f08d000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000077208fc73000)
+	/lib64/ld-linux-x86-64.so.2 (0x000077208fe8f000)
+/usr/local/lib/python3.12/lib-dynload/_codecs_tw.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffcdab65000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007a8f6a9a3000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007a8f6abb8000)
+/usr/local/lib/python3.12/lib-dynload/_contextvars.cpython-312-x86_64-linux-gnu.so:
+	statically linked
+/usr/local/lib/python3.12/lib-dynload/_crypt.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffecd9e7000)
+	libcrypt.so.1 => /lib/x86_64-linux-gnu/libcrypt.so.1 (0x00007f1112692000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f111249e000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007f11126d7000)
+/usr/local/lib/python3.12/lib-dynload/_csv.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffebbf39000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007ef209da6000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007ef209fa8000)
+/usr/local/lib/python3.12/lib-dynload/_ctypes.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffe99b98000)
+	libffi.so.8 => /lib/x86_64-linux-gnu/libffi.so.8 (0x00007234ddedb000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007234ddce7000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007234ddf0d000)
+/usr/local/lib/python3.12/lib-dynload/_ctypes_test.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffeb59ce000)
+	libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007618696f5000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x0000761869501000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007618697f0000)
+/usr/local/lib/python3.12/lib-dynload/_curses.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffe9f7f5000)
+	libncursesw.so.6 => /lib/x86_64-linux-gnu/libncursesw.so.6 (0x00007dd104452000)
+	libtinfo.so.6 => /lib/x86_64-linux-gnu/libtinfo.so.6 (0x00007dd10441c000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007dd104228000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007dd1044b0000)
+/usr/local/lib/python3.12/lib-dynload/_curses_panel.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffc573df000)
+	libpanelw.so.6 => /lib/x86_64-linux-gnu/libpanelw.so.6 (0x00007a29cffbd000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007a29cfdc9000)
+	libncursesw.so.6 => /lib/x86_64-linux-gnu/libncursesw.so.6 (0x00007a29cfd8f000)
+	libtinfo.so.6 => /lib/x86_64-linux-gnu/libtinfo.so.6 (0x00007a29cfd59000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007a29cffcf000)
+/usr/local/lib/python3.12/lib-dynload/_datetime.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffd72fb8000)
+	libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x000077a3388b8000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000077a3386c4000)
+	/lib64/ld-linux-x86-64.so.2 (0x000077a3389c7000)
+/usr/local/lib/python3.12/lib-dynload/_dbm.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffc03913000)
+	libdb-5.3.so => /lib/x86_64-linux-gnu/libdb-5.3.so (0x00007fa764ba2000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007fa7649ae000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007fa764d75000)
+/usr/local/lib/python3.12/lib-dynload/_decimal.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffc045bb000)
+	libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x000071803f3bf000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000071803f1cb000)
+	/lib64/ld-linux-x86-64.so.2 (0x000071803f4fd000)
+/usr/local/lib/python3.12/lib-dynload/_elementtree.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffcdf5dc000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007ab811e8b000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007ab812098000)
+/usr/local/lib/python3.12/lib-dynload/_gdbm.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffc75964000)
+	libgdbm.so.6 => /lib/x86_64-linux-gnu/libgdbm.so.6 (0x000070bb5f6aa000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000070bb5f4b6000)
+	/lib64/ld-linux-x86-64.so.2 (0x000070bb5f6ca000)
+/usr/local/lib/python3.12/lib-dynload/_hashlib.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffe37b73000)
+	libcrypto.so.3 => /lib/x86_64-linux-gnu/libcrypto.so.3 (0x00007ec6cea2e000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007ec6ce83a000)
+	libz.so.1 => /lib/x86_64-linux-gnu/libz.so.1 (0x00007ec6ce81a000)
+	libzstd.so.1 => /lib/x86_64-linux-gnu/libzstd.so.1 (0x00007ec6ce750000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007ec6cf07e000)
+/usr/local/lib/python3.12/lib-dynload/_heapq.cpython-312-x86_64-linux-gnu.so:
+	statically linked
+/usr/local/lib/python3.12/lib-dynload/_json.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffee10d5000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x0000771184860000)
+	/lib64/ld-linux-x86-64.so.2 (0x0000771184a63000)
+/usr/local/lib/python3.12/lib-dynload/_lsprof.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffeeaf92000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x0000721d2446d000)
+	/lib64/ld-linux-x86-64.so.2 (0x0000721d2466d000)
+/usr/local/lib/python3.12/lib-dynload/_lzma.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffc26fe8000)
+	liblzma.so.5 => /lib/x86_64-linux-gnu/liblzma.so.5 (0x000077290eb2e000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000077290e93a000)
+	/lib64/ld-linux-x86-64.so.2 (0x000077290eb6f000)
+/usr/local/lib/python3.12/lib-dynload/_md5.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffd49534000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007c5935013000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007c5935212000)
+/usr/local/lib/python3.12/lib-dynload/_multibytecodec.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffcf738b000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x0000794677842000)
+	/lib64/ld-linux-x86-64.so.2 (0x0000794677a46000)
+/usr/local/lib/python3.12/lib-dynload/_multiprocessing.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007fffa4b01000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007a105f8bc000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007a105fabb000)
+/usr/local/lib/python3.12/lib-dynload/_opcode.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffe2d77d000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000072a9ee98a000)
+	/lib64/ld-linux-x86-64.so.2 (0x000072a9eeb87000)
+/usr/local/lib/python3.12/lib-dynload/_pickle.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffcd2df0000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007ad3676a7000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007ad3678bd000)
+/usr/local/lib/python3.12/lib-dynload/_posixshmem.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffda7d16000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000078ea7f823000)
+	/lib64/ld-linux-x86-64.so.2 (0x000078ea7fa20000)
+/usr/local/lib/python3.12/lib-dynload/_posixsubprocess.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffc7f273000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007ff6b12ae000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007ff6b14ae000)
+/usr/local/lib/python3.12/lib-dynload/_queue.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffcdbff1000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007d8b02175000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007d8b02373000)
+/usr/local/lib/python3.12/lib-dynload/_random.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffd9d3f4000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x0000761a75fcf000)
+	/lib64/ld-linux-x86-64.so.2 (0x0000761a761ce000)
+/usr/local/lib/python3.12/lib-dynload/_sha1.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007fff4b6e7000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007ddb2ec51000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007ddb2ee50000)
+/usr/local/lib/python3.12/lib-dynload/_sha2.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffed3be9000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000076edcd25e000)
+	/lib64/ld-linux-x86-64.so.2 (0x000076edcd46a000)
+/usr/local/lib/python3.12/lib-dynload/_sha3.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffecc752000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000074123fa6e000)
+	/lib64/ld-linux-x86-64.so.2 (0x000074123fc6f000)
+/usr/local/lib/python3.12/lib-dynload/_socket.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffe2f3e2000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007a1677126000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007a1677338000)
+/usr/local/lib/python3.12/lib-dynload/_sqlite3.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffe4852f000)
+	libsqlite3.so.0 => /lib/x86_64-linux-gnu/libsqlite3.so.0 (0x00007aa56fd28000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007aa56fb34000)
+	libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007aa56fa44000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007aa56fecc000)
+/usr/local/lib/python3.12/lib-dynload/_ssl.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffee41f1000)
+	libssl.so.3 => /lib/x86_64-linux-gnu/libssl.so.3 (0x00007e4f1cfd0000)
+	libcrypto.so.3 => /lib/x86_64-linux-gnu/libcrypto.so.3 (0x00007e4f1c995000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007e4f1c7a1000)
+	libz.so.1 => /lib/x86_64-linux-gnu/libz.so.1 (0x00007e4f1c781000)
+	libzstd.so.1 => /lib/x86_64-linux-gnu/libzstd.so.1 (0x00007e4f1c6b5000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007e4f1d119000)
+/usr/local/lib/python3.12/lib-dynload/_statistics.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffdac94c000)
+	libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007d79df133000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007d79def3f000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007d79df22c000)
+/usr/local/lib/python3.12/lib-dynload/_struct.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007fff329a6000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007b917f134000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007b917f339000)
+/usr/local/lib/python3.12/lib-dynload/_testbuffer.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffc23db8000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x0000703aa2d01000)
+	/lib64/ld-linux-x86-64.so.2 (0x0000703aa2f06000)
+/usr/local/lib/python3.12/lib-dynload/_testcapi.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffe14f99000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007ed2e139f000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007ed2e15f1000)
+/usr/local/lib/python3.12/lib-dynload/_testclinic.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffe96b68000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f517d68e000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007f517d895000)
+/usr/local/lib/python3.12/lib-dynload/_testimportmultiple.cpython-312-x86_64-linux-gnu.so:
+	statically linked
+/usr/local/lib/python3.12/lib-dynload/_testinternalcapi.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffc5d194000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000073c8ef17c000)
+	/lib64/ld-linux-x86-64.so.2 (0x000073c8ef37e000)
+/usr/local/lib/python3.12/lib-dynload/_testmultiphase.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffc9bb33000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007fee468c2000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007fee46ac3000)
+/usr/local/lib/python3.12/lib-dynload/_testsinglephase.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffcd8b95000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x0000792d6b180000)
+	/lib64/ld-linux-x86-64.so.2 (0x0000792d6b37d000)
+/usr/local/lib/python3.12/lib-dynload/_tkinter.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007fff93ee5000)
+	libtk8.6.so => not found
+	libtcl8.6.so => not found
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007d0a3da1d000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007d0a3dc24000)
+/usr/local/lib/python3.12/lib-dynload/_uuid.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffe7e979000)
+	libuuid.so.1 => /lib/x86_64-linux-gnu/libuuid.so.1 (0x00007f682bbbc000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f682b9c8000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007f682bbcf000)
+/usr/local/lib/python3.12/lib-dynload/_xxinterpchannels.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007fff1337f000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007caf4c32d000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007caf4c52e000)
+/usr/local/lib/python3.12/lib-dynload/_xxsubinterpreters.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffcfd1fb000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007eb6db5aa000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007eb6db7a9000)
+/usr/local/lib/python3.12/lib-dynload/_xxtestfuzz.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007fff08ff2000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000079f28ab51000)
+	/lib64/ld-linux-x86-64.so.2 (0x000079f28ad4f000)
+/usr/local/lib/python3.12/lib-dynload/_zoneinfo.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffd81bcf000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007302f7db0000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007302f7fb2000)
+/usr/local/lib/python3.12/lib-dynload/array.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffdb0baf000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000074d575a9f000)
+	/lib64/ld-linux-x86-64.so.2 (0x000074d575ca8000)
+/usr/local/lib/python3.12/lib-dynload/audioop.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007fffb6a7f000)
+	libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x000079e76dd27000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000079e76db33000)
+	/lib64/ld-linux-x86-64.so.2 (0x000079e76de26000)
+/usr/local/lib/python3.12/lib-dynload/binascii.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffe0d6c1000)
+	libz.so.1 => /lib/x86_64-linux-gnu/libz.so.1 (0x0000780779347000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x0000780779153000)
+	/lib64/ld-linux-x86-64.so.2 (0x0000780779374000)
+/usr/local/lib/python3.12/lib-dynload/cmath.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffca57e8000)
+	libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007b1620609000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007b1620415000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007b162070a000)
+/usr/local/lib/python3.12/lib-dynload/fcntl.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffc995f0000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007e3cb11cb000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007e3cb13ca000)
+/usr/local/lib/python3.12/lib-dynload/grp.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffec6cc8000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000074e8e27b4000)
+	/lib64/ld-linux-x86-64.so.2 (0x000074e8e29b1000)
+/usr/local/lib/python3.12/lib-dynload/math.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007fffbc15a000)
+	libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007b09d9192000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007b09d8f9e000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007b09d9298000)
+/usr/local/lib/python3.12/lib-dynload/mmap.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007fffd0a99000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000070105b7ae000)
+	/lib64/ld-linux-x86-64.so.2 (0x000070105b9af000)
+/usr/local/lib/python3.12/lib-dynload/ossaudiodev.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffcc9355000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000073bd34429000)
+	/lib64/ld-linux-x86-64.so.2 (0x000073bd3462a000)
+/usr/local/lib/python3.12/lib-dynload/pyexpat.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffeae2b1000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x0000765721389000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007657215bb000)
+/usr/local/lib/python3.12/lib-dynload/readline.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffe11966000)
+	libreadline.so.8 => /lib/x86_64-linux-gnu/libreadline.so.8 (0x0000740849714000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x0000740849520000)
+	libtinfo.so.6 => /lib/x86_64-linux-gnu/libtinfo.so.6 (0x00007408494ea000)
+	/lib64/ld-linux-x86-64.so.2 (0x000074084977c000)
+/usr/local/lib/python3.12/lib-dynload/resource.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007fff0cf40000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007261b3b92000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007261b3d90000)
+/usr/local/lib/python3.12/lib-dynload/select.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffecdb9d000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f14c31d9000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007f14c33da000)
+/usr/local/lib/python3.12/lib-dynload/spwd.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007fff2bbfb000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007bbd7389c000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007bbd73a99000)
+/usr/local/lib/python3.12/lib-dynload/syslog.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007fff212ea000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x000072f0ecf48000)
+	/lib64/ld-linux-x86-64.so.2 (0x000072f0ed145000)
+/usr/local/lib/python3.12/lib-dynload/termios.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffd3649c000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007cc81dfaf000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007cc81e1b1000)
+/usr/local/lib/python3.12/lib-dynload/unicodedata.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffe99e3c000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x0000746e57c2c000)
+	/lib64/ld-linux-x86-64.so.2 (0x0000746e57f39000)
+/usr/local/lib/python3.12/lib-dynload/xxlimited.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007ffd28539000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x0000760ae163f000)
+	/lib64/ld-linux-x86-64.so.2 (0x0000760ae183c000)
+/usr/local/lib/python3.12/lib-dynload/xxlimited_35.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007fffd49b7000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007787b33b2000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007787b35af000)
+/usr/local/lib/python3.12/lib-dynload/xxsubtype.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007fff865f8000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007943b6bac000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007943b6da9000)
+/usr/local/lib/python3.12/lib-dynload/zlib.cpython-312-x86_64-linux-gnu.so:
+	linux-vdso.so.1 (0x00007fff10e2d000)
+	libz.so.1 => /lib/x86_64-linux-gnu/libz.so.1 (0x00007af093192000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007af092f9e000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007af0931c3000)
+
+ACCOUNT/SHELL OWNERS
+passwd: /usr/sbin/useradd
+passwd: /usr/sbin/groupadd
+dash: /usr/bin/sh
+coreutils: /usr/bin/id
+util-linux: /usr/bin/su
+util-linux: /usr/sbin/sulogin
+bash: /usr/bin/bash

@@ -1,0 +1,58 @@
+Get:1 http://deb.debian.org/debian trixie-backports InRelease [54.0 kB]
+Get:2 http://deb.debian.org/debian trixie InRelease [140 kB]
+Get:3 http://deb.debian.org/debian trixie-updates InRelease [47.3 kB]
+Get:4 http://deb.debian.org/debian-security trixie-security InRelease [43.4 kB]
+Get:5 http://deb.debian.org/debian trixie-backports/main amd64 Packages [310 kB]
+Get:6 http://deb.debian.org/debian trixie/main amd64 Packages [9678 kB]
+Get:7 http://deb.debian.org/debian trixie-updates/main amd64 Packages [1108 B]
+Get:8 http://deb.debian.org/debian-security trixie-security/main amd64 Packages [306 kB]
+Fetched 10.6 MB in 1min 42s (103 kB/s)
+Reading package lists...
+util-linux:
+  Installed: 2.41.5-0+deb13u1
+  Candidate: 2.41.5-0+deb13u1
+  Version table:
+ *** 2.41.5-0+deb13u1 500
+        500 http://deb.debian.org/debian trixie/main amd64 Packages
+        500 http://deb.debian.org/debian-security trixie-security/main amd64 Packages
+        100 /var/lib/dpkg/status
+libacl1:
+  Installed: 2.3.2-2+b1
+  Candidate: 2.3.2-2+b1
+  Version table:
+ *** 2.3.2-2+b1 500
+        500 http://deb.debian.org/debian trixie/main amd64 Packages
+        100 /var/lib/dpkg/status
+ncurses-bin:
+  Installed: 6.5+20250216-2
+  Candidate: 6.5+20250216-2
+  Version table:
+ *** 6.5+20250216-2 500
+        500 http://deb.debian.org/debian trixie/main amd64 Packages
+        100 /var/lib/dpkg/status
+libsqlite3-0:
+  Installed: 3.46.1-7+deb13u2
+  Candidate: 3.46.1-7+deb13u2
+  Version table:
+ *** 3.46.1-7+deb13u2 500
+        500 http://deb.debian.org/debian trixie/main amd64 Packages
+        100 /var/lib/dpkg/status
+perl-base:
+  Installed: 5.40.1-6+deb13u1
+  Candidate: 5.40.1-6+deb13u1
+  Version table:
+ *** 5.40.1-6+deb13u1 500
+        500 http://deb.debian.org/debian trixie/main amd64 Packages
+        100 /var/lib/dpkg/status
+libsystemd0:
+  Installed: 257.13-1~deb13u1
+  Candidate: 257.13-1~deb13u1
+  Version table:
+ *** 257.13-1~deb13u1 500
+        500 http://deb.debian.org/debian trixie/main amd64 Packages
+        100 /var/lib/dpkg/status
+Reading package lists...
+Building dependency tree...
+Reading state information...
+Calculating upgrade...
+0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.

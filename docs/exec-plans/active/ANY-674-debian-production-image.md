@@ -32,7 +32,7 @@ At reviewed head `7d805e02`, reproduced the 73/87 incomplete Debian version rows
 
 ## High-first remediation follow-up
 
-Status: active technical investigation; historical comparisons above remain unchanged. Residual acceptance is not the next step.
+Status: technical investigation and feasible minimization completed; historical comparisons above remain unchanged. Residual acceptance is not the next step.
 
 Starting source: `6dc518432a2bad5c8a48e6c646b7113e196f26b0`; freshly fetched origin/main `fb4d66bb0f9f24dbd18257366926697afaa46fe3`. Continue the existing PR179 branch. ANY-829 confirmed its builds/scans are finished; preserve its retained images/cache.
 
@@ -40,11 +40,15 @@ Starting source: `6dc518432a2bad5c8a48e6c646b7113e196f26b0`; freshly fetched ori
 Existing runtime verifier covers app user, util-linux version and liveness; production CI covers default startup, PostgreSQL readiness and Alembic. Existing dependency/deployment contracts preserve uv and no-dev dependencies. Missing guarantee: final runtime must not retain the selected build/account/mount tools after supported package removal. Extend actual-image verification and show the old image fails that new guard before implementing production removal. Keep dpkg metadata, essential/protected packages and native runtime dependencies.
 
 - [x] Group all 47 High records into 11 advisory IDs; inspect full versions, essential/protected flags, reverse dependencies and native links.
-- [ ] Refresh official vendor status and supported backport options for every High; probe vulnerable components and prerequisites rather than infer from imports alone.
-- [ ] Build unchanged current production source with fresh layers; retain separate immutable baseline and inventories/scans using the original DB copy.
-- [ ] Test a concrete non-forced, dependency-checked removal candidate. Reject essential/protected removal or broken native dependencies. Account creation precedes removal; development/build stages retain their tools.
-- [ ] Verify selected removals at package and owned-file level, complete native ELF links, retained TLS/compression/timezone/SQLite/curses behavior, default non-root startup/readiness and migration contracts.
-- [ ] Record remaining severities, meaningful alternatives and precise per-High next steps; preserve source-wide scanner findings where functionality remains or assessment is narrower than the advisory.
-- [ ] Run focused and canonical checks; inspect complete diff/current main; independently review and update existing PR179 without merge/deploy/status change.
+- [x] Refresh official vendor status and supported backport options for every High; probe vulnerable components and prerequisites rather than infer from imports alone.
+- [x] Build unchanged current production source with fresh layers; retain separate immutable baseline and inventories/scans using the original DB copy.
+- [x] Test a concrete non-forced, dependency-checked removal candidate. Reject essential/protected removal or broken native dependencies. Account creation precedes removal; development/build stages retain their tools.
+- [x] Verify selected removals at package and owned-file level, complete native ELF links, retained TLS/compression/timezone/SQLite/curses behavior, default non-root startup/readiness and migration contracts.
+- [x] Record remaining severities, meaningful alternatives and precise per-High next steps; preserve source-wide scanner findings where functionality remains or assessment is narrower than the advisory.
+- [x] Run focused and canonical checks; inspect complete diff/current main; independently review and update existing PR179 without merge/deploy/status change.
 
 New evidence will be a separately labeled follow-up, not a rewrite of the original zero-Debian-fix comparison. Pip remains ANY-742 scope. Broad distro/layout migrations or maintained source patches require a scoped decision before adoption.
+
+## Completed minimization follow-up
+
+Technical investigation and implementation complete at runtime source `f7728c18`; see [runtime minimization evidence](../../engineering/ANY-674-runtime-minimization.md). All follow-up investigation/build/removal/runtime/analysis/check/review steps above were executed. Sixteen verified nonessential packages removed; 218/96 becomes 207/95 records/IDs, with one Low advisory eliminated and no High ID falsely claimed fixed. Eleven High IDs individually analyzed; Bookworm and Alpine alternatives tested and rejected with concrete evidence. Historical results remain intact. `check:fast` and source CI pass; local full check has one unchanged cancellation timeout, with later stages unreached and isolated rerun passing. Supported Trixie/backports has no fixed candidates for retained High families. Unknown accountable owners remain explicit; the earlier blanket acceptance request is superseded by technical analysis and specific next actions. No acceptance, merge, deployment or issue-state change.
