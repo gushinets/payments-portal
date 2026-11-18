@@ -10,7 +10,7 @@ Remove GHSA-3g3m-2fjr-6pw4 and GHSA-g3hv-75wg-m249 from every affected npm chain
 
 Official advisories affect glob >=9.0.0 <=14.0.1 (fixed 14.0.2) and minimatch >=7.0.0 <11.0.1. Leave minimatch 3.1.5 compatible. Closed/unmerged Dependabot PR165 updates Sentry 11.4.0 to 11.11.0 and glob to14.0.4, but retains independent affected lint copies; reuse its parent selection rather than its generated lock diff.
 
-Prefer @sentry/nextjs 11.11.0 (bundler-plugins declares glob ^14.0.3), ESLint10.15.0 (declares minimatch ^11.0.5/config-array ^0.23.6), and refresh the existing eslint-config-next -> typescript-eslint range to8.73.0 (estree declares minimatch ^11.0.1). No override planned. Node24 meets all engines; TypeScript6.0.2 and ESLint10 meet typescript-eslint peers. Next16 meets Sentry peer range. Review native matcher/Bash edge changes through real lint and ordinary file selection, not adversarial patterns.
+Prefer @sentry/nextjs 11.11.0 (bundler-plugins declares glob ^14.0.3), ESLint10.15.0 (declares minimatch ^11.0.5/config-array ^0.23.6), and refresh the existing eslint-config-next -> typescript-eslint range to8.73.0 (estree declares minimatch ^11.0.1). No override planned. Node24 meets all engines; The parser's resolved TypeScript 5.9.3 API and ESLint 10 meet typescript-eslint peers. The web workspace separately retains @typescript/typescript6@6.0.2, which exports API 6.0.3. Next16 meets Sentry peer range. Review native matcher/Bash edge changes through real lint and ordinary file selection, not adversarial patterns.
 
 Existing coverage: boundary tests exercise ESLint configuration and architectural rules, SentryReporting has eight sanitization/init/reporting cases, all component tests cover UI, typecheck/build cover imports and tracing. next.config.mjs does not install withSentryConfig; preserve the actual existing integration. Check actual bundled Sentry APIs and production standalone runtime; mocked tests alone do not prove SDK compatibility.
 
@@ -188,8 +188,9 @@ Review baseline: `611716ff815292ff6936ffe3a3d1421986d7a7ed`.
 - [x] Establish failing regressions for the installed peer graph and literal
   glob selection with braces in a parent directory.
 - [x] Rename only the TypeScript 7 CLI alias, leaving the parser's optional native
-  backend absent; regenerate the lock through npm. Keep the TypeScript 6 parser
-  dependency and fixed matcher release lines unchanged.
+  backend absent; regenerate the lock through npm. Keep the parser's root
+  TypeScript 5.9.3 API resolution, the web TypeScript 6 compatibility wrapper
+  and the fixed matcher release lines unchanged.
 - [x] Use a relative literal glob with the fixture as cwd; retain a brace-containing
   fixture so the checkout-name failure remains covered.
 - [ ] Clean install, validate the full installed graph and TypeScript 7 CLI,
@@ -198,8 +199,10 @@ Review baseline: `611716ff815292ff6936ffe3a3d1421986d7a7ed`.
 Root cause: `@typescript/native` was a local alias for the CLI's stable TypeScript
 7.0.2 package. TypeScript ESLint 8.73.0 now recognizes that same package key as an
 optional native-parser backend requiring a 7.1 prerelease. The configured parser
-still uses the independent `typescript` alias for TypeScript 6.0.2. Keeping the
-CLI under a distinct local alias avoids falsely advertising the incompatible
+resolves the root `node_modules/typescript` API at version 5.9.3. Separately,
+the web workspace resolves `@typescript/typescript6@6.0.2`, whose exported API
+is version 6.0.3. Keeping the CLI under a distinct local alias avoids falsely
+advertising the incompatible
 optional backend; it does not relax validation or change the compiler release.
 
 The glob test used an escaped absolute path as a pattern. Its parent directories
@@ -219,8 +222,9 @@ Follow-up verification before publishing the fix:
   (npm exit 1 for no matching installed package), not an invalid peer graph.
 - Lock comparison PASS: the old compiler payload equals the new alias payload
   exactly; every other existing package version is unchanged. The compiler is
-  still 7.0.2, parser TypeScript 6.0.2, glob 14.0.6, six minimatch 11.0.9 copies
-  and unaffected minimatch 3.1.5. No prerelease compiler or override was added.
+  still 7.0.2; the ESLint parser API remains 5.9.3, and the web compatibility
+  wrapper remains 6.0.2 (exported API 6.0.3). Glob remains 14.0.6, with six
+  minimatch 11.0.9 copies and unaffected minimatch 3.1.5. No prerelease compiler or override was added.
 - Canonical web checks PASS: 41 boundary tests, 454 component tests, lint,
   TypeScript 7 CLI/project typechecking, generated freshness and architecture.
 - Standalone web build compiled/typechecked/generated 102 pages, then stopped
@@ -238,3 +242,36 @@ Follow-up verification before publishing the fix:
 The original scan/image evidence above remains attributed to its original
 source revisions. It is not presented as a new scan of this follow-up commit;
 automatic PR security/production/browser checks will run on the pushed fix.
+
+
+## Review correction: actual TypeScript API resolution
+
+The earlier wording incorrectly inferred the ESLint parser's API from the web
+workspace dependency declaration. Resolution was checked directly on executable
+source/lock revision `776061961612b9dfac803449d4c98ad77f63649c` while preparing
+this documentation-only correction:
+
+| Consumer | Actual version | Resolution from repository root |
+| --- | --- | --- |
+| Explicit typecheck CLI | 7.0.2 | `node_modules/@anytoolai/typescript-cli/bin/tsc` |
+| ESLint's configured TypeScript parser | 5.9.3 | `node_modules/typescript/lib/typescript.js` |
+| Web workspace API / Next.js API mode | 6.0.3 | `apps/web/node_modules/typescript/lib/typescript.js`; compatibility package `@typescript/typescript6@6.0.2` delegates to `@typescript/old@6.0.3` |
+
+Node resolves a dependency relative to its consuming module. The hoisted ESLint
+parser does not resolve the web workspace's nested compatibility alias. The
+root 5.9.3 API satisfies the parser's declared `>=4.8.4 <6.1.0` peer range.
+A fresh-process lintText check with the real web ESLint configuration returned
+zero errors and loaded only the root TypeScript 5.9.3 API.
+
+Reproduce the API paths from the repository root:
+
+```sh
+node -e "const {createRequire}=require('node:module'); const path=require('node:path'); const parser=createRequire(require.resolve('@typescript-eslint/parser/package.json')); const web=createRequire(path.resolve('apps/web/package.json')); console.log('ESLint parser',parser('typescript').version,parser.resolve('typescript')); console.log('web API',web('typescript').version,web.resolve('typescript'));"
+```
+
+This corrects evidence and consumer attribution only. No dependency, lockfile,
+configuration, executable source or compiler behavior changes. The decision to
+retain the TypeScript 7 CLI and the TypeScript 6 API needed by web tooling is
+unchanged; it does not claim that ESLint already consumes that TypeScript 6 API.
+The existing TypeScript 6.0.3 versus 7.0.2 CLI benchmark remains valid because it
+invoked those compiler entrypoints directly, independently of ESLint resolution.
