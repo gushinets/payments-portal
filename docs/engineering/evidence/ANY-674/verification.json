@@ -40,6 +40,10 @@
     {
       "command": "npm run docs:check with worktree venv in PATH",
       "result": "PASS"
+    },
+    {
+      "command": "npm run test:api:postgres",
+      "result": "FAILED: 953 passed, 226 failed, 25 errors, 6 skipped; all 1210 selected tests completed"
     }
   ]
 }
