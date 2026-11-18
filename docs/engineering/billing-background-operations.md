@@ -841,7 +841,7 @@ profiles do not acquire this interpretation. Original start/end and terminal
 boundary checks retain their precision; the cycle classifier still owns cadence,
 frozen-anchor conflicts and same/later-cycle identity. See the
 [ANY-864 implementation record](../exec-plans/active/ANY-864-implementation-plan.md)
-for regression evidence and outstanding live acceptance.
+for regression evidence and the scoped live LBX P03 acceptance result.
 
 ### Revision, outbox and current wire boundary
 

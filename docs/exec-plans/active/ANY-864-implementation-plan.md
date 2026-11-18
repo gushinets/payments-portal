@@ -1,9 +1,9 @@
 # ANY-864 — Monthly LBX instance-start allowance
 
-Status: local implementation complete; verification recorded below;
-live acceptance remains NOT_RUN.
+Status: implementation complete; live LBX P03 PASS on 2026-11-18 within the
+test scope recorded below.
 Issue: [ANY-864](https://linear.app/paveldik/issue/ANY-864).
-Baseline: `ece3590b857adb120182949dfe291116ca8ba510`; branch `ANY-864`.
+Current base: `2e6d3adc63bd3d633709f6a5168fc14fb7141cdc`; branch `ANY-864`.
 Original implementation baseline: `6e3d458a572b16a161db72f718cbcc0a5055739a`.
 
 ## Objective and authority
@@ -54,13 +54,45 @@ enablement is part of this fix.
   consent and accepted terms through ordinary purchase preparation; it does not
   preselect a primary or write paid flags. API reads make no source requests.
 - [x] Run relevant existing suites, canonical checks and inspect the final diff.
-  Latest local `npm run check`: PASS (2360 backend fast tests, 1215 PostgreSQL
-  tests, frontend checks and production build). Live LBX acceptance and browser
-  E2E remain NOT_RUN.
+  After the latest rebase: 2373 backend fast tests, 1215 PostgreSQL tests,
+  38 frontend boundary checks and 454 component tests PASS. Docs, generated drift,
+  architecture, Ruff, frontend lint and production build PASS. The canonical
+  command stopped at a blocked font download; the build and PostgreSQL stages
+  then passed separately. This is not one uninterrupted canonical PASS.
+  The full Portal browser E2E suite remains NOT_RUN locally.
+- [x] Verify live LBX P03 issuance and stable same-cycle reads on 2026-11-18,
+  with the exact source pin and test boundaries below.
 - [x] Record combined-branch evidence or its exact limitation.
   An isolated ANY-832 + ANY-766 + ANY-864 source combination passes 516 unit
   checks and all 96 selected PostgreSQL cases after fixture adaptations described
   below. The local real-HTTP Portal/Kernel monthly scenario also passes.
+
+## Live LBX P03 acceptance — 2026-11-18
+
+PASS on Portal `e2e8cead45b016e031b69790461a9916906f3e21`, real LBX 043:
+test customer **40**, agreement **57**, subscription **56**, tariff **33**.
+Ordinary purchase preparation retained the accepted SIMULATED terms; one
+user-authorized internal **100 RUB** credit (payment **29**) activated the test.
+
+- LBX returned `state=2`, `current_blocking=0`, raw starts
+  `2026-11-18 00:00:00` and date-only cycle bounds `2026-11-18`–`2026-12-17`.
+  The ordinary queue worker persisted `complete / COMPLETE_MATCH` and exactly
+  one `calendar:v1` allowance, ID `d9e133ef-f9f8-45a9-ba91-582ddbe4dd0f`.
+- Three authenticated `GET /api/paid-access` reads after reconciliation returned
+  HTTP 200, `evidence_complete=true`, revision **1** and the same allowance ID,
+  quantity **300** and immutable history. Raw observation fields stayed unchanged;
+  allowance UTC period/provider-cycle bounds remained `null`.
+- All **68** monthly calendar regressions PASS, including aligned epoch-sentinel
+  spellings, midnight variants, month-end/leap arithmetic and end/reanchor checks.
+
+Scope: real LBX/PostgreSQL, local FastAPI ASGI routes and ordinary worker ticks;
+Kernel manifest/metering terms explicitly SIMULATED, test clock budget 10 seconds.
+Live Kernel, daemon scheduling, full Portal browser E2E and production remain
+outside this proof. Test LBX records remain; owned local resources were cleaned up.
+
+Detailed local artifacts are retained under the ignored directory
+`.harness/qa/ANY-864/P03-20261118T021124Z-9d252e/`: `qa-run.json`, `summary.md`,
+paid-read/observation snapshots, source calendar, payment receipt and run logs.
 
 ## Compatibility evidence
 
