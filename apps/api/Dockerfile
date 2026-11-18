@@ -47,9 +47,17 @@ FROM base AS production
 
 COPY --from=production-dependencies /opt/api-venv /opt/api-venv
 
+# Create the runtime identity before removing build/account/mount tooling.
+# Keep essential/protected packages, dpkg metadata and native runtime libraries.
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /app --no-create-home app \
-    && install -d -o app -g app -m 0700 /run/payments-portal
+    && install -d -o app -g app -m 0700 /run/payments-portal \
+    && runtime_build_packages="apt libapt-pkg7.0 sqv debian-archive-keyring adduser passwd mount libbsd0 libhogweed6t64 libnettle8t64 liblz4-1 libxxhash0 libseccomp2 libsemanage2 libsemanage-common libsepol2" \
+    && for package in $runtime_build_packages; do \
+         test "$(dpkg-query -W -f='${Essential}:${Protected}' "$package")" = "no:no"; \
+       done \
+    && dpkg --purge $runtime_build_packages \
+    && test -z "$(dpkg --audit)"
 
 COPY apps/api/alembic.ini ./apps/api/alembic.ini
 COPY apps/api/alembic ./apps/api/alembic

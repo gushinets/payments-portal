@@ -29,3 +29,22 @@ Draft PR179; image remediation/evidence prepared. Human residual-owner assignmen
 
 ## Review follow-up
 At reviewed head `7d805e02`, reproduced the 73/87 incomplete Debian version rows and regenerated all 348 version fields from retained dpkg inventories; evidence hashes refreshed. P1 remains an acceptance blocker pending a real human decision; the explicit 96-ID scope and required fields are in docs/engineering/ANY-674-residual-risk-decision.md. No runtime, lock or policy change or new image claim.
+
+## High-first remediation follow-up
+
+Status: active technical investigation; historical comparisons above remain unchanged. Residual acceptance is not the next step.
+
+Starting source: `6dc518432a2bad5c8a48e6c646b7113e196f26b0`; freshly fetched origin/main `fb4d66bb0f9f24dbd18257366926697afaa46fe3`. Continue the existing PR179 branch. ANY-829 confirmed its builds/scans are finished; preserve its retained images/cache.
+
+### Coverage and candidate design
+Existing runtime verifier covers app user, util-linux version and liveness; production CI covers default startup, PostgreSQL readiness and Alembic. Existing dependency/deployment contracts preserve uv and no-dev dependencies. Missing guarantee: final runtime must not retain the selected build/account/mount tools after supported package removal. Extend actual-image verification and show the old image fails that new guard before implementing production removal. Keep dpkg metadata, essential/protected packages and native runtime dependencies.
+
+- [x] Group all 47 High records into 11 advisory IDs; inspect full versions, essential/protected flags, reverse dependencies and native links.
+- [ ] Refresh official vendor status and supported backport options for every High; probe vulnerable components and prerequisites rather than infer from imports alone.
+- [ ] Build unchanged current production source with fresh layers; retain separate immutable baseline and inventories/scans using the original DB copy.
+- [ ] Test a concrete non-forced, dependency-checked removal candidate. Reject essential/protected removal or broken native dependencies. Account creation precedes removal; development/build stages retain their tools.
+- [ ] Verify selected removals at package and owned-file level, complete native ELF links, retained TLS/compression/timezone/SQLite/curses behavior, default non-root startup/readiness and migration contracts.
+- [ ] Record remaining severities, meaningful alternatives and precise per-High next steps; preserve source-wide scanner findings where functionality remains or assessment is narrower than the advisory.
+- [ ] Run focused and canonical checks; inspect complete diff/current main; independently review and update existing PR179 without merge/deploy/status change.
+
+New evidence will be a separately labeled follow-up, not a rewrite of the original zero-Debian-fix comparison. Pip remains ANY-742 scope. Broad distro/layout migrations or maintained source patches require a scoped decision before adoption.
