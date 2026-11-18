@@ -1,7 +1,7 @@
 # Documentation Index
 
 Status: authoritative index
-Last updated: 2026-11-11
+Last updated: 2026-11-18
 
 Start with the smallest document that matches the task.
 
@@ -67,8 +67,9 @@ Start with the smallest document that matches the task.
   and acceptance limits; verification history is in the linked porting plan.
 - [ANY-765 completed porting plan](exec-plans/completed/ANY-765-implementation-plan-refactor.md)
   — DONE and archived by owner request on 2026-11-09; verification and live-evidence limits retained.
-- [ANY-864 monthly LBX allowance fix](exec-plans/active/ANY-864-implementation-plan.md)
-  — bounded midnight/date normalization, worker regressions and live-acceptance limits.
+- [ANY-864 monthly LBX calendar and P03 checkpoint](engineering/billing-background-operations.md#monthly-lbx-instance-start-calendar-any-864)
+  — supported profile, sentinel behavior and CONFIRMED_ON_TEST results;
+  [detailed verification record](exec-plans/active/ANY-864-implementation-plan.md#live-lbx-p03-acceptance--2026-11-18).
 - [ANY-664 completed implementation plan](exec-plans/completed/ANY-664-implementation-plan.md)
   — all eight Portal steps DONE; implementation-commit CI evidence, retained
   real-enablement gates and handoff to ANY-504 program Step 7
