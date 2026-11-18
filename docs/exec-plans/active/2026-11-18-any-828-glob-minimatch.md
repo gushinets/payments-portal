@@ -17,14 +17,166 @@ Existing coverage: boundary tests exercise ESLint configuration and architectura
 ## Execution
 
 - [x] Read instructions, issue, private coordination; inspect existing branches/worktrees and PR165; fetch main and isolate.
-- [ ] Record unchanged clean install, dependency inventory/explanations, audit, Trivy filesystem scan and focused characterization/build results.
-- [ ] Upgrade only owning packages and their required dependency closure; regenerate root package-lock via npm; inspect all nested copies and unchanged3.x line.
-- [ ] Clean install; run lint/typecheck/boundaries/components, real Sentry API smoke, Next production build and generate:check.
-- [ ] Coordinate Docker/full-check window with ANY-674; build baseline/final web images separately, run existing runtime verification and consistent Trivy filesystem/image scans. Preserve commands, DB/scanner metadata, hashes, UTC timestamps and immutable identities.
-- [ ] Run check:fast and broadest supported check, review final diff/fresh main, publish focused PR using template. No merge/deploy/Done.
+- [x] Record unchanged clean install, dependency inventory/explanations, audit, Trivy filesystem scan and focused characterization/build results.
+- [x] Upgrade only owning packages and their required dependency closure; regenerate root package-lock via npm; inspect all nested copies and unchanged3.x line.
+- [x] Clean install; run lint/typecheck/boundaries/components, real Sentry API smoke, Next production build and generate:check.
+- [x] Coordinate Docker/full-check window with ANY-674; build baseline/final web images separately, run existing runtime verification and consistent Trivy filesystem/image scans. Preserve commands, DB/scanner metadata, hashes, UTC timestamps and immutable identities.
+- [x] Run check:fast and broadest supported check, review final diff/fresh main, publish focused PR using template. No merge/deploy/Done.
 
 Rollback is reverting the owning-package manifest and regenerated lock together. Scanner absence proves only target removal; retain unrelated findings. UI/provider journeys are not changed; production HTTP/runtime smoke is applicable, live payment acceptance is not.
 
 ## Evidence
 
 Task-local raw logs/reports: .harness/any-828. Sanitized portable evidence and exact command outcomes will be recorded here before handoff. No private diary content belongs in this document.
+
+## Verified implementation and scans
+
+Implementation source: `2eddd69c86d07e64f2cf3cf1f606637f61a1471f`.
+The image context's application, manifest, lock and Dockerfile contents match
+that revision after Windows checkout line-ending normalization; only subsequent
+evidence documents differ. The baseline context was extracted with `git archive`
+from the fetched baseline SHA. Its lock matches the saved before checkout
+representation. Recorded lock hashes identify CRLF checkout files; separate LF
+Git-blob hashes and normalized equality are retained in the evidence. Full copy inventories, report SHA-256 hashes,
+scanner/database metadata and immutable image identities are retained in
+[the sanitized evidence](2026-11-18-any-828-evidence.json).
+
+| Chain | Before | After |
+| --- | --- | --- |
+| Sentry Next/node -> bundler-plugins -> glob -> minimatch | 11.4.0 -> 11.4.0 -> 13.0.6 -> 10.2.6 | 11.11.0 -> 11.11.0 -> 14.0.6 -> 11.0.9 |
+| ESLint -> config-array/direct minimatch | 10.8.1 -> 0.23.5 -> 10.2.6 | 10.15.0 -> 0.23.6 -> 11.0.9 |
+| eslint-config-next -> typescript-eslint -> estree -> minimatch | 16.4.2 -> 8.67.0 -> 8.67.0 -> 10.2.6 | 16.4.2 -> 8.73.0 -> 8.73.0 -> 11.0.9 |
+| Compatible ESLint9/import/react/a11y release line | minimatch3.1.5 | minimatch3.1.5 |
+
+There is one fixed glob copy and six fixed minimatch11 copies (one for ESLint,
+one for glob, four under TypeScript ESLint consumers). npm's dev flag on the
+Sentry dependency closure is not runtime reachability: the standalone final
+image contains neither target package. Both baseline and rebuilt image scans
+contain neither target advisory. These are build/lint paths, not Portal HTTP
+pattern inputs.
+
+Local Trivy0.72.0 uses an isolated copy of database UpdatedAt
+`2026-11-18T07:15:21.579242117Z`, originally downloaded by the independent image
+lane, copied read-only; its metadata/database bytes are hashed in the evidence.
+The scanner image is immutable in that file. Before/after local vulnerability
+scans use identical flags and DB bytes. They intentionally scan vulnerabilities
+only. The full repository filesystem/Compose/IaC/secret/image workflow also
+[passed on the implementation](https://github.com/gushinets/payments-portal/actions/runs/44311980289).
+Its artifact14430842120, SHA-256
+`c54e18605788f324db275a9bb48fade609ad362e5001f867f6bbe2ac7b703587`, was downloaded,
+hash-verified and inspected; full CI filesystem/web reports contain neither
+advisory. CI image configuration identity differs from the local build and is
+retained separately. This task never substitutes an API image for web evidence.
+
+Npm audit exits1 before and after because unrelated findings remain. Before:
+29 affected-package entries (12 Moderate/17 High); after23 (1 Moderate/22 High).
+The unique non-target advisory set is unchanged (Next, picomatch, zod); changing
+parent topology changes propagated package counts. Local/CI filesystem after
+scan has7 findings across npm/uv, web image3 (Next CVE-2026-119351,
+CVE-2026-119790 and zlib CVE-2026-4738). No claim of a clean repository/image.
+No ignores, security bypasses or enforcement changes.
+
+### Reproducible local commands
+
+Run from the isolated repository root in PowerShell with Node24/npm11; caches,
+temporary files, node_modules, Python environment and all evidence stay task-local
+on D:. `uv0.12.7` is selected on PATH for Python-backed commands.
+
+```powershell
+$env:npm_config_cache = "$PWD/.harness/any-828/npm-cache"
+$env:TEMP = "$PWD/.harness/any-828/tmp"
+$env:TMP = $env:TEMP
+npm ci --no-audit --fund=false
+npm ls glob minimatch --all --json
+npm explain glob
+npm explain minimatch
+npm audit --fetch-retries=0 --fetch-timeout=60000 --json
+npm run lint:web
+npm run typecheck:web
+npm run test:boundaries:web
+npm --workspace @anytoolai/web run test:components
+npm run generate:check
+$env:APP_PUBLIC_BASE_URL = 'https://payments.example.test'
+npm run build:web
+npm run check:fast
+npm run check
+```
+
+Lock regeneration used `npm install @sentry/nextjs@11.11.0 --workspace
+@anytoolai/web --save-exact --package-lock-only --ignore-scripts --no-audit`,
+`npm install eslint@10.15.0 --workspace @anytoolai/web --save-dev --save-prefix='^'
+--package-lock-only --ignore-scripts --no-audit`, and targeted `npm update` of
+`typescript-eslint` plus its `@typescript-eslint` package family with the same
+lock-only flags. These flags apply only to dependency resolution; both clean
+installs and Docker use the existing lifecycle policy without changes. All
+non-target version changes belong to the upgraded parents' dependency closure.
+
+```powershell
+docker build --file apps/web/Dockerfile --build-arg APP_PUBLIC_BASE_URL=https://payments.example.test --tag payment-portal-web:any-828-after .
+# Before uses the git-archive baseline context and its apps/web/Dockerfile.
+docker image inspect payment-portal-web:any-828-after
+docker save --output .harness/any-828/after-image.tar payment-portal-web:any-828-after
+$env:MSYS_NO_PATHCONV = '1'
+& D:/Git/bin/bash.exe security/trivy/verify-web-runtime.sh payment-portal-web:any-828-after
+docker run --rm --network none --mount "type=bind,source=$PWD/.harness/any-828,target=/evidence" aquasec/trivy:0.72.0 --cache-dir /evidence/trivy-cache image --input /evidence/after-image.tar --skip-db-update --scanners vuln --format json --output /evidence/after-web-image.json
+docker run --rm --network none --mount "type=bind,source=$PWD,target=/repo,readonly" --mount "type=bind,source=$PWD/.harness/any-828,target=/evidence" aquasec/trivy:0.72.0 --cache-dir /evidence/trivy-cache fs --config /repo/trivy.yaml --include-dev-deps --skip-db-update --skip-check-update --scanners vuln --format json --output /evidence/after-filesystem.json --skip-dirs .git,.harness,node_modules,apps/web/node_modules,apps/web/.next,.venv,security/trivy/fixtures /repo
+```
+
+Baseline and final production Docker builds PASS. Final immutable local index:
+`sha256:aaf34f49b03d594620ab651ff693a37ab715afad4231084c7ecc705177733f15`;
+configuration`sha256:4268fb42bc6ec593560a2a6f0a5db1215c90a0cb243a3e1a3dc020325290c4f9`.
+The existing runtime verifier PASS for both images (non-root node24.22.1,
+standalone entrypoint, required OS patch constraints, no build tooling,
+compression and native sharp). Final-image HTTP smoke on task-specific
+127.0.0.1:39828 served `/en`200 with lang=en; only its temporary container was
+removed. No shared service was restarted or stopped.
+
+### Checks and limitations
+
+PASS: before/after clean install; updated lint/typecheck;40 boundary tests
+(including2 real Sentry/glob tests);454 component tests; generate:check;
+production Docker build/runtime/HTTP; both target advisories absent in audit,
+local FS and before/after web images; official security workflow.
+
+The unchanged host build compiled/generated102 pages then stopped at the
+existing unrelated Next security upgrade notice. The first updated host build
+failed with Windows1450 insufficient resources; the isolated Linux production
+build subsequently passed without disabling any build checks. Canonical command
+completion is recorded below when finished. Live-provider/payment/browser visual
+acceptance is not required for this tooling change; CI browser regression remains
+applicable. Independent read-only review found no actionable findings; it did not
+rerun checks or independently verify upstream provenance.
+
+Canonical `npm run check:fast` PASS (2294 API tests passed,43 skipped,
+1210 PostgreSQL tests deselected;40 boundary/454 component tests).
+`npm run check` FAIL after the same2294 API pass/43 skips and successful
+web compilation/typechecking/102-page generation: the existing unrelated
+Next SecurityFatalError requested a same-command retry. PostgreSQL and
+optional browser stages were unreached locally, not passed. A single standalone
+build retry is recorded separately; no security check was disabled. The separate
+docs command initially selected global Python and lacked pydantic_settings;
+rerunning with canonical `.venv/Scripts/python.exe scripts/repo.py docs check`
+PASS. Canonical commands already selected their required environment and passed
+docs/architecture/generation/Python lint/format.
+
+The permitted standalone host `npm run build:web` retry PASS (exit0), with no
+dependency/config/security-policy changes. The complete local `npm run check`
+remains recorded as FAIL at the earlier notice; it was not relabeled from a
+successful standalone build. Final fresh-main fetch remains
+aa9d8f996cba91feaaaad6a9937eef0c590ae4fa, with no intervening overlap.
+Implementation CI production gate, code quality and Windows/Linux harness
+checks PASS; browser job subsequently PASS (248 browser tests passed, 2 skipped; 4 React runtime tests passed).
+
+CI production gate PASS on implementation source: 1209 PostgreSQL tests passed,
+1 skipped across four partitions, production images and API smoke passed.
+The provenance review verified all retained report/database/artifact hashes and
+matcher inventories. Its checkout-versus-Git line-ending wording correction was
+applied; no executable code changed after implementation verification.
+
+All implementation-revision CI jobs, security scan and Linear metadata checks
+PASS. Evidence-only follow-up changes do not alter the tested manifest, lock,
+application, Dockerfile or tests; automatic checks on that documentation commit
+may still be pending. PR: [ANY-828 - Patch glob and minimatch dependency chains](https://github.com/gushinets/payments-portal/pull/180).
+No remaining overlap or resource coordination is required with ANY-674; its API
+image/package scope and retained services were preserved. No merge, deployment
+or Linear Done transition was performed.
