@@ -1,6 +1,8 @@
 # ANY-674 — Residual-risk decision awaiting human input
 
-Status: **PENDING — acceptance blocker; no risk approved**
+Status: **HISTORICAL pending request; further technical remediation is in progress; no risk approved**
+
+The owner directed additional High-first package removal, minimization and supported-update investigation before any residual acceptance proposal. The 96-ID scope below describes the original unminimized image. It is retained as history, not an active blanket acceptance request for the follow-up image. Current outcomes are recorded separately after technical candidates are tested.
 
 This record covers exactly the 96 unresolved Debian advisory IDs enumerated below. The two historical zlib IDs absent from the fresh baseline are excluded. Per-ID installed package identity, vendor status, conditions, runtime relevance and existing mitigations remain in [the disposition ledger](evidence/ANY-674/advisory-dispositions.csv).
 

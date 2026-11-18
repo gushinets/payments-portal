@@ -465,3 +465,62 @@ def test_web_receives_only_public_backend_callbacks(path: str) -> None:
     assert "BACKEND_CALLBACKS" in public
     assert "BACKEND_CONSUMERS" not in public["BACKEND_CALLBACKS"]
     assert "BACKEND_CONSUMERS" in services["api"]["environment"]
+
+
+def run_production_package_removal(
+    tmp_path: Path, blocked_package: str, flags: str
+) -> tuple[subprocess.CompletedProcess[str], Path]:
+    dockerfile = (ROOT / "apps/api/Dockerfile").read_text(encoding="utf-8")
+    production = dockerfile.split("FROM base AS production", 1)[1]
+    command = production.split("RUN ", 1)[1].split("\n\n", 1)[0].replace("\\\n", "")
+    marker = tmp_path / "purged.txt"
+    environment = {
+        **os.environ,
+        "BLOCKED_PACKAGE": blocked_package,
+        "BLOCKED_FLAGS": flags,
+        "PURGE_MARKER": marker.as_posix(),
+    }
+    stubs = r"""
+groupadd() { :; }
+useradd() { :; }
+install() { :; }
+dpkg-query() {
+  for queried_package; do :; done
+  if [ "$queried_package" = "$BLOCKED_PACKAGE" ]; then
+    if [ "$BLOCKED_FLAGS" = "query-error" ]; then return 1; fi
+    printf '%s' "$BLOCKED_FLAGS"
+  else
+    printf 'no:no'
+  fi
+}
+dpkg() {
+  if [ "$1" = "--purge" ]; then printf '%s\n' "$@" > "$PURGE_MARKER"; fi
+  return 0
+}
+"""
+    result = subprocess.run(
+        [shutil.which("bash") or "bash", "--noprofile", "--norc", "-c", stubs + "\n" + command],
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return result, marker
+
+
+@pytest.mark.parametrize("package", ["apt", "passwd", "libsepol2"])
+@pytest.mark.parametrize("flags", ["yes:no", "no:yes", "query-error"])
+def test_production_removal_rejects_every_essential_protected_or_unknown_package(
+    tmp_path: Path, package: str, flags: str
+) -> None:
+    result, marker = run_production_package_removal(tmp_path, package, flags)
+
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert not marker.exists(), "Package purge ran after a rejected precondition"
+
+
+def test_production_removal_allows_verified_nonessential_packages(tmp_path: Path) -> None:
+    result, marker = run_production_package_removal(tmp_path, "", "no:no")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert marker.read_text(encoding="utf-8").splitlines()[0] == "--purge"

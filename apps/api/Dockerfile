@@ -54,7 +54,9 @@ RUN groupadd --system app \
     && install -d -o app -g app -m 0700 /run/payments-portal \
     && runtime_build_packages="apt libapt-pkg7.0 sqv debian-archive-keyring adduser passwd mount libbsd0 libhogweed6t64 libnettle8t64 liblz4-1 libxxhash0 libseccomp2 libsemanage2 libsemanage-common libsepol2" \
     && for package in $runtime_build_packages; do \
-         test "$(dpkg-query -W -f='${Essential}:${Protected}' "$package")" = "no:no"; \
+         test "$(dpkg-query -W -f='${Essential}:${Protected}' "$package")" = "no:no" || { \
+           echo "Refusing removal of essential/protected or unknown package: $package" >&2; exit 1; \
+         }; \
        done \
     && dpkg --purge $runtime_build_packages \
     && test -z "$(dpkg --audit)"
