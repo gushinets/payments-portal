@@ -1,0 +1,24 @@
+{
+  "head_source": "5d4de2b885855c595411b4a1d09ebd8f68d2d2dd",
+  "ci_checkout_merge_ref": "93fae05899604a5f006f27935686afe89b71b247",
+  "security_run": 44298399457,
+  "security_result": "success",
+  "artifact_id": 14423888679,
+  "artifact_sha256": "dbf5bd9c653fa3185af2ef095321f29cf56b812e12d9147c0f236bf421543064",
+  "artifact_expiry": "2026-12-02",
+  "api_report_sha256": "11d331009e283ad95c333b838fb254f35e237e1249068c8f6ae1eb1f43de694a",
+  "scan_time": "2026-11-18T11:53:03.053583238Z",
+  "image_id": "sha256:03eade2dc7f9f1483049cdde4511980e804baa49cf5bd1886ff6d24afff5ac57",
+  "repo_digests": [
+    "payment-portal-api@sha256:03eade2dc7f9f1483049cdde4511980e804baa49cf5bd1886ff6d24afff5ac57"
+  ],
+  "debian_records": 218,
+  "debian_advisories": 96,
+  "severity_records": {
+    "LOW": 65,
+    "HIGH": 47,
+    "MEDIUM": 92,
+    "UNKNOWN": 14
+  },
+  "debian_finding_signatures_match_local_after": true
+}
