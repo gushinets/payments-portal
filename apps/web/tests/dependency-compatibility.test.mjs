@@ -16,7 +16,7 @@ test("Sentry artifact globbing preserves ordinary chunk selection and literal pa
   const { escape } = createRequire(join(bundlerRoot, "package.json"))("glob");
   const temporaryRoot = join(repositoryRoot, ".harness", "tmp");
   await mkdir(temporaryRoot, { recursive: true });
-  const fixture = await mkdtemp(join(temporaryRoot, "sentry-glob-"));
+  const fixture = await mkdtemp(join(temporaryRoot, "sentry-glob-{api,web}-"));
   try {
     await mkdir(join(fixture, "chunks", "nested"), { recursive: true });
     await mkdir(join(fixture, "chunks", "directory.js"));
@@ -31,7 +31,10 @@ test("Sentry artifact globbing preserves ordinary chunk selection and literal pa
       "entry.js", "literal[1].js", "nested/module.mjs", "nested/module.cjs"
     ].map(path => resolve(fixture, "chunks", path)).sort());
     const literal = join(fixture, "chunks", "literal[1].js");
-    assert.deepEqual((await globFiles(escape(literal.replaceAll("\\", "/")))).map(path => resolve(path)), [resolve(literal)]);
+    const literalMatches = await globFiles(escape("chunks/literal[1].js"), {
+      cwd: fixture
+    });
+    assert.deepEqual(literalMatches.map(path => resolve(path)), [resolve(literal)]);
   } finally {
     await rm(fixture, { recursive: true, force: true });
   }

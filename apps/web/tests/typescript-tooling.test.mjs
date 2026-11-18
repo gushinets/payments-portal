@@ -42,3 +42,11 @@ test("the web TypeScript project checks the root Playwright configs", () => {
 test("the complete web TypeScript project typechecks without errors", () => {
   assert.doesNotThrow(() => runWebTypecheck());
 });
+
+test("the installed workspace dependency tree satisfies its peer contracts", () => {
+  assert.doesNotThrow(() => execFileSync(
+    npmExecutable,
+    ["ls", "--all", "--json"],
+    { cwd: repositoryRoot, encoding: "utf8", shell: process.platform === "win32" }
+  ));
+});

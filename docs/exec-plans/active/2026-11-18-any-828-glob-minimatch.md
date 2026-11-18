@@ -180,3 +180,61 @@ may still be pending. PR: [ANY-828 - Patch glob and minimatch dependency chains]
 No remaining overlap or resource coordination is required with ANY-674; its API
 image/package scope and retained services were preserved. No merge, deployment
 or Linear Done transition was performed.
+
+## PR review follow-up: optional compiler peer and checkout-path portability
+
+Review baseline: `611716ff815292ff6936ffe3a3d1421986d7a7ed`.
+
+- [x] Establish failing regressions for the installed peer graph and literal
+  glob selection with braces in a parent directory.
+- [x] Rename only the TypeScript 7 CLI alias, leaving the parser's optional native
+  backend absent; regenerate the lock through npm. Keep the TypeScript 6 parser
+  dependency and fixed matcher release lines unchanged.
+- [x] Use a relative literal glob with the fixture as cwd; retain a brace-containing
+  fixture so the checkout-name failure remains covered.
+- [ ] Clean install, validate the full installed graph and TypeScript 7 CLI,
+  run relevant web/canonical checks, and publish results in the existing review.
+
+Root cause: `@typescript/native` was a local alias for the CLI's stable TypeScript
+7.0.2 package. TypeScript ESLint 8.73.0 now recognizes that same package key as an
+optional native-parser backend requiring a 7.1 prerelease. The configured parser
+still uses the independent `typescript` alias for TypeScript 6.0.2. Keeping the
+CLI under a distinct local alias avoids falsely advertising the incompatible
+optional backend; it does not relax validation or change the compiler release.
+
+The glob test used an escaped absolute path as a pattern. Its parent directories
+could contain brace expansions, making the test depend on its checkout name.
+The cwd option expresses that directory as a filesystem path, while only the
+relative fixture filename is interpreted as a glob.
+
+
+Follow-up verification before publishing the fix:
+
+- Unchanged clean install PASS. Added brace-path regression FAIL as expected
+  (actual empty matches, existing literal file); installed-peer regression FAIL
+  as expected with ELSPROBLEMS. This establishes both failures before the fixes.
+- Corrected clean install PASS. Full installed `npm ls --all --json` PASS;
+  both targeted regressions PASS. The native-backend peer is absent, not ignored.
+  Filtering only `npm ls --all @typescript/native` now yields an empty result
+  (npm exit 1 for no matching installed package), not an invalid peer graph.
+- Lock comparison PASS: the old compiler payload equals the new alias payload
+  exactly; every other existing package version is unchanged. The compiler is
+  still 7.0.2, parser TypeScript 6.0.2, glob 14.0.6, six minimatch 11.0.9 copies
+  and unaffected minimatch 3.1.5. No prerelease compiler or override was added.
+- Canonical web checks PASS: 41 boundary tests, 454 component tests, lint,
+  TypeScript 7 CLI/project typechecking, generated freshness and architecture.
+- Standalone web build compiled/typechecked/generated 102 pages, then stopped
+  at the pre-existing Next security recommendation. Its permitted same-command
+  retry PASS, without disabling any check or changing Next.
+- Fresh npm audit exits 1 for the same 23 unrelated affected-package entries
+  (1 Moderate, 22 High); neither target advisory is present.
+- Independent read-only review found no actionable findings. No API, image,
+  installation-script or scanner policy change belongs to this follow-up.
+- The local broad `npm run check` encountered a failure in unchanged
+  `compatibility/test_uvicorn_smoke.py` while continuing the API suite.
+  Complete local acceptance is not claimed; final details are reported in the
+  PR follow-up review. This task does not repair unrelated API smoke behavior.
+
+The original scan/image evidence above remains attributed to its original
+source revisions. It is not presented as a new scan of this follow-up commit;
+automatic PR security/production/browser checks will run on the pushed fix.
