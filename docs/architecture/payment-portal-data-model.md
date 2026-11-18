@@ -1,7 +1,7 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-11-16 (ANY-766 retained allowance activation and ANY-832 inventory evidence)
+Last updated: 2026-11-18 (ANY-832 deferred inventory points and retained activation bounds)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
@@ -345,6 +345,17 @@ attempts preserve the existing deadline and complete support, while decisive
 owned negative/conflict evidence reduces usability. Subsequent preparation
 cannot overwrite monitored facts. ANY-765 assigns a resulting access revision
 when the supporting observation causes a material paid-state change.
+
+Calendar-month metering can carry `activation_bounds` in canonical V2
+evidence. It contains `subscription_start_at` and `instance_start_at` as exact
+UTC instants or explicit nulls. A null records known absence of an exact
+value for that field. A missing summary identifies evidence that may need a
+legacy calendar lookup, which runs before the user lock. Apply verifies the
+source fence and basis observation before writing the summary. Only complete
+matching proof accepted by reconciliation can replace a retained exact value.
+Raw calendar fields retain the source representation. Older V1 and V2
+observations stay readable, and the summary requires no schema migration.
+
 Step 1 alone added no DDL or worker; Steps 2–5 supply the running worker and
 operations described below. See the
 [operations runbook](../engineering/billing-background-operations.md).
@@ -438,7 +449,7 @@ history but has no receiver or inbox-processing writer. Historical JSON schemas
 polling does not change those rows. No raw provider payload or authorization/card
 material belongs here, and receipt state never grants access.
 
-`billing_work_items` stores work/scope/state fields as plain text, bounded typed
+`billing_work_items` stores work/scope/state fields as plain text, typed
 payloads, priority, due time, attempt count, paired lease owner/expiry and nullable
 `active_recovery_deadline_at` for the current financial send. This active deadline
 is independent of mutable retry scheduling and changes only in the locked,
@@ -456,7 +467,15 @@ while subscriptions retain account/local subscription keys. Recovery receipts,
 original request/date/fences and customer active-send leases keep their existing
 storage identity. Step 3 needs no additional table or migration beyond the
 Step 2 worker migration `20261028_0005`. Inventory observations use
-`customer-inventory:v1`; conflicts never grant access or rewrite bindings.
+the existing discovery and conflict observation schemas. The recurring
+`customer_inventory` job can carry `deferred_relationships` in its
+`billing-work:v1` payload. Each pending point records the purchase and
+subscription IDs, source fence, agreement/tariff pair and original
+database-clock read interval. Scheduling hints preserve that payload. The
+collector appends verified pending points to restriction-only history and
+clears the queue copy atomically under the user lock. Final validation locks
+the job row to account for pending points committed after collection. Pending
+points cannot resolve older evidence, grant access or rewrite bindings.
 
 The pre-existing create-recovery index and customer-send lease identity remain
 unchanged. Claims use paired finite ownership; completion preserves newer enqueue

@@ -259,6 +259,7 @@ def schedule_reconciliation(
     *,
     complete: bool,
     attempt_started_at: datetime | None = None,
+    activation_due: datetime | None = None,
 ) -> None:
     now = as_utc(billing_reconciliation.database_now(db))
     scope = billing_reconciliation.scope(db, sub.user_id, sub.product_id)
@@ -276,6 +277,8 @@ def schedule_reconciliation(
             # Wake at entry into the urgent window rather than one normal
             # interval later. Date-only allowances supply no inferred deadline.
             due = min(due, boundary - URGENT_TRUST_WINDOW)
+        if activation_due is not None:
+            due = min(due, activation_due)
         return max(now + timedelta(seconds=1), due)
 
     if claim is not None:
@@ -291,7 +294,8 @@ def schedule_reconciliation(
     else:
         # CLI/source applies have no queue claim. Coalesce urgent follow-up
         # without clearing a running owner's lease or its newer generation.
-        # A complete normal read must not downgrade an unconsumed urgent hint.
+        # Exact future activation can move the next read forward as well.
+        hint = urgent or activation_due is not None
         coalesce(
             db,
             kind=RECONCILIATION,
@@ -299,9 +303,9 @@ def schedule_reconciliation(
             scope_kind="subscription",
             reference=str(sub.subscription_id),
             due=next_due(sub.subscription_id, attempt_started_at or now, URGENT_SECONDS if urgent else NORMAL_SECONDS),
-            priority=int(urgent),
+            priority=int(hint),
             payload={},
-            hint=urgent,
+            hint=hint,
         )
     # Source trust and the earliest conservative paid boundary share one row.
     schedule_deadline(db, sub, scope)

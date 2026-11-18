@@ -1,10 +1,12 @@
 """Focused reconciliation row locks and database time; no business decisions."""
 
 from datetime import datetime
+from typing import TypedDict, Unpack
 from uuid import UUID
 
-from sqlalchemy import JSON, ScalarResult, Select, and_, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy import JSON, ScalarResult, Select, and_, func, or_, select, type_coerce, union_all
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Session, aliased
 
 from app.models import (
     BillingProductAccessScope,
@@ -61,26 +63,59 @@ def customer_subscriptions(db: Session, customer_id: UUID) -> list[ExternalSubsc
     )
 
 
+class PointHistoryLookup(TypedDict):
+    schemas: tuple[str, ...]
+    inventory_schema: str
+    legacy_inventory_schema: str
+    provider_origin: str
+    accepted_fingerprint: str
+
+
+def latest_subscription_point(
+    db: Session, sub: ExternalSubscription, **lookup: Unpack[PointHistoryLookup]
+) -> BillingStateObservation | None:
+    if sub.latest_observation_id is None:
+        return None
+    return db.scalar(
+        _point_history_statement(sub, **lookup).where(
+            BillingStateObservation.observation_id == sub.latest_observation_id
+        )
+    )
+
+
 def subscription_point_history(
-    db: Session,
-    sub: ExternalSubscription,
-    *,
-    schemas: tuple[str, ...],
-    inventory_schema: str,
-    legacy_inventory_schema: str,
-    provider_origin: str,
-    accepted_fingerprint: str,
+    db: Session, sub: ExternalSubscription, *, since: datetime | None, **lookup: Unpack[PointHistoryLookup]
 ) -> ScalarResult[BillingStateObservation]:
     """Stream permanent-source facts by their read-finish upper bound."""
+    statement = _point_history_statement(sub, **lookup)
+    observation = BillingStateObservation
+    if since is not None:
+        statement = statement.where(observation.observed_at >= since)
+    if db.get_bind().dialect.name == "postgresql":
+        # An incomplete row can only retain a relationship. The latest finish
+        # per pair and schema subsumes earlier copies for every possible cutoff.
+        # Keep resolving and unclassified rows for the normal evidence decoder.
+        evidence = observation.evidence_document
+        pair = evidence["point_relationship"]
+        restriction = evidence["complete"] == type_coerce(False, JSONB())
+        latest = (
+            statement.where(restriction)
+            .distinct(observation.evidence_schema_version, pair)
+            .order_by(
+                observation.evidence_schema_version,
+                pair,
+                observation.observed_at.desc(),
+                observation.observation_id.desc(),
+            )
+            .subquery()
+        )
+        compact = union_all(select(latest), statement.where(restriction.is_not(True))).subquery()
+        observation = aliased(BillingStateObservation, compact)
+        statement = select(observation)
     return db.scalars(
-        _point_history_statement(
-            sub,
-            schemas=schemas,
-            inventory_schema=inventory_schema,
-            legacy_inventory_schema=legacy_inventory_schema,
-            provider_origin=provider_origin,
-            accepted_fingerprint=accepted_fingerprint,
-        ).execution_options(yield_per=POINT_HISTORY_BATCH_SIZE)
+        statement.order_by(observation.observed_at.desc(), observation.observation_id.desc()).execution_options(
+            yield_per=POINT_HISTORY_BATCH_SIZE
+        )
     )
 
 
@@ -94,31 +129,26 @@ def _point_history_statement(
     accepted_fingerprint: str,
 ) -> Select[tuple[BillingStateObservation]]:
     provenance = BillingStateObservation.evidence_document["provenance"]
-    return (
-        select(BillingStateObservation)
-        .where(
-            or_(
-                and_(
-                    BillingStateObservation.observation_kind
-                    == BillingStateObservationKind.AUTHORITATIVE_SUBSCRIPTION_READ,
-                    BillingStateObservation.evidence_schema_version.in_(schemas),
-                ),
-                and_(
-                    BillingStateObservation.observation_kind == BillingStateObservationKind.TARGET_PRODUCT_DISCOVERY,
-                    BillingStateObservation.evidence_schema_version.in_((inventory_schema, legacy_inventory_schema)),
-                ),
+    return select(BillingStateObservation).where(
+        or_(
+            and_(
+                BillingStateObservation.observation_kind == BillingStateObservationKind.AUTHORITATIVE_SUBSCRIPTION_READ,
+                BillingStateObservation.evidence_schema_version.in_(schemas),
             ),
-            BillingStateObservation.subscription_id == sub.subscription_id,
-            BillingStateObservation.external_billing_account_id == sub.external_billing_account_id,
-            BillingStateObservation.user_id == sub.user_id,
-            BillingStateObservation.product_id == sub.product_id,
-            BillingStateObservation.evidence_document["point_relationship"] != JSON.NULL,
-            provenance["purchase_intent_id"].as_string() == str(sub.purchase_intent_id),
-            provenance["mapping_revision_id"].as_string() == str(sub.mapping_revision_id),
-            provenance["provider_subscription_id"].as_string() == sub.external_subscription_id,
-            provenance["agreement_id"].as_string() == sub.external_agreement_id,
-            provenance["provider_origin"].as_string() == provider_origin,
-            provenance["accepted_fingerprint"].as_string() == accepted_fingerprint,
-        )
-        .order_by(BillingStateObservation.observed_at.desc(), BillingStateObservation.observation_id.desc())
+            and_(
+                BillingStateObservation.observation_kind == BillingStateObservationKind.TARGET_PRODUCT_DISCOVERY,
+                BillingStateObservation.evidence_schema_version.in_((inventory_schema, legacy_inventory_schema)),
+            ),
+        ),
+        BillingStateObservation.subscription_id == sub.subscription_id,
+        BillingStateObservation.external_billing_account_id == sub.external_billing_account_id,
+        BillingStateObservation.user_id == sub.user_id,
+        BillingStateObservation.product_id == sub.product_id,
+        BillingStateObservation.evidence_document["point_relationship"] != JSON.NULL,
+        provenance["purchase_intent_id"].as_string() == str(sub.purchase_intent_id),
+        provenance["mapping_revision_id"].as_string() == str(sub.mapping_revision_id),
+        provenance["provider_subscription_id"].as_string() == sub.external_subscription_id,
+        provenance["agreement_id"].as_string() == sub.external_agreement_id,
+        provenance["provider_origin"].as_string() == provider_origin,
+        provenance["accepted_fingerprint"].as_string() == accepted_fingerprint,
     )

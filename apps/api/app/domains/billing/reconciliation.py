@@ -5,7 +5,12 @@ from uuid import UUID, uuid4
 
 from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused, CustomerOpen
-from app.domains.billing.paid_access import apply_paid_source, commit_paid_state, resolve_access_end
+from app.domains.billing.paid_access import (
+    apply_paid_source,
+    commit_paid_state,
+    resolve_access_end,
+    retained_activation_bounds,
+)
 from app.domains.billing.paid_deadlines import effective_deadline
 from app.domains.billing.paid_policy import MeteringPolicy, PaidDecision, paid_decision
 from app.domains.billing.paid_cycles import CalendarEvidence
@@ -188,10 +193,23 @@ def apply_reconciliation(
     """Recheck permanent provenance and current fences before any fact changes."""
     with factory() as db:
         purchase = subject.purchase
+        complete_match = (
+            proof.complete and proof.identity == IdentityProof.MATCH and proof.commercial == CommercialProof.MATCH
+        )
+        activation_bounds = None
+        activation_basis = None
+        if purchase.accepted.offer.period.anchor == "calendar_month" and purchase.accepted.technical_terms is not None:
+            before = queries.subscription(db, subject.subscription_id)
+            if before is None or before.reconciliation_fencing_token != subject.fence:
+                raise BillingRefused("subscription_reconciliation_stale", 409)
+            activation_basis = before.latest_observation_id
+            activation_bounds = retained_activation_bounds(db, before, read_legacy=complete_match)
         claimed = lock_source_claim(db, subject, proof)
         user, customer, row = claimed.user, claimed.customer, claimed.row
         customer_op = claimed.customer_operation
         operations, scope, current, now = claimed.operations, claimed.scope, claimed.subscription, claimed.now
+        if activation_bounds is not None and current.latest_observation_id != activation_basis:
+            raise BillingRefused("subscription_reconciliation_stale", 409)
         subscription_claim = None
         if work_claim is not None:
             if work_claim.kind == RECONCILIATION and work_claim.reference == str(current.subscription_id):
@@ -268,6 +286,10 @@ def apply_reconciliation(
             conflict = "subscription_commercial_mismatch"
         access_end_at, end_basis = resolve_access_end(db, current, proof)
         document = proof.document()
+        if activation_bounds is not None:
+            if complete_match and not (conflict or known_review or customer_conflict):
+                activation_bounds = activation_bounds.with_calendar(proof.calendar)
+            document["activation_bounds"] = activation_bounds.model_dump(mode="json")
         if end_basis is not None:
             document["retained_access_end"] = {
                 "observation_id": str(end_basis),
@@ -351,7 +373,7 @@ def apply_reconciliation(
         # Incomplete attempts append evidence, preserving finite LKG support.
         # A negative with incomplete commercial proof reduces usability above,
         # but never renews trust. Paid state shares this fact transaction.
-        apply_paid_source(
+        activation_due = apply_paid_source(
             db,
             scope,
             current,
@@ -361,6 +383,7 @@ def apply_reconciliation(
             now,
             skew_seconds=clock_skew_seconds,
             access_end_at=access_end_at,
+            activation_at=activation_bounds.not_before if activation_bounds is not None else None,
             review=bool(conflict) or known_review or customer_conflict,
             metering_policy=metering_policy,
         )
@@ -372,6 +395,7 @@ def apply_reconciliation(
             subscription_claim,
             complete=proof.complete and not conflict and not known_review and not customer_conflict,
             attempt_started_at=proof.read_started_at,
+            activation_due=activation_due,
         )
         if resolved_case is not None:
             from app.domains.billing.operator_review import audit_resolution
@@ -407,4 +431,4 @@ def apply_reconciliation(
         db.flush()
         committed = service._snapshot(db, row)
         db.commit()
-        return ReconciliationResult(observation.observation_id, subject, proof, committed)
+        return ReconciliationResult(observation.observation_id, subject, proof, committed, activation_bounds)

@@ -49,6 +49,9 @@ def source_receipt_current(
     observation = db.get(BillingStateObservation, source.observation_id)
     document = source.proof.document()
     document.update(reads=list(source.proof.reads), reasons=list(source.proof.reasons))
+    document["activation_bounds"] = (
+        source.activation_bounds.model_dump(mode="json") if source.activation_bounds is not None else None
+    )
     return (
         sub.subscription_id == source.subject.subscription_id
         and (not require_latest or sub.latest_observation_id == source.observation_id)

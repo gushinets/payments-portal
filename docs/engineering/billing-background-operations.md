@@ -835,6 +835,16 @@ restriction. A resolving proof comes from committed complete owned canonical
 apply or an operator proof accepted by the shared source-claim validator.
 Operator retention alone neither grants access nor closes review.
 
+The collector uses timely scope refusals and contradictory points even when local
+apply contends for the user lock. A scope refusal blocks the scan. A contradictory
+point blocks the implicated products. Shared reconciliation retries supplemental
+retention with the original read interval. After repeated lock refusal or expiry
+of the retry budget, it can persist that interval on the customer-inventory job,
+including during standalone subscription polls. The next collection appends the
+pending restrictions under the user lock and clears the queue copy in the same
+transaction. Final validation checks pending points committed after collection.
+Only committed canonical apply produces a source receipt.
+
 Actual read intervals order facts independently of claim fences or delayed
 persistence. A resolving proof supersedes only restrictions whose reads finished
 strictly before its read began. Overlapping reads retain uncertainty; observing
@@ -850,7 +860,12 @@ reviews, relationship influence and source receipts are checked for each product
 before any product writes. A change on A leaves B applicable only if it does not
 affect B's decision; a new A-to-B implication invalidates B's basis. Selected-source
 receipts/fences and receipts of other candidates used in that decision remain
-strict. A conclusively terminal unbound candidate does not depend on its agreement
+strict. Final apply checks each bound history once under the user lock. When
+the latest authoritative point is a validated complete owned point, PostgreSQL
+filters older observations by its read-start bound before compacting repeated
+restrictions. The latest finish for an identical non-resolving relationship
+subsumes earlier copies. The underlying observations remain immutable.
+A conclusively terminal unbound candidate does not depend on its agreement
 owner's mutable local review state.
 
 Stale automatic product actions are deferred and the existing customer job gets
@@ -916,10 +931,19 @@ naive/mixed timestamps acquire no invented zone or UTC deadline.
 Annual `calendar_month` periods retain the activation month and accepted duration;
 they need not start in January. A first timestamp cycle may begin at the proven
 first-day month boundary before mid-month activation; arbitrary earlier starts
-remain invalid. The [annual stand evidence and date-only handling](ANY-832-lbx-annual-calendar-evidence.md)
-record the observed local-midnight format. Equivalent offsets preserve the frozen allowance row and cycle
-identity. A changed duration or phase omits the affected allowance without
-rewriting history.
+remain invalid. When at least one exact activation start is known,
+calendar-month quota requires an authoritative read begun at or after the later
+known start plus clock skew. Each field retains its last trusted exact value
+when LBX omits the field or returns it with lower precision. Canonical evidence
+carries forward both resolved starts, including known absence. Legacy lookup
+runs before taking the user lock. Apply rechecks the source fence and the basis
+observation before using the result. The existing subscription reconciliation
+job schedules a fresh read near a pending activation boundary.
+
+Equivalent offsets preserve the frozen allowance row and cycle identity.
+A changed duration or phase omits the affected allowance without rewriting
+history. The local-midnight profile is documented in the
+[annual LBX stand evidence](ANY-832-lbx-annual-calendar-evidence.md).
 
 ### Revision, outbox and current wire boundary
 

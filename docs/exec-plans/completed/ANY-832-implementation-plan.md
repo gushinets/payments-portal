@@ -1,238 +1,125 @@
 # ANY-832 implementation record
 
-Status: **IMPLEMENTED ON BRANCH; focused verification passed; full-suite verification incomplete.**
-Updated: 2026-11-16.
-Issue: [ANY-832](https://linear.app/paveldik/issue/ANY-832/fix-deferred-pr-164-inventory-completeness-and-calendar-allowance-edge).
-Predecessor: [PR #164](https://github.com/gushinets/payments-portal/pull/164).
-Branch: `ANY-832`; PR base: `main`.
+**Status** Implemented and verified locally.
 
-This record covers ANY-832, including REV-8 and the PR #168 repeat-read correction,
-rebased onto `ece3590b857adb120182949dfe291116ca8ba510` (`main`, merged ANY-766
-[PR #167](https://github.com/gushinets/payments-portal/pull/167)). The pre-rebase
-head was `b13454ecdb47e3b8c187f6dbc99dfb06d7421cbe`, with base
-`6e3d458a572b16a161db72f718cbcc0a5055739a`; those pins describe historical checks.
+**Updated** 2026-11-18.
 
-Earlier verification referenced `07cee6e2` plus then-local corrections and the
-original base `2d278f62f0a2f7c4b40fb322618b268580de2301`. These historical pins
-remain scoped to the dated results below. This record describes implemented
-behavior and verification limits; it does not grant merge approval.
-Billing authority remains [ADR 0005](../../architecture/decisions/0005-external-billing-boundary.md)
-and its accepted specifications and dated decisions.
+**Issue** [ANY-832](https://linear.app/paveldik/issue/ANY-832/fix-deferred-pr-164-inventory-completeness-and-calendar-allowance-edge).
 
-## Implemented outcome and scope
+**Branch and PR** `ANY-832` against `main`. [PR #168](https://github.com/gushinets/payments-portal/pull/168).
 
-ANY-832 preserves unresolved cross-product inventory contradictions, allows
-independently proven product decisions and corrects supported calendar allowance
-edge cases. Public HTTP/Kernel contracts, permanent bindings, accepted terms,
-finite source trust and production enablement gates are unchanged. No new table,
-migration, dependency, catalog mirror, background process or durable decision-attempt
-subsystem was introduced by ANY-832. ANY-766 was implemented independently and is
-now inherited from `main`, including its migrations and backend integration.
+The verification below covers baseline `900e3f2c` plus the local
+corrections for REV-9 through REV-12. The merge base for this review is
+`aa9d8f99`. Billing authority and acceptance gates are defined by
+[ADR 0005](../../architecture/decisions/0005-external-billing-boundary.md).
 
-### Inventory collection and history
+## Implemented outcome
 
-[Composition](../../../apps/api/app/composition/purchase_inventory.py) owns bounded
-source I/O and database-clock read intervals. The shared
-[fact reducer](../../../apps/api/app/domains/purchases/inventory_facts.py) combines
-permanent bindings, agreement ownership, accepted tariff matches and observed
-relationships into product implications. Candidate-local failures preserve every
-already implicated product as incomplete; authorization/scope, discovery and
-shared-budget failures remain global.
+### Inventory and admission
 
-[Retained history](../../../apps/api/app/domains/billing/inventory_history.py)
-keeps contradictory bound relationships across scans, including when the source
-later disappears from listings and its point read fails. Actual read intervals
-order facts; an earlier claim fence cannot hide a later contradiction. Ordinary
-canonical reads retain restrictions independently before apply, so an expired
-work/source lease cannot discard an obtained contradiction. Such a supplemental
-write cannot clear history; resolving evidence requires committed canonical apply
-or an operator proof accepted by the shared source-claim validator.
+Inventory combines permanent bindings, observed agreement/tariff relationships
+and current point proofs. An object-local refusal leaves the implicated products
+incomplete. Authorization, discovery and shared-budget failures affect the
+whole scan. A timely scope refusal still counts if canonical apply contends
+for the user lock.
 
-The [storage reference](../../architecture/payment-portal-data-model.md#reconciliation-and-access-tables)
-defines supplemental v2 provenance and legacy v1 handling. The
-[runbook](../../engineering/billing-background-operations.md#inventory-history-and-admission)
-defines interval ordering, product applicability and admission rules.
+A contradiction from any shared subscription reconciliation can be retained
+before canonical apply or deferred to the existing customer-inventory job
+after local contention. The next collection writes deferred points to immutable
+history under the user lock and clears the queue copy in the same transaction.
+Final validation checks pending points committed after the collection snapshot
+and invalidates the implicated product decisions. These points restrict decisions. Canonical
+receipts supply source authority.
 
-### Validation and application
+Final apply checks each bound subscription's relationship history once under
+the user lock. A validated latest authoritative point bounds the SQL query
+before duplicate restrictions are compacted. The cutoff excludes only
+observations whose reads finished strictly before the resolving read began.
+Overlapping reads and legacy restrictions retain their documented behavior.
+Auto-selection and audited `select-primary` check the relevant product.
+Financial CREATE, admission blocking and `restore-original` require
+customer-wide completeness and current source receipts.
 
-[Inventory validation](../../../apps/api/app/domains/purchases/inventory.py)
-separates common structural checks, product applicability and strict customer-wide
-admission. A review or tariff change on A leaves B applicable only when B's decision
-is unaffected. Selected-source and participating-source receipts remain exact.
-Financial CREATE, admission blocking and `restore-original` additionally check
-all used source receipts/fences, even when relationship sets have not changed.
-The shared [claim/receipt validator](../../../apps/api/app/domains/billing/reconciliation_validation.py)
-is read-only and grants no access by itself.
-
-[Final application](../../../apps/api/app/domains/billing/discovery.py) preflights
-all product actions under the user lock before writes. Stale products are deferred
-through the existing customer job; applicable products, paid revision and outbox
-commit together. A newer enqueue hint remains pending. Lost work ownership rolls
-back the entire final apply. Audited `select-primary` retains its command, case,
-own-source and target-product checks; refusal leaves the review open.
+The [inventory runbook](../../engineering/billing-background-operations.md#inventory-history-and-admission)
+defines the refusal, ordering and retry rules. The
+[data model](../../architecture/payment-portal-data-model.md#reconciliation-and-access-tables)
+defines the evidence and provenance.
 
 ### Calendar allowances
 
-- Annual `calendar_month` periods start in the activation month, including
-  non-January starts, with the accepted duration and original phase preserved.
-- A first supported timestamp cycle may begin at the proven first-day month
-  boundary before mid-month activation. Arbitrary earlier starts remain invalid.
-- Equivalent timestamp offsets use the established frame for the same
-  subscription/component/metric. SAME preserves the entire frozen allowance
-  row and ID; LATER creates exactly one new allowance for that metric/cycle.
-  Equivalent rereads with unchanged semantics and unexpired deadlines do not
-  create extra paid revisions or outbox updates; finite trust may renew.
-- Date-only inclusive and explicitly zoned timestamp half-open semantics remain
-  distinct. Naive/mixed input gains no invented timezone. Changed duration or
-  phase omits the affected allowance without rewriting history.
+Annual `calendar_month` cycles preserve the activation month, accepted
+duration and original phase. A supported first cycle can begin on the first
+day of the month before mid-month activation. If LBX has supplied an exact
+activation instant, metering requires a fresh authoritative read begun at or
+after that instant plus clock skew. Each start field keeps its last trusted
+exact value when a later response omits it or has lower precision. The
+canonical observation carries the resolved dates forward, including known
+absence. A legacy lookup runs before taking the user lock, and apply verifies
+that its basis and source fence are still current.
 
-The [cycle runbook](../../engineering/billing-background-operations.md#cycle-and-immutable-allowance-identity)
-owns operational semantics. Classification remains in
-[paid_cycles.py](../../../apps/api/app/domains/billing/paid_cycles.py), with source
-normalization and retained history feeding the existing allowance writer.
+The date-only annual profile from stand 043 can issue an allowance on eligible
+active proof. Its dates carry no inferred UTC bounds. Equivalent timestamp
+offsets preserve the frozen allowance and identity. The
+[calendar runbook](../../engineering/billing-background-operations.md#cycle-and-immutable-allowance-identity)
+defines issuance and activation. The
+[stand evidence](../../engineering/ANY-832-lbx-annual-calendar-evidence.md)
+records the actual first-cycle payload and its limits.
 
 ## ANY-766 integration handoff
 
-The current branch includes ANY-766 through the `main` revision above. Rebase
-resolution preserves both implementations at the overlapping composition,
-`billing/discovery.py`, `billing/reconciliation.py` and
-`billing/reconciliation_contracts.py` boundaries.
-
-Earlier combined checks used these exact inspected revisions:
-
-- [Portal PR #167](https://github.com/gushinets/payments-portal/pull/167):
-  `ec10983ef174fb59ecbf3dcf714a2f75647f8de1`.
-- [Kernel PR #267](https://github.com/gushinets/anytoolai-platform/pull/267):
-  `9c00d812a5077455a351a352b190cd58c383ea97`.
-
-These historical pins scope the earlier combined results below; they do not
-certify the rebased branch or the current paired Kernel revision.
-
-The integrated branch retains:
-
-- ANY-832's read intervals, `established_calendar`, `point_relationship`,
-  supplemental history, shared claim/receipt validation, product preflight and
-  queue-hint handling. Ordinary read/refused-apply retention and strict
-  CREATE/restore receipts remain enforced.
-- ANY-766's `MeteringPolicy` at paid-writer calls, v2 canonical and
-  primary-selection writers, activation receipts and immutable observation guards.
-  New canonical observations use v2; history and receipt readers use the owner's
-  `RECONCILIATION_READ_SCHEMAS` vocabulary accepting v1 and v2.
-  Supplemental relationship v2 is a separate schema from canonical v2.
-- The sole paid-state writer, frozen technical ownership, AccessSnapshot V3,
-  P/R separation and recipient-specific delivery. Kernel remains the authority
-  for used/reserved quantities; inventory admission does not consume usage.
+The branch inherits ANY-766 from `main`. Primary selection and reconciliation
+share the paid-state writer, metering policy, immutable allowance identities
+and activation receipts. AccessSnapshot V3 remains the Portal authority for
+paid grants and approved allowances. Kernel owns used and reserved quantities.
+The follow-up uses existing observations and work items. It adds no DDL and
+changes no public HTTP or Kernel contract.
 
 ## Verification record
 
-The latest verification is the 2026-11-16 rebase entry. The older 2026-11-13
-record covers REV-6 (ordinary read lost after refused apply), REV-7 (strict
-admission accepted a stale source receipt) and REV-8. Earlier REV-3/4/5 and
-PLAN-1/2 regressions remain in the affected suites.
+The [local PostgreSQL regression suite](../../../apps/api/tests/test_any832_regressions_postgres.py)
+contains 14 cases. The latest implementation run verified:
 
-### ANY-766 rebase integration — 2026-11-16
+- **REV-9** — less precise and omitted start fields preserve an exact bound,
+  including legacy canonical v2 evidence. A local AccessSnapshot V3 check
+  confirmed quota appears only after activation and a fresh source read.
+- **REV-10** — an independent subscription poll retains its observed
+  restriction after two local write refusals. Later inventory honors it when
+  the source is omitted and its point read fails. An independent product still selects its primary.
+- **REV-11** — final apply reads each bound history once, and SQL prunes
+  superseded observations before compaction. Equal and overlapping read
+  intervals preserve their implications.
+- **REV-12** — legacy activation lookup runs outside the user lock. With
+  125,000 synthetic date-only observations, the concurrent operation obtained
+  the lock in all three runs. Both repeat reconciliations skipped activation
+  history lookup. Changing the basis before apply refused the stale write.
 
-The resolved tree combined pre-rebase ANY-832 `b13454ec` with `main` `ece3590b`.
-Before the documentation refresh, all 857 tracked files matched the previously
-checked temporary combination byte for byte, including the test-fixture repair.
-This permits reuse of its **2361 API fast tests** and **293 distinct PostgreSQL
-cases**: 230 inventory/history/primary/reconciliation/usage cases, all 37
-AccessSnapshot cases, and 26 ANY-766 purchase-terms/technical-source cases.
+`npm run check:fast` passed on retry with four Vitest workers after a frontend
+Sentry test timeout. The run passed 2,408 API tests, 454 web component tests,
+38 boundary tests, generated-contract checks, lint, formatting, architecture
+and documentation checks. The separate full PostgreSQL partition passed all
+1,377 tests on disposable local PostgreSQL 18.6, including the Portal–Kernel
+TCP auth/access checkpoint against Kernel `de7c1cd9`. External LBX responses
+were simulated. These runs do not certify a production web build, browser or
+business-flow E2E, or live-provider acceptance.
 
-The additional integration regression is
-`test_consumer_filtering_precedes_deadlines_and_policy_change_keeps_paid_revision`.
-It passed on unmodified `main`, failed with `KeyError: 702` on the combination,
-and passed after registering tariff 702 in `PurchaseTransport.offers`. The repair
-preserves ANY-832's explicit multi-offer transport and ANY-766's two-consumer
-scenario; it is included in the 37 AccessSnapshot cases above.
+The follow-up review passed 69 targeted PostgreSQL checks, including the 14
+local regressions, the inventory history and refactoring suites, and a
+temporary diagnostic for retry-budget expiry after the first refused write.
+The diagnostic confirmed that the pending point was replayed and still
+blocked the implicated product on the next collection.
 
-After rebase, `npm run test:api:fast` passed **2361 tests** again on the actual
-branch. A focused PostgreSQL rerun passed **40 cases**: all 37 AccessSnapshot
-cases and the three disputed-repeat-read cases. These 40 are a subset of the
-293 above, not additional distinct coverage. Architecture, documentation,
-Ruff/format (388 API files) and `git diff --check` also passed. Full
-`npm run check` was attempted again and stopped at the missing
-`@hey-api/openapi-ts` package; no dependencies were installed.
+### Earlier integration evidence
 
-PostgreSQL checks used an isolated disposable local PostgreSQL **18.6** container
-and simulated external HTTP, not live-provider acceptance. Full `npm run check`,
-frontend/build/E2E and paired Kernel HTTP acceptance are not certified by those
-focused results. Older combined HTTP results remain historical.
+The PR #168 repeat-read correction preserves both implicated products when
+contradictory discovery is followed by an unavailable repeat GET. REV-6,
+REV-7 and REV-8 established, respectively, restriction retention after refused
+apply, strict receipt/fence checks in financial admission, and isolation from a
+conclusive sibling's local review. The current suites retain those regressions.
+[PR #168 review thread](https://github.com/gushinets/payments-portal/pull/168#discussion_r4582990040).
 
-### PR #168 failed repeat-read correction — 2026-11-16
-
-The [confirmed review finding](https://github.com/gushinets/payments-portal/pull/168#discussion_r4582990040)
-exposed a successful canonical read followed by contradictory agreement ownership
-in both discovery lists and an unavailable repeat point GET. The collector now
-marks the bound subscription uncertain before that repeat I/O, so failure cannot
-leave either implicated product complete. An independent third product remains
-eligible for primary selection.
-
-The permanent regression in `test_billing_inventory_refactoring_postgres.py`
-failed **1 case with 2 passing controls** before the fix. All three cases pass
-afterward and assert both product completeness and actual primary application.
-
-Verification ran against `3b067fe8` plus the correction subsequently committed
-as `ee714fab`:
-
-- **134 PostgreSQL cases passed** across inventory refactoring, scoped inventory,
-  retained history and operator primary-selection suites. These used the available
-  local PostgreSQL **18.6** image and simulated LBX, not the pinned 18.4 image or
-  live-provider acceptance.
-- **1940 API fast tests passed**; architecture and focused Ruff/format checks passed.
-- Full `npm run check` stopped at the missing `@hey-api/openapi-ts` package in this
-  worktree. No dependencies were installed; full-suite/frontend PASS is not claimed.
-
-### REV-8 local correction
-
-REV-8 separates source completeness from local review. A conclusively bound
-sibling sharing a tariff no longer blocks another product's primary; its own
-review remains open and prevents automatic selection.
-
-Regression: **2 failed / 4 passed** before the fix, **6 passed** after it.
-**137 PostgreSQL cases**, `check:fast`, `docs:check` and `git diff --check` passed.
-Full `check`, web build, E2E and combined ANY-766 acceptance were not rerun.
-
-### Earlier REV-6/REV-7 correction
-
-- **198 distinct PostgreSQL cases passed on the ANY-832 working tree:** nine
-  [admission regressions](../../../apps/api/tests/test_billing_inventory_admission_postgres.py)
-  and 189 cases across scoped inventory, inventory refactoring/history, recovery
-  CLI/review and paid-access inventory-failure suites. The nine new cases first
-  reproduced five failures with four passing controls. They cover timely reads
-  followed by lease refusal, omitted/unavailable sources, strict CREATE/restore
-  refusal and successful independent-product controls. Four lease scenarios were
-  rerun after making their timing precondition explicit; they are included in
-  198, not additional cases. Application timeouts were unchanged.
-- **`npm run check:fast` passed:** 1940 API, 414 web component and 38 boundary
-  tests, plus generated contracts, architecture, docs, Ruff/format and web lint.
-  The run explicitly used `KERNEL_MOCK_ENABLED=0`.
-- **41 distinct combined PostgreSQL cases passed** with the ANY-766 pins above:
-  the nine new admission cases, all 30 `test_paid_usage_postgres.py` cases and
-  two legacy canonical/supplemental history cases. These exercise v1/v2 readers
-  and immutable observations as well as strict admission.
-- `git diff --check` passed. Follow-up changes remained unstaged and uncommitted.
-
-### Earlier evidence and remaining limits
-
-Before REV-6/REV-7, related normalization/history/policy unit tests passed
-**205 cases**, and the pinned combination passed **110 PostgreSQL cases**.
-Combined HTTP acceptance passed **2 tests, 1 deselected** in ANY-766's
-`tools/joint_paid_runtime/tests/test_paid_runtime.py`:
-`test_real_joint_paid_execution_replay_lifecycle_and_retained_storage` and
-`test_review_policy_cutover_preserves_accepted_work_and_recipient_history`.
-These used real Portal/Kernel HTTP, authentication and PostgreSQL, with external
-LBX/AI and the second backend simulated. They covered equivalent-offset allowance
-identity/counters/revisions/outbox, block/restore, execution/replay, future-period
-non-activation, retained storage and policy cutover. The deselected test covers
-the separate SMTP/browser identity journey.
-
-Those HTTP results predate REV-6/REV-7, REV-8 and the PR #168 correction and do
-not certify those changes. The current branch has focused verification only.
-Full `npm run check` was attempted on 2026-11-16 and stopped at the missing
-`@hey-api/openapi-ts` dependency. Joint HTTP acceptance has not been rerun after
-the later corrections. No live-provider or production acceptance is claimed.
-
-For documentation-only edits, use `npm run docs:check` and `git diff --check`.
-Existing runtime evidence remains scoped to the implementation and revisions
-above; later code or integration changes require checks of their affected paths.
+The November 16 rebase combined Portal ANY-832 `b13454ec` with `main`
+`ece3590b`. Its earlier focused run passed 293 PostgreSQL cases and 2,361 API
+fast tests. Historical cross-repository evidence used Portal `ec10983e` and
+Kernel `9c00d812`. Those pins describe the earlier runs.
+[Portal PR #167](https://github.com/gushinets/payments-portal/pull/167) ·
+[Kernel PR #267](https://github.com/gushinets/anytoolai-platform/pull/267).

@@ -26,7 +26,7 @@ def coalesce(
     reference: str,
     due: datetime,
     priority: int,
-    payload: dict,
+    payload: dict | None,
     hint: bool = False,
     replace_deadline: bool = False,
     revive_completed: bool = False,
@@ -41,7 +41,7 @@ def coalesce(
         recipient_id=recipient_id,
         coalescing_key=key,
         payload_schema_version="billing-work:v1",
-        payload_document=payload,
+        payload_document=payload if payload is not None else {},
         priority=priority,
         next_attempt_at=due,
         work_state="pending",
@@ -58,7 +58,7 @@ def coalesce(
             (or_(table.work_state == "completed", table.next_attempt_at > due), due), else_=table.next_attempt_at
         ),
         "enqueue_generation": table.enqueue_generation + 1,
-        "payload_document": payload,
+        "payload_document": table.payload_document if payload is None else payload,
         "priority": priority,
     }
     statement = statement.on_conflict_do_update(
@@ -66,7 +66,7 @@ def coalesce(
         index_where=text(RECURRING_INDEX),
         set_=updates,
         where=or_(
-            table.payload_document != payload,
+            table.payload_document != updates["payload_document"],
             table.next_attempt_at != due,
             (table.work_state == "completed") & revive_completed,
         )

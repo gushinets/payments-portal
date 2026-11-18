@@ -3,7 +3,20 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import JSON, SQLColumnExpression, Select, BigInteger, case, exists, func, or_, select, Text, cast
+from sqlalchemy import (
+    ScalarResult,
+    JSON,
+    SQLColumnExpression,
+    Select,
+    BigInteger,
+    case,
+    exists,
+    func,
+    or_,
+    select,
+    Text,
+    cast,
+)
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -129,11 +142,10 @@ def observation(db: Session, identity: UUID) -> BillingStateObservation | None:
     return db.get(BillingStateObservation, identity)
 
 
-def access_end_observation(db: Session, sub: ExternalSubscription) -> BillingStateObservation | None:
-    """Latest accepted finite end for this permanent source, including after revocation."""
+def _accepted_source_observations(sub: ExternalSubscription) -> Select[tuple[BillingStateObservation]]:
     evidence = BillingStateObservation.evidence_document
     provenance = evidence["provenance"]
-    return db.scalar(
+    return (
         select(BillingStateObservation)
         .where(
             BillingStateObservation.subscription_id == sub.subscription_id,
@@ -145,14 +157,31 @@ def access_end_observation(db: Session, sub: ExternalSubscription) -> BillingSta
             ),
             BillingStateObservation.completeness_classification == "complete",
             BillingStateObservation.result_classification == "COMPLETE_MATCH",
-            evidence["access_end_at"].as_string().is_not(None),
             provenance["purchase_intent_id"].as_string() == str(sub.purchase_intent_id),
             provenance["mapping_revision_id"].as_string() == str(sub.mapping_revision_id),
             provenance["provider_subscription_id"].as_string() == sub.external_subscription_id,
             provenance["agreement_id"].as_string() == sub.external_agreement_id,
         )
         .order_by(BillingStateObservation.observed_at.desc(), provenance["fence"].as_string().cast(BigInteger).desc())
-        .limit(1)
+    )
+
+
+def access_end_observation(db: Session, sub: ExternalSubscription) -> BillingStateObservation | None:
+    """Latest accepted finite end for this permanent source, including after revocation."""
+    value = BillingStateObservation.evidence_document["access_end_at"].as_string()
+    return db.scalar(_accepted_source_observations(sub).where(value.is_not(None)).limit(1))
+
+
+def activation_values(db: Session, sub: ExternalSubscription, field: str) -> ScalarResult[str]:
+    """Read source values for one field in descending evidence order."""
+    value = BillingStateObservation.evidence_document["calendar"][field].as_string()
+    # Skip date-only and naive rows before returning source values to the caller.
+    # The caller parses any remaining candidate before using it as an instant.
+    return db.scalars(
+        _accepted_source_observations(sub)
+        .with_only_columns(value)
+        .where(value.regexp_match(r"^.{10}.+(Z|[+-][0-9][0-9].*)$"))
+        .execution_options(yield_per=32)
     )
 
 

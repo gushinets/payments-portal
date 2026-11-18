@@ -10,7 +10,11 @@ from app.domains.billing.paid_allowances import materialize_allowance
 from app.domains.billing.paid_deadlines import schedule_deadline
 from app.domains.billing.paid_contracts import EFFECTIVE_SCHEMA, EffectiveState, PaidGrant, canonical_state
 from app.domains.billing.paid_policy import MeteringPolicy, PaidDecision, paid_decision
-from app.domains.billing.reconciliation_contracts import SubscriptionProof
+from app.domains.billing.reconciliation_contracts import (
+    ActivationBounds,
+    SubscriptionProof,
+    explicit_utc_instant,
+)
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases.contracts import Purchase
 from app.domains.purchases.evidence import accepted
@@ -45,6 +49,29 @@ def resolve_access_end(
     return as_utc(datetime.fromisoformat(basis.evidence_document["access_end_at"])), basis.observation_id
 
 
+def retained_activation_bounds(
+    db: Session, subscription: ExternalSubscription, *, read_legacy: bool
+) -> ActivationBounds | None:
+    """Use the latest canonical summary, or bootstrap legacy evidence before taking the user lock."""
+    if subscription.latest_observation_id is None:
+        return ActivationBounds(subscription_start_at=None, instance_start_at=None)
+    latest = queries.observation(db, subscription.latest_observation_id)
+    if latest is not None and (document := latest.evidence_document.get("activation_bounds")) is not None:
+        return ActivationBounds.model_validate(document)
+
+    if not read_legacy:
+        return None
+
+    def legacy_start(field: str) -> datetime | None:
+        with queries.activation_values(db, subscription, field) as values:
+            return next((instant for value in values if (instant := explicit_utc_instant(value)) is not None), None)
+
+    return ActivationBounds(
+        subscription_start_at=legacy_start("subscription_start_date"),
+        instance_start_at=legacy_start("subscription_instance_start_date"),
+    )
+
+
 def apply_paid_source(
     db: Session,
     scope: BillingProductAccessScope,
@@ -56,14 +83,16 @@ def apply_paid_source(
     *,
     skew_seconds: int | None,
     access_end_at: datetime | None,
+    activation_at: datetime | None,
     review: bool = False,
     metering_policy: MeteringPolicy = MeteringPolicy.NONPRODUCTION,
-) -> None:
-    """Caller holds user first, then original purchase/scope/source locks."""
+) -> datetime | None:
+    """Apply paid access and return the earliest pending activation read, if any."""
+    activation_due = None
     decision = paid_decision(proof, review=review)
     primary = scope.primary_subscription_id == subscription.subscription_id
     if not primary:
-        return
+        return None
     if subscription.lifecycle_status == Lifecycle.ENDED:
         scope.primary_subscription_id = None
         scope.primary_retired_at = now
@@ -71,7 +100,7 @@ def apply_paid_source(
         scope.effective_access_document = None
         scope.effective_access_until = None
         scope.access_basis_observation_id = observation.observation_id
-        return
+        return None
     if decision == PaidDecision.GRANT and skew_seconds is not None:
         deadline = as_utc(subscription.projection_valid_until) - timedelta(seconds=skew_seconds)
         grant_end = None
@@ -81,14 +110,22 @@ def apply_paid_source(
         if deadline <= now:
             scope.effective_access_document = None
             scope.effective_access_until = deadline
-            return
+            return None
         terms = purchase.accepted.technical_terms
-        allowance = (
-            materialize_allowance(db, subscription, purchase.accepted, proof.cycle, skew_seconds=skew_seconds)
-            if terms is not None and metering_policy.permits(terms.provenance)
-            else None
-        )
-        if allowance is not None and allowance.period_start and datetime.fromisoformat(allowance.period_start) > now:
+        allowance = None
+        if terms is not None and metering_policy.permits(terms.provenance):
+            # The calendar-month bucket may predate activation. A read begun
+            # before the conservative instant cannot publish its allowance.
+            if proof.cycle is not None and activation_at is not None:
+                safe_start = activation_at + timedelta(seconds=skew_seconds)
+                if proof.read_started_at < safe_start:
+                    activation_due = safe_start
+            allowance = materialize_allowance(
+                db, subscription, purchase.accepted, proof.cycle, skew_seconds=skew_seconds
+            )
+        if activation_due is not None or (
+            allowance is not None and allowance.period_start and datetime.fromisoformat(allowance.period_start) > now
+        ):
             # Issuance freezes history, not authority. Only another source apply
             # at/after the proven start may add this bucket to the committed set.
             allowance = None
@@ -104,6 +141,7 @@ def apply_paid_source(
     # Unknown source attempts never refresh the saved access deadline or create
     # a bucket. Complete commercial/lifecycle proof with an ambiguous calendar
     # above still yields independently supported product access.
+    return activation_due
 
 
 def _reduction_cause(

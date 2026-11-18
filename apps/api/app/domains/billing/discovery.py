@@ -276,7 +276,7 @@ def select_primaries(
             db.add(selected)
             db.flush()
             scope.primary_subscription_id = sub.subscription_id
-            apply_paid_source(
+            activation_due = apply_paid_source(
                 db,
                 scope,
                 sub,
@@ -286,8 +286,18 @@ def select_primaries(
                 now,
                 skew_seconds=clock_skew_seconds,
                 access_end_at=access_end_at,
+                activation_at=source.activation_bounds.not_before if source.activation_bounds is not None else None,
                 metering_policy=metering_policy,
             )
+            if activation_due is not None:
+                work.schedule_reconciliation(
+                    db,
+                    sub,
+                    None,
+                    complete=True,
+                    attempt_started_at=source.proof.read_started_at,
+                    activation_due=activation_due,
+                )
             causes.append(selected)
     return tuple(causes)
 
@@ -302,6 +312,7 @@ def apply_inventory(
     metering_policy: MeteringPolicy = MeteringPolicy.NONPRODUCTION,
 ) -> None:
     """Validate all original versions, then finish the customer job once."""
+    from app.domains.billing.inventory_history import inventory_point_changes
     from app.domains.purchases.inventory import (
         invalidate_unsent,
         validate_inventory_structure,
@@ -315,6 +326,7 @@ def apply_inventory(
             raise BillingRefused("billing_work_stale", 409)
         user = lock_user(db, customer.user_id)
         current = validate_inventory_structure(db, result)
+        history_changes = inventory_point_changes(db, result)
         now = as_utc(billing_reconciliation.database_now(db))
         applicable: set[str] = set()
         deferred: set[str] = set()
@@ -325,7 +337,9 @@ def apply_inventory(
         )
         for product in result.products:
             try:
-                validate_inventory_product(db, result, product.product_id, current=current)
+                validate_inventory_product(
+                    db, result, product.product_id, current=current, history_changes=history_changes
+                )
                 _validate_product_discovery(db, result, claim, product, identities.get(product.product_id), now)
             except InventoryStale:
                 deferred.add(product.product_id)

@@ -13,7 +13,10 @@ from app.core.settings import Settings
 from app.domains.billing.discovery import DiscoveredCandidate, scope_versions
 from app.domains.billing.paid_policy import CandidateConclusion as Conclusion, PaidDecision, paid_decision
 from app.domains.billing.background_recovery import customer_snapshot
-from app.domains.billing.inventory_history import retain_candidate_relationship, retained_subscription_relationships
+from app.domains.billing.inventory_history import (
+    retain_candidate_relationship,
+    retained_subscription_relationships,
+)
 from app.domains.billing.contracts import CustomerOpen
 from app.domains.billing.customer_conflicts import record_customer_conflict
 from app.domains.billing.reconciliation_contracts import (
@@ -73,7 +76,9 @@ async def collect_inventory(
 ) -> InventoryResult:
     budget.check()
     started = await delegate(read_source_time, factory)
-    current, initial = await delegate(customer_snapshot, factory, configuration, customer.customer_id)
+    current, initial = await delegate(
+        customer_snapshot, factory, configuration, customer.customer_id, replay_relationships=True
+    )
     if (current.operation_id, current.fence, current.provider_id, current.outer_key) != (
         customer.operation_id,
         customer.fence,
@@ -115,6 +120,7 @@ async def collect_inventory(
                 point_history[provider_id],
                 SubscriptionRelationship(agreement_id, tariff_id),
                 interval,
+                work_claim=work_claim,
             )
 
     if len(bindings) > MAX_RELEVANT_SUBSCRIPTIONS:
@@ -126,6 +132,12 @@ async def collect_inventory(
         conclusion = Conclusion.INCOMPLETE
         committed = None
         proof: SubscriptionProof | None = None
+        canonical_failed = False
+
+        def remember_read(observed: SubscriptionProof) -> None:
+            nonlocal proof
+            proof = observed
+
         if reuse is not None and purchase.id == reuse.purchase.id:
             assert reuse.proof is not None
             proof = reuse.proof
@@ -142,13 +154,20 @@ async def collect_inventory(
                     work_claim=work_claim,
                     delegate=delegate,
                     expected=purchase,
+                    on_read=remember_read,
                 )
                 versions[purchase.id] = result.purchase
                 sources.append(result)
                 committed = result
-                proof = result.proof
+                if proof is None:
+                    proof = result.proof
+                # A local deadline may have substituted an incomplete apply
+                # proof after this attempt had already observed a restriction.
+                canonical_failed = result.proof is not proof
             except AppError:
-                complete = False
+                canonical_failed = True
+        if canonical_failed:
+            complete = False
         # Capture retained read implications after the canonical attempt;
         # later discovery facts carry their own independent I/O intervals.
         history = await delegate(retained_subscription_relationships, factory, purchase)
@@ -167,7 +186,7 @@ async def collect_inventory(
             )
             continue
         relationship = proof.point_relationship
-        facts.failed |= source_scope_unproven(proof)
+        facts.failed |= source_scope_unproven(proof) or "customer_identity_conflict" in proof.reasons
         expected_relationship = (agreement_id, purchase.accepted.selection.tariff_id)
         disagreement = any((item.agreement_id, item.tariff_id) != expected_relationship for item in retained)
         if relationship is not None:
@@ -181,9 +200,9 @@ async def collect_inventory(
         # source receipt: only the final audited writer may apply/select it.
         # Review blocks this source's primary selection, not proof of its ownership
         # or an independent product that happens to share its accepted tariff.
-        if proof.complete:
+        if not canonical_failed and proof.complete:
             conclusion = Conclusion.ELIGIBLE if paid_decision(proof) == PaidDecision.GRANT else Conclusion.INELIGIBLE
-        elif proof.identity == IdentityProof.MATCH and proof.lifecycle == Lifecycle.ENDED:
+        elif not canonical_failed and proof.identity == IdentityProof.MATCH and proof.lifecycle == Lifecycle.ENDED:
             conclusion = Conclusion.INELIGIBLE
         if disagreement or conclusion == Conclusion.INCOMPLETE:
             facts.incomplete.add(provider_id)
@@ -436,7 +455,7 @@ async def collect_inventory(
         tuple(versions.values()),
         tuple(sorted(conflicts)),
         tuple(sorted(pending)),
-        complete and not overflowed,
+        complete and not facts.failed and not overflowed,
         products=products,
         sources=tuple(sources),
         point_history=tuple(point_history.values()),

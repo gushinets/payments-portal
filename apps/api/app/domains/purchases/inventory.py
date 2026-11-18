@@ -72,7 +72,7 @@ def validate_inventory_structure(db: Session, result: InventoryResult) -> tuple[
 
 def validate_inventory(db: Session, result: InventoryResult) -> None:
     """Strict customer-wide admission and restore-original validation."""
-    from app.domains.billing.inventory_history import verify_inventory_point_history
+    from app.domains.billing.inventory_history import inventory_point_changes
     from app.domains.billing.reconciliation_validation import source_receipt_current
 
     current = validate_inventory_structure(db, result)
@@ -82,14 +82,20 @@ def validate_inventory(db: Session, result: InventoryResult) -> None:
         sub = queries.linked_subscription(db, source.purchase.id)
         if sub is None or not source_receipt_current(db, source, sub, require_latest=source.proof.complete):
             raise InventoryStale()
-    verify_inventory_point_history(db, result)
+    if inventory_point_changes(db, result):
+        raise InventoryStale()
 
 
 def validate_inventory_product(
-    db: Session, result: InventoryResult, product_id: str, *, current: tuple[Purchase, ...] | None = None
+    db: Session,
+    result: InventoryResult,
+    product_id: str,
+    *,
+    current: tuple[Purchase, ...] | None = None,
+    history_changes: frozenset[str] | None = None,
 ) -> None:
     """Validate only mutable facts supporting this product, with strict own operations."""
-    from app.domains.billing.inventory_history import verify_inventory_point_history
+    from app.domains.billing.inventory_history import inventory_point_changes
     from app.infrastructure.queries import billing_reconciliation
 
     current = validate_inventory_structure(db, result) if current is None else current
@@ -115,7 +121,10 @@ def validate_inventory_product(
         old.id in relevant and not same_purchase(now, old) for now, old in zip(current, result.purchases, strict=True)
     ):
         raise InventoryStale()
-    verify_inventory_point_history(db, result, product_id=product_id)
+    if history_changes is None:
+        history_changes = inventory_point_changes(db, result)
+    if product_id in history_changes:
+        raise InventoryStale()
 
 
 def invalidate_unsent(db: Session, purchase: Purchase) -> bool:

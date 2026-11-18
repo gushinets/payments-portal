@@ -1,9 +1,11 @@
 """Provider-neutral proof handed from Integration to shared Application apply."""
 
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict
 
 from app.domains.billing.contracts import CustomerOpen
 from app.domains.billing.paid_cycles import CalendarEvidence
@@ -15,6 +17,41 @@ from app.models import (
 
 RECONCILIATION_SCHEMA = "subscription-reconciliation:v2"
 RECONCILIATION_READ_SCHEMAS = ("subscription-reconciliation:v1", RECONCILIATION_SCHEMA)
+
+
+def explicit_utc_instant(value: str | None) -> datetime | None:
+    """Read an ISO instant without supplying a zone for dates or naive timestamps."""
+    if value is not None:
+        try:
+            parsed = datetime.fromisoformat(value)
+            if parsed.utcoffset() is not None:
+                return parsed.astimezone(UTC)
+        except (ValueError, OverflowError):
+            pass
+    return None
+
+
+class ActivationBounds(BaseModel):
+    """Retained exact starts. Two explicit nulls record a completed lookup."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    subscription_start_at: AwareDatetime | None
+    instance_start_at: AwareDatetime | None
+
+    def with_calendar(self, calendar: dict[str, str | None]) -> "ActivationBounds":
+        return ActivationBounds(
+            subscription_start_at=explicit_utc_instant(calendar.get("subscription_start_date"))
+            or self.subscription_start_at,
+            instance_start_at=explicit_utc_instant(calendar.get("subscription_instance_start_date"))
+            or self.instance_start_at,
+        )
+
+    @property
+    def not_before(self) -> datetime | None:
+        return max(
+            (value for value in (self.subscription_start_at, self.instance_start_at) if value is not None),
+            default=None,
+        )
 
 
 @dataclass(frozen=True)
@@ -108,3 +145,4 @@ class ReconciliationResult:
     subject: ReconciliationSubject
     proof: SubscriptionProof
     purchase: Purchase
+    activation_bounds: ActivationBounds | None = None
