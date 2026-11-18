@@ -16,7 +16,7 @@ Existing Dockerfile already refreshes indexes and upgrades packages. Existing de
 - [x] Verify normal non-root startup/readiness with disposable PostgreSQL, offline imports, runtime libraries and Alembic entrypoints; run focused image/deployment/migration contracts.
 - [x] Run npm run check:fast and broadest supported npm run check, attributing limitations to revisions.
 - [x] Review diff and current origin/main overlap; publish focused PR with immutable evidence.
-- [ ] Obtain and record accountable human ownership and scoped residual-risk decisions for every unresolved advisory (acceptance blocker).
+- [ ] Development team: assign residual remediation/review owners and record applicable scoped decisions; ownership is pending team assignment. This ticket acceptance criterion remains pending separately from completed technical handoff; no risk acceptance is inferred.
 
 ## Evidence and decisions
 Evidence is retained under .harness/any-674 during execution. Checked-in remediation report will include commands, identities, hashes, package/advisory comparison and dated residual review requests. Missing owner assignments remain explicit human decisions.
@@ -52,3 +52,7 @@ New evidence will be a separately labeled follow-up, not a rewrite of the origin
 ## Completed minimization follow-up
 
 Technical investigation and implementation complete at runtime source `f7728c18`; see [runtime minimization evidence](../../engineering/ANY-674-runtime-minimization.md). All follow-up investigation/build/removal/runtime/analysis/check/review steps above were executed. Sixteen verified nonessential packages removed; 218/96 becomes 207/95 records/IDs, with one Low advisory eliminated and no High ID falsely claimed fixed. Eleven High IDs individually analyzed; Bookworm and Alpine alternatives tested and rejected with concrete evidence. Historical results remain intact. `check:fast` and source CI pass; local full check has one unchanged cancellation timeout, with later stages unreached and isolated rerun passing. Supported Trixie/backports has no fixed candidates for retained High families. Unknown accountable owners remain explicit; the earlier blanket acceptance request is superseded by technical analysis and specific next actions. No acceptance, merge, deployment or issue-state change.
+
+## Technical handoff separation
+
+Technical work is complete and handed off with supported-update/removal analysis, before/after scans, startup/readiness and migrations. The [handoff](../../engineering/ANY-674-technical-handoff.md) enumerates all 95 current residual IDs for development-team assignment, with per-ID applicability/options in the evidence ledgers and proposed 2026-12-02 review. Ownership is **pending team assignment**, does not block technical completion and is not assigned to the requester. The ticket ownership criterion stays unchecked. No risk approval, exception, merge, deployment or Done transition.
