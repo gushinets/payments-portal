@@ -1,0 +1,12 @@
+[
+  {
+    "original_file": "Dockerfile.alpine.txt",
+    "archived_document": "alpine-candidate-build.md",
+    "original_content_sha256": "fd3ddc37de6cfcaec82bb864e0875e77bedf4a78a13ca3afd4d8623ae29d4726"
+  },
+  {
+    "original_file": "Dockerfile.bookworm.txt",
+    "archived_document": "bookworm-candidate-build.md",
+    "original_content_sha256": "6de67d3825e5fecb5868b44ae70704f6624fa6df91fbeb923f44f01f6deed230"
+  }
+]

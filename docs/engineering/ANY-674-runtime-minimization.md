@@ -80,3 +80,9 @@ Private raw archives, full sanitized reports, build logs and cache remain under 
 - [CI run 44349245318](https://github.com/gushinets/payments-portal/actions/runs/44349245318) passed on `f7728c18`, including production image/PostgreSQL/migration/API smoke, browser, code-quality and both harness jobs. [Security run 44349245635](https://github.com/gushinets/payments-portal/actions/runs/44349245635) passed with existing report-only policy unchanged.
 
 No merge, deployment, Linear status change or residual-risk approval is part of this work. Next steps concern maintained fixes for the specific retained High families, accountable technical ownership and only then scoped residual decisions where remediation remains infeasible.
+
+## Current-head CI and review follow-up
+
+At evidence head `ee45b943`, [CI44354560864](https://github.com/gushinets/payments-portal/actions/runs/44354560864) and [Security44354560627](https://github.com/gushinets/payments-portal/actions/runs/44354560627) passed. Reviewer revalidation confirmed matching final-image finding signatures, full package versions and all published hashes, with no new actionable runtime defect. The remaining review blocker is accountable ownership and scoped follow-up decisions for the 95 current residual IDs; no owner or acceptance is inferred from the ticket assignee.
+
+The separate SonarQube check failed with four security findings on `uv sync` in the two archived candidate recipe files. These recipes document rejected experiments. Their exact historical commands are now fenced documentation, with original content hashes and byte-for-byte reconstruction checks in `candidate-recipe-provenance.json`. No retrospective command changes, source-analysis exclusions, issue dismissals or gate changes are made. Production runtime/build source and image identities are unchanged. Current follow-up checks must be assessed separately from the earlier passing workflows.
