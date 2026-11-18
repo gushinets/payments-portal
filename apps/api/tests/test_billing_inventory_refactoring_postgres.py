@@ -3,7 +3,7 @@
 import asyncio
 from copy import deepcopy
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -11,7 +11,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 
+from app.composition.billing_background import inventory_customer
 from app.composition.reconciliation import read_subscription_proof, reconcile_subscription
+from app.composition.sources import SourceResources
 from app.domains.billing.discovery import apply_inventory, persist_discoveries
 from app.domains.billing.inventory_history import (
     LEGACY_INVENTORY_RELATIONSHIP_SCHEMA,
@@ -27,20 +29,25 @@ from app.domains.billing.reconciliation_contracts import (
     SubscriptionRelationship,
 )
 from app.domains.purchases import financial, service
-from app.domains.purchases.contracts import PurchaseInventoryIncomplete
+from app.domains.purchases.contracts import Purchase, PurchaseInventoryIncomplete
+from app.domains.purchases.inventory_contracts import InventoryResult
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.errors import LbxAuthenticationFailed, LbxScopeForbidden, LbxUnavailable
-from app.integrations.lbx.financial import Subscription
+from app.integrations.lbx.financial import NewAgreement, Subscription
 from app.models import (
     BillingProductAccessScope,
     BillingStateObservation,
     BillingStateObservationKind,
     BillingWorkItem,
+    BillingWorkState,
     ExternalCreateOperationKind as Kind,
     ManualReviewCase,
     PurchaseIntentState,
 )
+from apps.api.tests.factories.reconciliation import agreement_factory, subscription_factory
 from apps.api.tests.support.any709_step1 import step1_settings
+from apps.api.tests.support.any709_step3 import PurchaseTransport
+from apps.api.tests.test_any709_step3_postgres import TOKEN
 from apps.api.tests.factories.original_operation import advance_deadlines, financial_claim_clock
 from apps.api.tests.test_billing_scoped_inventory_postgres import (
     anyio_backend as anyio_backend,
@@ -54,6 +61,89 @@ from apps.api.tests.test_billing_background_recovery_postgres import synthetic_p
 from apps.api.tests.test_billing_worker_postgres import historical_link
 
 pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
+
+
+@pytest.mark.parametrize(("phase", "count"), [("initial", 20), ("initial", 41), ("final", 40), ("final", 41)])
+async def test_oversized_inventory_retries_and_selects_only_the_independent_primary(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    count: int,
+) -> None:
+    transport, sources, pending = background_scenario
+    factory, config = postgres_session_factory, step1_settings(paid_access_clock_skew_seconds=10)
+    transport.agreements.append(agreement_factory().model_dump())
+    template = subscription_factory().model_dump()
+    template["total_price"] = 100
+    template["services"][0].update(multiplicator=1, price=100)
+    transport.subscriptions.append(template)
+    independent = historical_link(factory, pending, transport, "brief_decoder", 1, tariff_id=702)
+    point = transport.subscriptions[-1]
+    point.update(state=2, last_tariffication_period_start="2026-10-01", last_tariffication_period_end="2026-10-31")
+    transport.subscriptions[:] = [point]
+    independent_id = service.linked_subscription_id(factory, independent)
+    claim = claim_inventory(Scenario(factory, config, transport, sources, independent_id))
+
+    # The bound subscription counts toward the initial 20-ID read budget.
+    # The final list can exceed the 40-candidate evidence limit on its own.
+    client = sources.require_lbx()
+    discover = client.discover_subscriptions
+    listing_sizes: list[int] = []
+    extras = [dict(template, subscription_id=9000 + index) for index in range(count)]
+
+    async def listing(
+        *, user_id: int, budget: PreflightBudget, agreement_id: int | None = None
+    ) -> tuple[Subscription, ...]:
+        if agreement_id is not None:
+            return await discover(user_id=user_id, budget=budget, agreement_id=agreement_id)
+        if phase == "initial" or listing_sizes:
+            transport.subscriptions[:] = [point, *extras]
+        rows = await discover(user_id=user_id, budget=budget)
+        listing_sizes.append(len(rows))
+        return rows
+
+    results: list[InventoryResult] = []
+
+    async def delegate(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        result = await run_in_threadpool(fn, *args, **kwargs)
+        if fn is persist_discoveries:
+            results.append(result)
+        return result
+
+    monkeypatch.setattr(client, "discover_subscriptions", listing)
+    transport.requests.clear()
+    async with sources.billing.operation(bound_scope=False) as budget:
+        await inventory_customer(
+            client, sources.billing, config, factory=factory, claim=claim, budget=budget, delegate=delegate
+        )
+    (result,) = results
+    products = {product.product_id: product for product in result.products}
+    affected = products["proposal_ai"]
+    assert not affected.complete and len(affected.candidates) == min(count, 40)
+    assert products["brief_decoder"].complete
+    assert listing_sizes == [1 + count if phase == "initial" else 1, 1 + count]
+    assert all(request.method == "GET" and "/subscriptions/9" not in request.url.path for request in transport.requests)
+
+    operation = next(op for op in pending.operations if op.kind == Kind.AGREEMENT)
+    request = NewAgreement(
+        user_id=345, organization_id=21, agreement_number=operation.key, create_date=date(2026, 10, 27)
+    ).request_document()
+    with pytest.raises(PurchaseInventoryIncomplete):
+        financial.claim_financial(
+            factory, pending, operation, request, configuration=config, token=TOKEN, inventory=result
+        )
+
+    with factory() as db:
+        primary = dict(
+            db.execute(
+                select(BillingProductAccessScope.product_id, BillingProductAccessScope.primary_subscription_id)
+            ).all()
+        )
+        assert primary == {"proposal_ai": None, "brief_decoder": independent_id}
+        queue = db.get(BillingWorkItem, claim.id)
+        assert queue.work_state == BillingWorkState.PENDING and queue.lease_owner is None
+        assert queue.last_error_classification == "inventory_incomplete"
 
 
 @pytest.mark.parametrize("bound_point_relationship_scenario", [False], indirect=True)

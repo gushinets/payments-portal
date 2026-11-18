@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID, uuid4
 
 import httpx
@@ -18,6 +18,7 @@ from app.composition.reconciliation import reconcile_subscription
 from app.composition.sources import SourceResources, source_resources
 from app.core.settings import Settings
 from app.domains.billing.reconciliation_contracts import ReconciliationResult
+from app.domains.catalog.commercial_offer import CommercialPeriod
 from app.integrations.lbx.errors import LbxUnavailable
 from app.models import (
     AccessInvalidationOutbox,
@@ -400,6 +401,7 @@ async def test_paid_writer_stale_active_cannot_restore_committed_negative(paid_s
         ("annual_calendar_month", "2026-11-30T23:30:00-04:00", "-04:00"),
         ("annual_calendar_month", "2026-11-01T00:00:00+03:00", "+03:00"),
         ("annual_calendar_month", "2026-11-11", None),
+        pytest.param("annual_calendar_month", "2026-11-18 00:00:00", None, id="stand-043-wire"),
         ("calendar_month", "2026-11-11T12:34:56+03:00", "+03:00"),
     ],
     indirect=["paid_source"],
@@ -424,12 +426,17 @@ async def test_paid_writer_first_calendar_cycle_through_http_and_annual_acceptan
         last_tariffication_period_start=start,
         last_tariffication_period_end=end,
     )
+    stand_format = activation == "2026-11-18 00:00:00"
+    if stand_format:
+        point.update(subscription_end_date="2027-11-17 23:59:59", subscription_instance_end_date="2027-11-17 23:59:59")
     first = await reconcile(scenario)
     period = first.subject.purchase.accepted.offer.period
     assert (period.unit, period.length, period.anchor) == ("year" if annual else "month", 1, "calendar_month")
     assert first.subject.purchase.accepted.technical_terms.offer.quantity == 100
     assert first.subject.established_calendar is None
     assert first.proof.complete and first.proof.calendar_complete and first.proof.cycle is not None
+    if stand_format:
+        assert first.proof.access_end_at is None  # The subscription end has no UTC offset either.
     precision = "timestamp" if offset else "date"
     assert first.proof.cycle.precision == precision
     assert first.proof.cycle.anchor == start
@@ -476,6 +483,12 @@ async def test_paid_writer_first_calendar_cycle_through_http_and_annual_acceptan
         (f"2028-11-01T00:00:00{offset}" if annual else f"2027-01-01T00:00:00{offset}") if offset else "2028-10-31"
     )
     clock["now"] = datetime(2027 if annual else 2026, 11 if annual else 12, 12, tzinfo=UTC)
+    if stand_format:
+        # Local time alone never refills; the observed cycle is still the first one.
+        await reconcile(scenario)
+        assert persisted(scenario.factory)[2][1]["allowances"] == before[2][1]["allowances"]
+        # Synthetic renewal proof. Stand 043 evidence covers the first cycle only.
+        point.update(subscription_end_date="2028-11-17 23:59:59", subscription_instance_end_date="2028-11-17 23:59:59")
     point.update(last_tariffication_period_start=next_start, last_tariffication_period_end=next_end)
     if offset:
         for field in fields:
@@ -708,7 +721,7 @@ async def test_paid_writer_uses_only_exact_supported_calendar_history(paid_sourc
             "last_tariffication_period_start": "2026-11-01T00:00:00+03:00",
             "last_tariffication_period_end": "2026-12-01T00:00:00+03:00",
         },
-        "calendar_month",
+        CommercialPeriod("month", 1, "calendar_month", date(2026, 10, 1), None),
     )
     with scenario.factory() as db:
         sub = db.get(ExternalSubscription, scenario.subscription_id)

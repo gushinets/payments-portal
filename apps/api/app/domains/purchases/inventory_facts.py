@@ -5,7 +5,7 @@ from collections import Counter
 from datetime import datetime
 from uuid import UUID
 
-from app.domains.billing.discovery import DiscoveredCandidate, ProductDiscovery
+from app.domains.billing.discovery import MAX_PRODUCT_DISCOVERY_CANDIDATES, DiscoveredCandidate, ProductDiscovery
 from app.domains.billing.paid_policy import CandidateConclusion
 from app.domains.purchases.contracts import Purchase
 from app.models import ExternalCreateOperationKind as Kind
@@ -48,8 +48,8 @@ def project_inventory(
     scopes: dict[str, tuple[UUID | None, datetime | None]],
     *,
     failed: bool,
-) -> tuple[ProductDiscovery, ...]:
-    """Reduce one scan without dropping earlier implications or consulting storage."""
+) -> tuple[tuple[ProductDiscovery, ...], bool]:
+    """Project bounded evidence and report whether any product exceeded the bound."""
     known = {candidate.identity: candidate for candidate in candidates}
     identities = sorted({relation.identity for relation in relationships} | set(known))
     impacts: dict[str, set[str]] = {}
@@ -66,6 +66,7 @@ def project_inventory(
         if op.kind == Kind.SUBSCRIPTION and op.bound_id is not None
     }
     output = []
+    overflowed = False
     for product in sorted({purchase.accepted.selection.product_id for purchase in purchases}):
         observed = []
         uncertain = False
@@ -91,6 +92,11 @@ def project_inventory(
             observed.append(candidate)
         conflict = any(item.id in conflicts and item.accepted.selection.product_id == product for item in purchases)
         primary, retired = scopes.get(product, (None, None))
+        oversized = len(observed) > MAX_PRODUCT_DISCOVERY_CANDIDATES
+        overflowed |= oversized
+        if oversized:
+            # Bound and inspected candidates carry the receipts used by final apply.
+            observed.sort(key=lambda item: item.identity not in known)
         output.append(
             ProductDiscovery(
                 product_id=product,
@@ -99,13 +105,14 @@ def project_inventory(
                 primary_subscription_id=primary,
                 primary_retired_at=retired,
                 complete=not failed
+                and not oversized
                 and not conflict
                 and not uncertain
                 and all(item.conclusion != CandidateConclusion.INCOMPLETE for item in observed),
-                candidates=tuple(observed),
+                candidates=tuple(observed[:MAX_PRODUCT_DISCOVERY_CANDIDATES]),
             )
         )
-    return tuple(output)
+    return tuple(output), overflowed
 
 
 @dataclass
@@ -151,13 +158,13 @@ class InventoryFacts:
         self.incomplete.update(item.identity for item in changed)
         return not changed
 
-    def products(
+    def project(
         self,
         started_at: datetime,
         finished_at: datetime,
         scopes: dict[str, tuple[UUID | None, datetime | None]],
         conflicts: set[UUID],
-    ) -> tuple[ProductDiscovery, ...]:
+    ) -> tuple[tuple[ProductDiscovery, ...], bool]:
         return project_inventory(
             self.purchases,
             tuple(self.relationships),

@@ -127,6 +127,7 @@ Start with the smallest document that matches the task.
 - [Quality score](QUALITY_SCORE.md)
 - [Execution plans](exec-plans/README.md)
 - [ANY-832 implementation record](exec-plans/completed/ANY-832-implementation-plan.md) — inventory/calendar changes, ANY-766 integration handoff and verification limits.
+- [ANY-832 annual LBX evidence](engineering/ANY-832-lbx-annual-calendar-evidence.md) — stand dates, normalization decision and verification scope.
 - [ANY-766 active implementation plan](exec-plans/active/ANY-766-implementation-plan.md) — authoritative Portal/backend API and Kernel integration plan; Steps 1–17 and five PR corrections complete in the agreed local scope; PR readiness checklist pending; broader acceptance matrix deferred.
 - [Joint paid-runtime harness](../tools/joint_paid_runtime/README.md) — isolated real-app HTTP/PostgreSQL and desktop/mobile smoke, explicit external substitutes and run-owned cleanup.
 - [ANY-715 completed MVP rebuild plan](exec-plans/completed/ANY-715-mvp-rebuild-plan.md) — Stages 0–6 closed by owner decision; verification evidence, limitations and follow-ups under ANY-820 are retained.

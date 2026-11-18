@@ -234,7 +234,7 @@ def test_paid_access_integration_calendar_is_lossless(start: str, end: str, anch
             "last_tariffication_period_end": point.last_tariffication_period_end,
             "subscription_instance_start_date": point.subscription_instance_start_date,
         },
-        "instance_start",
+        period(),
     )
     assert normalized.precision == expected and (normalized.start, normalized.end, normalized.anchor) == (
         start,
@@ -268,7 +268,7 @@ def test_paid_access_calendar_anchor_keeps_provider_meaning(
             "last_tariffication_period_start": "2026-10-01",
             "last_tariffication_period_end": "2026-10-31",
         },
-        anchor_kind,
+        period(anchor=anchor_kind),
     )
     assert normalized.anchor == expected
 
@@ -353,7 +353,7 @@ def test_calendar_month_annual_cycles_keep_activation_phase(
                     f"{end}T00:00:00{offset}" if offset else (date.fromisoformat(end) - timedelta(days=1)).isoformat()
                 ),
             },
-            annual.anchor,
+            annual,
         )
         assert normalized is not None
         return normalized
@@ -415,28 +415,31 @@ def test_calendar_month_annual_history_rejects_changed_phase_and_end_precision(p
 
 
 @pytest.mark.parametrize(
-    "activation,start,end",
+    "activation,start,end,length",
     [
-        ("2026-11-11T12:00:00", "2026-11-01", "2027-10-31"),
-        ("2026-11-11T12:00:00", "2026-11-01T00:00:00", "2027-11-01T00:00:00"),
-        ("2026-11-11T12:00:00+03:00", "2026-11-01", "2027-11-01T00:00:00+03:00"),
+        ("2026-11-11T12:00:00", "2026-11-01", "2027-10-31", 1),
+        ("2026-11-11T12:00:00", "2026-11-01T00:00:00", "2027-11-01T00:00:00", 1),
+        ("2026-11-11T12:00:00+03:00", "2026-11-01", "2027-11-01T00:00:00+03:00", 1),
+        ("2026-11-18 00:00:00", "2026-11-01", "2028-10-31", 2),
+        ("2026-11-18 00:00:00", "2026-11-01", "2027-11-01T00:00:00+03:00", 1),
     ],
 )
 def test_calendar_month_annual_unresolved_precision_never_acquires_a_zone(
-    activation: str, start: str, end: str
+    activation: str, start: str, end: str, length: int
 ) -> None:
     from app.integrations.lbx.calendar import normalize_calendar
 
+    annual = period("year", length, "calendar_month")
     current = normalize_calendar(
         {
             "subscription_start_date": activation,
             "last_tariffication_period_start": start,
             "last_tariffication_period_end": end,
         },
-        "calendar_month",
+        annual,
     )
     assert current is not None and current.precision == "unresolved"
-    assert classify_cycle(current, period("year", anchor="calendar_month")).kind == CycleKind.AMBIGUOUS
+    assert classify_cycle(current, annual).kind == CycleKind.AMBIGUOUS
 
 
 @pytest.mark.parametrize(
@@ -457,7 +460,7 @@ def test_calendar_month_without_proven_historical_offset_keeps_initial_frame(his
             "last_tariffication_period_start": "2026-10-01T00:00:00Z",
             "last_tariffication_period_end": "2026-11-01T00:00:00Z",
         },
-        "calendar_month",
+        period(anchor="calendar_month"),
         established_calendar=history,
     )
     assert result.anchor == "2026-09-01T00:00:00+00:00"
@@ -475,7 +478,7 @@ def test_instance_anchors_do_not_use_established_calendar_offset(anchor_kind: st
             "last_tariffication_period_start": "2026-10-31T21:30:00Z",
             "last_tariffication_period_end": "2026-11-30T21:30:00Z",
         },
-        anchor_kind,
+        period(anchor=anchor_kind),
         established_calendar=calendar(
             "2026-10-01T00:00:00+03:00", "2026-11-01T00:00:00+03:00", "2026-10-01T00:00:00+03:00", "timestamp"
         ),

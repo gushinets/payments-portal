@@ -55,6 +55,9 @@ class DiscoveredCandidate(BaseModel):
     fence: int | None = None
 
 
+MAX_PRODUCT_DISCOVERY_CANDIDATES = 40
+
+
 class ProductDiscovery(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     product_id: str
@@ -63,8 +66,8 @@ class ProductDiscovery(BaseModel):
     primary_subscription_id: UUID | None = None
     primary_retired_at: datetime | None = None
     complete: bool
-    # Up to twenty known bindings plus twenty discovered relevant objects.
-    candidates: tuple[DiscoveredCandidate, ...] = Field(max_length=40)
+    # Preserve up to twenty bound and twenty inspected candidates in discovery evidence.
+    candidates: tuple[DiscoveredCandidate, ...] = Field(max_length=MAX_PRODUCT_DISCOVERY_CANDIDATES)
 
 
 def scope_versions(factory: SessionFactory, purchase: Purchase) -> dict[str, tuple[UUID | None, datetime | None]]:

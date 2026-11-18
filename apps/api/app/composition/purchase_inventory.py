@@ -27,7 +27,7 @@ from app.domains.billing.reconciliation_contracts import (
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases import financial, service
-from app.domains.purchases.contracts import Purchase, PurchaseInventoryIncomplete
+from app.domains.purchases.contracts import Purchase
 from app.domains.purchases.inventory_facts import InventoryFacts, InventoryRelationship
 from app.domains.purchases.inventory import same_purchase
 from app.domains.purchases.inventory_contracts import (
@@ -232,8 +232,8 @@ async def collect_inventory(
         # Recheck contradictory bound IDs even when discovery omits them.
         for provider_id in conflicting_bindings:
             relevant.setdefault(provider_id, None)
-        if len(relevant) > MAX_RELEVANT_SUBSCRIPTIONS:
-            raise PurchaseInventoryIncomplete()
+        within_read_limit = len(relevant) <= MAX_RELEVANT_SUBSCRIPTIONS
+        complete &= within_read_limit
         counts = Counter(row.agreement_id for row in rows)
         for provider_id, candidate in relevant.items():
             budget.check()
@@ -257,6 +257,10 @@ async def collect_inventory(
                     if candidate is not None:
                         facts.observe(provider_id, str(candidate.agreement_id), candidate.tariff_id)
                     facts.incomplete.add(provider_id)
+                continue
+            if not within_read_limit:
+                # Keep unresolved implications and verify the final list without more point reads.
+                facts.incomplete.add(provider_id)
                 continue
 
             def include_candidate(agreement_id: str, tariff_id: int | None) -> None:
@@ -426,13 +430,13 @@ async def collect_inventory(
         complete = False
         facts.failed = True
     finished = await delegate(read_source_time, factory)
-    products = facts.products(started, finished, scope_state, conflicts)
+    products, overflowed = facts.project(started, finished, scope_state, conflicts)
     return InventoryResult(
         current,
         tuple(versions.values()),
         tuple(sorted(conflicts)),
         tuple(sorted(pending)),
-        complete,
+        complete and not overflowed,
         products=products,
         sources=tuple(sources),
         point_history=tuple(point_history.values()),

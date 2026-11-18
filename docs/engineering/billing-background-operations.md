@@ -803,6 +803,14 @@ authorization/scope and discovery failures remain global, including failures
 normalized into a canonical proof. Incomplete inventory cannot authorize
 customer-wide financial CREATE admission.
 
+When more than 20 relevant IDs appear in the initial inventory, skip extra
+point reads, mark unchecked candidates incomplete and still verify the final
+listing. Product discovery evidence retains up to 40 candidates, preferring
+known receipts. All observed relationships count toward completeness even when
+the evidence is truncated. Either limit blocks customer-wide CREATE and keeps
+the affected products incomplete. An independently proven product can still
+select its primary.
+
 If a canonical read proves a bound subscription on its original agreement but
 discovery assigns it to another product's agreement, the collector marks that
 subscription uncertain before attempting the repeat point GET. A failed or
@@ -908,7 +916,8 @@ naive/mixed timestamps acquire no invented zone or UTC deadline.
 Annual `calendar_month` periods retain the activation month and accepted duration;
 they need not start in January. A first timestamp cycle may begin at the proven
 first-day month boundary before mid-month activation; arbitrary earlier starts
-remain invalid. Equivalent offsets preserve the frozen allowance row and cycle
+remain invalid. The [annual stand evidence and date-only handling](ANY-832-lbx-annual-calendar-evidence.md)
+record the observed local-midnight format. Equivalent offsets preserve the frozen allowance row and cycle
 identity. A changed duration or phase omits the affected allowance without
 rewriting history.
 
