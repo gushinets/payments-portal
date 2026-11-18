@@ -15,6 +15,7 @@ from app.domains.billing.paid_policy import MeteringPolicy
 from app.domains.billing.reconciliation import apply_reconciliation, claim_reconciliation, read_source_time
 from app.domains.billing.reconciliation_contracts import (
     CommercialProof,
+    ReadInterval,
     IdentityProof,
     SubscriptionProof,
     ReconciliationResult,
@@ -63,6 +64,7 @@ async def reconcile_subscription(
     delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
     resolution: ReviewResolution | None = None,
     expected: Purchase | None = None,
+    on_read: Callable[[SubscriptionProof], None] | None = None,
     check_agreement_inventory: bool = False,
 ) -> ReconciliationResult:
     if configuration.lbx_configuration_error is not None:
@@ -93,6 +95,51 @@ async def reconcile_subscription(
                 delegate=delegate,
                 check_agreement_inventory=check_agreement_inventory,
             )
+            if on_read is not None:
+                on_read(proof)
+            if proof.point_relationship is not None:
+                from app.domains.billing.inventory_history import (
+                    defer_inventory_relationship,
+                    retain_inventory_relationship,
+                )
+
+                # Retry local contention with the original interval. If this
+                # path cannot write the fact, the existing inventory job owns
+                # replay, including for subscription polls outside inventory.
+                interval = ReadInterval(proof.read_started_at, proof.read_finished_at)
+                try:
+                    for attempt in range(2):
+                        try:
+                            await delegate(
+                                retain_inventory_relationship,
+                                factory,
+                                subject.purchase,
+                                subject.subscription_id,
+                                subject.fence,
+                                proof.point_relationship,
+                                proof=proof,
+                                subject=subject if resolution is not None else None,
+                                interval=interval,
+                            )
+                        except BillingRefused as error:
+                            if attempt or error.code != "billing_busy":
+                                raise
+                            active_budget.check()
+                        else:
+                            break
+                except (BillingRefused, PreflightDeadlineExceeded) as error:
+                    if not isinstance(error, BillingRefused) or error.code == "billing_busy":
+                        await delegate(
+                            defer_inventory_relationship,
+                            factory,
+                            subject.purchase,
+                            subject.subscription_id,
+                            subject.fence,
+                            proof.point_relationship,
+                            interval,
+                            work_claim,
+                        )
+                    raise
             if resolution is not None:
                 if "customer_identity_conflict" in proof.reasons:
                     # Keep canonical owner/fence/time checks before any negative write.

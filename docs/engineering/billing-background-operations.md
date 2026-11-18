@@ -430,9 +430,11 @@ competitor against an independently trusted primary records
 `customer_inventory_competitor` in product-scoped diagnostics without replacing
 or revoking that primary. Other bound or possible-send targets enter
 `customer_inventory_conflict` review.
-Incomplete passes never clear reviews. Local binding/operation versions are
-rechecked at commit, using versions returned by this attempt's own claimed applies;
-concurrent changes require a fresh attempt.
+Incomplete passes never clear reviews. Final application rechecks the common
+structural basis and each product's decision basis. A changed product is deferred
+while independently proven products may commit; structural changes invalidate
+the inventory snapshot globally. See [inventory admission](#inventory-history-and-admission)
+for strict financial checks and queue ownership.
 
 ## Polling-only operation
 
@@ -701,11 +703,12 @@ Step 15 adds cabinet usage, and Step 16 owns assembled local acceptance.
 
 This is the implemented local producer baseline for
 [ANY-766](https://linear.app/paveldik/issue/ANY-766), not an internal HTTP wire.
-The reviewed Portal snapshot is `ac8743ff35c5cfaf0fdaf108fa89ad5e71bf49cd`, based
-on rebuilt ANY-715 `ed642a75f00d7bbac7713b14a610b90b6b83534c`. The local review
-follow-up and its verification are recorded in the
+Original ANY-765 revision and verification evidence is retained in the
 [completed porting plan](../exec-plans/completed/ANY-765-implementation-plan-refactor.md#local-review-follow-up--2026-11-09).
-No Kernel change or real-producer conformance is implied by this handoff.
+The inventory/calendar rules below include the
+[ANY-832 follow-up](../exec-plans/completed/ANY-832-implementation-plan.md), which
+records separate verification limits and the pinned ANY-766 integration handoff.
+No Kernel runtime change is included in this producer baseline.
 
 ### Inputs, acceptance and decisions
 
@@ -759,15 +762,12 @@ is new-operation admission, not historical access revocation.
   Source facts and effective access share the final transaction.
 - [Discovery](../../apps/api/app/domains/billing/discovery.py) consumes persisted
   source receipts, bounded current inventory and the local nonterminal-source
-  union. Final primary selection rechecks receipt/fence/scope/generation; it
+  union. Final primary selection rechecks the common structure, relevant source
+  receipts/fences, product scope and work ownership under the user lock. It
   neither replays source facts nor promotes a competitor after retirement.
-  Operator primary selection uses complete relevant product inventory; financial
-  CREATE admission and other original-resolution checks retain their existing
-  customer-wide inventory requirements.
-  Timely candidate point-read failures keep only their affected products
-  incomplete and do not skip final discovery verification. Shared budget,
-  authorization/scope and discovery failures remain global; any incomplete
-  candidate still prevents customer-wide financial CREATE admission.
+  Selection requires persisted discovery; conflict-only application validates
+  its source/product basis and grants no primary by itself. Product applicability,
+  strict financial admission and queue hints follow the rules below.
 - [Paid writer](../../apps/api/app/domains/billing/paid_access.py)
   `commit_paid_state()` is the sole whole-user semantic writer. Callers acquire
   the canonical user lock first, then customer/original purchase/operations and
@@ -794,6 +794,102 @@ is new-operation admission, not historical access revocation.
   and cabinet refresh rules are in the
   [authenticated read runbook](ANY-709-billing-runbook.md#authenticated-cabinet-paid-access-read).
   `/api/paid-access` is not the future internal AccessSnapshot DTO.
+
+### Inventory history and admission
+
+Candidate point-read/lifecycle failures keep every already implicated product
+incomplete while other candidates and final discovery continue. Shared-budget,
+authorization/scope and discovery failures remain global, including failures
+normalized into a canonical proof. Incomplete inventory cannot authorize
+customer-wide financial CREATE admission.
+
+When more than 20 relevant IDs appear in the initial inventory, skip extra
+point reads, mark unchecked candidates incomplete and still verify the final
+listing. Product discovery evidence retains up to 40 candidates, preferring
+known receipts. All observed relationships count toward completeness even when
+the evidence is truncated. Either limit blocks customer-wide CREATE and keeps
+the affected products incomplete. An independently proven product can still
+select its primary.
+
+If a canonical read proves a bound subscription on its original agreement but
+discovery assigns it to another product's agreement, the collector marks that
+subscription uncertain before attempting the repeat point GET. A failed or
+terminal repeat cannot make either implicated product complete within that scan.
+Both remain blocked from new primary selection; an independent product with
+complete proof can still select its primary.
+
+Bound subscriptions retain relationship implications from permanent acceptance,
+canonical reconciliation, discovery and supplemental point reads across scans.
+Failed/missing point reads, old-tariff listings and omissions cannot erase them.
+A closed-agreement negative without a point relationship cannot release another
+implicated product. Within a scan, later reads do not erase an observed implication.
+A conclusively owned sibling is not an additional primary candidate merely
+because it shares an accepted tariff; unresolved contradictions still block all
+implicated products. History never changes bindings or authorizes financial replay.
+
+Ordinary canonical reads retain obtained contradictory bound relationships in a
+separate transaction before apply. A subsequent work/source lease refusal cannot
+discard that restriction. This supplemental write cannot clear history, renew
+trust or change paid/review state; the permanent accepted pair needs no duplicate
+restriction. A resolving proof comes from committed complete owned canonical
+apply or an operator proof accepted by the shared source-claim validator.
+Operator retention alone neither grants access nor closes review.
+
+The collector uses timely scope refusals and contradictory points even when local
+apply contends for the user lock. A scope refusal blocks the scan. A contradictory
+point blocks the implicated products. Shared reconciliation retries supplemental
+retention with the original read interval. After repeated lock refusal or expiry
+of the retry budget, it can persist that interval on the customer-inventory job,
+including during standalone subscription polls. The next collection appends the
+pending restrictions under the user lock and clears the queue copy in the same
+transaction. Final validation checks pending points committed after collection.
+Only committed canonical apply produces a source receipt.
+
+Actual read intervals order facts independently of claim fences or delayed
+persistence. A resolving proof supersedes only restrictions whose reads finished
+strictly before its read began. Overlapping reads retain uncertainty; observing
+the same pair again after a resolving read creates a new restriction. Stale
+ownership may retain a restriction but cannot establish a resolving cutoff.
+The [storage reference](../architecture/payment-portal-data-model.md#reconciliation-and-access-tables)
+defines supplemental v2 provenance and conservative legacy v1 handling.
+
+Final application checks customer identity/fence, held-purchase membership,
+accepted provenance/consent and operation identity, kind, key, binding, candidate
+and active send-window deadline globally. Mutable purchase/operation state,
+reviews, relationship influence and source receipts are checked for each product
+before any product writes. A change on A leaves B applicable only if it does not
+affect B's decision; a new A-to-B implication invalidates B's basis. Selected-source
+receipts/fences and receipts of other candidates used in that decision remain
+strict. Final apply checks each bound history once under the user lock. When
+the latest authoritative point is a validated complete owned point, PostgreSQL
+filters older observations by its read-start bound before compacting repeated
+restrictions. The latest finish for an identical non-resolving relationship
+subsumes earlier copies. The underlying observations remain immutable.
+A conclusively terminal unbound candidate does not depend on its agreement
+owner's mutable local review state.
+
+Stale automatic product actions are deferred and the existing customer job gets
+an urgent retry. Applicable products and their shared paid revision/outbox commit
+together. Final work ownership is still checked: a lost lease/owner rolls back
+the entire final apply. A newer `enqueue_generation` alone does not cancel valid
+decisions; `work.finish` preserves that pending hint and its scheduled time.
+
+Audited `select-primary` uses complete relevant product proof alongside its
+command, case-digest and own-source claim checks; refusal leaves review open.
+Its inventory reuses the selected subscription's fresh proof without adding a
+committed receipt for that proof. The final writer directly validates its live
+claim and the command's expected observation/fence in the decision transaction.
+Inventory contains at most one held purchase per `(user_id, product_id)`;
+conclusively owned subscriptions of other products are excluded from the target's
+primary candidates. A newer claim or incomplete poll on an independent sibling
+with unchanged target-product relationship implications does not block selection.
+Changed relationship implications still invalidate the affected product's basis.
+
+Financial CREATE, its admission-blocking path and `restore-original` retain
+full customer-wide validation, including the exact observation and fence of every
+used source. A newer incomplete/refused poll or an in-flight claim invalidates
+that strict basis even when relationships and the latest complete observation
+are unchanged.
 
 ### Cycle and immutable allowance identity
 
@@ -828,8 +924,26 @@ bounds using the clock budget at issuance. A changed budget never rewrites
 those tuples. `legacy-utc:v1` remains historical UTC evidence; it cannot prove
 a calendar anchor or authorize an inferred replacement allowance.
 For supported calendar-month timestamp evidence, Integration normalizes activation
-to the first day at midnight in its explicit offset. Date-only evidence remains
-date-only; naive/mixed timestamps acquire no invented zone or UTC deadline.
+to the first day at midnight in the proven offset of the first issued calendar
+for the same subscription, service component and metric; without suitable history,
+it uses activation's explicit offset. Date-only evidence remains date-only;
+naive/mixed timestamps acquire no invented zone or UTC deadline.
+Annual `calendar_month` periods retain the activation month and accepted duration;
+they need not start in January. A first timestamp cycle may begin at the proven
+first-day month boundary before mid-month activation; arbitrary earlier starts
+remain invalid. When at least one exact activation start is known,
+calendar-month quota requires an authoritative read begun at or after the later
+known start plus clock skew. Each field retains its last trusted exact value
+when LBX omits the field or returns it with lower precision. Canonical evidence
+carries forward both resolved starts, including known absence. Legacy lookup
+runs before taking the user lock. Apply rechecks the source fence and the basis
+observation before using the result. The existing subscription reconciliation
+job schedules a fresh read near a pending activation boundary.
+
+Equivalent offsets preserve the frozen allowance row and cycle identity.
+A changed duration or phase omits the affected allowance without rewriting
+history. The local-midnight profile is documented in the
+[annual LBX stand evidence](ANY-832-lbx-annual-calendar-evidence.md).
 
 ### Revision, outbox and current wire boundary
 

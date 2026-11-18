@@ -88,7 +88,7 @@ def hint_inventory(db: Session, customer: ExternalBillingCustomer) -> None:
         reference=str(customer.customer_id),
         due=as_utc(billing_reconciliation.database_now(db)),
         priority=1,
-        payload={},
+        payload=None,
         hint=True,
     )
 
@@ -146,7 +146,7 @@ def repair_batch(factory: SessionFactory, configuration: Settings) -> int:
                 reference=str(customer.customer_id),
                 due=now,
                 priority=0,
-                payload={},
+                payload=None,
             )
         db.commit()
         return max(repaired, len(inventory))
@@ -259,7 +259,7 @@ def subject(
 
 
 def customer_snapshot(
-    factory: SessionFactory, configuration: Settings, identity: UUID
+    factory: SessionFactory, configuration: Settings, identity: UUID, *, replay_relationships: bool = False
 ) -> tuple[CustomerOpen, tuple[Purchase, ...]]:
     with factory() as db:
         customer = queries.customer(db, identity)
@@ -288,7 +288,13 @@ def customer_snapshot(
             or customer.binding_state != Binding.BOUND
         ):
             raise BillingRefused("billing_identity_unproven", 409)
-        return customers._snapshot(customer, op), snapshots
+        current = customers._snapshot(customer, op)
+        if replay_relationships:
+            from app.domains.billing.inventory_history import replay_deferred_relationships
+
+            if replay_deferred_relationships(db, customer.external_billing_account_id, identity, snapshots):
+                db.commit()
+        return current, snapshots
 
 
 def finish_recovery(factory: SessionFactory, claim: WorkClaim) -> None:

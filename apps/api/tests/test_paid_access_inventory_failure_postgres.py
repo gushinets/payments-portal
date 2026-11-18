@@ -9,7 +9,6 @@ from app.domains.billing import background_recovery as recovery, work
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.discovery import persist_discoveries
 from app.domains.billing.work_contracts import WorkClaim
-from app.domains.purchases.inventory_contracts import InventoryStale
 from app.infrastructure.preflight import PreflightBudget, PreflightCleanupPending, PreflightDeadlineExceeded
 from app.integrations.lbx.errors import LbxResponseInvalid
 from app.integrations.lbx.financial import Subscription
@@ -200,17 +199,17 @@ async def test_lost_inventory_claim_keeps_earlier_negative_and_cannot_select(
         assert db.get(BillingWorkItem, claim.id).lease_owner == "successor-owner"
 
 
-async def test_new_hint_survives_and_invalidates_first_selection_generation(inventory_scenario: Scenario) -> None:
+async def test_new_hint_survives_a_validated_first_selection(inventory_scenario: Scenario) -> None:
     scenario = inventory_scenario
     claim = claim_inventory(scenario)
     result = persist_discoveries(scenario.factory, claim, await collect(scenario, claim))
     with scenario.factory() as db:
         recovery.hint_inventory(db, db.scalar(select(ExternalBillingCustomer)))
         db.commit()
-    with pytest.raises(InventoryStale):
-        apply_inventory(scenario.factory, claim, result, None, clock_skew_seconds=10)
-    assert work.retry_work(scenario.factory, claim, error="inventory_incomplete")
-    assert effective(scenario.factory)[0] == 0
+    apply_inventory(scenario.factory, claim, result, None, clock_skew_seconds=10)
+    assert effective(scenario.factory)[0] == 1
+    with scenario.factory() as db:
+        assert db.scalar(select(BillingProductAccessScope.primary_subscription_id)) == scenario.subscription_id
     with scenario.factory() as db:
         job = db.get(BillingWorkItem, claim.id)
         assert job.work_state == "pending" and job.priority == 1 and job.enqueue_generation > claim.generation

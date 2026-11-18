@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import time
+from dataclasses import replace
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID, uuid4
@@ -19,6 +20,7 @@ from app.domains.billing import work
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.work_contracts import WorkLane
 from app.domains.catalog.link_publication import publish_product_link
+from app.domains.catalog.product_link import current_offer_fingerprint
 from app.domains.purchases import financial, service
 from app.domains.purchases.contracts import Purchase
 from app.integrations.lbx.financial import NewAgreement, NewSubscription, Subscription
@@ -40,6 +42,7 @@ from app.models import (
 )
 from apps.api.tests.factories.original_operation import original_proof
 from apps.api.tests.support.any709_step1 import link_document, link_selection, step1_settings
+from apps.api.tests.support.any709_step3 import PurchaseTransport
 from apps.api.tests.test_any709_step3_postgres import TOKEN
 from apps.api.tests.test_billing_subscription_reconciliation_postgres import scenario as scenario, activate
 from apps.api.tests.factories.billing_worker import work_factory
@@ -71,11 +74,12 @@ def subs(factory: sessionmaker[Session]) -> list[ExternalSubscription]:
 def historical_link(
     factory: sessionmaker[Session],
     template: Purchase,
-    transport: object,
+    transport: PurchaseTransport,
     product: str,
     number: int,
     *,
     uncertain_subscription: bool = False,
+    tariff_id: int = 701,
 ) -> Purchase:
     """Construct accepted historical fixtures via real local acceptance/bind paths.
 
@@ -84,40 +88,58 @@ def historical_link(
     historical tariff for enabled and disabled products. No external CREATE runs.
     """
     config = step1_settings()
-    with factory() as db:
-        owner, revision = db.execute(
-            select(CommercialProductHead.product_id, CommercialProductHead.revision_number)
-            .join(
-                CommercialMappingRevision,
-                CommercialMappingRevision.mapping_revision_id == CommercialProductHead.mapping_revision_id,
-            )
-            .where(
-                CommercialProductHead.external_billing_account_id == template.account_id,
-                CommercialMappingRevision.billing_offer_id == template.accepted.selection.billing_offer_id,
-            )
-        ).one()
-    publish_product_link(
-        factory,
-        evaluation=link_document(selection=link_selection(product_id=owner, tariff_id=701 + number)),
-        expected_previous_revision=revision,
-        deadline=time.monotonic() + 5,
-        lock_timeout_seconds=1,
-        provider_origin=config.lbx_provider_origin,
-    )
+    if tariff_id == template.accepted.selection.tariff_id:
+        with factory() as db:
+            owner, revision = db.execute(
+                select(CommercialProductHead.product_id, CommercialProductHead.revision_number)
+                .join(
+                    CommercialMappingRevision,
+                    CommercialMappingRevision.mapping_revision_id == CommercialProductHead.mapping_revision_id,
+                )
+                .where(
+                    CommercialProductHead.external_billing_account_id == template.account_id,
+                    CommercialMappingRevision.billing_offer_id == template.accepted.selection.billing_offer_id,
+                )
+            ).one()
+        publish_product_link(
+            factory,
+            evaluation=link_document(selection=link_selection(product_id=owner, tariff_id=701 + number)),
+            expected_previous_revision=revision,
+            deadline=time.monotonic() + 5,
+            lock_timeout_seconds=1,
+            provider_origin=config.lbx_provider_origin,
+        )
     linked = publish_product_link(
         factory,
-        evaluation=link_document(selection=link_selection(product_id=product)),
+        evaluation=link_document(selection=link_selection(product_id=product, tariff_id=tariff_id)),
         expected_previous_revision=0,
         deadline=time.monotonic() + 5,
         lock_timeout_seconds=1,
         provider_origin=config.lbx_provider_origin,
     )
     linked = linked.stored
+    offer = template.accepted.offer
+    if tariff_id != template.accepted.selection.tariff_id:
+        offer = replace(offer, tariff_id=tariff_id)
+        offer = replace(
+            offer, fingerprint=current_offer_fingerprint(template.account_id, linked.document.selection, offer)
+        )
+        recording = copy.deepcopy(transport.offer)
+        recording.tariff_id = tariff_id
+        for name in recording.bodies:
+            recording.bodies[name] = recording.bodies[name].replace(
+                b'"tariff_id":701', f'"tariff_id":{tariff_id}'.encode()
+            )
+        transport.offers[tariff_id] = recording
     meaning = template.accepted.meaning.model_copy(
-        update={"product_id": product, "revision_id": linked.mapping_revision_id}
+        update={
+            "product_id": product,
+            "revision_id": linked.mapping_revision_id,
+            "expected_fingerprint": offer.fingerprint,
+        }
     )
     purchase = service.pin_purchase(
-        factory, config, TOKEN, product, meaning, linked, template.accepted.offer, template.accepted.documents
+        factory, config, TOKEN, product, meaning, linked, offer, template.accepted.documents
     )
     agreement_id, subscription_id = 456 + number, 567 + number
     for kind, provider_id in ((Kind.AGREEMENT, agreement_id), (Kind.SUBSCRIPTION, subscription_id)):
@@ -129,7 +151,7 @@ def historical_link(
             if kind == Kind.AGREEMENT
             else NewSubscription(
                 agreement_id=agreement_id,
-                tariff_id=701,
+                tariff_id=tariff_id,
                 period_id=901,
                 tariff_service_id=1001,
                 quantity=1,
@@ -146,7 +168,7 @@ def historical_link(
             )
         else:
             sub = copy.deepcopy(transport.subscriptions[0])
-            sub.update(subscription_id=subscription_id, agreement_id=agreement_id, outer_id=op.key)
+            sub.update(subscription_id=subscription_id, agreement_id=agreement_id, outer_id=op.key, tariff_id=tariff_id)
             transport.subscriptions.append(sub)
             observation = _observation(Subscription.model_validate(sub), purchase)
             if not uncertain_subscription:
