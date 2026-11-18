@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@formatjs/intl-localematcher": "^0.8.14",
-    "@sentry/nextjs": "11.4.0",
+    "@sentry/nextjs": "11.11.0",
     "lucide-react": "^1.39.0",
     "negotiator": "^1.1.0",
     "next": "16.4.2",
@@ -37,7 +37,7 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "@vitejs/plugin-react": "^4.3.4",
     "@vitest/coverage-v8": "4.1.12",
-    "eslint": "^10.8.1",
+    "eslint": "^10.15.0",
     "eslint-config-next": "16.4.2",
     "espree": "^11.2.0",
     "jsdom": "^25.0.1",
