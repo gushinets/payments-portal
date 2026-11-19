@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from app.domains.billing.operator_contracts import LateObjectDisposition, LateSubscriptionPoint
+from app.domains.billing.operator_contracts import LateObjectDisposition, LateObjectResult, LateSubscriptionPoint
 from app.domains.billing.reconciliation import read_source_time
 from app.domains.billing.terminal_resolution import ReleasedPurchase, record_late_object, released_object_owners
 from app.domains.catalog.publication import SessionFactory
@@ -95,11 +95,11 @@ async def observe_released_subscription(
     user_id: int,
     factory: SessionFactory,
     delegate: Callable[..., Awaitable[Any]],
-) -> LateObjectDisposition:
+) -> LateObjectResult:
     operation = next(op for op in purchase.operations if op.kind == Kind.SUBSCRIPTION)
     observation = LateSubscriptionPoint(str(point.agreement_id), point.tariff_id)
 
-    async def record(observed: LateSubscriptionPoint, finished: datetime) -> LateObjectDisposition:
+    async def record(observed: LateSubscriptionPoint, finished: datetime) -> LateObjectResult:
         return await delegate(
             record_late_object,
             factory,
@@ -111,9 +111,9 @@ async def observe_released_subscription(
             subscription_point=observed,
         )
 
-    disposition = await record(observation, read_finished_at)
-    if disposition != LateObjectDisposition.NEEDS_ORIGINAL_PROOF:
-        return disposition
+    result = await record(observation, read_finished_at)
+    if result.disposition != LateObjectDisposition.NEEDS_ORIGINAL_PROOF:
+        return result
     # Confirmation of a possible original requires a provider read. The writer
     # rechecks the permanent binding after that read.
     agreement = await read_agreement()
@@ -122,6 +122,6 @@ async def observe_released_subscription(
     original = next(op for op in purchase.operations if op.kind == Kind.AGREEMENT)
     prove_agreement(agreement, user_id=user_id, seller_id=purchase.accepted.seller_id, number=original.key)
     if agreement_is_closed(agreement) or subscription_lifecycle(point)[0] == Lifecycle.ENDED:
-        return LateObjectDisposition.CLEAR
+        return LateObjectResult(LateObjectDisposition.CLEAR)
     finished = await delegate(read_source_time, factory)
     return await record(replace(observation, original_live_proven=True), finished)

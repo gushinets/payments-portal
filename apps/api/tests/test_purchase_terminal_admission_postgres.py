@@ -616,7 +616,7 @@ async def test_late_observation_order_relative_to_operator_confirmation(
         await release.wait()
         return await get_subscription(subscription_id=subscription_id, budget=budget)
 
-    async def hold_record(*args: Any, **kwargs: Any) -> terminal.LateObjectDisposition:
+    async def hold_record(*args: Any, **kwargs: Any) -> terminal.LateObjectResult:
         entered.set()
         await release.wait()
         return await observe(*args, **kwargs)

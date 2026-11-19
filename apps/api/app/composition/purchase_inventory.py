@@ -392,7 +392,7 @@ async def collect_inventory(
                 if history.purchase.accepted.provider_origin != configuration.lbx_provider_origin:
                     raise PurchaseInventoryIncomplete()
                 try:
-                    disposition = await observe_released_subscription(
+                    late_observation = await observe_released_subscription(
                         history.purchase,
                         point,
                         lambda: _candidate_point(
@@ -409,9 +409,9 @@ async def collect_inventory(
                     # Keep the INCOMPLETE candidate scoped to its retained owner.
                     complete = False
                     continue
-                if disposition != LateObjectDisposition.CLEAR:
+                if late_observation.disposition != LateObjectDisposition.CLEAR:
                     complete = False
-                    if disposition == LateObjectDisposition.RELATIONSHIP_CONFLICT:
+                    if late_observation.disposition == LateObjectDisposition.RELATIONSHIP_CONFLICT:
                         for product in products_by_tariff.get(point.tariff_id, ()):
                             product_complete[product] = False
                     continue

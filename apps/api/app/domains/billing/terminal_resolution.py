@@ -21,11 +21,13 @@ from app.domains.billing.operator_contracts import (
     TERMINAL_SCHEMA as SCHEMA,
     LateObjectDisposition,
     LateObjectEvidence,
+    LateObjectResult,
+    LateReviewRef,
     LateSubscriptionPoint,
     ProviderId,
     retained_agreement_ids,
 )
-from app.domains.billing.operator_review import digest, operation_digest, case_digest
+from app.domains.billing.operator_review import digest, terminal_state_digest
 from app.domains.billing.paid_access import reduce_paid_access
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
@@ -35,11 +37,9 @@ from app.domains.purchases.preparation import FinancialObjectConflict, verify_fi
 from app.domains.purchases.contracts import Purchase, PurchaseRefused, PurchaseInventoryIncomplete
 from app.infrastructure.queries import billing_operator as queries, billing_reconciliation, purchases
 from app.models import (
-    ExternalBillingCustomer,
     ExternalCreateOperationState as OperationState,
     ExternalCreateOperationKind as Kind,
     ManualReviewCase,
-    PurchaseIntent,
     PurchaseIntentState as IntentState,
 )
 
@@ -120,35 +120,6 @@ class ReleasedPurchase:
     subscription_ids: frozenset[str]
 
 
-def state_digest(db: Session, row: PurchaseIntent) -> str:
-    """Read-only diagnostic; the writer repeats this under business locks."""
-    customer = db.get(ExternalBillingCustomer, row.customer_id)
-    hold = purchases.hold(db, row.user_id, row.product_id)
-    sub = queries.subscription(db, row.purchase_intent_id)
-    return digest(
-        {
-            "purchase": str(row.purchase_intent_id),
-            "state": row.state,
-            "accepted": row.accepted_snapshot,
-            "hold": str(hold.purchase_intent_id) if hold else None,
-            "customer": [customer.provider_origin, customer.provider_customer_id, customer.binding_state],
-            "operations": operation_digest(db, purchases.operations(db, row.purchase_intent_id)),
-            "subscription": [str(sub.latest_observation_id), sub.reconciliation_fencing_token] if sub else None,
-            "open_cases": sorted(
-                case_digest(case)
-                for case in queries.reviews(
-                    db,
-                    row.purchase_intent_id,
-                    row.customer_id,
-                    sub.subscription_id if sub else None,
-                    open_only=True,
-                    limit=None,
-                )
-            ),
-        }
-    )
-
-
 def resolve_purchase(
     factory: SessionFactory, configuration: Settings, request: TerminalRequest, principal: str
 ) -> TerminalResult:
@@ -191,7 +162,7 @@ def resolve_purchase(
             customer.external_billing_account_id != connection_account(db, configuration)
             or customer.provider_origin not in {None, configuration.lbx_provider_origin}
             or purchase.account_id != customer.external_billing_account_id
-            or state_digest(db, row) != request.expected_digest
+            or terminal_state_digest(db, row) != request.expected_digest
         ):
             raise PurchaseRefused("purchase_resolution_stale", 409)
         service._verify_original_consent(db, row, purchase.accepted)
@@ -397,7 +368,7 @@ def record_late_object(
     *,
     read_finished_at: datetime,
     subscription_point: LateSubscriptionPoint | None = None,
-) -> LateObjectDisposition:
+) -> LateObjectResult:
     """Record a late restriction, preserving the terminal decision and purchase history."""
     with factory() as db:
         lock_user(db, purchase.user_id)
@@ -407,11 +378,31 @@ def record_late_object(
         operations = purchases.operations(db, purchase.id, lock=True)
         if operation_id not in {op.create_operation_id for op in operations}:
             raise PurchaseRefused("purchase_history_unproven", 409)
+        purchase_id = row.purchase_intent_id
         conflict = foreign = False
         expected_ids = frozenset()
         history = None
         if subscription_point is not None:
             binding = queries.financial_binding(db, purchase.account_id, Kind.SUBSCRIPTION, external_object_id)
+            # A point on this agreement can still contradict another purchase's
+            # confirmed subscription. Resolve audit ownership under the user lock.
+            if binding is None:
+                owners = queries.released_object_owners(
+                    db,
+                    row.customer_id,
+                    (),
+                    (external_object_id,),
+                    audit_schema=SCHEMA,
+                    audit_reasons=TERMINAL_AUDIT_REASONS,
+                )
+                if len(owners) > 1:
+                    raise PurchaseInventoryIncomplete()
+                if owners and owners[0].purchase_intent_id != purchase_id:
+                    purchase_id = owners[0].purchase_intent_id
+                    operations = purchases.operations(db, purchase_id, lock=True)
+                    operation_id = next(
+                        op.create_operation_id for op in operations if op.operation_kind == Kind.SUBSCRIPTION
+                    )
             foreign = binding is not None and binding.create_operation_id != operation_id
             if foreign:
                 owner_operations = purchases.operations(db, binding.purchase_intent_id)
@@ -419,20 +410,22 @@ def record_late_object(
                     op.bound_external_object_id for op in owner_operations if op.operation_kind == Kind.AGREEMENT
                 )
                 if owner_agreement == subscription_point.agreement_id:
-                    return LateObjectDisposition.CLEAR  # The point agrees with its permanent owner.
+                    return LateObjectResult(LateObjectDisposition.CLEAR)  # The point agrees with its permanent owner.
             agreement = next(op for op in operations if op.operation_kind == Kind.AGREEMENT)
             if agreement.bound_external_object_id is None:
-                history = _audited_objects(db, purchase.id)
+                history = _audited_objects(db, purchase_id)
             expected_ids = retained_agreement_ids(
                 agreement.bound_external_object_id, history.get(agreement.create_operation_id) if history else None
             )
             if not expected_ids:
                 raise PurchaseRefused("purchase_history_unproven", 409)
             conflict = foreign or subscription_point.agreement_id not in expected_ids
+            if purchase_id != purchase.id and not conflict:
+                return LateObjectResult(LateObjectDisposition.CLEAR)  # The point agrees with its attested owner.
             if not conflict and not subscription_point.original_live_proven:
-                return LateObjectDisposition.NEEDS_ORIGINAL_PROOF
+                return LateObjectResult(LateObjectDisposition.NEEDS_ORIGINAL_PROOF)
         evidence = LateObjectEvidence(
-            purchase_intent_id=purchase.id,
+            purchase_intent_id=purchase_id,
             operation_id=operation_id,
             external_object_id=external_object_id,
             read_started_at=read_started_at,
@@ -446,7 +439,7 @@ def record_late_object(
         disposition = LateObjectDisposition.RELATIONSHIP_CONFLICT if conflict else LateObjectDisposition.OPEN_ORIGINAL
         cases = queries.purchase_cases(
             db,
-            purchase.id,
+            purchase_id,
             reason=LATE_REASON,
             schema=LATE_SCHEMA,
             object_identity=(operation_id, external_object_id),
@@ -461,7 +454,7 @@ def record_late_object(
             audit = TerminalAudit.model_validate(case.resolution_document)
             confirmed = audit.request.evidence.confirmed_at
             if confirmed is not None and confirmed >= read_finished_at:
-                return LateObjectDisposition.CLEAR  # Only a delayed read of this same relationship is covered.
+                return LateObjectResult(LateObjectDisposition.CLEAR)  # An older read of the same relationship.
             if any(
                 proof.operation_id == operation_id and external_object_id in proof.unrelated_object_ids
                 for proof in audit.request.evidence.operations
@@ -469,30 +462,33 @@ def record_late_object(
                 disproved = True
         if disproved:
             if history is None:
-                history = _audited_objects(db, purchase.id)
+                history = _audited_objects(db, purchase_id)
             # Positive attestation of an original object supersedes disproof.
             if external_object_id not in history.get(operation_id, AuditedObjects()).confirmed:
-                return LateObjectDisposition.CLEAR
+                return LateObjectResult(LateObjectDisposition.CLEAR)
         for case in cases:
             if case.case_state == "open":
                 previous = LateObjectEvidence.model_validate(case.evidence_document)
                 if not evidence.matches_relationship(previous, legacy_open_agreement_ids=expected_ids):
                     continue
+                review = LateReviewRef(purchase_intent_id=purchase_id, review_case_id=case.review_case_id)
                 if read_finished_at > previous.latest_observation_at:
                     case.evidence_document = evidence.model_copy(
                         update={"read_started_at": min(previous.read_started_at, read_started_at)}
                     ).model_dump(mode="json")
                     db.commit()
-                return disposition
+                return LateObjectResult(disposition, review)
+        review = LateReviewRef(purchase_intent_id=purchase_id, review_case_id=uuid4())
         db.add(
             ManualReviewCase(
+                review_case_id=review.review_case_id,
                 reason_code=LATE_REASON,
                 scope_kind="purchase_intent",
-                scope_reference=str(purchase.id),
+                scope_reference=str(purchase_id),
                 evidence_schema_version=LATE_SCHEMA,
                 evidence_document=evidence.model_dump(mode="json"),
                 case_state="open",
             )
         )
         db.commit()
-        return disposition
+        return LateObjectResult(disposition, review)

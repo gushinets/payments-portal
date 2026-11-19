@@ -59,6 +59,8 @@ Six PostgreSQL checks failed on `aed33ebb` and passed against the corrected
 worker, `advance` and `recover`. Separate controls verify that a conflict on
 the held purchase's dedicated agreement or CREATE receipt still opens a case.
 
+### Baseline verification at `a14c2bb6`
+
 Documentation, generated contracts, architecture, lint, 508 web tests, 2,413
 fast API tests and the Webpack build passed. One Windows-only API test skipped
 on Linux. On PostgreSQL 14, three timestamp assertions required a UTC connection.
@@ -70,6 +72,20 @@ Six browser checks passed on the production build with synthetic billing in
 desktop Chromium and Pixel 7 emulation, covering stale detail, stale list,
 terminal reload and Widget opening. The full live-stack browser suite was
 outside this run.
+
+### Local verification after PR review fixes
+
+`npm run check:fast` passed with 2,414 fast API tests, 475 web component tests,
+and 38 web boundary checks. One Windows-only API test skipped on Linux.
+A focused PostgreSQL run passed 95 tests on a disposable local database with
+synthetic billing. The final review passed 11 focused checks, including the
+CLI error result with related late reviews and the consistent current-purchase
+read during release.
+
+Six synthetic browser checks passed across desktop Chromium and Pixel 7
+emulation. They covered rechecking a purchase omitted from the complete list
+while payment was open, rechecking after HTTP 409 `purchase_scope_released`,
+and ordinary purchase preparation.
 
 ### Integration with main and ANY-832
 

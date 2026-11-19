@@ -307,6 +307,38 @@ describe("ANY-709 Step 4 purchase journey", () => {
     expect(bootstrap).not.toHaveBeenCalled();
   });
 
+  it("shows the released purchase after an advance scope-released conflict", async () => {
+    advance.mockImplementationOnce(async () => {
+      owned = { ...savedPurchase, state: "resolved_no_external_effect", scope_held: false };
+      return json({ detail: { code: "purchase_scope_released", request_id: "released-conflict" } }, 409);
+    });
+    renderProduct();
+    await accept();
+    expect(await screen.findByText(ru.Purchase.states.resolved_no_external_effect)).toBeVisible();
+    await waitFor(() => expect(screen.getByRole("button", { name: ru.Purchase.buy })).toBeEnabled());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(advance).toHaveBeenCalledTimes(1);
+    expect(bootstrap).not.toHaveBeenCalled();
+    expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith(`/${savedPurchase.purchase_intent_id}`))).toHaveLength(1);
+  });
+
+  it.each(["held", "unavailable"])("preserves the advance error when the status lookup is %s", async (lookup) => {
+    advance.mockImplementationOnce(async () => {
+      if (lookup === "unavailable") {
+        fetcher.mockResolvedValueOnce(json({ detail: { code: "billing_busy", request_id: "lookup-failed" } }, 503));
+      }
+      return json({ detail: { code: "purchase_scope_released", request_id: "released-conflict" } }, 409);
+    });
+    renderProduct();
+    await accept();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(ru.Billing.errors.purchaseConflict);
+    expect(alert).toHaveTextContent("released-conflict");
+    expect(alert).not.toHaveTextContent("lookup-failed");
+    expect(advance).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith(`/${savedPurchase.purchase_intent_id}`))).toHaveLength(1);
+  });
+
   it("keeps the held intent and shows recovery when timeout status inspection also fails", async () => {
     advance.mockImplementationOnce(async () => {
       fetcher.mockRejectedValueOnce(new TypeError("synthetic_status_unavailable"));

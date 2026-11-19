@@ -17,6 +17,7 @@ from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.customer_conflicts import record_customer_conflict
 from app.domains.billing.operator_contracts import (
     AuditedObjects,
+    LateReviewRef,
     OriginalOperationProof,
     ReviewResolution,
     retained_agreement_ids,
@@ -27,7 +28,7 @@ from app.domains.billing.terminal_resolution import released_operation_objects, 
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases import financial, service
 from app.domains.purchases.contracts import FinancialOperation, FinancialRequestDocument, Purchase, PurchaseRefused
-from app.infrastructure.preflight import PreflightBudget
+from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.errors import (
     LbxAttemptsExhausted,
@@ -307,11 +308,7 @@ async def recover_one(
             work_claim=work_claim,
             resolution=resolution,
         )
-        return (
-            True
-            if bound
-            else await _already_bound(sources, configuration, factory, purchase, operation, budget, delegate)
-        )
+        return bound or await _already_bound(sources, configuration, factory, purchase, operation, budget, delegate)
     except LbxSubscriptionListingMismatch:
         if resolution is not None:
             raise
@@ -367,7 +364,7 @@ async def _observe_released_object(
     *,
     budget: PreflightBudget,
     delegate: Callable[..., Awaitable[Any]],
-) -> None:
+) -> LateReviewRef | None:
     started = await delegate(read_source_time, factory)
     if operation.kind == Kind.AGREEMENT:
         original = replace(operation, bound_id=None, candidate_id=candidate_id)
@@ -377,7 +374,7 @@ async def _observe_released_object(
             await delegate(
                 record_late_object, factory, purchase, operation.id, str(found[0]), started, read_finished_at=finished
             )
-        return
+        return None
     agreement = next(op for op in purchase.operations if op.kind == Kind.AGREEMENT)
     expected_ids = retained_agreement_ids(agreement.bound_id, history.get(agreement.id))
     # With several original agreements, only a bound or attested subscription identifies the point to read.
@@ -390,13 +387,13 @@ async def _observe_released_object(
         (agreement_id,) = expected_ids
         candidate = await _subscription_candidate(client, customer, int(agreement_id), budget=budget)
         if candidate is None:
-            return
+            return None
         provider_id, point = candidate
     else:
         provider_id = int(candidate_id)
         point = await timely_point(lambda: client.get_subscription(subscription_id=provider_id, budget=budget), budget)
     finished = await delegate(read_source_time, factory)
-    await observe_released_subscription(
+    result = await observe_released_subscription(
         purchase,
         point,
         lambda: timely_point(lambda: client.get_agreement(agreement_id=point.agreement_id, budget=budget), budget),
@@ -407,6 +404,7 @@ async def _observe_released_object(
         factory=factory,
         delegate=delegate,
     )
+    return result.review
 
 
 async def recover_financial(
@@ -419,6 +417,7 @@ async def recover_financial(
     operation_id: UUID | None = None,
     work_claim: WorkClaim | None = None,
     budget: PreflightBudget | None = None,
+    report_related_review: Callable[[LateReviewRef], None] | None = None,
     delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
 ) -> Purchase:
     """GET-only; completed recovery jobs do not re-observe bound subscriptions."""
@@ -450,7 +449,7 @@ async def recover_financial(
                 # Without an eligible ID, discover by the original agreement number or relationship.
                 for candidate_id in objects.point_ids(operation) or (None,):
                     try:
-                        await _observe_released_object(
+                        review = await _observe_released_object(
                             client,
                             purchase,
                             operation,
@@ -461,15 +460,13 @@ async def recover_financial(
                             budget=active_budget,
                             delegate=delegate,
                         )
-                    except (
-                        LbxProviderRejected,
-                        LbxRateLimited,
-                        LbxResponseInvalid,
-                        LbxScopeMismatch,
-                        LbxTimeout,
-                        LbxUnavailable,
-                    ) as error:
+                    except LbxError as error:
                         first_error = first_error or error
+                    except PreflightDeadlineExceeded as error:
+                        raise first_error or error
+                    else:
+                        if report_related_review and review and review.purchase_intent_id != purchase.id:
+                            report_related_review(review)
             if first_error is not None:
                 raise first_error
         return await delegate(service.read_purchase, factory, user_id, purchase_id)

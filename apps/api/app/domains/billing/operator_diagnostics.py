@@ -4,7 +4,7 @@ from uuid import UUID
 
 from app.core.settings import Settings
 from app.domains.billing.operator_contracts import LATE_REASON, LateObjectEvidence
-from app.domains.billing.operator_review import case_digest
+from app.domains.billing.operator_review import case_digest, terminal_state_digest
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
@@ -13,7 +13,7 @@ from app.infrastructure.queries import billing_operator as queries, billing_reco
 from app.infrastructure.queries.billing_customers import diagnostic_user
 from app.infrastructure.queries.billing_background import operation_subject
 from app.domains.billing.customer_scope import connection_account
-from app.domains.billing.terminal_resolution import LATE_SCHEMA, state_digest
+from app.domains.billing.terminal_resolution import LATE_SCHEMA
 from app.models import ManualReviewCase
 
 
@@ -108,7 +108,7 @@ def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: 
             "state": purchase.state,
             "reason": purchase.reason,
             "scope_held": purchase.held,
-            "expected_resolution_digest": state_digest(db, row),
+            "expected_resolution_digest": terminal_state_digest(db, row),
             "operations": [
                 {
                     "create_operation_id": str(op.id),

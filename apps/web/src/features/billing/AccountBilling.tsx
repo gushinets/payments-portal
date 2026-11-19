@@ -18,6 +18,7 @@ import { PaidReadStatus } from "./use-paid-read";
 import { isResolvedPurchase } from "./purchase-state";
 
 type DetailStatus = { status: "loading" | "ready" | "session-ended" } | { status: "error"; requestId: string };
+type ListEvidence = AccountPurchaseResponse | AccountPurchaseResponse[];
 
 type AccountBillingProps = { userId: string; emailVerified: boolean; initialPurchaseId?: string };
 
@@ -37,12 +38,14 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   const { begin, cancel } = useSessionOperation();
   // undefined permits a visible single-purchase default; null explicitly selects account viewing.
   const [selectedId, setSelectedId] = useState<string | null | undefined>(initialPurchaseId);
-  const [detail, setDetail] = useState<{ purchase: PurchaseIntentResponse; checkedListItem?: AccountPurchaseResponse } | null>(null);
+  const [detail, setDetail] = useState<{ purchase: PurchaseIntentResponse; checkedListEvidence?: ListEvidence } | null>(null);
   const deepPurchase = detail?.purchase;
   const listed = purchases.items.find((item) => item.purchase_intent_id === initialPurchaseId);
+  const listEvidence = listed ?? (purchases.status === "ready" && !purchases.cursor ? purchases.items : undefined);
   // Neither concurrent response has a revision. Resolve a disagreement with one later status read.
-  const checkAgainst = deepPurchase?.scope_held && listed && deepPurchase.state !== listed.state ? listed : detail?.checkedListItem;
-  const disputed = checkAgainst !== detail?.checkedListItem;
+  const disagreement = deepPurchase?.scope_held && deepPurchase.state !== listed?.state ? listEvidence : undefined;
+  const checkAgainst = disagreement ?? detail?.checkedListEvidence;
+  const disputed = checkAgainst !== detail?.checkedListEvidence;
   const [detailStatus, setDetailStatus] = useState<DetailStatus>({ status: initialPurchaseId && emailVerified ? "loading" : "ready" });
 
   const sessionEnded = detailStatus.status === "session-ended";
@@ -60,7 +63,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
       if (operation.isCurrent()) {
         if (!result.scope_held && !isResolvedPurchase(result.state)) { setDetailStatus({ status: "error", requestId }); return; }
         if (checkAgainst && (!result.scope_held || result.state !== "linked")) closeRestrictedWidget();
-        setDetail({ purchase: result, checkedListItem: checkAgainst });
+        setDetail({ purchase: result, checkedListEvidence: checkAgainst });
         setDetailStatus({ status: "ready" });
       }
     }
@@ -87,6 +90,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   const selectedDeep = !!selectedId && selectedId === initialPurchaseId;
   const checkingSelection = selectedDeep && checkingDetail;
   const selectionBlocked = sessionEnded || (selectedDeep && (checkingDetail || detailStatus.status === "error")) || (!!selectedId && !selection);
+  const widgetSuspended = selectedDeep && disputed;
   const released = selection && releasedDeepPurchase?.purchase_intent_id === selection.purchase_intent_id;
   const canPay = selection?.state === "linked" && !released;
   const paidOnlyProducts = [...new Set([
@@ -137,11 +141,11 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
         </>}
         {selection && !canPay && !released && <p>{b("preparationRequired")} <Link href={`/products/${encodeURIComponent(selection.product_id)}`}>{p("continue")}</Link></p>}
       </div>}
-      <button className="btn-primary" type="button" aria-describedby={widget.state.status === "open" ? "billing-refresh-hint" : undefined} disabled={!emailVerified || selectionBlocked || (!!selection && !canPay) || widget.state.status === "loading"} onClick={openSelected}>
+      <button className="btn-primary" type="button" aria-describedby={widget.state.status === "open" && !widgetSuspended ? "billing-refresh-hint" : undefined} disabled={!emailVerified || selectionBlocked || (!!selection && !canPay) || widget.state.status === "loading"} onClick={openSelected}>
         {widget.state.status === "loading" ? b("loading") : widget.state.status === "open" ? b("refresh") : b("open")}
       </button>
-      {widget.state.status === "open" && <p id="billing-refresh-hint" className="card-copy">{b("refreshHint")}</p>}
-      <WidgetView widget={widget} onClose={refreshPaid} />
+      {widget.state.status === "open" && !widgetSuspended && <p id="billing-refresh-hint" className="card-copy">{b("refreshHint")}</p>}
+      <div hidden={widgetSuspended}><WidgetView widget={widget} onClose={refreshPaid} /></div>
     </section>
     <section className="account-products-panel" aria-label={t("title")}>
       <div className="account-products-heading">

@@ -52,6 +52,18 @@ class LateObjectDisposition(StrEnum):
     RELATIONSHIP_CONFLICT = "relationship_conflict"
 
 
+class LateReviewRef(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    purchase_intent_id: UUID
+    review_case_id: UUID
+
+
+@dataclass(frozen=True)
+class LateObjectResult:
+    disposition: LateObjectDisposition
+    review: LateReviewRef | None = None
+
+
 @dataclass(frozen=True)
 class LateSubscriptionPoint:
     agreement_id: str

@@ -4,14 +4,14 @@ import asyncio
 import json
 from contextlib import AbstractAsyncContextManager
 from datetime import UTC, date, datetime, timedelta
-from threading import Event
+from threading import Event, get_ident
 from uuid import UUID, uuid4
 
 import httpx
 import pytest
 from alembic import command as alembic_command
 from alembic.util.exc import CommandError
-from sqlalchemy import select, func, text
+from sqlalchemy import event, select, func, text
 from sqlalchemy.engine import Engine, URL
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
@@ -100,7 +100,12 @@ def request(factory: sessionmaker[Session], purchase: Purchase, *, confirmed: bo
 
 
 async def _recover_from_cli(
-    factory: sessionmaker[Session], purchase: Purchase, transport: PurchaseTransport, monkeypatch: pytest.MonkeyPatch
+    factory: sessionmaker[Session],
+    purchase: Purchase,
+    transport: PurchaseTransport,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    configuration: Settings | None = None,
 ) -> int:
     def synthetic_sources(configuration: Settings) -> AbstractAsyncContextManager[SourceResources]:
         return source_resources(
@@ -112,18 +117,31 @@ async def _recover_from_cli(
     monkeypatch.setattr(database, "SessionLocal", factory)
     monkeypatch.setattr(billing_purchases, "source_resources", synthetic_sources)
     monkeypatch.setattr(billing_purchases, "resolve_operator_principal", lambda: PRINCIPAL)
-    monkeypatch.setattr(billing_purchases, "Settings", step1_settings)
+    monkeypatch.setattr(billing_purchases, "Settings", lambda: configuration or step1_settings())
     return await run_in_threadpool(
         billing_purchases.main,
         ["recover", "--user-id", str(purchase.user_id), "--purchase-id", str(purchase.id)],
     )
 
 
+@pytest.mark.parametrize(
+    "http_status, attempts, failure_code, agreement_reads",
+    [
+        (None, 2, "lbx_response_invalid", 1),
+        (401, 2, "lbx_attempts_exhausted", 1),
+        (401, 3, "lbx_authentication_failed", 2),
+        (403, 3, "lbx_scope_forbidden", 1),
+    ],
+)
 async def test_public_recover_records_bound_subscription_conflict_when_agreement_read_fails(
     background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
     postgres_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    http_status: int | None,
+    attempts: int,
+    failure_code: str,
+    agreement_reads: int,
 ) -> None:
     transport, sources, purchase = background_scenario
     factory = postgres_session_factory
@@ -144,15 +162,22 @@ async def test_public_recover_records_bound_subscription_conflict_when_agreement
     def unavailable_original(http_request: httpx.Request) -> httpx.Response:
         if http_request.url.path.endswith("/agreements/456"):
             transport.requests.append(http_request)
+            if http_status is not None:
+                return httpx.Response(http_status, json={})
             return transport.response({})
         return respond(http_request)
 
     monkeypatch.setattr(transport, "respond", unavailable_original)
     start = len(transport.requests)
-    assert await _recover_from_cli(factory, purchase, transport, monkeypatch) == 1
-    assert json.loads(capsys.readouterr().err) == {"detail": {"code": "lbx_response_invalid"}}
+    assert (
+        await _recover_from_cli(
+            factory, purchase, transport, monkeypatch, configuration=step1_settings(lbx_max_get_attempts=attempts)
+        )
+        == 1
+    )
+    assert json.loads(capsys.readouterr().err) == {"detail": {"code": failure_code}}
     reads = [(item.method, item.url.path.removeprefix("/api/rest/v1")) for item in transport.requests[start:]]
-    assert reads.count(("GET", "/agreements/456")) == 1
+    assert reads.count(("GET", "/agreements/456")) == agreement_reads
     assert reads.count(("GET", "/subscriptions/567")) == 1
     assert all(method == "GET" for method, _ in reads)
     [case] = [
@@ -255,6 +280,62 @@ async def test_unsent_completion_audit_repeat_and_replacement(
         assert case.resolved_by_principal == PRINCIPAL and case.case_state == "resolved"
         assert case.resolution_document["request"]["reference"] == command.reference
     assert tuple(original(factory, op.id) for op in purchase.operations) == before
+
+
+@pytest.mark.parametrize("entrypoint", ["by_id", "current"])
+async def test_purchase_status_reads_state_and_hold_from_the_same_snapshot(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+    migrated_database: Engine,
+    entrypoint: str,
+) -> None:
+    _, _, purchase = background_scenario
+    factory = postgres_session_factory
+    config = step1_settings()
+    command = request(factory, purchase)
+    row_read, release_read = Event(), Event()
+    reader_thread: int | None = None
+
+    def after_purchase_select(
+        _connection: object,
+        _cursor: object,
+        statement: str,
+        _parameters: object,
+        _context: object,
+        _executemany: bool,
+    ) -> None:
+        if (
+            get_ident() == reader_thread
+            and statement.startswith("SELECT")
+            and ("FROM purchase_intents" in statement or "FROM billing_purchase_scope_holds" in statement)
+        ):
+            row_read.set()
+            assert release_read.wait(5)
+
+    def read_status() -> Purchase | None:
+        nonlocal reader_thread
+        reader_thread = get_ident()
+        if entrypoint == "current":
+            return service.current_purchase(factory, config, TOKEN, purchase.accepted.selection.product_id)
+        return service.read_purchase(factory, purchase.user_id, purchase.id)
+
+    event.listen(migrated_database, "after_cursor_execute", after_purchase_select)
+    reading = asyncio.create_task(run_in_threadpool(read_status))
+    try:
+        assert await run_in_threadpool(row_read.wait, 5)
+        resolved = await run_in_threadpool(terminal.resolve_purchase, factory, config, command, PRINCIPAL)
+        assert resolved.state == PurchaseIntentState.RESOLVED_NO_EXTERNAL_EFFECT
+    finally:
+        release_read.set()
+        try:
+            snapshot = await reading
+        finally:
+            event.remove(migrated_database, "after_cursor_execute", after_purchase_select)
+
+    assert snapshot is not None and snapshot.state == PurchaseIntentState.CREATED and snapshot.held
+    latest = service.read_purchase(factory, purchase.user_id, purchase.id)
+    assert latest.state == resolved.state and not latest.held
+    assert service.current_purchase(factory, config, TOKEN, purchase.accepted.selection.product_id) is None
 
 
 async def test_unknown_requires_confirmation_after_stopping_senders(
