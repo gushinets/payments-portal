@@ -59,20 +59,42 @@ it.each([
   expect(selector()).toHaveValue(first.purchase_intent_id);
 });
 
-it("closes the selected Widget when a later status read confirms release", async () => {
+it.each([
+  ["lists a different state", [{ ...first, state: "manual_review" }]],
+  ["omits the held purchase", []],
+] satisfies [string, AccountPurchaseResponse[]][])("closes the selected Widget after the full list %s and a fresh read confirms release", async (_label, listed) => {
   let finishList!: (value: Response) => void;
+  let finishStatus!: (value: Response) => void;
   list.mockImplementationOnce(() => new Promise<Response>(resolve => { finishList = resolve; }));
   status.mockResolvedValueOnce(json(savedPurchase));
-  status.mockResolvedValueOnce(json({ ...savedPurchase, state: "resolved_external_terminal", scope_held: false }));
+  status.mockImplementationOnce(() => new Promise<Response>(resolve => { finishStatus = resolve; }));
   renderCabinet(first.purchase_intent_id);
   await waitFor(() => expect(screen.getByRole("button", { name: ru.Billing.open })).toBeEnabled());
   open();
   await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
-  await act(async () => finishList(json({ purchases: [{ ...first, state: "manual_review" }], next_cursor: null })));
+  expect(document.querySelector("iframe")).toBeVisible();
+  await act(async () => finishList(json({ purchases: listed, next_cursor: null })));
+  await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
+  expect(document.querySelector("iframe")).not.toBeVisible();
+  expect(dispose).not.toHaveBeenCalled();
+  await act(async () => finishStatus(json({ ...savedPurchase, state: "resolved_external_terminal", scope_held: false })));
   expect(await screen.findByText(ru.Purchase.states.resolved_external_terminal)).toBeVisible();
+  expect(screen.getByRole("link", { name: ru.Purchase.buy })).toHaveAttribute("href", "/ru/products/proposal_ai");
   expect(dispose).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole("article")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: ru.Billing.open })).toBeDisabled();
+});
+
+it("keeps the selected Widget when an incomplete list has not reached the held purchase", async () => {
+  list.mockResolvedValueOnce(json({ purchases: [second], next_cursor: second.purchase_intent_id }));
+  renderCabinet(first.purchase_intent_id);
+  await screen.findByRole("heading", { name: second.product_id });
+  await waitFor(() => expect(screen.getByRole("button", { name: ru.Billing.open })).toBeEnabled());
+  open();
+  await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
+  expect(status).toHaveBeenCalledTimes(1);
+  expect(document.querySelector("iframe")).toBeVisible();
+  expect(dispose).not.toHaveBeenCalled();
 });
 
 it("updates the original card after switching to account viewing during discovery", async () => {
@@ -159,16 +181,18 @@ it("selects a single owned purchase and uses the same verified payment bootstrap
 });
 
 it("loads a deep link locally and requires an explicit action before opening payment", async () => {
-  list.mockResolvedValue(json({ purchases: [], next_cursor: null }));
+  list.mockImplementation(async () => json({ purchases: [], next_cursor: null }));
   const view = renderCabinet(first.purchase_intent_id);
-  await waitFor(() => expect(selector()).toHaveValue(first.purchase_intent_id));
-  expect(status).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(screen.getByRole("button", { name: ru.Billing.open })).toBeEnabled());
+  expect(selector()).toHaveValue(first.purchase_intent_id);
   expect(bootstrap).not.toHaveBeenCalled();
   open();
   await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
   view.unmount();
   renderCabinet(first.purchase_intent_id);
-  await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(status).toHaveBeenCalledTimes(4));
+  await waitFor(() => expect(screen.getByRole("button", { name: ru.Billing.open })).toBeEnabled());
   expect(bootstrap).toHaveBeenCalledTimes(1);
   expect(document.querySelectorAll("iframe")).toHaveLength(0);
 });

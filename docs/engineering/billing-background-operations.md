@@ -408,13 +408,14 @@ A `billing_busy` / PostgreSQL `55P03` refusal is local contention: retry the sam
 work without changing send authority, deadlines or holds. Use
 `last_error_classification` to distinguish local contention from source errors.
 
-`customer_inventory`, pre-send admission and operator recovery share one bounded
-inventory implementation: fewer than 100 discovery rows, at most 20 relevant
-candidates and a stable complete re-list under one read budget. A retained
-subscription listed as ended still needs a current point read. Capped, duplicate,
-unstable or partial discovery never proves absence. Permanent original bindings
-identify known subscriptions, including another product already in review;
-proposal_ai and brief_decoder may share a tariff without sharing product identity.
+`customer_inventory`, pre-send admission and the audited `resolve-review`
+actions share one bounded inventory implementation: fewer than 100 discovery
+rows, at most 20 relevant candidates and a stable complete re-list under one
+read budget. A retained subscription listed as ended still needs a current point
+read. Capped, duplicate, unstable or partial discovery never proves absence.
+Permanent original bindings identify known subscriptions, including another
+product already in review. proposal_ai and brief_decoder may share a tariff
+without sharing product identity.
 Each known subscription uses its existing lease and shared reconciliation writer.
 Its commercial conflict stays scoped to that subscription. Timely canonical
 negatives commit independently even if later discovery fails. Inventory-origin
@@ -489,9 +490,11 @@ Invoke `.venv/bin/python scripts/repo.py billing-purchase <action>` with
 The read-only `inspect-operation` lookup instead takes only `--operation-id`.
 `inspect-invalidation` and `retry-invalidation` instead take `--recipient-id` and `--user-id`;
 they inspect local delivery state or re-enqueue a parked invalidation after repair.
-Success JSON includes the operator principal. Exit 0 means the command completed,
-not that payment or positive source proof was established. Exit 1 returns only
-`detail.code`; invalid parser arguments exit 2.
+On exit 0, the CLI writes result JSON to `stdout` with the operator principal.
+Use the recorded evidence to determine payment or source status. On exit 1,
+the CLI writes error JSON to `stderr` with `detail.code` and includes
+`related_late_reviews` when `recover` has related cases to report. Invalid
+parser arguments exit 2.
 
 - `inspect`: local read-only evidence; no source I/O, row changes or leases.
   Output includes original operations/fences, current subscription facts/trust,
@@ -504,11 +507,11 @@ not that payment or positive source proof was established. Exit 1 returns only
   operation reference from Sentry locally. It checks configured origin/account
   and tenant/region, returns local owner/purchase references and follow-up CLI
   commands, and opens no source resources. It uses the same trusted OS boundary.
-- `recover`: bounded GET-only recovery of the original possible-send operation.
-  It may prove a binding or close deadline-only review, but cannot send CREATE,
-  adopt PENDING/PROVEN_NOT_SENT or clear known conflicts. For a completed purchase,
-  use `recover` to inspect retained original objects and record late objects or
-  conflicting relationships for review. It point-reads permanently bound or
+- `recover`: bounded GET-only recovery scoped to the original possible-send
+  operations. It can prove a binding from POSSIBLE_SEND/UNKNOWN history or close
+  deadline-only review. For a completed purchase, use `recover` to inspect
+  retained original objects and record late objects or conflicting relationships
+  for review. It point-reads permanently bound or
   positively attested agreement and subscription IDs even if discovery omits
   them. This includes a subscription confirmed during a later review. Recovery
   checks the point relationship against the bound agreement, or against all
@@ -517,9 +520,12 @@ not that payment or positive source proof was established. Exit 1 returns only
   by the original agreement number or by subscription relationship. Subscription
   discovery requires one unambiguous original agreement, and the point read
   must confirm that relationship before the discovered ID can open a review.
-  A failed point read is reported after independently known objects are
-  checked within the existing budget. Recorded cases remain available through
-  `inspect`.
+  Once customer identity is established, recovery reports a failed LBX object
+  read after checking independently known objects within the existing budget.
+  If recovery records or observes an open case on a different completed
+  purchase of this customer, `related_late_reviews` reports the original
+  `purchase_intent_id` and `review_case_id`.
+  Use the original purchase ID with `inspect` to follow up.
 - `reconcile`: bounded authoritative recheck of the canonical subscription
   for a purchase that still holds its scope.
   It records waiting/active/blocked/ended/incomplete/conflicting evidence and
@@ -712,8 +718,8 @@ Refusals include stale evidence, incomplete/capped/ambiguous discovery, foreign
 or already-bound objects, unsupported policy, customer identity conflict,
 unrelated open cases, terminal revival and changed accepted requests. Diagnose
 billing_review_stale, billing_review_unrelated_cases, billing_review_proof_incomplete,
-billing_review_terminal, purchase_history_unproven and ordinary source/busy errors;
-do not bypass them. The CLI rejects `release-terminal`. For a terminal outcome, follow the
+billing_review_terminal, purchase_history_unproven and ordinary source/busy errors.
+For a terminal outcome, follow the
 [terminal completion procedure](#terminal-completion-any-821). An inventory
 review requires fresh proof that the competing objects were corrected.
 

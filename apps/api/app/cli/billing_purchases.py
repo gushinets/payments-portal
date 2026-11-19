@@ -20,7 +20,7 @@ from app.composition.purchases import recover_financial
 from app.composition.sources import source_resources
 from app.core.errors import AppError
 from app.core.settings import Settings
-from app.domains.billing.operator_contracts import ResolutionRequest
+from app.domains.billing.operator_contracts import LateReviewRef, ResolutionRequest
 from app.domains.billing.operator_diagnostics import inspect_evidence, inspect_operation
 from app.domains.billing.access_invalidation import inspect_delivery
 from app.domains.billing.terminal_resolution import TerminalEvidence, TerminalRequest, resolve_purchase
@@ -82,7 +82,9 @@ def terminal_request(arguments: argparse.Namespace) -> TerminalRequest:
         raise AppError("purchase_resolution_arguments_invalid") from None
 
 
-async def _run(arguments: argparse.Namespace, configuration: Settings, principal: str) -> Mapping[str, object]:
+async def _run(
+    arguments: argparse.Namespace, configuration: Settings, principal: str, related_reviews: set[LateReviewRef]
+) -> Mapping[str, object]:
     # CLI serialization joins the typed delivery result and legacy command
     # documents; it does not consume or redefine those commands' nested shapes.
     from app.core.database import SessionLocal
@@ -120,6 +122,7 @@ async def _run(arguments: argparse.Namespace, configuration: Settings, principal
                 factory=SessionLocal,
                 user_id=arguments.user_id,
                 purchase_id=arguments.purchase_id,
+                report_related_review=related_reviews.add,
             )
         else:
             await reconcile_purchase(
@@ -136,6 +139,7 @@ async def _run(arguments: argparse.Namespace, configuration: Settings, principal
 
 def main(argv: list[str] | None = None) -> int:
     arguments = parser().parse_args(argv)
+    related_reviews: set[LateReviewRef] = set()
     try:
         if arguments.command == "resolve-review":
             try:
@@ -145,8 +149,8 @@ def main(argv: list[str] | None = None) -> int:
         principal = resolve_operator_principal()
         configuration = Settings()
         with asyncio.Runner() as runner:
-            result = runner.run(_run(arguments, configuration, principal))
-        print(json.dumps({**result, "operator_principal": principal}))
+            result = runner.run(_run(arguments, configuration, principal, related_reviews))
+        print(json.dumps({**result, "operator_principal": principal, **_related_review_output(related_reviews)}))
         return 0
     except ValidationError:
         code = "purchase_configuration_invalid"
@@ -157,8 +161,19 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as error:
         report_exception(error, operation=Operation.BILLING_OPERATOR)
         code = "purchase_internal_error"
-    print(json.dumps({"detail": {"code": code}}), file=sys.stderr)
+    print(json.dumps({"detail": {"code": code}, **_related_review_output(related_reviews)}), file=sys.stderr)
     return 1
+
+
+def _related_review_output(reviews: set[LateReviewRef]) -> dict[str, list[dict[str, str]]]:
+    if not reviews:
+        return {}
+    return {
+        "related_late_reviews": [
+            {"purchase_intent_id": str(review.purchase_intent_id), "review_case_id": str(review.review_case_id)}
+            for review in sorted(reviews, key=lambda review: (review.purchase_intent_id, review.review_case_id))
+        ]
+    }
 
 
 if __name__ == "__main__":

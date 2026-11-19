@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -12,10 +13,11 @@ import pytest
 
 from app.cli import billing_purchases as cli
 from app.domains.billing.contracts import BillingRefused
-from app.domains.billing.operator_contracts import ResolutionRequest
+from app.domains.billing.operator_contracts import LateReviewRef, ResolutionRequest
 from app.domains.catalog.mapping_evidence import MappingRefused
 from app.composition.mapping_operator import resolve_operator_principal
 from app.core.settings import Settings
+from app.integrations.lbx.errors import LbxScopeForbidden
 from apps.api.tests.factories.billing_operator import resolution_request
 from apps.api.tests.factories.reconciliation import subject_factory
 from apps.api.tests.support.any709_step1 import step1_settings
@@ -140,6 +142,28 @@ def test_billing_recovery_cli_inspect_opens_no_source_resources(
     assert cli.main(["inspect", "--user-id", str(uuid4()), "--purchase-id", str(uuid4())]) == 0
 
 
+def test_recover_reports_committed_related_case_with_first_source_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    review = LateReviewRef(purchase_intent_id=uuid4(), review_case_id=uuid4())
+
+    async def recover(*args: object, report_related_review: Callable[[LateReviewRef], None], **kwargs: object) -> None:
+        report_related_review(review)
+        report_related_review(review)
+        raise LbxScopeForbidden()
+
+    monkeypatch.setattr(cli, "recover_financial", recover)
+    monkeypatch.setattr(cli, "Settings", step1_settings)
+    monkeypatch.setattr(cli, "resolve_operator_principal", lambda: "os-euid:1000")
+    assert cli.main(["recover", "--user-id", str(uuid4()), "--purchase-id", str(uuid4())]) == 1
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert json.loads(output.err) == {
+        "detail": {"code": "lbx_scope_forbidden"},
+        "related_late_reviews": [review.model_dump(mode="json")],
+    }
+
+
 def test_operation_lookup_requires_os_access_and_uses_no_source_resources(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -261,7 +285,7 @@ def test_billing_recovery_cli_runbook_parser_and_settings_contract() -> None:
         "bind-original",
         "billing-operator-resolution:v1",
         "projection_valid_until",
-        "release-terminal",
+        "`related_late_reviews`",
         "Polling-only operation",
         "queue age",
         "per-process",

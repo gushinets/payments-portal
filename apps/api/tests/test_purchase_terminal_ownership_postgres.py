@@ -20,6 +20,7 @@ from app.composition.sources import SourceResources, source_resources
 from app.domains.billing import customers, terminal_resolution as terminal
 from app.domains.billing.operator_diagnostics import inspect_evidence
 from app.domains.billing.operator_contracts import LateSubscriptionPoint
+from app.domains.billing.operator_review import has_late_purchase_review_for_product
 from app.domains.purchases import financial, service
 from app.domains.purchases.contracts import Purchase, PurchaseRefused
 from app.infrastructure.queries import billing_operator
@@ -37,6 +38,7 @@ from apps.api.tests.test_any709_step2_postgres import seed
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.support.any709_step3 import PurchaseTransport
 from apps.api.tests.test_any709_step3_postgres import TOKEN, accept
+from apps.api.tests.test_billing_worker_postgres import historical_link
 from apps.api.tests.test_billing_background_recovery_postgres import (
     anyio_backend as anyio_backend,
     background_scenario as background_scenario,
@@ -232,6 +234,60 @@ async def test_public_recover_reads_subscription_attested_after_the_initial_rele
     for _ in range(2):
         with pytest.raises(PurchaseRefused, match="purchase_existing_subscription_review"):
             await advance_purchase(sources, step1_settings(), factory=factory, token=TOKEN, purchase_id=replacement.id)
+    assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
+
+
+@pytest.mark.parametrize("reopen_agreement", [False, True])
+async def test_recover_records_audit_owned_subscription_conflict_on_the_original_purchase(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    reopen_agreement: bool,
+) -> None:
+    transport, _, purchase = background_scenario
+    factory = postgres_session_factory
+    config = step1_settings()
+    original = _close_uncertain_subscription(factory, transport, purchase)
+    subscription = next(op for op in original.operations if op.kind == Kind.SUBSCRIPTION)
+    assert subscription.bound_id is None
+    assert terminal.released_operation_objects(factory, original.id)[subscription.id].confirmed == {"567"}
+
+    other = historical_link(factory, original, transport, "brief_decoder", 1, uncertain_subscription=True)
+    transport.subscriptions[:] = [item for item in transport.subscriptions if item["subscription_id"] == 567]
+    other_agreement = next(item for item in transport.agreements if item["agreement_id"] == 457)
+    other_agreement["close_date"] = datetime.now(UTC).date().isoformat()
+    terminal.resolve_purchase(factory, config, request(factory, other, confirmed=True), PRINCIPAL)
+    if reopen_agreement:
+        other_agreement["close_date"] = None
+    transport.subscriptions[0].update(agreement_id=457, state=2)
+
+    assert await _recover_from_cli(factory, other, transport, monkeypatch) == 0
+    [conflict] = [
+        case
+        for case in inspect_evidence(factory, config, original.user_id, original.id)["reviews"]
+        if case["state"] == "open"
+    ]
+    assert conflict["late_object"]["operation_id"] == str(subscription.id)
+    assert conflict["late_object"]["external_object_id"] == "567"
+    assert conflict["late_object"]["observed_agreement_id"] == "457"
+    assert conflict["late_object"]["relationship_conflict"] is True
+    output = json.loads(capsys.readouterr().out)
+    assert output["purchase_intent_id"] == str(other.id)
+    assert output["related_late_reviews"] == [
+        {"purchase_intent_id": str(original.id), "review_case_id": conflict["review_case_id"]}
+    ]
+    if not reopen_agreement:
+        assert not any(case["state"] == "open" for case in output["reviews"])
+    assert all(
+        case.get("late_object", {}).get("external_object_id") != "567"
+        for case in inspect_evidence(factory, config, other.user_id, other.id)["reviews"]
+    )
+    with factory() as db:
+        for product_id, tariff_id in (("proposal_ai", 702), ("brief_decoder", 701)):
+            assert has_late_purchase_review_for_product(db, original.customer_id, product_id, tariff_id=tariff_id)
+    assert await _recover_from_cli(factory, other, transport, monkeypatch) == 0
+    assert json.loads(capsys.readouterr().out)["related_late_reviews"] == output["related_late_reviews"]
     assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
 
 

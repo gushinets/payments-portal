@@ -27,6 +27,7 @@ from app.domains.purchases.contracts import FinancialOperation, Purchase, Purcha
 from app.infrastructure.queries import billing_operator as queries, billing_reconciliation, purchases
 from app.infrastructure.queries.billing_customers import customer_operation, recovery_work
 from app.models import (
+    ExternalBillingCustomer,
     ExternalBillingCustomerBindingState as Binding,
     ExternalCreateOperation,
     ExternalCreateOperationKind as Kind,
@@ -86,6 +87,35 @@ def operation_digest(db: Session, operations: list[ExternalCreateOperation]) -> 
             }
             for op in operations
         ]
+    )
+
+
+def terminal_state_digest(db: Session, row: PurchaseIntent) -> str:
+    """Read-only diagnostic; the terminal writer repeats this under business locks."""
+    customer = db.get(ExternalBillingCustomer, row.customer_id)
+    hold = purchases.hold(db, row.user_id, row.product_id)
+    sub = queries.subscription(db, row.purchase_intent_id)
+    return digest(
+        {
+            "purchase": str(row.purchase_intent_id),
+            "state": row.state,
+            "accepted": row.accepted_snapshot,
+            "hold": str(hold.purchase_intent_id) if hold else None,
+            "customer": [customer.provider_origin, customer.provider_customer_id, customer.binding_state],
+            "operations": operation_digest(db, purchases.operations(db, row.purchase_intent_id)),
+            "subscription": [str(sub.latest_observation_id), sub.reconciliation_fencing_token] if sub else None,
+            "open_cases": sorted(
+                case_digest(case)
+                for case in queries.reviews(
+                    db,
+                    row.purchase_intent_id,
+                    row.customer_id,
+                    sub.subscription_id if sub else None,
+                    open_only=True,
+                    limit=None,
+                )
+            ),
+        }
     )
 
 

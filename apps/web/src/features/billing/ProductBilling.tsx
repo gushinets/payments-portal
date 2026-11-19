@@ -154,15 +154,17 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     try {
       result = await advancePurchase(token, purchase.purchase_intent_id, id);
     } catch (error) {
-      if (error instanceof ApiError) throw error;
-      // A browser timeout/disconnect does not cancel the server's financial work.
-      // Inspect once locally; never replay advance or authorize payment from this GET.
+      const apiError = error instanceof ApiError;
+      if (apiError && (error.status !== 409 || apiErrorCode(error) !== "purchase_scope_released")) throw error;
+      // Check for a concurrent release or a completed advance after a lost response.
       let saved: PurchaseIntentResponse | null = null;
       try { saved = await purchaseStatus(token, purchase.purchase_intent_id, id); }
       catch { /* Keep the original held intent visible if the status read also fails. */ }
+      const released = saved && !saved.scope_held && isResolvedPurchase(saved.state);
+      if (apiError && !released) throw error;
       if (current()) {
         if (saved) setState({ kind: "purchase", purchase: saved });
-        setFailure(saved && (saved.state === "linked" || (!saved.scope_held && isResolvedPurchase(saved.state))) ? null : { message: "financialPending", requestId: id });
+        setFailure(released || saved?.state === "linked" ? null : { message: "financialPending", requestId: id });
       }
       return;
     }
