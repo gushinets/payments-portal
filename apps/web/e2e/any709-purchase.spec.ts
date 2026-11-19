@@ -400,3 +400,88 @@ test("returning to an abandoned account visit requires a fresh payment click", a
   await expect(billing.getByRole("button", { name: ru.Billing.refresh })).toBeEnabled();
   expect(state.bootstraps).toEqual([{ purchase_intent_id: savedPurchase.purchase_intent_id }]);
 });
+
+test("an expired session ends the cabinet recheck and closes its open payment Widget", async ({ page }) => {
+  const state = await syntheticBilling(page);
+  state.owned = savedPurchase;
+  const purchasePath = "/api/purchase-intents/" + savedPurchase.purchase_intent_id;
+  let permitListRead!: () => void;
+  const beforeListRead = new Promise<void>((resolve) => { permitListRead = resolve; });
+  let revoked = false;
+  await page.route("**/api/purchase-intents", async (route) => {
+    await beforeListRead;
+    return route.fulfill({ json: { purchases: [{
+      purchase_intent_id: savedPurchase.purchase_intent_id,
+      product_id: savedPurchase.product_id,
+      state: "manual_review",
+      created_at: "2026-10-27T12:00:00Z",
+    }], next_cursor: null } });
+  });
+  await page.route("**" + purchasePath, async (route) => {
+    return route.fulfill(revoked
+      ? { status: 401, json: { detail: { code: "billing_session_required", request_id: "revoked-session" } } }
+      : { json: savedPurchase });
+  });
+
+  await page.goto(`/ru/account?purchase=${savedPurchase.purchase_intent_id}#billing`);
+  await page.getByRole("button", { name: ru.CookieBanner.acceptAction, exact: true }).click();
+  const billing = page.getByRole("region", { name: ru.Billing.title });
+  await expect(billing.getByRole("button", { name: ru.Billing.pay })).toBeEnabled();
+  expect(state.bootstraps).toEqual([]);
+  await billing.getByRole("button", { name: ru.Billing.pay }).click();
+  await expect(billing.getByRole("button", { name: ru.Billing.refresh })).toBeEnabled();
+
+  revoked = true;
+  const refusal = page.waitForResponse((response) => new URL(response.url()).pathname === purchasePath && response.status() === 401);
+  permitListRead();
+  await refusal;
+
+  await expect(billing.getByRole("button", { name: ru.Billing.open })).toBeDisabled();
+  await expect(billing.locator("iframe")).toHaveCount(0);
+  expect(state.bootstraps).toEqual([{ purchase_intent_id: savedPurchase.purchase_intent_id }]);
+  await expect(billing.getByText(ru.Purchase.loading, { exact: true })).toHaveCount(0, { timeout: 4000 });
+  await expect(billing.getByRole("alert")).toContainText(ru.Billing.errors.session);
+  await expect(billing.getByRole("alert")).toContainText("revoked-session");
+});
+
+test("a paid-access refresh closes expired checkout and lets the buyer sign in again", async ({ page }) => {
+  const state = await syntheticBilling(page);
+  state.owned = savedPurchase;
+  await page.goto("/ru/account");
+  await page.getByRole("button", { name: ru.CookieBanner.acceptAction, exact: true }).click();
+  const billing = page.getByRole("region", { name: ru.Billing.title });
+  await billing.getByRole("button", { name: ru.Billing.pay, exact: true }).click();
+  await expect(billing.getByRole("button", { name: ru.Billing.refresh })).toBeEnabled();
+
+  await page.route("**/api/paid-access", (route) => route.fulfill({
+    status: 401, json: { detail: { code: "billing_session_required", request_id: "expired-cabinet" } }
+  }));
+  await page.route("**/api/auth/session", (route) => route.fulfill({ status: 401, json: { detail: "invalid_session" } }));
+  await page.getByRole("button", { name: ru.Account.products.paid.refresh }).click();
+  await expect(billing.getByRole("alert")).toContainText(ru.Billing.errors.session);
+  await expect(billing.getByRole("alert")).toContainText("expired-cabinet");
+  await expect(billing.locator("iframe")).toHaveCount(0);
+  await billing.getByRole("button", { name: ru.Purchase.retry }).click();
+  await expect(page.getByRole("heading", { name: ru.Auth.dialogTitle })).toBeVisible();
+  expect(state.bootstraps).toEqual([{ purchase_intent_id: savedPurchase.purchase_intent_id }]);
+});
+
+test("restores the saved purchase after confirmation loses its commit acknowledgement", async ({ page }) => {
+  const state = await syntheticBilling(page);
+  let posts = 0;
+  await page.route("**/api/purchase-intents", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    posts++;
+    state.owned = { ...savedPurchase, state: "created" };
+    return route.fulfill({ status: 500, json: { detail: { code: "internal_server_error" } } });
+  });
+  const panel = await openProduct(page);
+  await panel.getByRole("button", { name: ru.Purchase.buy, exact: true }).click();
+  await panel.getByRole("checkbox").check();
+  await panel.getByRole("button", { name: ru.Purchase.confirm }).click();
+  await expect(panel.getByRole("button", { name: ru.Purchase.continue })).toBeEnabled({ timeout: 4000 });
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+  expect(posts).toBe(1);
+  expect(state.advances).toBe(0);
+  expect(state.bootstraps).toEqual([]);
+});

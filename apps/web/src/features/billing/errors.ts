@@ -12,6 +12,39 @@ export function safeRequestId(error: unknown): string {
   return typeof id === "string" && /^[A-Za-z0-9._-]{1,128}$/.test(id) ? id : "";
 }
 
+type BillingSessionRefusal = {
+  httpStatus: 401 | 403;
+  message: "errors.session" | "errors.verification";
+  requestId: string;
+  readRefused: true;
+};
+export type OnBillingSessionRefused = (refusal: BillingSessionRefusal) => void;
+export type PurchaseReadRefusal = BillingSessionRefusal | {
+  httpStatus: 404; message: "selectionUnavailable"; requestId: string; readRefused: true;
+};
+
+function sessionRefusal(httpStatus: 401 | 403, requestId: string): BillingSessionRefusal {
+  return { httpStatus, message: httpStatus === 401 ? "errors.session" : "errors.verification", requestId, readRefused: true };
+}
+
+// A failed background read only invalidates the Widget for an explicit Portal auth refusal.
+export function reportBillingSessionRefusal(error: unknown, requestId: string, onRefused: OnBillingSessionRefused) {
+  if (!(error instanceof ApiError)) return;
+  const code = apiErrorCode(error);
+  if ((error.status === 401 && code === "billing_session_required")
+    || (error.status === 403 && code === "billing_email_verification_required")) {
+    onRefused(sessionRefusal(error.status, requestId));
+  }
+}
+
+/** Only used for reads of the authenticated user's local purchase. */
+export function purchaseReadRefusal(error: unknown, requestId: string): PurchaseReadRefusal | undefined {
+  if (!(error instanceof ApiError)) return;
+  const id = safeRequestId(error) || requestId;
+  if (error.status === 401 || error.status === 403) return sessionRefusal(error.status, id);
+  if (error.status === 404) return { httpStatus: 404, message: "selectionUnavailable", requestId: id, readRefused: true };
+}
+
 export function billingErrorKey(error: unknown): BillingErrorKey {
   switch (apiErrorCode(error)) {
     case "billing_session_required": return "session";

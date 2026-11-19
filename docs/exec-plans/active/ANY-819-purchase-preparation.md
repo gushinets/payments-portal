@@ -17,25 +17,24 @@
    approved test LBX stand, compare timings and repeat W02 with multiple
    agreements. Record live acceptance separately from simulated results.
 
-## Local evidence
+## Local verification
 
 - First preparation retains five canonical customer reads. The review found
   that reducing the count to four let a changed original customer key go
-  undetected until after the agreement send. After an ambiguous reply, advance
-  still performs one foreground agreement search, down from two on the baseline.
+  undetected until after the agreement send. When the create reply is lost,
+  advance has already searched once for the agreement before sending. It returns
+  the saved pending state. The baseline ran a second search in the same request.
   Separate regressions cover provider-key drift and a changed local customer fence.
-- Eleven focused PostgreSQL scenarios passed on the final backend, including
-  the new stale-fence case, a second product, lost and malformed replies,
-  GET-only recovery and restart. The rerun uses a UTC database session.
-- All 457 frontend component tests and 18 simulated desktop/mobile billing E2E
-  cases passed. The latter cover explicit single-click payment, target display,
-  local status polling, session changes, refresh and SDK READY timeout. The
-  production webpack build passed using a cached local font.
-- Documentation, OpenAPI freshness, architecture, static checks and lint passed.
-  The canonical check stopped in the fast API partition with nine environment
-  failures (2,399 passed, one skipped). The failed cases passed focused reruns
-  after isolating the Kernel mock configuration and retrying the process test;
-  the complete canonical command was not repeated to completion.
+- An earlier backend run passed 16 focused PostgreSQL cases covering changed
+  customer keys and fences, lost replies, GET-only recovery, closed agreements,
+  restart and session checks.
+- On 2026-11-19, `npm run check:fast` passed on the local ANY-819 changes,
+  including 497 component tests and 2,408 fast API tests. One API test was
+  skipped. The production webpack build passed using a cached local font.
+- On that build, 60 browser scenarios passed across desktop and mobile Chromium
+  with synthetic API and Widget responses (28 purchase and 32 catalog). The purchase
+  tests cover a single payment click, status recovery, Widget readiness and
+  expiry of the current session during checkout.
 
 ## Live test setup and baseline
 
@@ -71,25 +70,21 @@ acceptance-to-READY baseline.
   READY took 14.7 s before and 8.8 s after. Refresh took 15.2 s before and 10.4 s
   after. This is one pair of test samples. The changed fresh-buyer journey made
   exactly one customer, two agreement and two subscription CREATE calls.
-- The test reached the selected agreement's top-up form. The available
-  environment supplied no confirmed test payment instrument for submitting
-  that form. Local approval review blocked submission before any payment call
-  because the payment mode was unconfirmed. Full first-attempt latency
-  improvement and successful self-service payment remain open acceptance items.
 
-## Verification after the review fixes
+## Live results after the review fixes
 
-- Sixteen focused PostgreSQL cases passed, including changes to the original
-  customer key, GET-only recovery after lost agreement and subscription replies,
-  closed agreements, restart, and session checks. All 460 component tests and
-  52 browser cases on the production build passed in desktop and mobile
-  Chromium, including 20 purchase cases and 32 catalog regressions. The local
-  status tests cover results arriving after the fast polling window and manual
-  inspection after the final poll.
 - On a separate local copy, the official LBX 043 Widget reached READY for both
   retained test purchases. Click to READY took 12.8 s for Brief Decoder and
   6.4 s for ProposalAI. ProposalAI refresh took 3.2 s. These are single samples
   on prepared purchases.
 - The 100 RUB top-up request for the isolated ProposalAI agreement succeeded
   at the LBX endpoint and redirected to YooKassa. Both agreement balances
-  remained zero. Checkout settlement requires a confirmed test payment method.
+  remained zero.
+
+## Open acceptance items
+
+- Compare the first attempt from acceptance to Widget READY for a fresh
+  purchase on the baseline and the revised code under the same conditions.
+- Complete W02 with a confirmed test payment method and verify that the
+  selected agreement receives the credit and the other agreement keeps its
+  original balance.

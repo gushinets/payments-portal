@@ -35,18 +35,19 @@ export function useBillingWidget(userId: string, emailVerified: boolean) {
   const owner = useRef(Symbol());
   const attachNode = useCallback((element: HTMLDivElement | null) => { node.current = element; }, []);
 
+  const close = useCallback(() => {
+    cancel();
+    dispose.current?.();
+    dispose.current = undefined;
+    opening.current = false;
+    setState({ status: WidgetStatus.Closed });
+  }, [cancel]);
+
   useEffect(() => {
-    const clear = () => {
-      cancel();
-      dispose.current?.();
-      dispose.current = undefined;
-      opening.current = false;
-      setState({ status: WidgetStatus.Closed });
-    };
     const otherOpening = (event: Event) => {
-      if (event instanceof CustomEvent && event.detail !== owner.current) clear();
+      if (event instanceof CustomEvent && event.detail !== owner.current) close();
     };
-    const unsubscribe = subscribeToSessionChanges(clear);
+    const unsubscribe = subscribeToSessionChanges(close);
     window.addEventListener(widgetOpeningEvent, otherOpening);
     return () => {
       unsubscribe();
@@ -56,7 +57,7 @@ export function useBillingWidget(userId: string, emailVerified: boolean) {
       dispose.current = undefined;
       opening.current = false;
     };
-  }, [userId, emailVerified, cancel]);
+  }, [userId, emailVerified, cancel, close]);
 
   const open = useCallback(async (purchaseId?: string) => {
     if (!emailVerified || opening.current) return;
@@ -113,14 +114,6 @@ export function useBillingWidget(userId: string, emailVerified: boolean) {
       if (operation.isCurrent()) setState({ status: WidgetStatus.Error, message: billingErrorKey(error), requestId: safeRequestId(error) || correlationId });
     }
   }, [begin, emailVerified, t]);
-
-  function close() {
-    cancel();
-    dispose.current?.();
-    dispose.current = undefined;
-    opening.current = false;
-    setState({ status: WidgetStatus.Closed });
-  }
 
   const loading = state.status === WidgetStatus.Bootstrapping || state.status === WidgetStatus.Rendering;
   return { state, loading, attachNode, open, close };

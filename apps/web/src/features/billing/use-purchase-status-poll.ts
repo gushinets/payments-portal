@@ -3,9 +3,8 @@
 import { useEffect, useEffectEvent, useState } from "react";
 import type { PurchaseIntentResponse } from "@/generated/api-contracts/types.gen";
 import { currentPurchase, purchaseStatus } from "@/shared/api/purchases";
-import { ApiError } from "@/shared/api/transport";
 import { subscribeToSessionChanges, useSessionOperation } from "@/shared/session/use-session-operation";
-import { newRequestId } from "./errors";
+import { newRequestId, purchaseReadRefusal, type PurchaseReadRefusal } from "./errors";
 
 const fastPollWindowMs = 120_000;
 const recoveryPollIntervalMs = 60_000;
@@ -19,9 +18,12 @@ export function purchaseNeedsStatus(purchase: Pick<PurchaseIntentResponse, "stat
 export function usePurchaseStatusPoll(
   purchase: Pick<PurchaseIntentResponse, "purchase_intent_id" | "state"> | undefined,
   uncertainProductId: string | undefined,
-  onStatus: (purchase: PurchaseIntentResponse) => void
+  onStatus: (purchase: PurchaseIntentResponse, readStartedAt: number) => void,
+  onRefused: (refusal: PurchaseReadRefusal) => void,
+  checkImmediately = false
 ) {
   const accept = useEffectEvent(onStatus);
+  const refuse = useEffectEvent(onRefused);
   const { begin } = useSessionOperation();
   const [pausedKey, setPausedKey] = useState<string>();
   const purchaseId = purchase?.purchase_intent_id;
@@ -36,7 +38,7 @@ export function usePurchaseStatusPoll(
     const startedAt = Date.now();
     const fastUntil = startedAt + fastPollWindowMs;
     const stopAt = recovering ? startedAt + recoveryPollWindowMs : fastUntil;
-    let delay = 2_000;
+    let delay = checkImmediately ? 0 : 2_000;
     let timer: number | undefined;
     let reading = false;
     let stopped = false;
@@ -68,28 +70,30 @@ export function usePurchaseStatusPoll(
         return;
       }
       reading = true;
+      const requestId = newRequestId();
       try {
-        const requestId = newRequestId();
+        const readStartedAt = performance.now();
         const purchase = purchaseId
           ? await purchaseStatus(token, purchaseId, requestId)
           : (await currentPurchase(token, uncertainProductId!, requestId)).purchase;
         if (stopped || !isCurrent()) { stop(); return; }
-        if (purchase) {
-          accept(purchase);
-          if (!purchase.scope_held || !purchaseNeedsStatus(purchase)) stop();
-        }
+        if (purchase) accept(purchase, readStartedAt);
       } catch (error) {
-        // A transient read failure leaves the last saved status and manual action intact.
-        if (error instanceof ApiError && [401, 403, 404].includes(error.status)) stop();
+        const refusal = purchaseReadRefusal(error, requestId);
+        if (refusal) {
+          if (!stopped && isCurrent()) refuse(refusal);
+          stop();
+          return;
+        }
       } finally {
         reading = false;
       }
-      delay = delay === 2_000 ? 5_000 : 10_000;
+      delay = delay === 0 ? 2_000 : delay === 2_000 ? 5_000 : 10_000;
       schedule();
     }
 
     return stop;
-  }, [begin, key, purchaseId, recovering, uncertainProductId]);
+  }, [begin, checkImmediately, key, purchaseId, recovering, uncertainProductId]);
 
   return { paused: key !== undefined && pausedKey === key, clearPause: () => setPausedKey(undefined) };
 }
