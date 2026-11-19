@@ -45,9 +45,17 @@ immutable source/owner history.
 Step 13 partitions delivery by recipient; Step 14 adds usage readback and durable
 exhaustion hints. Step 15 adds isolated cabinet usage reads and current/historical
 presentation. Steps 16/17 supply focused assembled local acceptance and build/install
-preparation; the full matrix and remote/live acceptance remain ANY-767 work.
+preparation; the remaining full local matrix belongs to ANY-767.
 Current identity configuration is in the
 [common guide](../contracts/product-backend-api/README.md#implemented-step-10-settings-and-cutover).
+
+Parent ANY-504 Step 11 ([ANY-767](https://linear.app/paveldik/issue/ANY-767))
+should read the [monthly LBX calendar profile and P03 checkpoint](../engineering/billing-background-operations.md#monthly-lbx-instance-start-calendar-any-864).
+This component path is CONFIRMED_ON_TEST as of 2026-11-18 against real LBX;
+Kernel manifest/metering terms remained SIMULATED. Reuse that bounded proof;
+the full ordinary Widget-to-real-Kernel execution/usage journey remains a local
+Step 11 check under its 2026-11-16 owner clarification. Remote rollout is
+outside that local acceptance scope.
 
 | Operation / request direction | Payload producer | Payload consumer / receiver | Verification status |
 | --- | --- | --- | --- |

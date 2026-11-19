@@ -831,6 +831,35 @@ For supported calendar-month timestamp evidence, Integration normalizes activati
 to the first day at midnight in its explicit offset. Date-only evidence remains
 date-only; naive/mixed timestamps acquire no invented zone or UTC deadline.
 
+### Monthly LBX instance-start calendar (ANY-864)
+
+For the observed one-month `instance_start` profile only, date-only cycle bounds
+may accompany naive midnight subscription/instance starts such as
+`2026-11-13 00:00:00`. Integration interprets these starts as calendar dates,
+checks that neither interpreted start follows the cycle start, and retains the
+original fields in observation evidence. The allowance uses `calendar:v1` without
+UTC bounds. Nonzero time or microseconds, explicit offsets and other period
+profiles do not acquire this interpretation. Original start/end and terminal
+boundary checks retain their precision; the cycle classifier still owns cadence,
+frozen-anchor conflicts and same/later-cycle identity. Missing anchors and the
+parsed epoch date `1970-01-01`, including equivalent `T`/space midnight spellings
+and 1–6 zero fractional digits, remain missing evidence: they cannot establish
+a paid cycle, issue quota or trigger a reset.
+
+**CONFIRMED_ON_TEST — 2026-11-18, P03:** Portal
+`e2e8cead45b016e031b69790461a9916906f3e21` with real LBX 043 and isolated
+PostgreSQL issued one SIMULATED allowance of 300 analyses through ordinary
+queue-worker reconciliation. Three authenticated `GET /api/paid-access` reads retained
+the allowance ID, quantity and revision 1; raw calendar fields stayed unchanged
+and allowance UTC bounds remained null. Kernel manifest/metering terms were
+test substitutes, the Portal API used local FastAPI ASGI routes, and activation
+used an authorized internal test credit. This proves the supported monthly
+source-to-allowance path. The complete ordinary Widget purchase, real Kernel
+execution/usage and lifecycle journey remain part of parent ANY-504 Step 11
+([ANY-767](https://linear.app/paveldik/issue/ANY-767)). See the
+[dated verification record](../exec-plans/active/ANY-864-implementation-plan.md#live-lbx-p03-acceptance--2026-11-18)
+for source IDs, results and limits.
+
 ### Revision, outbox and current wire boundary
 
 Absent state is immutable empty revision 0 with no outbox row. The first material
@@ -881,22 +910,26 @@ recorded in the linked porting plan. The actual Widget → LBX → ordinary work
 revision/outbox → authenticated API/cabinet checkpoint passed on Portal
 `7a2a4d8cc13d9b007c550813d0f4c1bdff2b7fca` and Kernel
 `4cd2e0aa39b67d648cd40540db0a59a2559fd4f2`; that is not current-HEAD live acceptance.
-Live allowance issuance remained unproved because LBX cycle evidence was
-ambiguous. Deterministic PostgreSQL/source fixtures verify the owned metered,
-failure/concurrency and recovery logic separately. DOD-1 current-HEAD LBX
-acceptance remains owned by ANY-765. Under the
+At that historical checkpoint, live allowance issuance remained unproved because
+LBX cycle evidence was ambiguous. The supported monthly case now has the
+[scoped P03 proof above](#monthly-lbx-instance-start-calendar-any-864);
+it does not establish full joined acceptance. Deterministic PostgreSQL/source
+fixtures verify the owned metered, failure/concurrency and recovery logic
+separately. Under the
 [2026-11-09 ANY-766 scope clarification](https://linear.app/paveldik/issue/ANY-766),
 ANY-711 remains Done for delivered manifest/TEST-ONLY vocabulary; ANY-766 owns
 the selected production metric/unit declarations and scenario bindings as well
 as coordinated wire/delivery/enforcement and actual usage,
-and ANY-767 the deployed journey/natural renewal/production enablement. No
+and ANY-767 the remaining joined journey and natural renewal. No
 test-only limit or historical positive QA result waives those gates. Commercial
 quantities, exact LBX associations and sales enablement require separate owner
 approval. The [ANY-766 contract bundle](../contracts/portal-kernel-paid/README.md)
 records the selected wire contracts and implemented server attachment points.
 Browser/usage integration is implemented, and Steps 16/17 supply focused local
-acceptance and build/install preparation. Full and remote/live acceptance remain
-ANY-767 work.
+acceptance and build/install preparation. The
+[2026-11-16 ANY-767 owner clarification](https://linear.app/paveldik/issue/ANY-767)
+scopes Step 11 completion to the full local Portal/LBX/Widget/real-Kernel journey;
+remote deployment and production rollout remain outside that local acceptance.
 
 
 ### ANY-766 Step 14 — immutable exhaustion hints
