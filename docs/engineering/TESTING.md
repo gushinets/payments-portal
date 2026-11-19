@@ -97,9 +97,11 @@ API coverage is written to `.harness/coverage/api/coverage.xml`; component
 coverage is under `.harness/coverage/web-components/`. CI quality uses
 `npm run check:fast -- --coverage` and publishes both coverage artifacts. The
 production-gate job runs PostgreSQL with four workers on a separate 2 GiB tmpfs
-service. Its diagnostics upload includes available `.harness/ci/` and
-`.harness/api-tests/` files on failure or cancellation; Docker logs are collected
-only on failure. See the [CI workflow](../../.github/workflows/ci.yml) for the
+service. Python receives the step's cancellation signal directly and writes
+command output to `.harness/ci/postgres-pytest.log`. The diagnostics upload
+includes available files in `.harness/ci/` and `.harness/api-tests/` on failure
+or cancellation. Docker logs are collected on failure. See the
+[CI workflow](../../.github/workflows/ci.yml) for the
 exact commands; local checks do not establish remote CI success.
 
 ## Test environment and server lifecycle
@@ -132,6 +134,8 @@ same pinned PostgreSQL image as development, which must already be installed;
 project, port and persistent volume.
 The test-server launcher pins its Compose credentials and port to the written
 runtime values so inherited shell variables cannot redirect this local server.
+Before using the local fallback, the API harness verifies that this worktree's
+test Compose service publishes the expected loopback endpoint.
 
 The standard test server stores `/var/lib/postgresql` in a **2 GiB tmpfs**;
 allow that much available RAM in addition to PostgreSQL and test-process memory.
@@ -155,6 +159,7 @@ Test database configuration is resolved in this order: an explicit
 empty); then the current worktree runtime configuration, using its dedicated
 test-server port and a derived database name ending in `_tests`. The launcher
 checks the explicit fields before starting pytest and passes them individually.
+Explicit ports in the fields or URL must be within 1 to 65535.
 The fixture assigns an owned database name before rendering the connection URL.
 Partial explicit configuration is rejected, including a lone shell-exported
 `POSTGRES_PORT_TEST`. The harness reads the runtime file directly. Explicit
@@ -172,13 +177,16 @@ server, never a production target.
 
 Each pytest process that uses PostgreSQL generates unique `portal_<uuid>_tests` and
 `portal_<uuid>_template_tests` names. The shared lifecycle owner in
-`apps/api/tests/support/postgres.py` creates both and runs real Alembic
-`upgrade head` once on the template, including migration seeds. Before each
-test that requests `migrated_database`, it replaces its own scenario database
-with a fresh template clone. Template connections are closed before cloning;
-mutable business data is never stored in the template.
+`apps/api/tests/support/postgres.py` creates the empty scenario database on
+demand. On the first request for `migrated_database`, it creates the template
+and runs real Alembic `upgrade head`, including migration seeds. Each request
+then replaces the scenario database with a fresh template clone. Template
+connections are closed before cloning; mutable business data is never stored
+in the template.
 
 Migration tests retain explicit schema resets and upgrade/downgrade transitions.
+Tests using the raw engine can run historical transitions independently of the
+template migration to head.
 The next ordinary test receives a fresh clone even after a migration test has
 changed the scenario schema. Business setup, sessions and clients remain
 function-scoped; reuse of an engine/session factory does not authorize reuse of

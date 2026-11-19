@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import signal
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -16,10 +17,30 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, URL
 from sqlalchemy.pool import QueuePool
 
+from .settings import parse_test_postgres_port
+
 
 _TEST_DATABASE_SUFFIXES = ("_test", "_tests")
 _SYSTEM_DATABASE_NAMES = frozenset({"postgres", "template0", "template1"})
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
+
+
+def validate_test_database_ports(database_url: URL) -> None:
+    setting = "TEST_POSTGRES_DATABASE_URL port"
+    if database_url.port is not None:
+        parse_test_postgres_port(database_url.port, setting)
+    query = database_url.normalized_query
+    for port_list in query.get("port", ()):
+        for port in port_list.split(","):
+            if port:
+                parse_test_postgres_port(port, setting)
+    if "port" not in query:
+        # SQLAlchemy also accepts host=name:port and repeated host=name:port.
+        hosts = query.get("host", ())
+        for host in hosts:
+            host_name, _, port = host.partition(":")
+            if port and (len(hosts) > 1 or (port.isdecimal() and re.fullmatch(r"[a-zA-Z0-9.-]*", host_name))):
+                parse_test_postgres_port(port, setting)
 
 
 def validate_test_database_url(database_url: URL) -> URL:
@@ -28,6 +49,7 @@ def validate_test_database_url(database_url: URL) -> URL:
         raise ValueError("PostgreSQL test fixtures require a PostgreSQL URL")
     if "dbname" in database_url.query:
         raise ValueError("PostgreSQL test URL query must not override 'dbname'")
+    validate_test_database_ports(database_url)
 
     database_name = database_url.database
     if not database_name:
@@ -138,21 +160,29 @@ class PostgresTestDatabase:
         self.engine = create_engine(database_url, pool_pre_ping=True)
         self._database_created = False
         self._template_created = False
+        self._template_ready = False
 
     def create(self) -> None:
         with _defer_database_interrupts():
             create_test_database(self.database_url, self.admin_url)
             self._database_created = True
+
+    def _prepare_template(self) -> None:
+        if self._template_created:
+            raise RuntimeError("PostgreSQL test template migration did not complete")
         with _defer_database_interrupts():
             create_test_database(self.template_url, self.admin_url)
             self._template_created = True
         run_migrations(self.template_url)
+        self._template_ready = True
 
     def restore(self) -> None:
         """Replace only the owned scenario database; migration tests keep their resets."""
         if not self._database_created:
             raise RuntimeError(f"Test database {self.database_url.database!r} is not owned; refusing replacement")
         dispose_test_engine(self.engine)
+        if not self._template_ready:
+            self._prepare_template()
         with _defer_database_interrupts():
             drop_test_database(self.database_url, self.admin_url)
             self._database_created = False
@@ -171,6 +201,7 @@ class PostgresTestDatabase:
                 if self._template_created:
                     drop_test_database(self.template_url, self.admin_url)
                     self._template_created = False
+                    self._template_ready = False
 
 
 @contextmanager

@@ -607,6 +607,14 @@ def test_compose_command(config: RuntimeConfig) -> list[str]:
     ]
 
 
+def test_compose_environment(runtime_env: dict[str, str], environment: dict[str, str]) -> dict[str, str]:
+    # Compose gives shell variables precedence over --env-file.
+    return {
+        **environment,
+        **{name: runtime_env[name] for name in ("POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT_TEST")},
+    }
+
+
 def cmd_doctor(_: argparse.Namespace) -> None:
     failures: list[str] = []
     commands = (
@@ -755,13 +763,7 @@ def cmd_down(_: argparse.Namespace) -> None:
 def cmd_test_db(args: argparse.Namespace) -> None:
     config = load_runtime()
     write_runtime(config)
-    runtime_env = read_runtime_env()
-    # Compose gives shell variables precedence over --env-file. Keep the
-    # disposable server at exactly the endpoint/credentials used by pytest.
-    environment = {
-        **os.environ,
-        **{name: runtime_env[name] for name in ("POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT_TEST")},
-    }
+    environment = test_compose_environment(read_runtime_env(), dict(os.environ))
     if args.action == "up":
         run([*test_compose_command(config), "up", "-d", "--pull", "never", "--wait", "postgres"], env=environment)
         return
@@ -3404,13 +3406,27 @@ def api_test_marker_args(target: str) -> list[str]:
 
 def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, str]:
     from apps.api.tests.support.settings import api_test_environment as isolated_environment
+    from apps.api.tests.support.settings import parse_test_postgres_port
 
     environment = isolated_environment(environ=environment)
     if target == "api-fast":
         return environment
 
     test_database_url_name = "TEST_POSTGRES_DATABASE_URL"
-    if environment.get(test_database_url_name):
+    if configured_url := environment.get(test_database_url_name):
+        from sqlalchemy.engine import make_url
+        from sqlalchemy.exc import ArgumentError
+
+        from apps.api.tests.support.postgres import validate_test_database_ports
+
+        try:
+            database_url = make_url(configured_url)
+        except (ArgumentError, ValueError):
+            raise HarnessError(f"{test_database_url_name} is not a valid database URL") from None
+        try:
+            validate_test_database_ports(database_url)
+        except ValueError as exc:
+            raise HarnessError(str(exc)) from exc
         return environment
 
     explicit_names = (
@@ -3432,9 +3448,9 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
                 + ", ".join(missing_names)
             )
         try:
-            int(environment["POSTGRES_PORT_TEST"])
+            parse_test_postgres_port(environment["POSTGRES_PORT_TEST"], "POSTGRES_PORT_TEST")
         except ValueError as exc:
-            raise HarnessError("POSTGRES_PORT_TEST must be an integer") from exc
+            raise HarnessError(str(exc)) from exc
         # Preserve the individual fields until the fixture assigns its generated database name.
         return environment
 
@@ -3448,11 +3464,9 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
             f"{', '.join(missing_runtime_names)}. {refresh_runtime}"
         )
     try:
-        test_port = int(runtime_env["POSTGRES_PORT_TEST"])
+        test_port = parse_test_postgres_port(runtime_env["POSTGRES_PORT_TEST"], "runtime.env POSTGRES_PORT_TEST")
     except ValueError as exc:
-        raise HarnessError(f"runtime.env POSTGRES_PORT_TEST must be an integer. {refresh_runtime}") from exc
-    if not 1 <= test_port <= 65535:
-        raise HarnessError(f"runtime.env POSTGRES_PORT_TEST must be between 1 and 65535. {refresh_runtime}")
+        raise HarnessError(f"{exc}. {refresh_runtime}") from exc
     if port_is_free(test_port):
         raise HarnessError(
             "Local test PostgreSQL server is not running. Start it with:\n"
@@ -3460,10 +3474,18 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
             "Unix/WSL shortcut:\n"
             "  make test_db_up"
         )
+    published = run(
+        [*test_compose_command(load_runtime()), "port", "postgres", "5432"],
+        check=False,
+        capture=True,
+        env=test_compose_environment(runtime_env, environment),
+    )
+    if published.returncode or published.stdout.strip() != f"127.0.0.1:{test_port}":
+        raise HarnessError(f"The local port {test_port} is not published by this worktree's test PostgreSQL. {refresh_runtime}")
 
     database_environment = {
         **runtime_env,
-        "POSTGRES_PORT": runtime_env["POSTGRES_PORT_TEST"],
+        "POSTGRES_PORT": str(test_port),
         "POSTGRES_DB": f"{runtime_env['POSTGRES_DB']}_tests",
     }
     environment[test_database_url_name] = host_database_url_from_runtime(database_environment)

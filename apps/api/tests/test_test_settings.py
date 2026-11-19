@@ -287,6 +287,11 @@ def test_direct_pytest_fixture_uses_worktree_runtime_when_no_explicit_input(monk
         },
     )
     monkeypatch.setattr(repo, "port_is_free", lambda port: False)
+    monkeypatch.setattr(repo, "load_runtime", repo.runtime_config)
+    monkeypatch.setattr(repo, "tool", lambda name: name)
+    monkeypatch.setattr(
+        repo, "run", lambda command, **kwargs: subprocess.CompletedProcess(command, 0, stdout="127.0.0.1:15433\n")
+    )
     with patch.dict(os.environ, {}, clear=True):
         resolved = database_test_url.__wrapped__()
         assert resolved.database.endswith("_tests") and resolved.database != "worktree_tests"

@@ -30,6 +30,27 @@ def _existing_databases(admin_url: URL, names: list[str]) -> list[str]:
         engine.dispose()
 
 
+def test_raw_migration_database_is_available_when_head_migration_fails(
+    database_test_url: URL, database_admin_url: URL, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    url = support.session_test_database_url(database_test_url)
+
+    def broken_head(template_url: URL) -> None:
+        raise RuntimeError("injected head migration failure")
+
+    monkeypatch.setattr(support, "run_migrations", broken_head)
+    with support.postgres_test_database(url, database_admin_url) as owned:
+        names = [url.database, owned.template_url.database]
+        assert _existing_databases(database_admin_url, names) == [url.database]
+        with owned.engine.connect() as connection:
+            assert connection.scalar(text("SELECT to_regclass('public.alembic_version')")) is None
+        with pytest.raises(RuntimeError, match="injected head migration failure"):
+            owned.restore()
+        with pytest.raises(RuntimeError, match="template migration did not complete"):
+            owned.restore()
+    assert _existing_databases(database_admin_url, names) == []
+
+
 def test_fresh_clones_survive_mixed_migration_order_in_separate_processes(
     tmp_path: Path, database_admin_url: URL
 ) -> None:
@@ -120,6 +141,7 @@ def test_final(migrated_database: Engine) -> None:
 def test_initial_collisions_preserve_existing_resources(
     postgres_database: support.PostgresTestDatabase, collide_template: bool
 ) -> None:
+    postgres_database.restore()
     url = (
         support.session_test_database_url(postgres_database.database_url)
         if collide_template
@@ -129,8 +151,13 @@ def test_initial_collisions_preserve_existing_resources(
     if collide_template:
         candidate.template_url = postgres_database.template_url
     try:
-        with pytest.raises(ProgrammingError, match="already exists"):
+        if collide_template:
             candidate.create()
+        with pytest.raises(ProgrammingError, match="already exists"):
+            if collide_template:
+                candidate.restore()
+            else:
+                candidate.create()
     finally:
         candidate.close()
     expected = [postgres_database.database_url.database, postgres_database.template_url.database]

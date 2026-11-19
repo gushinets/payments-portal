@@ -275,6 +275,32 @@ def test_cli_invalid_runtime_port_reports_startup_error(
     assert recovery in previous_report.read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize(
+    "configuration",
+    [
+        {
+            "POSTGRES_USER_TEST": "synthetic",
+            "POSTGRES_PASSWORD_TEST": "synthetic",
+            "POSTGRES_DB_TEST": "synthetic_tests",
+            "POSTGRES_PORT_TEST": "0",
+        },
+        {"TEST_POSTGRES_DATABASE_URL": "postgresql+psycopg://synthetic@localhost:0/synthetic_tests"},
+        {"TEST_POSTGRES_DATABASE_URL": "postgresql+psycopg://localhost/synthetic_tests?host=localhost:0"},
+        {"TEST_POSTGRES_DATABASE_URL": "postgresql+psycopg://localhost/synthetic_tests?host=localhost&port=0"},
+    ],
+)
+def test_port_zero_fails_before_starting_pytest(
+    previous_report: Path, monkeypatch: pytest.MonkeyPatch, configuration: dict[str, str]
+) -> None:
+    monkeypatch.setattr(runner, "run_api_tests", lambda **kwargs: pytest.fail("An invalid port must not reach pytest"))
+    with pytest.raises(repo.HarnessError, match="must be between 1 and 65535"):
+        repo.cmd_test(
+            argparse.Namespace(target="api-postgres", junitxml=str(previous_report)),
+            environment={**configuration, "PGPORT": "5432"},
+        )
+    assert_startup_error(previous_report, "must be between 1 and 65535")
+
+
 def test_command_startup_invalidates_report_before_configuration(
     previous_report: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -703,6 +729,35 @@ def test_interruption_during_report_validation_does_not_duplicate_completed_resu
         "apps/api/tests/test_second.py::test_pass",
     ]
     assert len(ET.parse(suite / "current.xml").findall(".//error")) == 1
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signal integration; Windows uses CTRL_BREAK_EVENT")
+@pytest.mark.parametrize("interrupt", [signal.SIGINT, signal.SIGTERM])
+def test_interrupt_during_spawn_joins_the_new_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, interrupt: signal.Signals
+) -> None:
+    command = [sys.executable, "-c", "import time; time.sleep(30)"]
+    invocation = runner.Invocation(command, tmp_path)
+    popen = subprocess.Popen
+    spawned: list[subprocess.Popen[bytes]] = []
+
+    def interrupted_spawn(*args: object, **kwargs: object) -> subprocess.Popen[bytes]:
+        child = popen(*args, **kwargs)
+        spawned.append(child)
+        signal.raise_signal(interrupt)
+        return child
+
+    monkeypatch.setattr(runner.subprocess, "Popen", interrupted_spawn)
+    try:
+        with runner.interrupt_on_termination(), pytest.raises(KeyboardInterrupt):
+            runner.execute([invocation], tmp_path, environment())
+        assert len(spawned) == 1 and spawned[0].returncode is not None
+        assert json.loads((tmp_path / "interrupted.json").read_text()) == {"forced_termination": False}
+    finally:
+        for child in spawned:
+            if child.poll() is None:
+                child.kill()
+                child.wait()
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX signal integration; Windows uses CTRL_BREAK_EVENT")

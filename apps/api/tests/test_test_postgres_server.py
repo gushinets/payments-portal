@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 from dataclasses import asdict
 from pathlib import Path
 
@@ -104,4 +105,33 @@ def test_stopped_test_server_explains_recovery_even_with_development_running(mon
     monkeypatch.setattr(repo, "port_is_free", lambda port: port == 42053)
 
     with pytest.raises(repo.HarnessError, match=r"(?s)not running.*python scripts/repo.py test-db up"):
+        repo.api_test_environment("api-postgres", {})
+
+
+@pytest.mark.parametrize("mapping", ["", "127.0.0.1:42054\n", "0.0.0.0:42053\n"])
+def test_another_listener_cannot_replace_the_worktree_server(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mapping: str
+) -> None:
+    config = repo.runtime_config(root=tmp_path)
+    monkeypatch.setattr(repo, "load_runtime", lambda: config)
+    monkeypatch.setattr(
+        repo,
+        "read_runtime_env",
+        lambda: {
+            "POSTGRES_DB": "payments_worktree",
+            "POSTGRES_USER": "test-user",
+            "POSTGRES_PASSWORD": "synthetic-password",
+            "POSTGRES_PORT_TEST": "42053",
+        },
+    )
+    monkeypatch.setattr(repo, "port_is_free", lambda port: False)
+    monkeypatch.setattr(repo, "tool", lambda name: name)
+
+    def compose_port(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert command[:4] == ["docker", "compose", "--project-name", f"{config.compose_project}-tests"]
+        assert command[-3:] == ["port", "postgres", "5432"]
+        return subprocess.CompletedProcess(command, 0 if mapping else 1, stdout=mapping)
+
+    monkeypatch.setattr(repo, "run", compose_port)
+    with pytest.raises(repo.HarnessError, match=r"(?s)worktree.*python scripts/repo.py test-db up"):
         repo.api_test_environment("api-postgres", {})

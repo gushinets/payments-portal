@@ -11,11 +11,12 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 from collections import Counter
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager, ExitStack
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from types import FrameType
 from typing import TypedDict
 
 
@@ -183,6 +184,32 @@ def interrupt_on_termination() -> Iterator[None]:
         signal.signal(signal.SIGTERM, previous)
 
 
+@contextmanager
+def defer_spawn_interrupts() -> Iterator[None]:
+    """Deliver an interrupt after the newly spawned process is registered."""
+    handlers: dict[int, Callable[[int, FrameType | None], object]] = {}
+    pending: tuple[int, FrameType | None] | None = None
+
+    def defer(signum: int, frame: FrameType | None) -> None:
+        nonlocal pending
+        if pending is None:
+            pending = signum, frame
+
+    try:
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            handler = signal.getsignal(signum)
+            if callable(handler):
+                handlers[signum] = handler
+                signal.signal(signum, defer)
+        yield
+    finally:
+        for signum, handler in handlers.items():
+            signal.signal(signum, handler)
+        if pending is not None:
+            signum, frame = pending
+            handlers[signum](signum, frame)
+
+
 def signal_process(process: subprocess.Popen[bytes], signum: int) -> None:
     if process.poll() is not None:
         return
@@ -236,19 +263,20 @@ def execute(
                 log = stack.enter_context(
                     (invocation.directory / "pytest.log").open("wb")
                 )
-                processes.append(
-                    subprocess.Popen(
-                        invocation.command,
-                        cwd=root,
-                        env=environment,
-                        stdout=log,
-                        stderr=subprocess.STDOUT,
-                        start_new_session=os.name != "nt",
-                        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
-                        if os.name == "nt"
-                        else 0,
+                with defer_spawn_interrupts():
+                    processes.append(
+                        subprocess.Popen(
+                            invocation.command,
+                            cwd=root,
+                            env=environment,
+                            stdout=log,
+                            stderr=subprocess.STDOUT,
+                            start_new_session=os.name != "nt",
+                            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+                            if os.name == "nt"
+                            else 0,
+                        )
                     )
-                )
             return [process.wait() for process in processes]
         except BaseException:
             # A second Ctrl-C must not interrupt resource cleanup/join.

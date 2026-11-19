@@ -69,6 +69,16 @@ def api_test_environment(*, environ: Mapping[str, str] | None = None, **override
     }
 
 
+def parse_test_postgres_port(value: str | int, setting: str) -> int:
+    try:
+        port = int(value)
+    except ValueError:
+        raise ValueError(f"{setting} must be an integer") from None
+    if not 1 <= port <= 65535:
+        raise ValueError(f"{setting} must be between 1 and 65535")
+    return port
+
+
 def configure_api_test_environment(**overrides: str) -> None:
     environment = api_test_environment(**overrides)
     for name in tuple(os.environ):

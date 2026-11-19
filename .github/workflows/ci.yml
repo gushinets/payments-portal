@@ -163,9 +163,9 @@ jobs:
           set -a
           source "$CI_ENV_FILE"
           set +a
-          python scripts/repo.py test api-postgres --workers 4 \
+          exec python scripts/repo.py test api-postgres --workers 4 \
             --junitxml="$CI_ARTIFACTS/postgres-junit.xml" \
-            2>&1 | tee "$CI_ARTIFACTS/postgres-pytest.log"
+            > "$CI_ARTIFACTS/postgres-pytest.log" 2>&1
       - name: Validate Compose configuration
         shell: bash
         run: |

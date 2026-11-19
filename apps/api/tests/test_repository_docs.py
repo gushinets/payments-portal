@@ -1429,8 +1429,18 @@ def test_api_test_environment_derives_worktree_test_database_url(monkeypatch: py
         "POSTGRES_PORT_TEST": "42053",
     }
     monkeypatch.setattr(repo, "read_runtime_env", lambda: runtime_env)
+    config = repo.runtime_config()
+    monkeypatch.setattr(repo, "load_runtime", lambda: config)
+    monkeypatch.setattr(repo, "tool", lambda name: name)
     probed_ports: list[int] = []
     monkeypatch.setattr(repo, "port_is_free", lambda port: probed_ports.append(port) or False)
+
+    def published_port(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert command == [*repo.test_compose_command(config), "port", "postgres", "5432"]
+        assert kwargs["env"] == repo.test_compose_environment(runtime_env, isolated_api_environment(environ={}))
+        return subprocess.CompletedProcess(command, 0, stdout="127.0.0.1:42053\n")
+
+    monkeypatch.setattr(repo, "run", published_port)
     environment: dict[str, str] = {}
 
     result = api_test_environment("api", environment)
@@ -1451,6 +1461,11 @@ def test_api_test_environment_ignores_empty_explicit_url(monkeypatch: pytest.Mon
     }
     monkeypatch.setattr(repo, "read_runtime_env", lambda: runtime_env)
     monkeypatch.setattr(repo, "port_is_free", lambda _: False)
+    monkeypatch.setattr(repo, "load_runtime", repo.runtime_config)
+    monkeypatch.setattr(repo, "tool", lambda name: name)
+    monkeypatch.setattr(
+        repo, "run", lambda command, **kwargs: subprocess.CompletedProcess(command, 0, stdout="127.0.0.1:42053\n")
+    )
     environment = {"TEST_POSTGRES_DATABASE_URL": ""}
 
     result = api_test_environment("api", environment)

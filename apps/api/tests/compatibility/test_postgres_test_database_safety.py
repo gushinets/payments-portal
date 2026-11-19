@@ -26,6 +26,16 @@ def test_validate_test_database_url_accepts_dedicated_names(
         ("postgresql+psycopg://test@localhost/anytoolai", "must end"),
         ("postgresql+psycopg://test@localhost", "database name"),
         ("sqlite+pysqlite:///:memory:", "PostgreSQL URL"),
+        ("postgresql+psycopg://test@localhost:0/payment_tests", "must be between 1 and 65535"),
+        ("postgresql+psycopg://test@localhost:65536/payment_tests", "must be between 1 and 65535"),
+        (
+            "postgresql+psycopg://test@/payment_tests?host=first,second&port=15432,0",
+            "must be between 1 and 65535",
+        ),
+        (
+            "postgresql+psycopg://test@/payment_tests?host=first:15432&host=second:0",
+            "must be between 1 and 65535",
+        ),
     ],
 )
 def test_validate_test_database_url_rejects_unsafe_targets(

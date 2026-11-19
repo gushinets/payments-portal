@@ -203,8 +203,9 @@ def test_ci_postgres_uses_ram_and_retains_parallel_runner_diagnostics() -> None:
     postgres_step = next(
         step for step in gate["steps"] if step.get("name") == "Run PostgreSQL tests and migration cycles"
     )
-    assert "python scripts/repo.py test api-postgres --workers 4" in postgres_step["run"]
+    assert "exec python scripts/repo.py test api-postgres --workers 4" in postgres_step["run"]
     assert '--junitxml="$CI_ARTIFACTS/postgres-junit.xml"' in postgres_step["run"]
+    assert '> "$CI_ARTIFACTS/postgres-pytest.log" 2>&1' in postgres_step["run"]
     assert "--cov" not in postgres_step["run"]
     assert "continue-on-error" not in postgres_step
     diagnostics = next(step for step in gate["steps"] if step.get("name") == "Upload failure diagnostics")

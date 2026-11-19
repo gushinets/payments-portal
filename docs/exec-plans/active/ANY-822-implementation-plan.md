@@ -47,6 +47,22 @@ Post-rebase checks: `.harness/any822-rebase-20261117-58bbaa56/`.
 Earlier measurements below describe historical source states. Current execution
 instructions belong to the [Testing Strategy](../../engineering/TESTING.md).
 
+### Local review follow-up on `8de0f4ba`
+
+The working tree validates explicit PostgreSQL ports, verifies the worktree
+Compose endpoint, defers interruption until worker registration, delivers CI
+cancellation signals directly to Python, and builds migrated templates on
+demand. The local Bash probe handled SIGINT and SIGTERM with fixture cleanup and
+exit 130. A Compose smoke test accepted the dedicated server and rejected an
+unrelated listener.
+
+All 1,219 PostgreSQL cases passed on the disposable server. The focused
+tooling suite passed 521 cases. `check:fast` passed static and web checks,
+including 454 components, and reported 2,554 API-fast passes, one platform
+skip, and five failures with local dnspython and OpenTelemetry versions below
+the lockfile pins. Remote cancellation and coverage timing remain unverified
+for these changes.
+
 ## 2. Objective, scope and decisions
 
 Reduce complete feedback time while preserving business assertions, PostgreSQL
