@@ -13,6 +13,7 @@ async function syntheticBilling(page: Page, signedIn = true) {
     owned: null as PurchaseIntentResponse | null,
     termsChanged: false, catalogUnavailable: false, scriptFailure: false, readyFailure: false,
     confirmations: [] as { key: string; body: unknown }[], advances: 0, advanceDelayMs: 0,
+    advanceState: "linked" as PurchaseIntentResponse["state"],
     bootstraps: [] as unknown[], beforeBootstrap: async (): Promise<void> => undefined
   };
   if (signedIn) await page.addInitScript(() => localStorage.setItem("anytoolai_session_token_v1", "synthetic-portal-session"));
@@ -68,7 +69,7 @@ async function syntheticBilling(page: Page, signedIn = true) {
     }
     if (path === `/api/purchase-intents/${savedPurchase.purchase_intent_id}/advance`) {
       state.advances += 1;
-      state.owned = savedPurchase;
+      state.owned = { ...savedPurchase, state: state.advanceState };
       if (state.advanceDelayMs) await new Promise((resolve) => setTimeout(resolve, state.advanceDelayMs));
       return route.fulfill({ json: state.owned });
     }
@@ -107,7 +108,7 @@ test("unavailable offers disable new Buy while saved purchases remain resumable"
   state.catalogUnavailable = true;
   await page.reload();
   await panel.getByRole("button", { name: ru.Purchase.continue, exact: true }).click();
-  await expect(panel.getByRole("link", { name: ru.Purchase.manage })).toBeVisible();
+  await expect(panel.getByRole("link", { name: ru.Billing.pay })).toBeVisible();
   expect(state.advances).toBe(1);
   expect(state.confirmations).toEqual([]);
 });
@@ -133,22 +134,49 @@ test("purchase prepares once, then one wide cabinet Widget verifies the selected
   await panel.getByRole("button", { name: ru.Purchase.buy, exact: true }).click();
   await expect(panel.getByRole("checkbox")).not.toBeChecked();
   await panel.getByRole("checkbox").check();
+  const acceptedAt = performance.now();
+  const confirmation = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/purchase-intents" && response.request().method() === "POST")
+    .then(() => performance.now());
+  const advanced = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/advance"))
+    .then(() => performance.now());
   await panel.getByRole("button", { name: ru.Purchase.confirm }).click();
   await expect(panel.getByRole("heading", { name: ru.Purchase.states.linked })).toBeVisible();
+  const preparedAt = performance.now();
   await expect(page.locator("iframe")).toHaveCount(0);
   expect(state.bootstraps).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath("purchase-prepared.png"), fullPage: true });
-  await panel.getByRole("link", { name: ru.Purchase.manage }).click();
+  const bootstrapPath = "/api/billing/widget-bootstrap";
+  const bootstrapStart = page.waitForRequest((request) => new URL(request.url()).pathname === bootstrapPath)
+    .then(() => performance.now());
+  const bootstrapEnd = page.waitForResponse((response) => new URL(response.url()).pathname === bootstrapPath)
+    .then(() => performance.now());
+  const paymentClickAt = performance.now();
+  await panel.getByRole("link", { name: ru.Billing.pay }).click();
   await expect(page).toHaveURL(`${new URL(page.url()).origin}/ru/account?purchase=${savedPurchase.purchase_intent_id}#billing`, { timeout: 20000 });
   const billing = page.getByRole("region", { name: ru.Billing.title });
   await expect(billing.getByRole("combobox")).toHaveValue(savedPurchase.purchase_intent_id);
-  expect(state.bootstraps).toEqual([]);
-  await billing.getByRole("button", { name: ru.Billing.open, exact: true }).click();
   const frame = page.frameLocator(`iframe[title="${ru.Billing.frameTitle}"]`).frameLocator('iframe[title="Synthetic LBX"]');
   await expect(frame.getByText("Synthetic payment view")).toBeVisible();
+  const readyAt = performance.now();
   const viewportHeight = await page.evaluate(() => window.innerHeight);
   await expect.poll(() => frame.locator("html").evaluate((element) => element.clientHeight))
     .toBeGreaterThanOrEqual(Math.max(800, viewportHeight));
+  const bootstrapStartedAt = await bootstrapStart;
+  const bootstrapFinishedAt = await bootstrapEnd;
+  const confirmedAt = await confirmation;
+  await testInfo.attach("synthetic-purchase-timings", {
+    contentType: "application/json",
+    body: JSON.stringify({
+      confirmationMs: Math.round(confirmedAt - acceptedAt),
+      advanceMs: Math.round(await advanced - confirmedAt),
+      preparationVisibleMs: Math.round(preparedAt - acceptedAt),
+      waitBeforePaymentClickMs: Math.round(paymentClickAt - preparedAt),
+      navigationToBootstrapMs: Math.round(bootstrapStartedAt - paymentClickAt),
+      bootstrapMs: Math.round(bootstrapFinishedAt - bootstrapStartedAt),
+      widgetReadyMs: Math.round(readyAt - bootstrapFinishedAt),
+      acceptanceToWidgetReadyMs: Math.round(readyAt - acceptedAt)
+    })
+  });
   await expect(page.locator("iframe")).toHaveCount(1);
   await expect(billing.getByText(/synthetic-agreement/)).toContainText("synthetic-seller");
   await expect(billing.getByText("Выбранный продукт: proposal_ai")).toBeVisible();
@@ -192,10 +220,52 @@ test("preparation beyond five seconds produces the compact state without opening
   await panel.getByRole("button", { name: ru.Purchase.buy, exact: true }).click();
   await panel.getByRole("checkbox").check();
   await panel.getByRole("button", { name: ru.Purchase.confirm }).click();
-  await expect(panel.getByRole("link", { name: ru.Purchase.manage })).toBeVisible({ timeout: 15000 });
+  await expect(panel.getByRole("link", { name: ru.Billing.pay })).toBeVisible({ timeout: 15000 });
   await expect(panel.getByRole("alert")).toHaveCount(0);
   expect(state.confirmations).toHaveLength(1);
   expect(state.advances).toBe(1);
+  expect(state.bootstraps).toEqual([]);
+});
+
+test("status polling observes durable preparation without another financial request", async ({ page }) => {
+  const state = await syntheticBilling(page);
+  state.advanceState = "awaiting_external_result";
+  const panel = await openProduct(page);
+  await panel.getByRole("button", { name: ru.Purchase.buy, exact: true }).click();
+  await panel.getByRole("checkbox").check();
+  await panel.getByRole("button", { name: ru.Purchase.confirm }).click();
+  await expect(panel.getByRole("button", { name: ru.Purchase.recover })).toBeEnabled();
+  state.owned = savedPurchase;
+  await expect(panel.getByRole("link", { name: ru.Billing.pay })).toBeVisible({ timeout: 8000 });
+  expect(state.confirmations).toHaveLength(1);
+  expect(state.advances).toBe(1);
+  expect(state.bootstraps).toEqual([]);
+});
+
+test("recovered agreement allows explicit continuation of the same purchase", async ({ page }, testInfo) => {
+  const state = await syntheticBilling(page);
+  state.advanceState = "awaiting_external_result";
+  const panel = await openProduct(page);
+  await panel.getByRole("button", { name: ru.Purchase.buy, exact: true }).click();
+  await panel.getByRole("checkbox").check();
+  await panel.getByRole("button", { name: ru.Purchase.confirm }).click();
+  await expect(panel.getByText(ru.Purchase.states.awaiting_external_result)).toBeVisible();
+
+  state.owned = { ...savedPurchase, state: "preparing", reason: "purchase_pending" };
+  const continuation = panel.getByRole("button", { name: ru.Purchase.continue, exact: true });
+  await expect(continuation).toBeEnabled();
+  await expect(panel.getByText(ru.Purchase.states.awaiting_external_result)).toHaveCount(0);
+  expect(state.confirmations).toHaveLength(1);
+  expect(state.advances).toBe(1);
+  await page.screenshot({ path: testInfo.outputPath("agreement-recovered.png"), fullPage: true });
+  const accessibility = await new AxeBuilder({ page }).analyze();
+  expect(accessibility.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
+
+  state.advanceState = "linked";
+  await continuation.click();
+  await expect(panel.getByRole("link", { name: ru.Billing.pay })).toBeVisible();
+  expect(state.confirmations).toHaveLength(1);
+  expect(state.advances).toBe(2);
   expect(state.bootstraps).toEqual([]);
 });
 
@@ -207,15 +277,14 @@ test("UNKNOWN recovery remains available without catalog and billing can retry t
   const panel = await openProduct(page);
   await expect(panel.getByRole("button", { name: ru.Purchase.buy, exact: true })).toHaveCount(0);
   await panel.getByRole("button", { name: ru.Purchase.recover }).click();
-  await panel.getByRole("link", { name: ru.Purchase.manage }).click();
+  await panel.getByRole("link", { name: ru.Billing.pay }).click();
   const billing = page.getByRole("region", { name: ru.Billing.title });
   await expect(billing.getByRole("combobox")).toHaveValue(savedPurchase.purchase_intent_id);
-  await billing.getByRole("button", { name: ru.Billing.open, exact: true }).click();
   await expect(billing.getByRole("alert")).toContainText(ru.Billing.errors.sdk);
   await expect(billing.getByRole("alert")).toContainText("synthetic-request");
   await page.screenshot({ path: testInfo.outputPath("cabinet-sdk-failure.png"), fullPage: true });
   state.scriptFailure = false;
-  await billing.getByRole("button", { name: ru.Billing.open, exact: true }).click();
+  await billing.getByRole("button", { name: ru.Billing.pay, exact: true }).click();
   await expect(page.frameLocator(`iframe[title="${ru.Billing.frameTitle}"]`).frameLocator('iframe[title="Synthetic LBX"]').getByText("Synthetic payment view")).toBeVisible();
   expect(state.confirmations).toEqual([]);
   expect(state.advances).toBe(1);
@@ -234,10 +303,9 @@ test("a late payment bootstrap cannot mount after cross-tab logout", async ({ pa
   const pending = new Promise<void>((resolve) => { finish = resolve; });
   state.beforeBootstrap = async () => pending;
   const panel = await openProduct(page);
-  await panel.getByRole("link", { name: ru.Purchase.manage }).click();
+  await panel.getByRole("link", { name: ru.Billing.pay }).click();
   const billing = page.getByRole("region", { name: ru.Billing.title });
   await expect(billing.getByRole("combobox")).toHaveValue(savedPurchase.purchase_intent_id);
-  await billing.getByRole("button", { name: ru.Billing.open, exact: true }).click();
   await expect.poll(() => state.bootstraps.length).toBe(1);
   await page.evaluate(() => {
     localStorage.removeItem("anytoolai_session_token_v1");
@@ -273,7 +341,7 @@ test("nested Widget READY timeout keeps a correlated safe error and retries the 
   await page.goto(`/ru/account?purchase=${savedPurchase.purchase_intent_id}#billing`);
   await page.getByRole("button", { name: ru.CookieBanner.acceptAction, exact: true }).click();
   const billing = page.getByRole("region", { name: ru.Billing.title });
-  await billing.getByRole("button", { name: ru.Billing.open, exact: true }).click();
+  await billing.getByRole("button", { name: ru.Billing.pay, exact: true }).click();
   await expect(billing.getByRole("alert")).toContainText(ru.Billing.errors.sdk, { timeout: 25000 });
   await expect(billing.getByRole("alert")).toContainText("synthetic-request");
   await expect(page.locator("iframe")).toHaveCount(0);
@@ -286,7 +354,7 @@ test("nested Widget READY timeout keeps a correlated safe error and retries the 
   expect(accessibility.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath("cabinet-ready-timeout.png"), fullPage: true });
   state.readyFailure = false;
-  await billing.getByRole("button", { name: ru.Billing.open, exact: true }).click();
+  await billing.getByRole("button", { name: ru.Billing.pay, exact: true }).click();
   await expect(page.frameLocator(`iframe[title="${ru.Billing.frameTitle}"]`).frameLocator('iframe[title="Synthetic LBX"]').getByText("Synthetic payment view")).toBeVisible();
   // A valid READY cancels the deadline; a loaded checkout must survive it.
   await page.clock.install();

@@ -358,7 +358,12 @@ operation, request/key/date, accepted history and hold. Known financial conflict
 need audited resolution; a deadline-only escalation permits explicit user/CLI
 GET-only recovery after automatic discovery has paused.
 Advance, worker and operator use the same GET-only original-operation collector
-and transactional binder. The original saved command, actual possible-send
+and transactional binder. After an ambiguous financial reply, advance returns
+the saved pending state and the enrolled worker discovers the original operation.
+An owned purchase status read exposes that progress. If the worker binds the
+open agreement before the subscription was sent, the purchase returns to
+`preparing` and the UI offers explicit continuation. That advance checks
+admission again before sending the subscription. The original saved command, actual possible-send
 history and fresh ownership/effective terms are required. A known binding never
 re-enters preparation: completed recovery is a no-op, while lifecycle updates
 require the existing subscription lease. A concurrent first binder discards the

@@ -451,7 +451,10 @@ Client readiness/Widget rendering is not verified by this command.
 
 ## Purchase API and financial recovery (Step 3)
 
-The normal UI reviews/accepts on product detail and opens payment in the cabinet.
+The normal UI reviews and accepts terms on product detail. Once the purchase is
+prepared, its payment link opens the selected purchase's Widget in the cabinet.
+Ordinary account links and reloads restore selection and require a new click to
+open the Widget. Account viewing has its own action.
 For API inspection use the authenticated verified owner's session:
 
 1. `POST /api/purchases/review` with `{"product_id":"<enabled product>"}`
@@ -575,15 +578,20 @@ selecting the intended agreement again. There is no supported payment-completed
 SDK callback and no Portal refresh timer that interrupts checkout.
 
 Live catalog/review/confirm/advance/bootstrap requests have a 130-second browser
-deadline covering body consumption; identity/local purchase GETs use five
-seconds. A lost confirm/advance reply triggers one local inspection, retaining
-its original key/purchase; no POST repeats automatically. Pending/error UI keeps
-a safe request ID. Local status is not an LBX refresh or paid verification.
+deadline covering body consumption. Identity and local purchase GETs use five
+seconds. A lost confirm/advance reply triggers local inspection, retaining its
+original key and purchase. A visible unfinished purchase checks saved status
+with 2, 5 and then 10 seconds between reads for two minutes. While awaiting an
+external result, it then checks once per minute for up to two hours and two
+minutes from the start of that status check. At the limit, the UI directs the
+buyer to the manual status check. Manual inspection and explicit continuation
+remain available. Status reads use Portal records and initiate no provider
+request or payment verification.
 ANY-715 now supplies persisted observation/reconciliation facts and operator
 diagnostics; it does not add a new public billing-status UI contract. See the
 [billing operations guide](billing-background-operations.md).
 
-SDK `render()` is not readiness. The isolated host waits up to 20 seconds for
+The Portal shows the proven agreement and seller while the isolated host waits up to 20 seconds for
 `lbx-widget` READY from the exact nested window at the configured provider origin.
 Failure removes the host and shows its safe request ID; successful READY stops
 the loading timer. Correlate `billing_widget_load_failed` with server bootstrap

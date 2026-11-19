@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AccountPurchaseResponse } from "@/generated/api-contracts/types.gen";
+import type { AccountPurchaseResponse, PurchaseIntentResponse } from "@/generated/api-contracts/types.gen";
 import { accountPurchases } from "@/shared/api/purchases";
 import { subscribeToSessionChanges, useSessionOperation } from "@/shared/session/use-session-operation";
 import { newRequestId, safeRequestId } from "./errors";
@@ -53,5 +53,12 @@ export function useAccountPurchases(emailVerified: boolean) {
     if (busy.current || !emailVerified) return;
     void fetchPage(after);
   }
-  return { items, cursor, status: state.status, requestId: state.status === "error" ? state.requestId : "", load };
+
+  function applyStatus(purchase: PurchaseIntentResponse) {
+    setItems((previous) => purchase.scope_held
+      ? previous.map((item) => item.purchase_intent_id === purchase.purchase_intent_id ? { ...item, state: purchase.state } : item)
+      : previous.filter((item) => item.purchase_intent_id !== purchase.purchase_intent_id));
+  }
+
+  return { items, cursor, status: state.status, requestId: state.status === "error" ? state.requestId : "", load, applyStatus };
 }

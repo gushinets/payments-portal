@@ -67,7 +67,8 @@ export function mountOfficialWidget(
   bootstrap: WidgetBootstrapResponse,
   title: string,
   isCurrent: () => boolean,
-  onFailure: (reason: WidgetFailureReason) => void
+  onFailure: (reason: WidgetFailureReason) => void,
+  onReady: () => void
 ): () => void {
   const origin = new URL(bootstrap.widget_origin);
   if (
@@ -130,6 +131,7 @@ export function mountOfficialWidget(
     } else if (event.data === "mounted") {
       clearTimeout(timeout);
       channel.port1.close();
+      onReady();
     } else {
       dispose();
       onFailure(event.data === "script_load_failed" ? "script_load_failed" : "sdk_failed");

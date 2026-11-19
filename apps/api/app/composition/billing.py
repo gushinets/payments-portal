@@ -260,6 +260,7 @@ async def bootstrap_account(
             return authenticate(db, configuration, token).id
 
     owner_id = await run_in_threadpool(check_auth)
+    owned_purchase = None
     if purchase_id is not None:
         from app.domains.purchases.service import read_purchase
         from app.models import PurchaseIntentState
@@ -291,7 +292,7 @@ async def bootstrap_account(
                 try:
                     payment_purchase = None
                     verification = None
-                    if purchase_id is not None:
+                    if owned_purchase is not None:
                         customer_ready = True
                         from app.composition.purchases import verify_payment_purchase
 
@@ -299,8 +300,7 @@ async def bootstrap_account(
                             sources,
                             configuration,
                             factory=factory,
-                            token=token,
-                            purchase_id=purchase_id,
+                            purchase=owned_purchase,
                             customer=current,
                             budget=budget,
                         )

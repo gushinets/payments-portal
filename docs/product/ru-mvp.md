@@ -115,11 +115,13 @@ the mockup's remote CSS import.
 - The authenticated cabinet places compact email/verification/logout context
   in a supporting rail. The primary workspace has one wide Widget, explicit
   purchase selection, and brief owned-purchase cards linking to product details.
-  Product pages retain offer/review/consent/preparation; a prepared purchase shows
-  “Subscription prepared” and links to `/account?purchase=<id>#billing`. The cabinet
-  verifies the selected purchase before payment and displays its product plus
-  proven agreement/seller. No catalog product is shown as owned without a held
-  accepted purchase. Responsive layouts stack the rail and workspace.
+  Product pages retain offer, review, consent and preparation. Pending purchases
+  automatically check saved status for a bounded period. A prepared purchase's
+  payment link opens `/account?purchase=<id>#billing` and starts the selected
+  Widget once. The cabinet verifies the purchase and displays the product,
+  proven agreement and seller while waiting for the Widget. A held accepted
+  purchase determines which catalog products appear as owned. Responsive layouts
+  stack the rail and workspace.
 
 Mockup demo prices (`0/490/990 ₽`), providers such as CloudPayments, plan and
 subscription values, renewal/payment controls, usage (`320/500`, `3/10`),

@@ -9,7 +9,9 @@ import { advancePurchase, confirmPurchase, currentPurchase, purchaseStatus, revi
 import { ApiError, apiErrorCode } from "@/shared/api/transport";
 import { subscribeToSessionChanges, useSessionOperation } from "@/shared/session/use-session-operation";
 import { billingErrorKey, newRequestId, safeRequestId, type BillingErrorKey } from "./errors";
+import { requestPaymentOpening } from "./payment-opening";
 import { PurchaseTerms } from "./PurchaseTerms";
+import { purchaseNeedsStatus, usePurchaseStatusPoll } from "./use-purchase-status-poll";
 
 type PurchaseState =
   | { kind: "loading" | "unavailable" | "none" }
@@ -72,6 +74,19 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
   const { begin, cancel } = useSessionOperation();
   const Heading = headingLevel === 2 ? "h2" : "h4";
   const ReviewHeading = headingLevel === 2 ? "h3" : "h5";
+  const purchase = state.kind === "purchase" ? state.purchase : null;
+  const uncertainConfirmation = state.kind === "review" && state.submitted && failure?.message === "financialPending";
+  const canPoll = user.email_verified && !working;
+
+  const poll = usePurchaseStatusPoll(
+    canPoll && purchase?.scope_held && purchaseNeedsStatus(purchase) ? purchase : undefined,
+    canPoll && uncertainConfirmation ? productId : undefined,
+    (saved) => {
+      if (busy.current) return;
+      setState({ kind: "purchase", purchase: saved });
+      if (uncertainConfirmation || !saved.scope_held || !purchaseNeedsStatus(saved)) setFailure(null);
+    }
+  );
 
   useEffect(() => {
     if (!user.email_verified) return;
@@ -102,6 +117,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
   async function run(work: (token: string, requestId: string, current: () => boolean) => Promise<void>) {
     if (busy.current || !user.email_verified) return;
     busy.current = true;
+    poll.clearPause();
     setWorking(true);
     setFailure(null);
     const operation = begin();
@@ -154,7 +170,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     } catch (error) {
       if (error instanceof ApiError) throw error;
       // A browser timeout/disconnect does not cancel the server's financial work.
-      // Inspect once locally; never replay advance or authorize payment from this GET.
+      // Inspect locally, then let status polling observe durable recovery.
       let saved: PurchaseIntentResponse | null = null;
       try { saved = await purchaseStatus(token, purchase.purchase_intent_id, id); }
       catch { /* Keep the original held intent visible if the status read also fails. */ }
@@ -198,7 +214,10 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
           // An empty/failed GET retains the frozen confirmation and its original key.
           try {
             const existing = await currentPurchase(token, productId, id);
-            if (current() && existing.purchase) setState({ kind: "purchase", purchase: existing.purchase });
+            if (current() && existing.purchase) {
+              setState({ kind: "purchase", purchase: existing.purchase });
+              return;
+            }
           } catch { /* The exact submitted review remains reserved in this view. */ }
           if (current()) setFailure({ message: "financialPending", requestId: id });
           return;
@@ -211,14 +230,15 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     });
   }
 
-  const purchase = state.kind === "purchase" ? state.purchase : null;
   const resumable = purchase && purchase.scope_held && purchase.state !== "linked";
+  const needsRecovery = purchase?.state === "awaiting_external_result" || purchase?.state === "manual_review";
   const released = purchase && !purchase.scope_held && (purchase.state === "resolved_no_external_effect" || purchase.state === "failed_before_external_effect");
   if (purchase?.state === "linked") return <section className="purchase-panel purchase-complete" aria-label={t("title")}>
     <Heading>{t("states.linked")}</Heading>
     <p className="card-copy">{t("managedInAccount")}</p>
     <p className="card-copy">{t("accessInAccount")}</p>
-    <Link className="btn-primary" href={`/account?purchase=${encodeURIComponent(purchase.purchase_intent_id)}#billing`}>{t("manage")}</Link>
+    <Link className="btn-primary" href={`/account?purchase=${encodeURIComponent(purchase.purchase_intent_id)}#billing`}
+      onNavigate={() => requestPaymentOpening(purchase.purchase_intent_id, user.user_id)}>{b("pay")}</Link>
     <details><summary>{t("acceptedTerms")}</summary><PurchaseTerms review={purchase.accepted} /></details>
   </section>;
   return <section className="purchase-panel" aria-label={t("title")}>
@@ -233,6 +253,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
       </div>
       {state.kind === "loading" && <p role="status">{t("loading")}</p>}
       {working && <p role="status">{t("working")}</p>}
+      {poll.paused && <p role="status">{t("statusPollingPaused")}</p>}
       {state.kind === "unavailable" && <p>{t("unknown")}</p>}
       {state.kind === "review" && <div className="purchase-review">
         <ReviewHeading>{t("reviewTitle")}</ReviewHeading>
@@ -256,7 +277,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
         {purchase.reason && <p>{t(purchase.reason === "terms_changed" ? "termsChanged" : purchase.reason === "purchase_pending" ? "pending" : "reviewRequired")}</p>}
         <p className="catalog-product-id">{t("reference", { id: purchase.purchase_intent_id })}</p>
         <details><summary>{t("acceptedTerms")}</summary><PurchaseTerms review={purchase.accepted} /></details>
-        {resumable && <button className="btn-primary" type="button" disabled={working} onClick={() => void run((token, id, current) => prepare(token, purchase, id, current))}>{t(purchase.state === "created" ? "continue" : "recover")}</button>}
+        {resumable && <button className="btn-primary" type="button" disabled={working} onClick={() => void run((token, id, current) => prepare(token, purchase, id, current))}>{t(needsRecovery ? "recover" : "continue")}</button>}
         <p>{t("awaitingVerification")}</p>
       </div>}
       {failure && <div className="notice error" role="alert">{b(`errors.${failure.message}`)}{failure.requestId && <p>{b("requestId", { id: failure.requestId })}</p>}</div>}

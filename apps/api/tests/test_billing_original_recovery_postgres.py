@@ -77,6 +77,7 @@ async def test_original_terminal_recovery_binds_history_without_another_financia
         assert recovered.held and recovered.accepted == purchase.accepted
         if negative == "closed_agreement":
             assert bound.agreement_closed
+            assert recovered.state == uncertain.state
             transport.agreements[0]["close_date"] = None
             await advance_purchase(sources, configuration, factory=factory, token=TOKEN, purchase_id=purchase.id)
             assert not transport.subscriptions
