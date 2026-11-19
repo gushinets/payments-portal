@@ -34,6 +34,14 @@ it.each(["resolved_no_external_effect", "resolved_external_terminal", "failed_be
   expect(screen.queryByRole("button", { name: ru.Purchase.manage })).not.toBeInTheDocument();
 });
 
+it("uses the active list status when a held deep link returns an earlier state", async () => {
+  status.mockResolvedValue(json({ ...savedPurchase, state: "created", scope_held: true }));
+  renderCabinet(first.purchase_intent_id);
+  await waitFor(() => expect(status).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(screen.getByRole("button", { name: ru.Billing.open })).toBeEnabled());
+  expect(selector()).toHaveValue(first.purchase_intent_id);
+});
+
 it("shows a neutral selected-purchase placeholder while its deep link is loading", async () => {
   list.mockImplementationOnce(() => new Promise<Response>(() => {}));
   status.mockImplementationOnce(() => new Promise<Response>(() => {}));
