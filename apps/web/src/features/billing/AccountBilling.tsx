@@ -64,14 +64,15 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
     setSelectionState({ status: "error", requestId: "" });
   }), [cancel]);
 
-  const activeItems = deepPurchase && !deepPurchase.scope_held
-    ? purchases.items.filter((item) => item.purchase_intent_id !== deepPurchase.purchase_intent_id) : purchases.items;
-  const options = deepPurchase
-    ? [deepPurchase, ...activeItems.filter((item) => item.purchase_intent_id !== deepPurchase.purchase_intent_id)] : activeItems;
+  const releasedDeepPurchase = deepPurchase && !deepPurchase.scope_held ? deepPurchase : null;
+  const activeItems = releasedDeepPurchase
+    ? purchases.items.filter((item) => item.purchase_intent_id !== releasedDeepPurchase.purchase_intent_id) : purchases.items;
+  const options = deepPurchase && !activeItems.some((item) => item.purchase_intent_id === deepPurchase.purchase_intent_id)
+    ? [deepPurchase, ...activeItems] : activeItems;
   const defaultPurchase = purchases.status === "ready" && !purchases.cursor && activeItems.length === 1 ? activeItems[0] : undefined;
   const selection = selectedId === undefined ? defaultPurchase : options.find((item) => item.purchase_intent_id === selectedId);
   const selectionBlocked = selectionState.status !== "ready" || (!!selectedId && !selection);
-  const released = selection && deepPurchase?.purchase_intent_id === selection.purchase_intent_id && !deepPurchase.scope_held;
+  const released = selection && releasedDeepPurchase?.purchase_intent_id === selection.purchase_intent_id;
   const canPay = selection?.state === "linked" && !released;
   const paidOnlyProducts = [...new Set([
     ...(paid.state.status === PaidReadStatus.Ready ? [...paid.state.data.grants, ...paid.state.data.products].map((item) => item.product_id) : []),
