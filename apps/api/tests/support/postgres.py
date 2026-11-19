@@ -3,11 +3,9 @@ from __future__ import annotations
 import os
 import re
 import signal
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from threading import current_thread, main_thread
-from types import FrameType
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -17,10 +15,13 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, URL
 from sqlalchemy.pool import QueuePool
 
+from scripts.deferred_signals import defer_interrupts
+
 from .settings import parse_test_postgres_port
 
 
 _TEST_DATABASE_SUFFIXES = ("_test", "_tests")
+_DATABASE_INTERRUPTS = (signal.SIGINT, signal.SIGBREAK) if hasattr(signal, "SIGBREAK") else (signal.SIGINT,)
 _SYSTEM_DATABASE_NAMES = frozenset({"postgres", "template0", "template1"})
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 
@@ -116,37 +117,6 @@ def dispose_test_engine(engine: Engine) -> None:
     engine.dispose()
 
 
-@contextmanager
-def _defer_database_interrupts() -> Iterator[None]:
-    """Deliver Ctrl-C or the Windows runner's Ctrl-Break after recording the DDL result."""
-    if current_thread() is not main_thread():
-        yield
-        return
-
-    handlers: dict[int, Callable[[int, FrameType | None], object]] = {}
-    pending: tuple[int, FrameType | None] | None = None
-
-    def defer(signum: int, frame: FrameType | None) -> None:
-        nonlocal pending
-        if pending is None:
-            pending = signum, frame
-
-    interrupts = (signal.SIGINT, signal.SIGBREAK) if hasattr(signal, "SIGBREAK") else (signal.SIGINT,)
-    try:
-        for signum in interrupts:
-            handler = signal.getsignal(signum)
-            if callable(handler):
-                signal.signal(signum, defer)
-                handlers[signum] = handler
-        yield
-    finally:
-        for signum, handler in handlers.items():
-            signal.signal(signum, handler)
-        if pending is not None:
-            signum, frame = pending
-            handlers[signum](signum, frame)
-
-
 class PostgresTestDatabase:
     """Own a session's engine and both databases, including partial setup cleanup."""
 
@@ -163,14 +133,14 @@ class PostgresTestDatabase:
         self._template_ready = False
 
     def create(self) -> None:
-        with _defer_database_interrupts():
+        with defer_interrupts(*_DATABASE_INTERRUPTS):
             create_test_database(self.database_url, self.admin_url)
             self._database_created = True
 
     def _prepare_template(self) -> None:
         if self._template_created:
             raise RuntimeError("PostgreSQL test template migration did not complete")
-        with _defer_database_interrupts():
+        with defer_interrupts(*_DATABASE_INTERRUPTS):
             create_test_database(self.template_url, self.admin_url)
             self._template_created = True
         run_migrations(self.template_url)
@@ -183,15 +153,15 @@ class PostgresTestDatabase:
         dispose_test_engine(self.engine)
         if not self._template_ready:
             self._prepare_template()
-        with _defer_database_interrupts():
+        with defer_interrupts(*_DATABASE_INTERRUPTS):
             drop_test_database(self.database_url, self.admin_url)
             self._database_created = False
-        with _defer_database_interrupts():
+        with defer_interrupts(*_DATABASE_INTERRUPTS):
             create_test_database(self.database_url, self.admin_url, template_url=self.template_url)
             self._database_created = True
 
     def close(self) -> None:
-        with _defer_database_interrupts():
+        with defer_interrupts(*_DATABASE_INTERRUPTS):
             try:
                 dispose_test_engine(self.engine)
                 if self._database_created:

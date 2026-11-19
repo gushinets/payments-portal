@@ -25,6 +25,7 @@ def test_complete_api_keeps_fast_serial_and_preserves_partition_reports(
     monkeypatch.setattr(repo, "ROOT", tmp_path)
     monkeypatch.setattr(repo, "HARNESS_DIR", tmp_path / "harness")
     report = tmp_path / "combined.xml"
+    report.write_text('<testsuites><testsuite><testcase name="previous-success"/></testsuite></testsuites>')
     args = argparse.Namespace(target="api", workers=None, junitxml=str(report))
     environment = {
         **os.environ,
@@ -38,6 +39,7 @@ def test_complete_api_keeps_fast_serial_and_preserves_partition_reports(
         assert caught.value.code == 1
     else:
         repo.cmd_test(args, environment=environment)
+    assert ET.parse(report).find(".//testcase[@name='previous-success']") is None
     assert len(ET.parse(report).findall(".//testcase")) == 2
     assert len(ET.parse(report).findall(".//failure")) == int(postgres_fails)
     assert not ET.parse(report).findall(".//error")

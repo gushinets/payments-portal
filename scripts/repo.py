@@ -608,7 +608,7 @@ def test_compose_command(config: RuntimeConfig) -> list[str]:
         "--project-name",
         f"{config.compose_project}-tests",
         "--env-file",
-        str(RUNTIME_ENV),
+        os.devnull,
         "-f",
         str(ROOT / "docker-compose.test.yml"),
     ]
@@ -787,9 +787,29 @@ def cmd_down(_: argparse.Namespace) -> None:
     run([*compose_command(config), "down"])
 
 
+def test_runtime_config() -> RuntimeConfig:
+    expected = runtime_config(root=ROOT)
+    try:
+        config = load_runtime(initialize=False)
+    except FileNotFoundError:
+        if RUNTIME_ENV.exists():
+            raise HarnessError(
+                f"Missing {RUNTIME_JSON} for an existing worktree. "
+                "See docs/engineering/TESTING.md#recovering-worktree-runtime-metadata."
+            ) from None
+        return expected
+    if (config.worktree_id, config.compose_project) != (expected.worktree_id, expected.compose_project):
+        raise HarnessError(
+            f"Saved runtime file {RUNTIME_JSON} does not belong to this worktree. "
+            "See docs/engineering/TESTING.md#recovering-worktree-runtime-metadata."
+        )
+    if not 1 <= config.test_postgres_port <= 65535:
+        raise HarnessError(f"Invalid test PostgreSQL port in {RUNTIME_JSON}; expected 1–65535")
+    return config
+
+
 def cmd_test_db(args: argparse.Namespace) -> None:
-    config = load_runtime()
-    write_runtime(config)
+    config = test_runtime_config()
     environment = {**os.environ, **worktree_test_postgres_environment(config)}
     if args.action == "up":
         run([*test_compose_command(config), "up", "-d", "--pull", "never", "--wait", "postgres"], env=environment)
@@ -3481,35 +3501,8 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
         # Preserve the individual fields until the fixture assigns its generated database name.
         return environment
 
-    refresh_runtime = "Refresh the dedicated test server configuration with:\n  python scripts/repo.py test-db up"
-    try:
-        runtime_env = read_runtime_env(initialize=False)
-    except FileNotFoundError as exc:
-        raise HarnessError(f"Cannot derive local PostgreSQL test configuration; runtime.env is missing. {refresh_runtime}") from exc
-    runtime_names = ("POSTGRES_DB", "POSTGRES_PORT_TEST")
-    missing_runtime_names = [name for name in runtime_names if not runtime_env.get(name)]
-    if missing_runtime_names:
-        raise HarnessError(
-            "Cannot derive local PostgreSQL test configuration; runtime.env is missing: "
-            f"{', '.join(missing_runtime_names)}. {refresh_runtime}"
-        )
-    try:
-        test_port = parse_test_postgres_port(runtime_env["POSTGRES_PORT_TEST"], "runtime.env POSTGRES_PORT_TEST")
-    except ValueError as exc:
-        raise HarnessError(f"{exc}. {refresh_runtime}") from exc
-    try:
-        config = load_runtime(initialize=False)
-    except FileNotFoundError as exc:
-        raise HarnessError(f"Cannot derive local PostgreSQL test configuration; runtime.json is missing. {refresh_runtime}") from exc
-    if test_port != config.test_postgres_port:
-        raise HarnessError(f"runtime.env POSTGRES_PORT_TEST does not match runtime.json. {refresh_runtime}")
-    if port_is_free(test_port):
-        raise HarnessError(
-            "Local test PostgreSQL server is not running. Start it with:\n"
-            "  python scripts/repo.py test-db up\n"
-            "Unix/WSL shortcut:\n"
-            "  make test_db_up"
-        )
+    config = test_runtime_config()
+    test_port = config.test_postgres_port
     local_test = worktree_test_postgres_environment(config)
     published = run(
         [*test_compose_command(config), "port", "postgres", "5432"],
@@ -3518,12 +3511,15 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
         env={**environment, **local_test},
     )
     if published.returncode or published.stdout.strip() != f"127.0.0.1:{test_port}":
-        raise HarnessError(f"The local port {test_port} is not published by this worktree's test PostgreSQL. {refresh_runtime}")
+        raise HarnessError(
+            f"This worktree's test PostgreSQL is not running on 127.0.0.1:{test_port}. "
+            "Start it with: python scripts/repo.py test-db up"
+        )
 
     database_environment = {
         **local_test,
         "POSTGRES_PORT": str(test_port),
-        "POSTGRES_DB": f"{runtime_env['POSTGRES_DB']}_tests",
+        "POSTGRES_DB": f"{config.database_name}_tests",
     }
     environment[test_database_url_name] = host_database_url_from_runtime(database_environment)
     return environment
@@ -3546,18 +3542,11 @@ def cmd_test(
         if not 1 <= workers <= DEFAULT_POSTGRES_WORKERS:
             raise argparse.ArgumentTypeError(f"Workers must be 1–{DEFAULT_POSTGRES_WORKERS}")
         if args.target == "api-fast" and workers != 1:
-            raise RunnerError("api-fast supports only --workers 1")
+            raise HarnessError("api-fast supports only --workers 1")
         check_env = api_test_environment(
             args.target,
             canonical_check_environment() if environment is None else environment,
         )
-    except (argparse.ArgumentTypeError, HarnessError, OSError, RunnerError) as exc:
-        if junitxml is not None:
-            merge_junit([], junitxml, [f"API test startup failed: {exc}"])
-        if isinstance(exc, RunnerError):
-            raise HarnessError(str(exc)) from exc
-        raise
-    try:
         result = run_api_tests(
             root=ROOT,
             artifacts=HARNESS_DIR / "api-tests",
@@ -3565,10 +3554,15 @@ def cmd_test(
             workers=workers,
             environment=check_env,
             arguments=getattr(args, "pytest_args", ()),
-            junitxml=junitxml,
         )
-    except RunnerError as exc:
-        raise HarnessError(str(exc)) from exc
+    except (argparse.ArgumentTypeError, HarnessError, OSError, RunnerError) as exc:
+        if junitxml is not None:
+            merge_junit([], junitxml, [f"API test startup failed: {exc}"])
+        if isinstance(exc, RunnerError):
+            raise HarnessError(str(exc)) from exc
+        raise
+    if junitxml is not None:
+        shutil.copyfile(result.directory / "junit.xml", junitxml)
     if result.returncode:
         raise SystemExit(result.returncode)
 
@@ -3612,8 +3606,8 @@ def cmd_lint(args: argparse.Namespace) -> None:
         )
 
 
-def read_runtime_env(*, initialize: bool = True) -> dict[str, str]:
-    if initialize and not RUNTIME_ENV.exists():
+def read_runtime_env() -> dict[str, str]:
+    if not RUNTIME_ENV.exists():
         write_runtime(runtime_config())
     values: dict[str, str] = {}
     for line in RUNTIME_ENV.read_text(encoding="utf-8").splitlines():

@@ -113,9 +113,11 @@ test children use the shared environment helper in
 `apps/api/tests/support/settings.py`; scenario-specific overrides remain
 explicit and are restored after the test. Normal application dotenv semantics
 are unchanged. Do not configure tests by copying personal or production values.
+The API test environment clears inherited libpq routing variables, including
+`PGHOSTADDR` and `PGSERVICE`. Explicit test URLs and service-file locations
+remain available.
 
-Start the worktree's dedicated PostgreSQL test server before running the
-PostgreSQL partition:
+To run the PostgreSQL partition with the worktree's dedicated Compose server:
 
 ```bash
 python scripts/repo.py test-db up
@@ -153,13 +155,11 @@ The harness resolves test database settings in this order.
    `POSTGRES_PORT_TEST` and `POSTGRES_DB_TEST`. `POSTGRES_HOST_TEST` defaults
    to `localhost` when absent or empty. Partial settings, including a lone
    shell-exported `POSTGRES_PORT_TEST`, are rejected.
-3. The worktree runtime configuration. The launcher reads `.harness/runtime.json`
-   and `POSTGRES_PORT_TEST` from `.harness/runtime.env` without rewriting
-   them and checks that the dedicated Compose service publishes the expected
-   loopback endpoint.
-   With a valid `runtime.json`, run `test-db up` to refresh missing or stale
-   `runtime.env` data and keep the saved port offset. For a new worktree,
-   `test-db up` initializes both files with the default offset.
+3. The current worktree's dedicated Compose service. Its settings come from
+   the checkout path and the port offset saved in `.harness/runtime.json`.
+   A fresh checkout uses the default offset. Test commands leave development
+   runtime files untouched, ignore the personal dotenv and verify that Compose
+   publishes the expected loopback endpoint.
 
 Configured ports must be between 1 and 65535. The configured database name
 must end in `_test` or `_tests`. pytest uses it to validate routing and
@@ -170,10 +170,9 @@ servers may use other storage.
 
 ### Recovering worktree runtime metadata
 
-Invalid `runtime.json` produces an error with the file path and cause. A field
-type error identifies the field and its expected type. The API runner records
-the cause in the requested JUnit report. Keep a copy of any damaged file before
-restoring a valid backup or regenerating it.
+The test commands reject malformed or foreign `runtime.json` files. If only
+`runtime.env` survives, restore `runtime.json` with the original offset.
+Keep a copy of damaged metadata before restoring it.
 
 To regenerate the metadata for an existing worktree, use the offset passed
 to `npm run repo:up -- --port-offset`, or `0` if it used the default.
@@ -222,55 +221,34 @@ with `DROP ... FORCE`, connection termination or cleanup of another run's data.
 
 ### Reports, failures and interruption
 
-After command/environment preparation and argument validation, the `test api*`
-runner prints its unique directory under `.harness/api-tests/`. A completed
-run contains collection logs/manifests, `expected.json` assignments, worker
-`nodeids.txt`, `pytest.log`, `manifest.json` and `junit.xml`, plus merged
-`junit.xml` and `result.json` at the run root. Failed or interrupted runs may
-contain only artifacts from the stages reached. Early preparation/validation
-failures may have no run directory; a supplied `--junitxml` path records the
-startup state as described below. Inspect the current invocation's available
-artifacts, not a prior successful run.
+The runner prints its directory under `.harness/api-tests/`. Open the merged
+`junit.xml` and `result.json` for the outcome. Each partition retains collection
+logs and `expected.json` assignments. Each worker records its selected node IDs,
+pytest log, manifest and JUnit. With `--junitxml`, the CLI marks the requested
+path incomplete before setup, then writes the startup error or copies the
+finished report there.
 
-Collection errors, failed/crashed workers, missing reports or differences
-between expected IDs, worker collections and JUnit produce a nonzero result.
-Worker exit 0 requires no JUnit failures/errors; exit 1 requires at least one.
-Other worker exit codes or inconsistent results add an `api-runner`
-infrastructure error to merged JUnit while retaining available test results.
-Failures and skips remain in the merged report. Once the `test` command options
-are parsed, a caller-supplied `--junitxml` path is marked incomplete before
-worker-count validation and test-environment preparation. Expected startup
-failures replace it with a current error; the runner does the same before its
-own validation when called directly. Execution replaces it with current results,
-so an older success cannot represent the new run. Report-write errors remain
-visible failures. If a later worker cannot start, available reports from the
-started workers are retained alongside the infrastructure error. Reports
-already collected are included only once when execution is interrupted.
+Collection failures, crashes, missing or inconsistent reports make the command
+fail. After a partial launch or cancellation, the runner merges the readable
+JUnit files that workers wrote. A worker killed before writing its report can
+leave completed tests out of the merged results.
 
-An explicit `--pytest-args -x` stops each worker after its first failing test,
-including setup or teardown errors. Other workers and API partitions still run.
-The worker manifest must confirm that pytest stopped after failure; only then
-may JUnit omit the unexecuted collection tail. Its cases must form a nonempty
-prefix ending at the failed test. Collection manifests still match the complete
-assigned selection, the real failures remain, and the command exits nonzero
-without an additional infrastructure error. Worker summaries show executed
-versus selected case counts; unexecuted cases are not reported as passes or skips.
+The runner checks JUnit against assigned node IDs and worker exit status, including
+skips and setup/teardown errors. With `--pytest-args -x`, each worker can stop
+after its first failure. Its manifest confirms the stop and its JUnit must cover
+every test through that failure. Other workers and partitions finish normally.
 
-On Ctrl-C or termination, the runner interrupts children and gives pytest up to
-15 seconds for fixture cleanup, then allows 5 seconds after termination before
-force-killing remaining processes. It joins children and returns nonzero
-(130 for a handled interruption). Inspect `interrupted.json` in the active
-collection/worker directory and the logs for forced termination. Cleanup is
-not guaranteed after a forced kill; report any leftovers in disposable storage.
-There is no sweep of previous runs' resources. Do not delete pre-existing,
-shared or externally managed databases to make a rerun pass.
+On interruption the runner gives children 15 seconds for pytest cleanup, then
+allows another 5 seconds before forcing termination. It waits for the children
+and returns 130 on a handled interruption. Check `interrupted.json` in the
+active collection or worker directory for forced termination. Report leftovers
+in disposable storage and preserve resources owned by other runs.
 
 ## Test fixtures
 
-`apps/api/tests/conftest.py` is the shared API test-resource composition root.
-Before creating test setup code, reuse its existing fixtures, including the
-PostgreSQL URL, engine, session factory, migrated database, and rollback-safe
-session fixtures.
+Use fixtures for resource lifecycles, dependency overrides and environment
+changes that require teardown. Reuse the PostgreSQL URL, engine, session
+factory, migrated database and rollback-safe session in `apps/api/tests/conftest.py`.
 
 When multiple test modules need a missing resource or lifecycle, add a typed
 fixture to `conftest.py` with explicit scope, setup, and teardown so the resource
@@ -302,12 +280,6 @@ when a current consumer/invariant justifies it. Simple one-off setup may remain
 inline. Touching a related test does not mandate factory migration; move only
 setup whose repeated knowledge or changed invariant benefits from one owner.
 Do not add a factory framework or migrate unrelated tests to satisfy wording.
-
-Use factories for object shape and default test data. Use fixtures for resource
-lifecycle, dependency overrides, environment changes, database sessions, and
-other setup that requires teardown. Put a fixture in `apps/api/tests/conftest.py`
-only when multiple test modules need it; keep module-specific setup as a
-module-local fixture near the tests that use it.
 
 ## FastAPI dependency substitution
 

@@ -1,6 +1,6 @@
 # ANY-822 — Accelerate test execution
 
-Status: implemented, final acceptance pending
+Status: local timing and regression criteria met; final-head CI and human review pending
 Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
 Branch: `ANY-822`, based on `f6b1f1d2`
 
@@ -19,9 +19,9 @@ Branch: `ANY-822`, based on `f6b1f1d2`
 ## Implementation decisions
 
 - Use the worktree's disposable PostgreSQL 18.4 server with 2 GiB tmpfs and
-  normal durability. Worktree-specific credentials protect port reuse. Tests
-  read saved runtime metadata without rewriting it or loading the personal
-  dotenv. Explicit test-server configuration takes precedence.
+  normal durability. Worktree-specific credentials protect port reuse. Test commands
+  derive settings from the worktree, retaining its saved port offset when
+  present. Explicit test-server configuration takes precedence.
 - Amortize migrations with an on-demand template per pytest process and a
   fresh clone per ordinary database test. Raw migration tests retain explicit
   schema transitions. pytest cleans up only databases it created.
@@ -36,8 +36,9 @@ Branch: `ANY-822`, based on `f6b1f1d2`
   fixture extraction, parallel check stages and build/environment caching
   until measurements justify the added maintenance.
 
-The [six acceleration decisions](https://github.com/gushinets/payments-portal/blob/e7d12a24a8193c08ad872e8fcbbe040721b1e101/docs/exec-plans/active/ANY-822-implementation-plan.md#acceleration-candidate-decisions)
-record the measured costs, trade-offs and reasons for deferred options. See the
+The [six original acceleration decisions](https://github.com/gushinets/payments-portal/blob/e7d12a24a8193c08ad872e8fcbbe040721b1e101/docs/exec-plans/active/ANY-822-implementation-plan.md#acceleration-candidate-decisions)
+record the measured costs and trade-offs. The paid-access entry below supersedes
+decision 4 on the bounded reader's fixture. See the
 [Testing Strategy](../../engineering/TESTING.md) for current commands, ownership,
 reports and coverage scope.
 
@@ -47,15 +48,20 @@ The [full test audit](https://github.com/gushinets/payments-portal/blob/e7d12a24
 records the before/after costs where measured and the cases retained unchanged.
 
 - **Mapping expiry.** Three [PostgreSQL cases](../../../apps/api/tests/test_mapping_publication_expiry_postgres.py)
-  cover publication-stage refusal, rollback/history and real lock waiting.
+  exercise expiry before database access, after reading revision history and
+  after flushing changes. Each checks that the publisher rejects the change and
+  leaves revision history intact. A separate case verifies refusal when the
+  deadline passes while the publisher waits for a PostgreSQL advisory lock.
   [Calendar tests](../../../apps/api/tests/test_mapping_billing_calendar.py)
   cover the account-day, policy and price deadline inputs in
   `test_evaluation_carries_exclusive_account_calendar_boundary`.
 - **Paid access.** [Paid-read tests](../../../apps/api/tests/test_paid_access_read_postgres.py)
-  use typed, FK-valid state for the bounded reader and still assert real HTTP and
-  PostgreSQL behavior, the 100-product cap, complete grants and allowances
-  including products beyond the cap, and no writes. Other journeys retain full
-  purchase and reconciliation setup.
+  reuse the purchase/reconciliation fixture for the bounded reader. The HTTP
+  test compares the complete grants and allowances with committed state, puts
+  the paid product beyond the 100-product display cap and checks for writes.
+  This replaces a fixture that manually assembled the same billing rows.
+  Its historical in-module saving was 1.45 s for this case. The combined
+  reader/expiry sample showed no consistent improvement.
 - **Frontend.** [Subscription guard tests](../../../apps/web/tests/components/SubscriptionStateGuard.test.ts)
   own every wording variant. [Portal E2E](../../../apps/web/e2e/portal-ru.spec.ts)
   still applies the guard to the real page. The effect-settled
@@ -82,17 +88,29 @@ records the before/after costs where measured and the cases retained unchanged.
 
 ## Verification
 
-With the launcher and runtime fixes on `ee3d4e9d`, focused tooling and
-Portal–Kernel harness checks passed. `npm run check:fast` passed its static
-and web steps. API-fast reproduced five failures with local dnspython and
-OpenTelemetry versions below the lockfile pins. See
-`.harness/api-tests/api-fast-7dc2977504084095952b9753c97fe094/junit.xml`.
+The local refactor on top of `608b696a` passed the complete `check --coverage`
+handler on Linux in **859.834 s**. PostgreSQL took **566.218 s** with four
+workers on the dedicated PostgreSQL 18.4 tmpfs server, including collection
+and database cleanup. All **1,219** PostgreSQL cases passed. Their node IDs
+and order match the two earlier full collections on November 19. No scenario
+or template databases remained before the disposable server was stopped.
 
-Final acceptance requires a timed `npm run check -- --coverage` with locked
-dependencies and PostgreSQL 18.4, plus
-[CI for the final head](https://github.com/gushinets/payments-portal/pull/170/checks).
-Native Windows launcher verification and diagnostic upload on actual CI
-cancellation remain pending.
+API-fast passed 2,563 cases with one existing native Windows filename case
+skipped. All 454 component and 38 web boundary tests passed, including
+typecheck. The web production build passed. Comparing pytest collection from
+the published PR and the working tree gave 3,795 and 3,783 cases respectively.
+All changed node IDs belong to launcher, settings or repository tooling tests.
+The bounded paid-reader HTTP case passed in 1.885 s using the shared fixture.
+
+The check used this worktree's source, an existing Python 3.12 environment
+from a sibling worktree matching the API lock, and cached Manrope files served
+on loopback. Browser E2E was excluded per the timing criteria. The final log
+and timings are in `.harness/any822-final-check-_3mwaeyw/` and the merged
+PostgreSQL report is in
+`.harness/api-tests/api-postgres-3d4cdf6c11574854beb86aeb9f669c21/`.
+Native Windows launcher behavior and upload on actual CI cancellation were
+not exercised locally. See [PR checks](https://github.com/gushinets/payments-portal/pull/170/checks)
+for the published revision.
 
 ### Prior evidence
 

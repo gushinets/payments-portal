@@ -11,13 +11,14 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 from collections import Counter
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager, ExitStack
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from types import FrameType
 from typing import TypedDict
+
+from scripts.deferred_signals import defer_interrupts
 
 
 DEFAULT_POSTGRES_WORKERS = 4
@@ -184,45 +185,25 @@ def interrupt_on_termination() -> Iterator[None]:
         signal.signal(signal.SIGTERM, previous)
 
 
-@contextmanager
-def defer_spawn_interrupts() -> Iterator[None]:
-    """Deliver an interrupt after the newly spawned process is registered."""
-    handlers: dict[int, Callable[[int, FrameType | None], object]] = {}
-    pending: tuple[int, FrameType | None] | None = None
-
-    def defer(signum: int, frame: FrameType | None) -> None:
-        nonlocal pending
-        if pending is None:
-            pending = signum, frame
-
-    try:
-        for signum in (signal.SIGINT, signal.SIGTERM):
-            handler = signal.getsignal(signum)
-            if callable(handler):
-                handlers[signum] = handler
-                signal.signal(signum, defer)
-        yield
-    finally:
-        for signum, handler in handlers.items():
-            signal.signal(signum, handler)
-        if pending is not None:
-            signum, frame = pending
-            handlers[signum](signum, frame)
-
-
-def signal_process(process: subprocess.Popen[bytes], signum: int) -> None:
+def signal_process(process: subprocess.Popen[bytes], signum: int) -> bool:
     if process.poll() is not None:
-        return
+        return False
     try:
         if os.name == "nt":
             if signum == signal.SIGINT:
-                process.send_signal(signal.CTRL_BREAK_EVENT)
+                try:
+                    process.send_signal(signal.CTRL_BREAK_EVENT)
+                except OSError:
+                    if process.poll() is None:
+                        process.terminate()
+                        return True
             else:
                 process.terminate()
         else:
             os.killpg(process.pid, signum)
     except ProcessLookupError:
         pass
+    return False
 
 
 def stop_processes(processes: Sequence[subprocess.Popen[bytes]]) -> bool:
@@ -233,7 +214,7 @@ def stop_processes(processes: Sequence[subprocess.Popen[bytes]]) -> bool:
         (signal.SIGTERM, TERMINATE_GRACE_SECONDS),
     ):
         for process in processes:
-            signal_process(process, signum)
+            forced = signal_process(process, signum) or forced
         deadline = time.monotonic() + grace
         for process in processes:
             try:
@@ -263,7 +244,7 @@ def execute(
                 log = stack.enter_context(
                     (invocation.directory / "pytest.log").open("wb")
                 )
-                with defer_spawn_interrupts():
+                with defer_interrupts(signal.SIGINT, signal.SIGTERM):
                     processes.append(
                         subprocess.Popen(
                             invocation.command,
@@ -432,23 +413,10 @@ def run_api_tests(
     workers: int,
     environment: dict[str, str],
     arguments: Sequence[str] = (),
-    junitxml: Path | None = None,
 ) -> RunnerResult:
     directory = artifacts / f"{target}-{uuid.uuid4().hex}"
-    if junitxml is not None:
-        # A hard-killed parent must not leave an older success at the requested path.
-        merge_junit([], junitxml, [f"API test run has not completed: {directory}"])
-    try:
-        if not 1 <= workers <= DEFAULT_POSTGRES_WORKERS or (
-            target == "api-fast" and workers != 1
-        ):
-            raise RunnerError("Workers must be 1–4; api-fast supports only --workers 1")
-        arguments = validate_arguments(arguments, target, root)
-        directory.mkdir(parents=True)
-    except (OSError, RunnerError) as exc:
-        if junitxml is not None:
-            merge_junit([], junitxml, [f"API test startup failed: {exc}"])
-        raise
+    arguments = validate_arguments(arguments, target, root)
+    directory.mkdir(parents=True)
     print(f"API test artifacts: {directory}", flush=True)
     # Ambient options/plugins must not silently change collection or reporting.
     environment = {**environment, "PYTEST_ADDOPTS": "", "PYTEST_PLUGINS": ""}
@@ -504,7 +472,6 @@ def run_api_tests(
                         part_dir / "expected.json",
                         {"nodeids": expected, "workers": assignments},
                     )
-                    invocations = []
                     for index, nodes in enumerate(assignments):
                         worker_dir = part_dir / f"worker-{index + 1}"
                         worker_dir.mkdir()
@@ -577,8 +544,6 @@ def run_api_tests(
     if not roots and not errors:
         errors.append("No API tests selected")
     merge_junit(roots, directory / "junit.xml", errors)
-    if junitxml is not None:
-        merge_junit(roots, junitxml, errors)
     code = 130 if interrupted else int(bool(errors) or worker_failed)
     write_json(
         directory / "result.json",

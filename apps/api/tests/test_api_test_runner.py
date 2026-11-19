@@ -49,7 +49,6 @@ def run_suite(
         workers=workers,
         environment=environment(),
         arguments=arguments,
-        junitxml=root / "current.xml",
     )
 
 
@@ -80,8 +79,8 @@ def test_inherited_plugin_cannot_hide_failure(
 
     assert result.returncode == 1
     expected = {"apps/api/tests/test_good.py::test_good", "apps/api/tests/test_bad.py::test_regression"}
-    assert set(report_nodes(suite / "current.xml")) == expected
-    assert len(ET.parse(suite / "current.xml").findall(".//failure")) == 1
+    assert set(report_nodes(result.directory / "junit.xml")) == expected
+    assert len(ET.parse(result.directory / "junit.xml").findall(".//failure")) == 1
     partition = "fast" if target == "api-fast" else "postgres"
     manifest = json.loads((result.directory / partition / "collection/manifest.json").read_text())
     assert set(manifest["nodeids"]) == expected
@@ -109,80 +108,6 @@ def assert_startup_error(path: Path, message: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "target,workers,arguments,message",
-    [
-        ("api-postgres", 4, ["--unsupported"], "Unsupported pytest argument"),
-        ("api-postgres", 0, [], "Workers must be"),
-        ("api-fast", 2, [], "api-fast supports only"),
-    ],
-)
-def test_runner_startup_failure_replaces_previous_report(
-    suite: Path,
-    previous_report: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    target: str,
-    workers: int,
-    arguments: list[str],
-    message: str,
-) -> None:
-    monkeypatch.setattr(runner, "execute", lambda *args: pytest.fail("Startup failure must not start pytest"))
-    with pytest.raises(runner.RunnerError, match=message):
-        runner.run_api_tests(
-            root=suite,
-            artifacts=suite / "reports",
-            target=target,
-            workers=workers,
-            environment=environment(),
-            arguments=arguments,
-            junitxml=previous_report,
-        )
-    assert_startup_error(previous_report, message)
-
-
-@pytest.mark.parametrize("failure", ["partial-config", "stopped-server", "invalid-workers", "invalid-port"])
-def test_command_startup_failure_replaces_previous_report(
-    previous_report: Path, monkeypatch: pytest.MonkeyPatch, failure: str
-) -> None:
-    monkeypatch.setattr(
-        runner, "run_api_tests", lambda **kwargs: pytest.fail("Preparation must fail before the runner")
-    )
-    config = repo.runtime_config()
-    monkeypatch.setattr(repo, "load_runtime", lambda *, initialize: config)
-    monkeypatch.setattr(
-        repo,
-        "read_runtime_env",
-        lambda *, initialize: {
-            "POSTGRES_USER": "synthetic",
-            "POSTGRES_PASSWORD": "synthetic",
-            "POSTGRES_DB": "worktree",
-            "POSTGRES_PORT_TEST": str(config.test_postgres_port),
-        },
-    )
-    monkeypatch.setattr(repo, "port_is_free", lambda port: True)
-    target, workers = ("api-fast", 2) if failure == "invalid-workers" else ("api-postgres", 4)
-    inherited = {"POSTGRES_USER_TEST": "synthetic"} if failure == "partial-config" else {}
-    if failure == "invalid-port":
-        inherited = {
-            "POSTGRES_USER_TEST": "synthetic",
-            "POSTGRES_PASSWORD_TEST": "synthetic",
-            "POSTGRES_DB_TEST": "synthetic_tests",
-            "POSTGRES_PORT_TEST": "not-a-port",
-        }
-    message = {
-        "partial-config": "Incomplete PostgreSQL test configuration",
-        "stopped-server": "Local test PostgreSQL server is not running",
-        "invalid-workers": "api-fast supports only",
-        "invalid-port": "POSTGRES_PORT_TEST must be an integer",
-    }[failure]
-    with pytest.raises(repo.HarnessError, match=message):
-        repo.cmd_test(
-            argparse.Namespace(target=target, workers=workers, junitxml=str(previous_report), pytest_args=[]),
-            environment=inherited,
-        )
-    assert_startup_error(previous_report, message)
-
-
-@pytest.mark.parametrize(
     "target,failure",
     [
         ("api-fast", "unsupported-option"),
@@ -190,6 +115,7 @@ def test_command_startup_failure_replaces_previous_report(
         ("api-postgres", "invalid-port"),
         ("api", "invalid-port"),
         ("api", "invalid-worker-range"),
+        ("api-fast", "parallel-fast"),
     ],
 )
 def test_cli_startup_failure_returns_error_with_current_report(
@@ -206,6 +132,7 @@ def test_cli_startup_failure_returns_error_with_current_report(
         "partial-config": "Incomplete PostgreSQL test configuration",
         "invalid-port": "POSTGRES_PORT_TEST must be an integer",
         "invalid-worker-range": "Workers must be 1–4",
+        "parallel-fast": "api-fast supports only",
     }[failure]
     if failure == "partial-config":
         inherited["POSTGRES_USER_TEST"] = "synthetic"
@@ -218,6 +145,8 @@ def test_cli_startup_failure_returns_error_with_current_report(
         )
     elif failure == "invalid-worker-range":
         arguments = ["--workers", "5"]
+    elif failure == "parallel-fast":
+        arguments = ["--workers", "2"]
     result = subprocess.run(
         [
             sys.executable,
@@ -238,51 +167,6 @@ def test_cli_startup_failure_returns_error_with_current_report(
     assert message in result.stderr
     assert "Traceback" not in result.stderr
     assert_startup_error(previous_report, message)
-
-
-@pytest.mark.parametrize("target", ["api-postgres", "api"])
-@pytest.mark.parametrize(
-    "test_port,expected_reason",
-    [("not-a-port", "must be an integer"), ("65536", "must be between 1 and 65535")],
-)
-def test_cli_invalid_runtime_port_reports_startup_error(
-    previous_report: Path, target: str, test_port: str, expected_reason: str
-) -> None:
-    runtime = previous_report.with_name("runtime.env")
-    runtime.write_text(
-        "POSTGRES_USER=synthetic\nPOSTGRES_PASSWORD=synthetic\nPOSTGRES_DB=synthetic\n"
-        f"POSTGRES_PORT_TEST={test_port}\n",
-        encoding="utf-8",
-    )
-    inherited = {
-        name: value
-        for name, value in environment().items()
-        if name != "TEST_POSTGRES_DATABASE_URL" and not (name.startswith("POSTGRES_") and name.endswith("_TEST"))
-    }
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "from pathlib import Path; import sys; from scripts import repo; "
-            "repo.RUNTIME_ENV = Path(sys.argv.pop(1)); raise SystemExit(repo.main())",
-            str(runtime),
-            "test",
-            target,
-            "--junitxml",
-            str(previous_report),
-        ],
-        cwd=repo.ROOT,
-        env=inherited,
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-    message = f"runtime.env POSTGRES_PORT_TEST {expected_reason}"
-    recovery = "python scripts/repo.py test-db up"
-    assert result.returncode == 1 and message in result.stderr
-    assert recovery in result.stderr and "Traceback" not in result.stderr
-    assert_startup_error(previous_report, message)
-    assert recovery in previous_report.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(
@@ -327,48 +211,16 @@ def test_command_startup_invalidates_report_before_configuration(
     assert_startup_error(previous_report, "not completed")
 
 
-@pytest.mark.parametrize("entrypoint", ["command", "runner"])
 def test_startup_report_write_failure_is_visible_before_preparation(
-    suite: Path, monkeypatch: pytest.MonkeyPatch, entrypoint: str
+    suite: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     blocked = suite / "blocked"
     blocked.write_text("not a directory", encoding="utf-8")
-    report = blocked / "current.xml"
     monkeypatch.setattr(repo, "api_test_environment", lambda *args: pytest.fail("Cannot prepare without a report"))
-    monkeypatch.setattr(runner, "execute", lambda *args: pytest.fail("Cannot execute without a report"))
     with pytest.raises(OSError):
-        if entrypoint == "command":
-            repo.cmd_test(argparse.Namespace(target="api-fast", workers=1, junitxml=str(report)), environment={})
-        else:
-            runner.run_api_tests(
-                root=suite,
-                artifacts=suite / "reports",
-                target="api-fast",
-                workers=1,
-                environment=environment(),
-                junitxml=report,
-            )
-
-
-def test_successful_retry_replaces_startup_failure(suite: Path, previous_report: Path) -> None:
-    source(
-        suite, "test_good.py", "import pytest\npytestmark = pytest.mark.postgres\ndef test_good():\n    assert True\n"
-    )
-    with pytest.raises(runner.RunnerError, match="Unsupported pytest argument"):
-        runner.run_api_tests(
-            root=suite,
-            artifacts=suite / "reports",
-            target="api-postgres",
-            workers=1,
-            environment=environment(),
-            arguments=["--unsupported"],
-            junitxml=previous_report,
+        repo.cmd_test(
+            argparse.Namespace(target="api-fast", workers=1, junitxml=str(blocked / "report")), environment={}
         )
-    assert_startup_error(previous_report, "Unsupported pytest argument")
-    result = run_suite(suite)
-    assert result.returncode == 0
-    assert report_nodes(previous_report) == ["apps/api/tests/test_good.py::test_good"]
-    assert not ET.parse(previous_report).findall(".//error")
 
 
 def test_greedy_partition_keeps_modules_complete_and_case_order() -> None:
@@ -460,10 +312,10 @@ def test_postgres_pass():
     )
     result = run_suite(suite, target="api")
     assert result.returncode == 1
-    xml = ET.parse(suite / "current.xml")
+    xml = ET.parse(result.directory / "junit.xml")
     assert len(xml.findall(".//failure")) == 1
     assert xml.getroot().attrib["tests"] == "2"  # A test failure is not an extra infrastructure case.
-    assert any(node.endswith("test_postgres_pass") for node in report_nodes(suite / "current.xml"))
+    assert any(node.endswith("test_postgres_pass") for node in report_nodes(result.directory / "junit.xml"))
     assert (result.directory / "fast/worker-1/manifest.json").is_file()
     assert (result.directory / "postgres/worker-1/manifest.json").is_file()
 
@@ -486,7 +338,7 @@ def test_mixed_dispatcher_runs_postgres_after_fast_launch_error(
 
     monkeypatch.setattr(runner.subprocess, "Popen", refuse_fast_launch)
     result = run_suite(suite, target="api")
-    report = suite / "current.xml"
+    report = result.directory / "junit.xml"
     assert result.returncode == 1
     assert report_nodes(report) == ["apps/api/tests/test_mixed.py::test_postgres_pass"]
     [error] = ET.parse(report).findall(".//error")
@@ -521,8 +373,8 @@ def pytest_runtestloop(session):
     assert state["process_returncodes"] == [0, worker_exit]
     assert len(state["errors"]) == 1
     assert f"exit {worker_exit}" in state["errors"][0]
-    report = ET.parse(suite / "current.xml")
-    assert report_nodes(suite / "current.xml") == ["apps/api/tests/test_result.py::test_result"]
+    report = ET.parse(result.directory / "junit.xml")
+    assert report_nodes(result.directory / "junit.xml") == ["apps/api/tests/test_result.py::test_result"]
     assert len(report.findall(".//failure")) == int(test_fails)
     assert len(report.findall(".//error")) == 1
     error = report.find(".//testsuite[@name='api-runner']/testcase/error")
@@ -561,12 +413,12 @@ def test_unexecuted():
     result = run_suite(suite, workers=1, arguments=("-x",))
 
     assert result.returncode == 1
-    report = ET.parse(suite / "current.xml")
+    report = ET.parse(result.directory / "junit.xml")
     assert len(report.findall(".//failure")) == int(failure in {"call", "call-and-teardown"})
     assert len(report.findall(".//error")) == int(failure in {"setup", "teardown", "call-and-teardown"})
     assert len(report.findall(".//skipped")) == 1
     assert report.find(".//testsuite[@name='api-runner']") is None
-    assert set(report_nodes(suite / "current.xml")) == {
+    assert set(report_nodes(result.directory / "junit.xml")) == {
         f"apps/api/tests/test_stop.py::{name}" for name in ("test_skip", "test_pass", "test_failure")
     }
     assert not (suite / "unexpected").exists()
@@ -586,12 +438,12 @@ def test_early_stop_preserves_other_workers_and_partitions(suite: Path) -> None:
         source(suite, f"test_{module}.py", "import pytest\n@pytest.mark.postgres\ndef test_pass():\n    pass\n")
     result = run_suite(suite, target="api", workers=2, arguments=("-x",))
     assert result.returncode == 1
-    assert set(report_nodes(suite / "current.xml")) == {
+    assert set(report_nodes(result.directory / "junit.xml")) == {
         "apps/api/tests/test_fast.py::test_failure",
         "apps/api/tests/test_first.py::test_pass",
         "apps/api/tests/test_second.py::test_pass",
     }
-    assert ET.parse(suite / "current.xml").find(".//testsuite[@name='api-runner']") is None
+    assert ET.parse(result.directory / "junit.xml").find(".//testsuite[@name='api-runner']") is None
     assert len(list(result.directory.glob("postgres/worker-*/junit.xml"))) == 2
 
 
@@ -604,21 +456,18 @@ def test_early_stop_option_accepts_complete_reports(suite: Path, fail_last: bool
     )
     result = run_suite(suite, target="api-fast", workers=1, arguments=("-x",))
     assert result.returncode == int(fail_last)
-    report = ET.parse(suite / "current.xml")
-    assert len(report_nodes(suite / "current.xml")) == 2
+    report = ET.parse(result.directory / "junit.xml")
+    assert len(report_nodes(result.directory / "junit.xml")) == 2
     assert len(report.findall(".//failure")) == int(fail_last)
     assert not report.findall(".//error")
 
 
-def test_collection_failure_replaces_previous_report_and_still_runs_other_partition(
-    suite: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_collection_failure_is_reported_for_both_partitions(suite: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(runner.uuid, "uuid4", lambda: UUID("99900000-0000-4000-8000-000000000000"))
     source(suite, "test_broken.py", "raise RuntimeError('collection defect')")
-    (suite / "current.xml").write_text('<testsuites tests="999"/>')
     result = run_suite(suite, target="api")
     assert result.returncode == 1
-    report = ET.parse(suite / "current.xml").getroot()
+    report = ET.parse(result.directory / "junit.xml").getroot()
     assert report.get("tests") == report.get("errors") == "2"
     logs = [result.directory / partition / "collection/pytest.log" for partition in ("fast", "postgres")]
     assert all(log.is_file() for log in logs)
@@ -683,10 +532,10 @@ def pytest_unconfigure(config):
         )
     result = run_suite(suite)
     assert result.returncode == 1
-    assert ET.parse(suite / "current.xml").findall(".//error")
-    assert any(node.endswith("::test_good") for node in report_nodes(suite / "current.xml"))
+    assert ET.parse(result.directory / "junit.xml").findall(".//error")
+    assert any(node.endswith("::test_good") for node in report_nodes(result.directory / "junit.xml"))
     if defect == "unexpected-early-stop":
-        errors = ET.parse(suite / "current.xml").findall(".//error")
+        errors = ET.parse(result.directory / "junit.xml").findall(".//error")
         assert any("without a requested -x" in error.attrib.get("message", "") for error in errors)
 
 
@@ -725,17 +574,41 @@ def test_skip():
 
     assert result.returncode == 1
     assert all(process.returncode is not None for process in processes)
-    for path in (suite / "current.xml", result.directory / "junit.xml"):
-        report = ET.parse(path)
-        assert sorted(report_nodes(path)) == [
-            "apps/api/tests/test_fast.py::test_fast_failure",
-            "apps/api/tests/test_first.py::test_failure",
-            "apps/api/tests/test_first.py::test_skip",
-        ]
-        assert len(report.findall(".//failure")) == 2
-        assert len(report.findall(".//skipped")) == 1
-        errors = report.findall(".//error")
-        assert len(errors) == 1 and "controlled second-worker startup failure" in errors[0].attrib["message"]
+    path = result.directory / "junit.xml"
+    report = ET.parse(path)
+    assert sorted(report_nodes(path)) == [
+        "apps/api/tests/test_fast.py::test_fast_failure",
+        "apps/api/tests/test_first.py::test_failure",
+        "apps/api/tests/test_first.py::test_skip",
+    ]
+    assert len(report.findall(".//failure")) == 2
+    assert len(report.findall(".//skipped")) == 1
+    errors = report.findall(".//error")
+    assert len(errors) == 1 and "controlled second-worker startup failure" in errors[0].attrib["message"]
+
+
+def test_detached_windows_worker_is_joined_after_partial_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = tmp_path / "first", tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    worker = MagicMock()
+    worker.poll.side_effect = lambda: 1 if worker.wait.called else None
+    worker.send_signal.side_effect = OSError(6, "no console")
+    launch_error = OSError("second worker failed to launch")
+    monkeypatch.setattr(runner, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(signal, "CTRL_BREAK_EVENT", 1, raising=False)
+    monkeypatch.setattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 512, raising=False)
+    monkeypatch.setattr(subprocess, "Popen", MagicMock(side_effect=[worker, launch_error]))
+
+    with pytest.raises(OSError) as caught:
+        runner.execute([runner.Invocation(["first"], first), runner.Invocation(["second"], second)], tmp_path, {})
+
+    assert caught.value is launch_error
+    worker.terminate.assert_called_once_with()
+    worker.wait.assert_called_once()
+    assert json.loads((first / "interrupted.json").read_text()) == {"forced_termination": True}
 
 
 def test_interruption_during_report_validation_does_not_duplicate_completed_results(
@@ -759,11 +632,11 @@ def test_interruption_during_report_validation_does_not_duplicate_completed_resu
     result = run_suite(suite, workers=2)
 
     assert result.returncode == 130
-    assert report_nodes(suite / "current.xml") == [
+    assert report_nodes(result.directory / "junit.xml") == [
         "apps/api/tests/test_first.py::test_pass",
         "apps/api/tests/test_second.py::test_pass",
     ]
-    assert len(ET.parse(suite / "current.xml").findall(".//error")) == 1
+    assert len(ET.parse(result.directory / "junit.xml").findall(".//error")) == 1
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX signal integration; Windows uses CTRL_BREAK_EVENT")
@@ -813,12 +686,16 @@ def test_wait(resource):
     time.sleep(30)
 """,
     )
-    script = f"""from pathlib import Path
-from scripts.api_test_runner import run_api_tests
+    script = f"""import argparse
 import os
-root = Path({str(suite)!r})
-result = run_api_tests(root=root, artifacts=root / "reports", target="api-postgres", workers=1, environment=dict(os.environ), junitxml=root / "current.xml")
-raise SystemExit(result.returncode)
+from pathlib import Path
+from scripts import repo
+repo.ROOT = Path({str(suite)!r})
+repo.HARNESS_DIR = repo.ROOT / "reports"
+repo.cmd_test(
+    argparse.Namespace(target="api-postgres", workers=1, junitxml=str(repo.ROOT / "current.xml")),
+    environment={{**os.environ, "TEST_POSTGRES_DATABASE_URL": "postgresql+psycopg://localhost/example_tests"}},
+)
 """
     (suite / "current.xml").write_text('<testsuites tests="999"/>')
     with (suite / "parent.log").open("wb") as log:
@@ -839,9 +716,9 @@ raise SystemExit(result.returncode)
                 process.wait()
     assert (suite / "cleaned").read_text() == "cleaned"
     assert pending_error, "The previous success must be invalidated before starting children"
-    result_path = next((suite / "reports").glob("*/result.json"))
+    result_path = next((suite / "reports/api-tests").glob("*/result.json"))
     assert json.loads(result_path.read_text())["returncode"] == 130
-    interruption = next((suite / "reports").glob("*/postgres/worker-*/interrupted.json"))
+    interruption = next((suite / "reports/api-tests").glob("*/postgres/worker-*/interrupted.json"))
     assert json.loads(interruption.read_text()) == {"forced_termination": False}
     assert ET.parse(suite / "current.xml").findall(".//error")
 

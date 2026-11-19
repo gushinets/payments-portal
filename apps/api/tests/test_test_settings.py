@@ -24,6 +24,24 @@ def test_pytest_configuration_is_cleared_before_launch_and_in_child_environment(
         assert os.environ[variable] == ""
 
 
+@pytest.mark.parametrize("entrypoint", ["launcher", "direct"])
+def test_test_environment_clears_libpq_routing_and_preserves_explicit_service(entrypoint: str) -> None:
+    routing = {"PGHOST": "inherited", "PGHOSTADDR": "127.0.0.2", "PGPORT": "1234", "PGSERVICE": "ambient"}
+    explicit = {
+        "TEST_POSTGRES_DATABASE_URL": "postgresql+psycopg:///sample_tests?service=selected",
+        "PGSERVICEFILE": "synthetic-service.conf",
+        "PGSYSCONFDIR": "synthetic-dir",
+    }
+    with patch.dict(os.environ, {**routing, **explicit}, clear=True):
+        if entrypoint == "launcher":
+            isolated = repo.api_test_environment("api-postgres", dict(os.environ))
+        else:
+            configure_api_test_environment()
+            isolated = os.environ
+        assert routing.keys().isdisjoint(isolated)
+        assert {name: isolated[name] for name in explicit} == explicit
+
+
 def test_configuration_removes_inherited_integrations_before_scenario_overrides() -> None:
     with patch.dict(
         os.environ,
@@ -152,7 +170,7 @@ def test_harness_dotenv_requires_explicit_synthetic_file_in_tests(
 def test_launcher_builds_safe_settings_without_losing_explicit_database(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(repo, "read_runtime_env", lambda: pytest.fail("explicit URL must win"))
+    monkeypatch.setattr(repo, "test_runtime_config", lambda: pytest.fail("explicit URL must win"))
     inherited = {
         "APP_ENV": "production",
         "KERNEL_BASE_URL": "http://inherited.invalid",
@@ -239,7 +257,7 @@ def test_direct_pytest_fixture_uses_canonical_database_precedence(
 ) -> None:
     from apps.api.tests.conftest import database_test_url
 
-    monkeypatch.setattr(repo, "read_runtime_env", lambda: pytest.fail("explicit input wins"))
+    monkeypatch.setattr(repo, "test_runtime_config", lambda: pytest.fail("explicit input wins"))
     complete = {
         "POSTGRES_USER_TEST": "synthetic/user",
         "POSTGRES_PASSWORD_TEST": "synthetic password",
@@ -278,18 +296,6 @@ def test_direct_pytest_fixture_uses_worktree_runtime_when_no_explicit_input(monk
     config = repo.runtime_config()
     port = config.test_postgres_port
     test_environment = repo.worktree_test_postgres_environment(config)
-    monkeypatch.setattr(
-        repo,
-        "read_runtime_env",
-        lambda *, initialize: {
-            "POSTGRES_USER": "synthetic",
-            "POSTGRES_PASSWORD": "synthetic",
-            "POSTGRES_PORT": "5433",
-            "POSTGRES_PORT_TEST": str(port),
-            "POSTGRES_DB": "worktree",
-        },
-    )
-    monkeypatch.setattr(repo, "port_is_free", lambda port: False)
     monkeypatch.setattr(repo, "load_runtime", lambda *, initialize: config)
     monkeypatch.setattr(repo, "tool", lambda name: name)
     monkeypatch.setattr(

@@ -61,12 +61,12 @@ check scope, standalone coverage and CI behavior.
 
 ## Local PostgreSQL tests
 
-The Makefile supplies `test_db_up` and `test_db_stop` on Unix/WSL. Use the
-[test-server lifecycle](TESTING.md#test-environment-and-server-lifecycle) for
-the required image, cross-platform commands and explicit server settings.
-`npm run test:api` and `npm run check` include PostgreSQL. Start the test
-server before either command and stop it after all PostgreSQL tests finish.
-
+`npm run test:api` and `npm run check` need a running PostgreSQL test server.
+With an explicitly configured test server, run either command directly.
+For the worktree's Compose server, use `make test_db_up` before testing and
+`make test_db_stop` after all runs finish (Unix/WSL). The
+[Testing Strategy](TESTING.md#test-environment-and-server-lifecycle) lists the
+required image, cross-platform commands and explicit connection settings.
 
 ## Local Kernel Manifest Mock (ANY-664, development only)
 

@@ -1347,22 +1347,9 @@ def test_repository_parser_accepts_api_tooling_commands(argv: list[str], expecte
 
 
 def test_test_db_commands_target_only_postgres(monkeypatch: pytest.MonkeyPatch) -> None:
-    config = repo.RuntimeConfig(
-        worktree_id="test",
-        compose_project="payments-test",
-        database_name="payments_test",
-        web_port=3000,
-        api_port=8000,
-        postgres_port=5432,
-        grafana_port=3001,
-        loki_port=3100,
-        prometheus_port=9090,
-        tempo_port=3200,
-        otlp_grpc_port=4317,
-        otlp_http_port=4318,
-    )
+    config = repo.runtime_config()
     invocations: list[list[str]] = []
-    monkeypatch.setattr(repo, "load_runtime", lambda: config)
+    monkeypatch.setattr(repo, "test_runtime_config", lambda: config)
     monkeypatch.setattr(repo, "write_runtime", lambda _: None)
     monkeypatch.setattr(repo, "tool", lambda name: name)
     monkeypatch.setattr(repo, "compose_command", lambda _: pytest.fail("Development stack must stay untouched"))
@@ -1375,9 +1362,9 @@ def test_test_db_commands_target_only_postgres(monkeypatch: pytest.MonkeyPatch) 
         "docker",
         "compose",
         "--project-name",
-        "payments-test-tests",
+        f"{config.compose_project}-tests",
         "--env-file",
-        str(repo.RUNTIME_ENV),
+        os.devnull,
         "-f",
         str(repo.ROOT / "docker-compose.test.yml"),
     ]
@@ -1389,7 +1376,7 @@ def test_test_db_commands_target_only_postgres(monkeypatch: pytest.MonkeyPatch) 
 
 def test_api_test_environment_preserves_explicit_url(monkeypatch: pytest.MonkeyPatch) -> None:
     environment = {"TEST_POSTGRES_DATABASE_URL": "postgresql+psycopg://explicit/db_tests"}
-    monkeypatch.setattr(repo, "read_runtime_env", lambda: (_ for _ in ()).throw(AssertionError()))
+    monkeypatch.setattr(repo, "test_runtime_config", lambda: pytest.fail("Must not use local PostgreSQL"))
 
     assert api_test_environment("api-postgres", environment) == isolated_api_environment(environ=environment)
 
@@ -1404,7 +1391,7 @@ def test_api_test_environment_preserves_complete_explicit_postgres_configuration
         "POSTGRES_DB_TEST": "team?qa_tests",
         "POSTGRES_HOST_TEST": "localhost",
     }
-    monkeypatch.setattr(repo, "read_runtime_env", lambda: (_ for _ in ()).throw(AssertionError()))
+    monkeypatch.setattr(repo, "test_runtime_config", lambda: pytest.fail("Must not use local PostgreSQL"))
 
     result = api_test_environment("api", environment)
     assert result == isolated_api_environment(environ=environment)
@@ -1415,67 +1402,33 @@ def test_api_test_environment_rejects_partial_explicit_postgres_configuration() 
         api_test_environment("api-postgres", {"POSTGRES_USER_TEST": "test-user"})
 
 
-def test_api_test_environment_derives_worktree_test_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("inherited", [{}, {"TEST_POSTGRES_DATABASE_URL": ""}])
+def test_api_test_environment_derives_worktree_test_database_url(
+    monkeypatch: pytest.MonkeyPatch, inherited: dict[str, str]
+) -> None:
     config = repo.runtime_config()
     port = config.test_postgres_port
-    runtime_env = {
-        "POSTGRES_DB": "payments_worktree",
-        "POSTGRES_USER": "anytoolai",
-        "POSTGRES_PASSWORD": "local-password",
-        "POSTGRES_PORT": "32053",
-        "POSTGRES_PORT_TEST": str(port),
-    }
-    monkeypatch.setattr(repo, "read_runtime_env", lambda *, initialize: runtime_env)
     monkeypatch.setattr(repo, "load_runtime", lambda *, initialize: config)
+    monkeypatch.setattr(repo, "read_runtime_env", lambda **_: pytest.fail("Test routing must ignore development env"))
     monkeypatch.setattr(repo, "tool", lambda name: name)
     test_environment = repo.worktree_test_postgres_environment(config)
-    probed_ports: list[int] = []
-    monkeypatch.setattr(repo, "port_is_free", lambda port: probed_ports.append(port) or False)
 
     def published_port(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         assert command == [*repo.test_compose_command(config), "port", "postgres", "5432"]
-        assert kwargs["env"] == {**isolated_api_environment(environ={}), **test_environment}
+        assert kwargs["env"] == {**isolated_api_environment(environ=inherited), **test_environment}
         return subprocess.CompletedProcess(command, 0, stdout=f"127.0.0.1:{port}\n")
 
     monkeypatch.setattr(repo, "run", published_port)
-    environment: dict[str, str] = {}
-
-    result = api_test_environment("api", environment)
+    result = api_test_environment("api", inherited)
 
     user, password = test_environment["POSTGRES_USER"], test_environment["POSTGRES_PASSWORD"]
     assert result["TEST_POSTGRES_DATABASE_URL"] == (
-        f"postgresql+psycopg://{user}:{password}@127.0.0.1:{port}/payments_worktree_tests"
+        f"postgresql+psycopg://{user}:{password}@127.0.0.1:{port}/{config.database_name}_tests"
     )
-    assert probed_ports == [port]
-
-
-def test_api_test_environment_ignores_empty_explicit_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    config = repo.runtime_config()
-    port = config.test_postgres_port
-    runtime_env = {
-        "POSTGRES_DB": "payments_worktree",
-        "POSTGRES_USER": "anytoolai",
-        "POSTGRES_PASSWORD": "local-password",
-        "POSTGRES_PORT": "32053",
-        "POSTGRES_PORT_TEST": str(port),
-    }
-    monkeypatch.setattr(repo, "read_runtime_env", lambda *, initialize: runtime_env)
-    monkeypatch.setattr(repo, "port_is_free", lambda _: False)
-    monkeypatch.setattr(repo, "load_runtime", lambda *, initialize: config)
-    monkeypatch.setattr(repo, "tool", lambda name: name)
-    monkeypatch.setattr(
-        repo, "run", lambda command, **kwargs: subprocess.CompletedProcess(command, 0, stdout=f"127.0.0.1:{port}\n")
-    )
-    environment = {"TEST_POSTGRES_DATABASE_URL": ""}
-
-    result = api_test_environment("api", environment)
-
-    assert result["TEST_POSTGRES_DATABASE_URL"] != ""
-    assert result["TEST_POSTGRES_DATABASE_URL"].endswith("/payments_worktree_tests")
 
 
 def test_api_fast_test_environment_does_not_require_postgres(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(repo, "read_runtime_env", lambda: (_ for _ in ()).throw(AssertionError()))
+    monkeypatch.setattr(repo, "test_runtime_config", lambda: pytest.fail("Must not use local PostgreSQL"))
     monkeypatch.setattr(repo, "port_is_free", lambda _: (_ for _ in ()).throw(AssertionError()))
 
     assert api_test_environment("api-fast", {}) == isolated_api_environment(environ={})

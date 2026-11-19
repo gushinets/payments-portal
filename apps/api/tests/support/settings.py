@@ -47,6 +47,10 @@ _APPLICATION_ENV_PREFIXES = (
     "OTEL_",
 )
 
+_LIBPQ_ROUTING_VARIABLES = frozenset(
+    {"PGHOST", "PGHOSTADDR", "PGPORT", "PGSERVICE", "PGLOADBALANCEHOSTS", "PGTARGETSESSIONATTRS"}
+)
+
 
 def _application_variable(name: str) -> bool:
     name = name.upper()  # Pydantic settings are case-insensitive, also on Unix.
@@ -54,7 +58,11 @@ def _application_variable(name: str) -> bool:
     # resolves them; ordinary application connection settings never survive.
     if name.startswith("POSTGRES_") and name.endswith("_TEST"):
         return False
-    return name in {"DATABASE_URL", "SKIP_LEGAL_SEED", "LOG_LEVEL"} or name.startswith(_APPLICATION_ENV_PREFIXES)
+    return (
+        name in _LIBPQ_ROUTING_VARIABLES
+        or name in {"DATABASE_URL", "SKIP_LEGAL_SEED", "LOG_LEVEL"}
+        or name.startswith(_APPLICATION_ENV_PREFIXES)
+    )
 
 
 def api_test_environment(*, environ: Mapping[str, str] | None = None, **overrides: str) -> dict[str, str]:
