@@ -72,11 +72,15 @@ confirmed access in the cabinet.
 
 ### Before startup
 
-- Use `APP_ENV=development` or `APP_ENV=test`, an isolated Portal database, a
-  test mailbox, and a test LBX environment with an approved test payment method.
-  Set `APP_PUBLIC_BASE_URL` to the local Portal origin the buyer opens so the
-  verification link returns to that origin. Check the
+- Use `APP_ENV=development` or `APP_ENV=test`, an isolated Portal database, and a
+  test LBX environment with an approved test payment method. Check the
   [LBX and backend settings](#connection-and-deployment).
+- Configure a test SMTP sink such as Mailpit. Set `SMTP_HOST` and `SMTP_PORT` to
+  an address and port reachable from the running API, and set `SMTP_FROM_EMAIL`
+  to a test sender. For a local sink without STARTTLS, set `SMTP_USE_TLS=false`.
+  With an empty `SMTP_HOST`, registration can succeed without sending the
+  verification email. Set `APP_PUBLIC_BASE_URL` to the local Portal origin the
+  buyer opens so the verification link returns to that origin.
 - Set `BILLING_WORKER_ENABLED=true` and explicitly set
   `PAID_ACCESS_CLOCK_SKEW_SECONDS` to a supported value from 1 to 299 seconds.
   The clock budget has no default. Leaving it empty prevents the worker from
@@ -85,6 +89,12 @@ confirmed access in the cabinet.
 - Select an enabled product and a supported test offer for
   [product linking](#cli-execution-and-product-linking). For a metered purchase,
   record the expected metric, unit, and purchased quantity before accepting terms.
+- To reproduce the [simulated Brief Decoder test](billing-background-operations.md#monthly-lbx-instance-start-calendar-any-864),
+  use a supported monthly `instance_start` LBX offer linked to `brief_decoder`
+  without published technical terms. Set `PURCHASE_TEST_TERMS_ENABLED=true`
+  before starting the API. The selected backend manifest must enable
+  `brief_decoder` and its `brief_decoder.test_analyses` metric with unit
+  `analysis`. The development Kernel mock includes this metric.
 
 ### Before handing off the running stack
 
@@ -99,6 +109,11 @@ Check `/api/health/ready`, verify that `/api/health/billing` reports `running`,
 and confirm the linked product shows the expected current offer. The health
 endpoints report service health. Check paid access separately after payment.
 
+Register the test buyer, confirm the verification email arrives in the test
+mailbox, and open its link before starting the purchase. For the simulated
+Brief Decoder case, confirm the purchase review shows 300 analyses before
+accepting the terms.
+
 ### After test payment
 
 1. Confirm that LBX recorded the test payment on the agreement shown for the
@@ -107,8 +122,8 @@ endpoints report service health. Check paid access separately after payment.
    [authenticated `GET /api/paid-access`](#authenticated-cabinet-paid-access-read)
    as the verified buyer. Confirm that `grants` includes the product and that its
    entry in `products` has `status: confirmed`. For a metered purchase, verify one
-   matching allowance with the accepted metric, unit, and quantity, such as 300
-   analyses for the [Brief Decoder test offer](billing-background-operations.md#monthly-lbx-instance-start-calendar-any-864).
+   matching allowance with the accepted metric, unit, and quantity. For the
+   simulated Brief Decoder case, expect one `SIMULATED` allowance of 300 analyses.
 3. Refresh paid access in the cabinet and confirm that it shows the same access
    and purchased limit. If the paid read stays empty after LBX activates the
    subscription, check the effective clock setting and worker reconciliation.
