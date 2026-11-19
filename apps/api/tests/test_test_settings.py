@@ -230,7 +230,13 @@ def test_direct_pytest_fixture_rejects_partial_database_inputs(configuration: di
             database_test_url.__wrapped__()
 
 
-def test_direct_pytest_fixture_uses_canonical_database_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    "host,expected_host",
+    [(None, "localhost"), ("", "localhost"), ("explicit.synthetic.invalid", "explicit.synthetic.invalid")],
+)
+def test_direct_pytest_fixture_uses_canonical_database_precedence(
+    monkeypatch: pytest.MonkeyPatch, host: str | None, expected_host: str
+) -> None:
     from apps.api.tests.conftest import database_test_url
 
     monkeypatch.setattr(repo, "read_runtime_env", lambda: pytest.fail("explicit input wins"))
@@ -239,10 +245,15 @@ def test_direct_pytest_fixture_uses_canonical_database_precedence(monkeypatch: p
         "POSTGRES_PASSWORD_TEST": "synthetic password",
         "POSTGRES_DB_TEST": "scenario_tests",
         "POSTGRES_PORT_TEST": "5433",
+        "PGHOST": "inherited.synthetic.invalid",
     }
+    if host is not None:
+        complete["POSTGRES_HOST_TEST"] = host
     with patch.dict(os.environ, complete, clear=True):
         resolved = database_test_url.__wrapped__()
-        assert resolved.host == "localhost" and resolved.port == 5433
+        assert resolved.host == expected_host and resolved.port == 5433
+        _, driver_arguments = resolved.get_dialect()().create_connect_args(resolved)
+        assert driver_arguments["host"] == expected_host
         assert resolved.username == "synthetic/user" and resolved.password == "synthetic password"
         assert resolved.database.endswith("_tests") and resolved.database != "scenario_tests"
         os.environ["TEST_POSTGRES_DATABASE_URL"] = "postgresql+psycopg://localhost/url_wins_tests"

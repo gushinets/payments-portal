@@ -1,7 +1,7 @@
 # Testing Strategy
 
 Status: authoritative
-Last verified: 2026-11-17
+Last verified: 2026-11-19
 
 ## Layers
 
@@ -137,9 +137,9 @@ The standard test server stores `/var/lib/postgresql` in a **2 GiB tmpfs**;
 allow that much available RAM in addition to PostgreSQL and test-process memory.
 PostgreSQL durability settings remain at their normal defaults. `test-db stop`
 removes only this dedicated server/project and **loses all of its disposable
-test state**; restarting initializes a fresh cluster. An old runtime file without
-the dedicated test port fails with instructions to run `test-db up` rather than
-falling back to the development server.
+test state**; restarting initializes a fresh cluster. The runtime test port
+must be an integer from 1 to 65535. If it is missing or invalid, the harness
+fails at startup with instructions to run `test-db up`.
 
 Compose owns the PostgreSQL server/container and `repo.py` owns worktree-specific
 server orchestration. pytest owns the scenario/template databases described
@@ -151,9 +151,9 @@ does not start or stop that external server.
 Test database configuration is resolved in this order: an explicit
 `TEST_POSTGRES_DATABASE_URL`; a complete explicit set of `POSTGRES_USER_TEST`,
 `POSTGRES_PASSWORD_TEST`, `POSTGRES_PORT_TEST` and `POSTGRES_DB_TEST`
-(`POSTGRES_HOST_TEST` is optional and defaults to `localhost`); then the current
-worktree runtime configuration, using its dedicated test-server port and a
-derived database name ending in `_tests`. Partial explicit configuration is
+(`POSTGRES_HOST_TEST` is optional and defaults to `localhost` when absent or
+empty); then the current worktree runtime configuration, using its dedicated
+test-server port and a derived database name ending in `_tests`. Partial explicit configuration is
 rejected, including a lone shell-exported `POSTGRES_PORT_TEST`; the runtime file
 is read by the harness and need not be sourced. Explicit test servers remain
 supported and need not use tmpfs; the standard performance acceptance

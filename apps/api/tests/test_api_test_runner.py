@@ -229,6 +229,51 @@ def test_cli_startup_failure_returns_error_with_current_report(
     assert_startup_error(previous_report, message)
 
 
+@pytest.mark.parametrize("target", ["api-postgres", "api"])
+@pytest.mark.parametrize(
+    "test_port,expected_reason",
+    [("not-a-port", "must be an integer"), ("65536", "must be between 1 and 65535")],
+)
+def test_cli_invalid_runtime_port_reports_startup_error(
+    previous_report: Path, target: str, test_port: str, expected_reason: str
+) -> None:
+    runtime = previous_report.with_name("runtime.env")
+    runtime.write_text(
+        "POSTGRES_USER=synthetic\nPOSTGRES_PASSWORD=synthetic\nPOSTGRES_DB=synthetic\n"
+        f"POSTGRES_PORT_TEST={test_port}\n",
+        encoding="utf-8",
+    )
+    inherited = {
+        name: value
+        for name, value in environment().items()
+        if name != "TEST_POSTGRES_DATABASE_URL" and not (name.startswith("POSTGRES_") and name.endswith("_TEST"))
+    }
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from pathlib import Path; import sys; from scripts import repo; "
+            "repo.RUNTIME_ENV = Path(sys.argv.pop(1)); raise SystemExit(repo.main())",
+            str(runtime),
+            "test",
+            target,
+            "--junitxml",
+            str(previous_report),
+        ],
+        cwd=repo.ROOT,
+        env=inherited,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    message = f"runtime.env POSTGRES_PORT_TEST {expected_reason}"
+    recovery = "python scripts/repo.py test-db up"
+    assert result.returncode == 1 and message in result.stderr
+    assert recovery in result.stderr and "Traceback" not in result.stderr
+    assert_startup_error(previous_report, message)
+    assert recovery in previous_report.read_text(encoding="utf-8")
+
+
 def test_command_startup_invalidates_report_before_configuration(
     previous_report: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -70,7 +70,7 @@ def test_old_runtime_json_still_loads_and_writes_dedicated_test_port(
     assert environment["DATABASE_URL"].endswith(f"@postgres:5432/{config.database_name}")
 
 
-@pytest.mark.parametrize("test_port", [None, ""])
+@pytest.mark.parametrize("test_port", [None, "", "not-a-port", "-1", "0", "65536"])
 def test_stale_runtime_refuses_development_port_and_explains_recovery(
     monkeypatch: pytest.MonkeyPatch, test_port: str | None
 ) -> None:
@@ -83,7 +83,7 @@ def test_stale_runtime_refuses_development_port_and_explains_recovery(
     if test_port is not None:
         runtime["POSTGRES_PORT_TEST"] = test_port
     monkeypatch.setattr(repo, "read_runtime_env", lambda: runtime)
-    monkeypatch.setattr(repo, "port_is_free", lambda _: pytest.fail("Do not probe the development server"))
+    monkeypatch.setattr(repo, "port_is_free", lambda _: pytest.fail("Do not probe an invalid test port"))
 
     with pytest.raises(repo.HarnessError, match=r"(?s)POSTGRES_PORT_TEST.*python scripts/repo.py test-db up"):
         repo.api_test_environment("api-postgres", {})

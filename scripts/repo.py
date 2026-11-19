@@ -3441,23 +3441,28 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
             "postgresql+psycopg",
             username=environment["POSTGRES_USER_TEST"],
             password=environment["POSTGRES_PASSWORD_TEST"],
-            host=environment.get("POSTGRES_HOST_TEST", "localhost"),
+            host=environment.get("POSTGRES_HOST_TEST") or "localhost",
             port=test_port,
             database=environment["POSTGRES_DB_TEST"],
         ).render_as_string(hide_password=False)
         return environment
 
     runtime_env = read_runtime_env()
+    refresh_runtime = "Refresh the dedicated test server configuration with:\n  python scripts/repo.py test-db up"
     runtime_names = ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT_TEST")
     missing_runtime_names = [name for name in runtime_names if not runtime_env.get(name)]
     if missing_runtime_names:
         raise HarnessError(
             "Cannot derive local PostgreSQL test configuration; runtime.env is missing: "
-            + ", ".join(missing_runtime_names)
-            + ". Refresh the dedicated test server configuration with:\n"
-            "  python scripts/repo.py test-db up"
+            f"{', '.join(missing_runtime_names)}. {refresh_runtime}"
         )
-    if port_is_free(int(runtime_env["POSTGRES_PORT_TEST"])):
+    try:
+        test_port = int(runtime_env["POSTGRES_PORT_TEST"])
+    except ValueError as exc:
+        raise HarnessError(f"runtime.env POSTGRES_PORT_TEST must be an integer. {refresh_runtime}") from exc
+    if not 1 <= test_port <= 65535:
+        raise HarnessError(f"runtime.env POSTGRES_PORT_TEST must be between 1 and 65535. {refresh_runtime}")
+    if port_is_free(test_port):
         raise HarnessError(
             "Local test PostgreSQL server is not running. Start it with:\n"
             "  python scripts/repo.py test-db up\n"
