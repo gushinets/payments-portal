@@ -554,8 +554,9 @@ linked preparation for later fresh proof. Known owner/seller/term conflicts stay
 in review. Manage uses original accepted history, independently of current link/
 price. Linked unpaid purchases hold scope without TTL. Automatic release occurs
 only for changed accepted terms while **all** financial operations are provably
-unsent under send-claim locks. Other release needs trustworthy audited evidence;
-there is no force-release/grant command or absence inference from zero results.
+unsent under send-claim locks. Operators can complete a stuck purchase with
+request-specific proof for both operations using the
+[terminal completion procedure](billing-background-operations.md#terminal-completion-any-821).
 
 Final payment admission rechecks session, ownership, operation fences and the
 canonical subscription under the same locks. An ENDED fact committed after
@@ -566,8 +567,10 @@ independent of purchase lifecycle.
 ## Browser operation and diagnostics
 
 Prepared product detail links to `/account?purchase=<id>#billing`. The deep link
-selects an owned purchase but never opens payment automatically. One shared
-cabinet Widget serves account/payment views; multiple purchases need explicit
+selects an owned purchase. A completed purchase shows its terminal outcome.
+If the held-purchase list and detail disagree, the cabinet reads the purchase
+again before enabling payment. Opening the Widget requires a user action.
+One shared cabinet Widget serves account/payment views; multiple purchases need explicit
 selection. Owned inventory remains available independently of source catalog.
 Refresh billing disposes the old host, rechecks the same purchase and opens a
 fresh Widget. It creates no subscription/payment; the provider may require

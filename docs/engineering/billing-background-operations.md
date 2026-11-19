@@ -619,16 +619,16 @@ or the original agreement endpoint is unavailable. A disagreement between
 discovery and a point read leaves inventory incomplete. A durable review needs
 a retained subscription ID or an original agreement verified through point
 reads. Already trusted primaries continue to reconcile on their own evidence.
-If a held purchase's candidate proof returns a different agreement, inventory
-uses that point response to check for a late original of a released purchase.
-A saved receipt for a different subscription ID or an existing binding review
-blocks use of the candidate for that held purchase. Inventory still reads the
-candidate within its budget to check for a late original under another agreement.
-A stale listing can pause admission for this attempt. Opening a separate
-case on the held purchase requires evidence from its own agreement or receipt.
-If only the listing pointed to that purchase, its operation and send fence are
-preserved. Once the original case is resolved and the listing corrected, normal
-GET-only recovery can bind the held purchase's own subscription.
+
+When LBX lists a possible late object under a held purchase's agreement,
+inventory reads the subscription by ID to identify its actual agreement.
+A different saved receipt or an open binding review prevents binding it to the
+held purchase. Ordinary recovery can read a saved receipt ID omitted by the
+list. While the competing entries remain disputed, the held operation keeps
+its send fence. Two distinct IDs confirmed on its own dedicated agreement,
+or a verified contradiction with its own receipt, require review. Once the
+original late case closes and the listing is corrected, GET-only recovery can
+bind the held purchase's own subscription.
 
 Use `inspect` to match the case ID to its operation, external object ID, latest
 read time, observed agreement and tariff, and any conflict with a permanent
@@ -641,11 +641,10 @@ purchase with `--case-id` set to the case's `review_case_id` and
 This closes the exact case and preserves the purchase's terminal outcome.
 The agreement, tariff and permanent ownership evidence identify a repeated
 observation. Closing a case can dismiss a delayed point read for the same
-relationship if it completed
-by the confirmation time. A read that finishes after confirmation can reopen
-the review. An identical observation of a disproved relationship keeps its
-audited disposition until a positive terminal attestation identifies the same
-ID as an original object.
+relationship if it completed by the confirmation time. A read that finishes
+after confirmation can reopen the review. An identical observation of a
+disproved relationship keeps its audited disposition until a positive terminal
+attestation identifies the same ID as an original object.
 A fresh live observation with a different tariff or an incomplete old
 comparison gets a fresh review. Earlier audits remain available for command
 replay.
@@ -714,11 +713,9 @@ or already-bound objects, unsupported policy, customer identity conflict,
 unrelated open cases, terminal revival and changed accepted requests. Diagnose
 billing_review_stale, billing_review_unrelated_cases, billing_review_proof_incomplete,
 billing_review_terminal, purchase_history_unproven and ordinary source/busy errors;
-do not bypass them. `resolve-review` does not release purchase holds; audited
-terminal completion uses `resolve-purchase` above. There is no release-terminal, force-release,
-arbitrary rebind, commercial reacceptance, manual paid or quota command. Terminal
-revival has no override; an inventory review requires fresh proof that competition
-was corrected. Existing Step 7 proven-unsent automatic release keeps its separate rule.
+do not bypass them. The CLI rejects `release-terminal`. For a terminal outcome, follow the
+[terminal completion procedure](#terminal-completion-any-821). An inventory
+review requires fresh proof that the competing objects were corrected.
 
 Source proof intervals are bracketed by short PostgreSQL clock reads before
 and after source I/O; their sessions close before HTTP. Reconciliation claims,

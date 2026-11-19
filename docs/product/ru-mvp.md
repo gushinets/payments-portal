@@ -1,7 +1,7 @@
 # RU AnyToolAI Portal — As-Built 4F Handoff
 
 Status: authoritative implemented-product specification and deferred-step handoff
-Last updated: 2026-11-11
+Last updated: 2026-11-19
 
 The surface established by ANY-636 4F is a product-centric AnyToolAI Portal:
 public product-first home, catalog/discovery, per-product pages,
@@ -117,9 +117,10 @@ the mockup's remote CSS import.
   purchase selection, and brief owned-purchase cards linking to product details.
   Product pages retain offer/review/consent/preparation; a prepared purchase shows
   “Subscription prepared” and links to `/account?purchase=<id>#billing`. The cabinet
-  verifies the selected purchase before payment and displays its product plus
-  proven agreement/seller. No catalog product is shown as owned without a held
-  accepted purchase. Responsive layouts stack the rail and workspace.
+  verifies the selected purchase before payment and displays its product and
+  proven agreement/seller. After operator completion, the same link shows the
+  outcome and offers a return to the product for a new purchase. Payment for
+  the completed purchase is disabled. Responsive layouts stack the rail and workspace.
 
 Mockup demo prices (`0/490/990 ₽`), providers such as CloudPayments, plan and
 subscription values, renewal/payment controls, usage (`320/500`, `3/10`),
