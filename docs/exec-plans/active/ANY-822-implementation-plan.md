@@ -2,7 +2,7 @@
 
 Status: local timing and regression criteria met; final-head CI and human review pending
 Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
-Branch: `ANY-822`, based on `f6b1f1d2`
+Branch: `ANY-822`, based on `791b7f5a`
 
 ## Acceptance criteria
 
@@ -88,17 +88,17 @@ records the before/after costs where measured and the cases retained unchanged.
 
 ## Verification
 
-The local refactor on top of `608b696a` passed the complete `check --coverage`
-handler on Linux in **859.834 s**. PostgreSQL took **566.218 s** with four
-workers on the dedicated PostgreSQL 18.4 tmpfs server, including collection
-and database cleanup. All **1,219** PostgreSQL cases passed. Their node IDs
+The complete `check --coverage` handler passed on Linux at `1b3ee7cf` in
+**859.834 s**. PostgreSQL took **566.218 s** with four workers on the dedicated
+PostgreSQL 18.4 tmpfs server, including collection and database cleanup. All
+**1,219** PostgreSQL cases passed. Their node IDs
 and order match the two earlier full collections on November 19. No scenario
 or template databases remained before the disposable server was stopped.
 
 API-fast passed 2,563 cases with one existing native Windows filename case
 skipped. All 454 component and 38 web boundary tests passed, including
-typecheck. The web production build passed. Comparing pytest collection from
-the published PR and the working tree gave 3,795 and 3,783 cases respectively.
+typecheck. The web production build passed. Pytest collected 3,795 cases at
+`608b696a` and 3,783 at `1b3ee7cf`.
 All changed node IDs belong to launcher, settings or repository tooling tests.
 The bounded paid-reader HTTP case passed in 1.885 s using the shared fixture.
 
@@ -109,8 +109,10 @@ and timings are in `.harness/any822-final-check-_3mwaeyw/` and the merged
 PostgreSQL report is in
 `.harness/api-tests/api-postgres-3d4cdf6c11574854beb86aeb9f669c21/`.
 Native Windows launcher behavior and upload on actual CI cancellation were
-not exercised locally. See [PR checks](https://github.com/gushinets/payments-portal/pull/170/checks)
-for the published revision.
+not exercised locally. The workflow uses the accelerated commands. A comparable
+before/after measurement of the CI critical path is pending. See
+[PR checks](https://github.com/gushinets/payments-portal/pull/170/checks) for the
+published revision's CI results.
 
 ### Prior evidence
 

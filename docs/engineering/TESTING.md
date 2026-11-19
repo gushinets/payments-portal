@@ -117,7 +117,11 @@ The API test environment clears inherited libpq routing variables, including
 `PGHOSTADDR` and `PGSERVICE`. Explicit test URLs and service-file locations
 remain available.
 
-To run the PostgreSQL partition with the worktree's dedicated Compose server:
+For the worktree's dedicated test server, first run `docker pull` with the full
+PostgreSQL `image` reference, including its digest, from
+[`docker-compose.test.yml`](../../docker-compose.test.yml). Do this on a fresh
+machine or after the repository changes the pinned image. Once the image is
+available locally, run the PostgreSQL partition:
 
 ```bash
 python scripts/repo.py test-db up
@@ -133,11 +137,11 @@ E2E and manual app use.
 
 The dedicated `docker-compose.test.yml` project
 (`payments-<worktree-id>-tests`) publishes a worktree-scoped loopback port.
-`test-db up` uses the same pinned PostgreSQL image as development and requires
-it to be installed locally. The launcher sets worktree-specific credentials,
-so the workers cannot authenticate to another worktree's test server if it
-later takes over the port. Run `test-db up` after upgrading from shared test
-credentials to recreate the disposable container.
+`test-db up` uses the local copy of the PostgreSQL image pinned for development.
+The launcher derives credentials from the worktree ID. Servers with different
+IDs use different credentials even when they reuse the same port. Run
+`test-db up` after upgrading from shared test credentials to recreate the
+disposable container.
 
 The standard test server stores `/var/lib/postgresql` in a **2 GiB tmpfs**;
 allow that much available RAM in addition to PostgreSQL and test-process memory.
@@ -183,11 +187,20 @@ by the command below from the saved `POSTGRES_PORT_TEST` value.
 python -c "from scripts.repo import runtime_config; print(runtime_config().test_postgres_port)"
 ```
 
-From the repository root, regenerate the runtime files with that offset.
-The example uses offset `37`. Then start the dedicated test server.
+From the repository root, restore `runtime.json` with that offset. The example
+uses offset `37` and preserves the existing `runtime.env` and its application
+settings. Then start the dedicated test server.
 
 ```bash
-python -c "import sys; from scripts.repo import runtime_config, write_runtime; write_runtime(runtime_config(int(sys.argv[1])))" 37
+python -c "
+import json
+import sys
+from dataclasses import asdict
+from scripts.repo import RUNTIME_JSON, _write_runtime_file, runtime_config
+
+config = runtime_config(int(sys.argv[1]))
+_write_runtime_file(RUNTIME_JSON, json.dumps(asdict(config), indent=2) + '\n')
+" 37
 python scripts/repo.py test-db up
 ```
 
@@ -229,9 +242,14 @@ path incomplete before setup, then writes the startup error or copies the
 finished report there.
 
 Collection failures, crashes, missing or inconsistent reports make the command
-fail. After a partial launch or cancellation, the runner merges the readable
-JUnit files that workers wrote. A worker killed before writing its report can
-leave completed tests out of the merged results.
+fail. After a partial launch or handled cancellation, the runner merges the
+readable JUnit files that workers wrote. A worker killed before writing its
+report can leave completed tests out of the merged results.
+
+GitHub Actions can stop the test step before the runner writes the merged JUnit.
+In that case, look for individual JUnit files already written by workers under
+`.harness/api-tests/`. The cancellation diagnostics step is configured to upload
+available files. Upload during an actual GitHub Actions cancellation is unverified.
 
 The runner checks JUnit against assigned node IDs and worker exit status, including
 skips and setup/teardown errors. With `--pytest-args -x`, each worker can stop

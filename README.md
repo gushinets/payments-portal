@@ -83,8 +83,9 @@ design system, using navy/amber, flat dark panels and compact styling.
    ```
 
 5. For PostgreSQL-free verification, run `npm run check:fast`. For the full
-   check, use the dedicated test PostgreSQL server. The repository-pinned
-   image must already be installed locally.
+   check, use the dedicated test PostgreSQL server. On a fresh machine,
+   [pull the pinned PostgreSQL image](docs/engineering/TESTING.md#test-environment-and-server-lifecycle)
+   before starting it.
 
    ```bash
    python scripts/repo.py test-db up
