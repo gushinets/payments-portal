@@ -607,11 +607,12 @@ def test_compose_command(config: RuntimeConfig) -> list[str]:
     ]
 
 
-def test_compose_environment(runtime_env: dict[str, str], environment: dict[str, str]) -> dict[str, str]:
-    # Compose gives shell variables precedence over --env-file.
+def worktree_test_postgres_environment(config: RuntimeConfig) -> dict[str, str]:
+    # Keep development credentials separate and bind authentication to the worktree.
     return {
-        **environment,
-        **{name: runtime_env[name] for name in ("POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT_TEST")},
+        "POSTGRES_USER": f"anytoolai_test_{config.worktree_id}",
+        "POSTGRES_PASSWORD": f"anytoolai-test-{config.worktree_id}-local-only",
+        "POSTGRES_PORT_TEST": str(config.test_postgres_port),
     }
 
 
@@ -747,8 +748,8 @@ def cmd_up(args: argparse.Namespace) -> None:
     print(json.dumps(asdict(config), indent=2))
 
 
-def load_runtime() -> RuntimeConfig:
-    if not RUNTIME_JSON.exists():
+def load_runtime(*, initialize: bool = True) -> RuntimeConfig:
+    if initialize and not RUNTIME_JSON.exists():
         config = runtime_config()
         write_runtime(config)
         return config
@@ -763,7 +764,7 @@ def cmd_down(_: argparse.Namespace) -> None:
 def cmd_test_db(args: argparse.Namespace) -> None:
     config = load_runtime()
     write_runtime(config)
-    environment = test_compose_environment(read_runtime_env(), dict(os.environ))
+    environment = {**os.environ, **worktree_test_postgres_environment(config)}
     if args.action == "up":
         run([*test_compose_command(config), "up", "-d", "--pull", "never", "--wait", "postgres"], env=environment)
         return
@@ -3454,9 +3455,12 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
         # Preserve the individual fields until the fixture assigns its generated database name.
         return environment
 
-    runtime_env = read_runtime_env()
     refresh_runtime = "Refresh the dedicated test server configuration with:\n  python scripts/repo.py test-db up"
-    runtime_names = ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT_TEST")
+    try:
+        runtime_env = read_runtime_env(initialize=False)
+    except FileNotFoundError as exc:
+        raise HarnessError(f"Cannot derive local PostgreSQL test configuration; runtime.env is missing. {refresh_runtime}") from exc
+    runtime_names = ("POSTGRES_DB", "POSTGRES_PORT_TEST")
     missing_runtime_names = [name for name in runtime_names if not runtime_env.get(name)]
     if missing_runtime_names:
         raise HarnessError(
@@ -3467,6 +3471,12 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
         test_port = parse_test_postgres_port(runtime_env["POSTGRES_PORT_TEST"], "runtime.env POSTGRES_PORT_TEST")
     except ValueError as exc:
         raise HarnessError(f"{exc}. {refresh_runtime}") from exc
+    try:
+        config = load_runtime(initialize=False)
+    except FileNotFoundError as exc:
+        raise HarnessError(f"Cannot derive local PostgreSQL test configuration; runtime.json is missing. {refresh_runtime}") from exc
+    if test_port != config.test_postgres_port:
+        raise HarnessError(f"runtime.env POSTGRES_PORT_TEST does not match runtime.json. {refresh_runtime}")
     if port_is_free(test_port):
         raise HarnessError(
             "Local test PostgreSQL server is not running. Start it with:\n"
@@ -3474,17 +3484,18 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
             "Unix/WSL shortcut:\n"
             "  make test_db_up"
         )
+    local_test = worktree_test_postgres_environment(config)
     published = run(
-        [*test_compose_command(load_runtime()), "port", "postgres", "5432"],
+        [*test_compose_command(config), "port", "postgres", "5432"],
         check=False,
         capture=True,
-        env=test_compose_environment(runtime_env, environment),
+        env={**environment, **local_test},
     )
     if published.returncode or published.stdout.strip() != f"127.0.0.1:{test_port}":
         raise HarnessError(f"The local port {test_port} is not published by this worktree's test PostgreSQL. {refresh_runtime}")
 
     database_environment = {
-        **runtime_env,
+        **local_test,
         "POSTGRES_PORT": str(test_port),
         "POSTGRES_DB": f"{runtime_env['POSTGRES_DB']}_tests",
     }
@@ -3573,8 +3584,8 @@ def cmd_lint(args: argparse.Namespace) -> None:
         )
 
 
-def read_runtime_env() -> dict[str, str]:
-    if not RUNTIME_ENV.exists():
+def read_runtime_env(*, initialize: bool = True) -> dict[str, str]:
+    if initialize and not RUNTIME_ENV.exists():
         write_runtime(runtime_config())
     values: dict[str, str] = {}
     for line in RUNTIME_ENV.read_text(encoding="utf-8").splitlines():

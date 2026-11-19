@@ -728,19 +728,21 @@ Kernel enforcement or delivery.
 
 Use synthetic transport fixtures and the isolated test DB for automated checks;
 never run API tests against the application DB or induce live lost writes.
-From the configured repository environment:
+For the complete check, follow the
+[test-server setup](TESTING.md#test-environment-and-server-lifecycle) and run
+from the repository root:
 
 ```bash
-npm run docs:check
-npm run generate:check
-npm run architecture:check
-npm run check:fast
-# Start only this worktree's disposable-test PostgreSQL server when needed:
 python scripts/repo.py test-db up
 npm run check
 # Stop only the server started solely for these tests:
 python scripts/repo.py test-db stop
-# With an isolated browser harness configured:
+```
+
+For PostgreSQL-free feedback, use `npm run check:fast`. With the isolated
+application harness running, verify the browser flow separately:
+
+```bash
 npm run test:e2e -- any709-purchase.spec.ts
 ```
 

@@ -48,17 +48,18 @@ suite must be stated explicitly in handoff evidence.
 `test:api:fast` excludes PostgreSQL and can run without a database server.
 `test:api:postgres` runs the PostgreSQL layer with **four processes by default**.
 `test:api` runs the fast partition serially, then PostgreSQL with four processes,
-retaining outcomes from both even if the fast partition fails. Whole modules
-are assigned greedily by collected case count; order within each module is
-preserved. Small selections use fewer processes when there are fewer modules.
-The runner uses stdlib subprocesses, not xdist.
+retaining outcomes from both even if the fast partition fails to start or run.
+Whole modules are assigned greedily by collected case count. Order within
+each module is preserved. Small selections use fewer processes when there are
+fewer modules. The runner uses standard-library subprocesses.
 
 `check:fast` checks documentation, generated artifacts, architecture, API
 lint/format, web boundaries, components, web lint and API-fast. `check` also
-builds the web app and runs PostgreSQL. Browser tests run separately, or inside
-`check` only with `RUN_E2E=true` and a running harness stack. See
-[Development Environment](DEVELOPMENT.md) for stack setup. These test commands
-do not collect code coverage unless explicitly requested.
+builds the web app and runs PostgreSQL. The PostgreSQL stage needs a running
+test server as described below. For browser tests, start the application stack
+as described in [Development Environment](DEVELOPMENT.md), then run
+`npm run test:e2e` or opt in with `RUN_E2E=true npm run check`. Coverage is
+opt-in.
 
 For a focused run or serial diagnosis, put harness options before
 `--pytest-args`, which must be last:
@@ -113,65 +114,59 @@ test children use the shared environment helper in
 explicit and are restored after the test. Normal application dotenv semantics
 are unchanged. Do not configure tests by copying personal or production values.
 
-On Unix/WSL, use the repository's worktree-scoped PostgreSQL server lifecycle:
+Start the worktree's dedicated PostgreSQL test server before running the
+PostgreSQL partition:
 
 ```bash
-make test_db_up
+python scripts/repo.py test-db up
 npm run test:api:postgres
-make test_db_stop
+python scripts/repo.py test-db stop
 ```
 
-For the complete backend suite, replace `npm run test:api:postgres` with
-`npm run test:api` in that flow. Choose one: the complete suite already includes
-the PostgreSQL partition.
+Replace the test command with `npm run test:api` for the complete backend
+suite, or `npm run check` for the complete repository check. On Unix/WSL,
+`make test_db_up` and `make test_db_stop` are equivalent to the Python
+commands. The application stack started by `repo:up` is needed for browser
+E2E and manual app use.
 
-The cross-platform equivalents are `python scripts/repo.py test-db up` and
-`python scripts/repo.py test-db stop`. The dedicated `docker-compose.test.yml`
-project (`payments-<worktree-id>-tests`) exposes only a worktree-scoped loopback
-port, recorded as `POSTGRES_PORT_TEST` in `.harness/runtime.env`. It uses the
-same pinned PostgreSQL image as development, which must already be installed;
-`test-db up` does not pull images. Development keeps its separate Compose
-project, port and persistent volume.
-The test-server launcher pins its Compose credentials and port to the written
-runtime values so inherited shell variables cannot redirect this local server.
-Before using the local fallback, the API harness verifies that this worktree's
-test Compose service publishes the expected loopback endpoint.
+The dedicated `docker-compose.test.yml` project
+(`payments-<worktree-id>-tests`) publishes a worktree-scoped loopback port.
+`test-db up` uses the same pinned PostgreSQL image as development and requires
+it to be installed locally. The launcher sets worktree-specific credentials,
+so the workers cannot authenticate to another worktree's test server if it
+later takes over the port. Run `test-db up` after upgrading from shared test
+credentials to recreate the disposable container.
 
 The standard test server stores `/var/lib/postgresql` in a **2 GiB tmpfs**;
 allow that much available RAM in addition to PostgreSQL and test-process memory.
-PostgreSQL durability settings remain at their normal defaults. `test-db stop`
-removes only this dedicated server/project and **loses all of its disposable
-test state**; restarting initializes a fresh cluster. The runtime test port
-must be an integer from 1 to 65535. If it is missing or invalid, the harness
-fails at startup with instructions to run `test-db up`.
+PostgreSQL durability settings remain at their normal defaults.
+`test-db stop` removes the dedicated Compose project and all its disposable
+state. Stop it only after its tests finish. Development data and explicitly
+configured external servers have separate lifecycles. pytest owns the
+scenario/template databases described below. Leave their creation and cleanup
+to pytest.
 
-Compose owns the PostgreSQL server/container and `repo.py` owns worktree-specific
-server orchestration. pytest owns the scenario/template databases described
-below; developers must not manually create or drop them. Stop the dedicated
-server only after its test processes finish. `test-db` manages this local
-Compose project even when tests are configured to use an explicit server; it
-does not start or stop that external server.
+The harness resolves test database settings in this order.
 
-Test database configuration is resolved in this order: an explicit
-`TEST_POSTGRES_DATABASE_URL`; a complete explicit set of `POSTGRES_USER_TEST`,
-`POSTGRES_PASSWORD_TEST`, `POSTGRES_PORT_TEST` and `POSTGRES_DB_TEST`
-(`POSTGRES_HOST_TEST` is optional and defaults to `localhost` when absent or
-empty); then the current worktree runtime configuration, using its dedicated
-test-server port and a derived database name ending in `_tests`. The launcher
-checks the explicit fields before starting pytest and passes them individually.
-Explicit ports in the fields or URL must be within 1 to 65535.
-The fixture assigns an owned database name before rendering the connection URL.
-Partial explicit configuration is rejected, including a lone shell-exported
-`POSTGRES_PORT_TEST`. The harness reads the runtime file directly. Explicit
-test servers need not use tmpfs; the standard performance acceptance
-environment uses tmpfs. Credentials remain environment-provided and are not
-shown in documentation.
+1. An explicit `TEST_POSTGRES_DATABASE_URL`.
+2. A complete explicit set of `POSTGRES_USER_TEST`, `POSTGRES_PASSWORD_TEST`,
+   `POSTGRES_PORT_TEST` and `POSTGRES_DB_TEST`. `POSTGRES_HOST_TEST` defaults
+   to `localhost` when absent or empty. Partial settings, including a lone
+   shell-exported `POSTGRES_PORT_TEST`, are rejected.
+3. The worktree runtime configuration. The launcher reads `.harness/runtime.json`
+   and `POSTGRES_PORT_TEST` from `.harness/runtime.env` without rewriting
+   them and checks that the dedicated Compose service publishes the expected
+   loopback endpoint.
+   If either file is missing or the test port is invalid or differs between
+   the files, run `test-db up` to refresh them. It preserves the offset from
+   an existing `runtime.json`.
 
-The configured database name must end in `_test` or `_tests`, but it is a
-validated routing input, not a shared physical database to reuse or delete.
-The connection role must be able to create databases and connect to the
-same server's `postgres` admin database. Use a dedicated disposable test
-server, never a production target.
+Configured ports must be between 1 and 65535. The configured database name
+must end in `_test` or `_tests`. pytest uses it to validate routing and
+assigns its own physical database names. Use a dedicated test server with a
+role that can create databases and connect to the `postgres` admin database.
+The performance target uses the standard tmpfs server. Explicit test
+servers may use other storage.
 
 ### Migrated templates and ownership
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import errno
 import json
 import os
 import signal
@@ -143,14 +144,16 @@ def test_command_startup_failure_replaces_previous_report(
     monkeypatch.setattr(
         runner, "run_api_tests", lambda **kwargs: pytest.fail("Preparation must fail before the runner")
     )
+    config = repo.runtime_config()
+    monkeypatch.setattr(repo, "load_runtime", lambda *, initialize: config)
     monkeypatch.setattr(
         repo,
         "read_runtime_env",
-        lambda: {
+        lambda *, initialize: {
             "POSTGRES_USER": "synthetic",
             "POSTGRES_PASSWORD": "synthetic",
             "POSTGRES_DB": "worktree",
-            "POSTGRES_PORT_TEST": "15432",
+            "POSTGRES_PORT_TEST": str(config.test_postgres_port),
         },
     )
     monkeypatch.setattr(repo, "port_is_free", lambda port: True)
@@ -456,6 +459,31 @@ def test_postgres_pass():
     assert any(node.endswith("test_postgres_pass") for node in report_nodes(suite / "current.xml"))
     assert (result.directory / "fast/worker-1/manifest.json").is_file()
     assert (result.directory / "postgres/worker-1/manifest.json").is_file()
+
+
+@pytest.mark.parametrize("collecting", [False, True], ids=["worker-start", "collector-start"])
+def test_mixed_dispatcher_runs_postgres_after_fast_launch_error(
+    suite: Path, monkeypatch: pytest.MonkeyPatch, collecting: bool
+) -> None:
+    source(
+        suite,
+        "test_mixed.py",
+        "import pytest\ndef test_fast_pass():\n    pass\n@pytest.mark.postgres\ndef test_postgres_pass():\n    pass\n",
+    )
+    popen = subprocess.Popen
+
+    def refuse_fast_launch(command: list[str], **kwargs: object) -> subprocess.Popen[bytes]:
+        if "not postgres" in command and ("--collect-only" in command) == collecting:
+            raise BlockingIOError(errno.EAGAIN, "controlled fast startup failure")
+        return popen(command, **kwargs)
+
+    monkeypatch.setattr(runner.subprocess, "Popen", refuse_fast_launch)
+    result = run_suite(suite, target="api")
+    report = suite / "current.xml"
+    assert result.returncode == 1
+    assert report_nodes(report) == ["apps/api/tests/test_mixed.py::test_postgres_pass"]
+    [error] = ET.parse(report).findall(".//error")
+    assert "controlled fast startup failure" in error.attrib["message"]
 
 
 @pytest.mark.parametrize(

@@ -157,10 +157,11 @@ level; it is the detailed authority for test execution.
 ```bash
 npm run test:api:fast
 npm run architecture:check
-npm run migrate:api
 ```
 
 Use `npm run test:api:postgres` for the PostgreSQL partition and
 `npm run test:api` for the complete backend suite after starting the local test
 server or supplying explicit test database configuration. These commands do
 not instrument coverage; see the Testing Strategy for coverage commands.
+`npm run migrate:api` applies migrations to the configured application
+database. The test fixtures handle migrations for their own databases.

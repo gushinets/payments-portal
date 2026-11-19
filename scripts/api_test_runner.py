@@ -411,6 +411,19 @@ def merge_junit(
     ET.ElementTree(merged).write(destination, encoding="utf-8", xml_declaration=True)
 
 
+def retain_worker_reports(
+    invocations: Sequence[Invocation], reports: dict[Path, ET.Element], errors: list[str]
+) -> None:
+    # execute() has stopped and joined any children it started.
+    for invocation in invocations:
+        report_path = invocation.directory / "junit.xml"
+        if report_path not in reports and report_path.is_file():
+            try:
+                reports[report_path] = read_junit(report_path)
+            except RunnerError as exc:
+                errors.append(str(exc))
+
+
 def run_api_tests(
     *,
     root: Path,
@@ -454,26 +467,26 @@ def run_api_tests(
         with interrupt_on_termination():
             for partition in partitions:
                 invocations = []
-                part_dir = directory / partition.name.lower()
-                part_dir.mkdir()
-                collection_dir = part_dir / "collection"
-                collection_dir.mkdir()
-                command = pytest_command(
-                    collection_dir,
-                    [
-                        "--collect-only",
-                        "-q",
-                        "-m",
-                        partition,
-                        *arguments.options,
-                        *(arguments.selectors or ["apps/api/tests"]),
-                    ],
-                )
-                code = execute(
-                    [Invocation(command, collection_dir)], root, environment
-                )[0]
-                returncodes.append(code)
                 try:
+                    part_dir = directory / partition.name.lower()
+                    part_dir.mkdir()
+                    collection_dir = part_dir / "collection"
+                    collection_dir.mkdir()
+                    command = pytest_command(
+                        collection_dir,
+                        [
+                            "--collect-only",
+                            "-q",
+                            "-m",
+                            partition,
+                            *arguments.options,
+                            *(arguments.selectors or ["apps/api/tests"]),
+                        ],
+                    )
+                    code = execute(
+                        [Invocation(command, collection_dir)], root, environment
+                    )[0]
+                    returncodes.append(code)
                     manifest = read_manifest(collection_dir / "manifest.json", code)
                     expected = manifest["nodeids"]
                     if code != 0 and not (
@@ -551,21 +564,14 @@ def run_api_tests(
                             errors.append(str(exc))
                 except RunnerError as exc:
                     errors.append(str(exc))
-    except (KeyboardInterrupt, OSError) as exc:
-        interrupted = isinstance(exc, KeyboardInterrupt)
-        # execute() has stopped and joined every child it started. Preserve
-        # their completed/partial reports, including after a later spawn fails.
-        for invocation in invocations:
-            report_path = invocation.directory / "junit.xml"
-            if report_path not in reports and report_path.is_file():
-                try:
-                    reports[report_path] = read_junit(report_path)
-                except RunnerError as report_error:
-                    errors.append(str(report_error))
+                except OSError as exc:
+                    retain_worker_reports(invocations, reports, errors)
+                    errors.append(f"Cannot execute test process for {partition.name.lower()}: {exc}")
+    except KeyboardInterrupt:
+        interrupted = True
+        retain_worker_reports(invocations, reports, errors)
         errors.append(
             "API test run interrupted; children stopped and joined. Inspect interrupted.json for forced termination."
-            if interrupted
-            else f"Cannot execute test process: {exc}"
         )
     roots = list(reports.values())
     if not roots and not errors:

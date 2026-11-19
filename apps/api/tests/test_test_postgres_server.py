@@ -33,8 +33,9 @@ def test_test_db_uses_written_runtime_values_over_parent_environment(
     repo.cmd_test_db(argparse.Namespace(action="up"))
     runtime = repo.read_runtime_env()
     assert len(captured) == 1
-    for name in ("POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT_TEST"):
-        assert captured[0][name] == runtime[name] != "parent-value"
+    assert captured[0]["POSTGRES_PORT_TEST"] == runtime["POSTGRES_PORT_TEST"] != "parent-value"
+    for name in ("POSTGRES_USER", "POSTGRES_PASSWORD"):
+        assert captured[0][name] not in {runtime[name], "parent-value"}
 
 
 def test_test_server_identity_is_worktree_scoped_and_separate_from_development(tmp_path: Path) -> None:
@@ -50,6 +51,66 @@ def test_test_server_identity_is_worktree_scoped_and_separate_from_development(t
     for config in (first, second):
         assert config.test_postgres_port not in repo.runtime_ports(config)
     assert repo.runtime_config(7, root=tmp_path / "first").test_postgres_port == first.test_postgres_port + 7
+
+
+def test_test_server_credentials_distinguish_worktrees_with_the_same_port(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(repo, "HARNESS_DIR", tmp_path)
+    monkeypatch.setattr(repo, "RUNTIME_JSON", tmp_path / "runtime.json")
+    monkeypatch.setattr(repo, "RUNTIME_ENV", tmp_path / "runtime.env")
+    monkeypatch.setattr(repo, "read_dotenv", dict)
+    monkeypatch.setattr(repo, "tool", lambda name: name)
+    first = repo.runtime_config(root=tmp_path / "first")
+    second_root = tmp_path / "second"
+    offset = first.test_postgres_port - repo.runtime_config(root=second_root).test_postgres_port
+    second = repo.runtime_config(offset, root=second_root)
+    assert first.test_postgres_port == second.test_postgres_port
+    captured: list[dict[str, str]] = []
+    monkeypatch.setattr(repo, "run", lambda command, *, env: captured.append(env))
+    for config in (first, second):
+        monkeypatch.setattr(repo, "load_runtime", lambda: config)
+        repo.cmd_test_db(argparse.Namespace(action="up"))
+        development = repo.read_runtime_env()
+        for name in ("POSTGRES_USER", "POSTGRES_PASSWORD"):
+            assert captured[-1][name] != development[name]
+    for name in ("POSTGRES_USER", "POSTGRES_PASSWORD"):
+        assert captured[0][name] != captured[1][name]
+
+
+@pytest.mark.parametrize("missing", ["runtime.env", "runtime.json"])
+def test_test_startup_preserves_existing_runtime_when_a_file_is_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, missing: str
+) -> None:
+    runtime_json, runtime_env = tmp_path / "runtime.json", tmp_path / "runtime.env"
+    monkeypatch.setattr(repo, "HARNESS_DIR", tmp_path)
+    monkeypatch.setattr(repo, "RUNTIME_JSON", runtime_json)
+    monkeypatch.setattr(repo, "RUNTIME_ENV", runtime_env)
+    monkeypatch.setattr(repo, "read_dotenv", dict)
+    config = repo.runtime_config(37, root=tmp_path)
+    repo.write_runtime(config)
+    missing_file = tmp_path / missing
+    existing_file = runtime_json if missing_file == runtime_env else runtime_env
+    original = existing_file.read_bytes()
+    missing_file.unlink()
+    monkeypatch.setattr(repo, "port_is_free", lambda port: False)
+    monkeypatch.setattr(repo, "tool", lambda name: name)
+    monkeypatch.setattr(
+        repo,
+        "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(
+            command, 0, stdout=f"127.0.0.1:{config.test_postgres_port}"
+        ),
+    )
+    dotenv_reads: list[bool] = []
+    monkeypatch.setattr(repo, "read_dotenv", lambda: dotenv_reads.append(True) or {"SMTP_HOST": "synthetic.test"})
+
+    with pytest.raises(repo.HarnessError, match=rf"(?s){missing}.*python scripts/repo.py test-db up"):
+        repo.api_test_environment("api-postgres", {})
+
+    assert existing_file.read_bytes() == original
+    assert not missing_file.exists()
+    assert not dotenv_reads
 
 
 def test_old_runtime_json_still_loads_and_writes_dedicated_test_port(
@@ -83,7 +144,7 @@ def test_stale_runtime_refuses_development_port_and_explains_recovery(
     }
     if test_port is not None:
         runtime["POSTGRES_PORT_TEST"] = test_port
-    monkeypatch.setattr(repo, "read_runtime_env", lambda: runtime)
+    monkeypatch.setattr(repo, "read_runtime_env", lambda *, initialize: runtime)
     monkeypatch.setattr(repo, "port_is_free", lambda _: pytest.fail("Do not probe an invalid test port"))
 
     with pytest.raises(repo.HarnessError, match=r"(?s)POSTGRES_PORT_TEST.*python scripts/repo.py test-db up"):
@@ -91,37 +152,39 @@ def test_stale_runtime_refuses_development_port_and_explains_recovery(
 
 
 def test_stopped_test_server_explains_recovery_even_with_development_running(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = repo.runtime_config()
+    monkeypatch.setattr(repo, "load_runtime", lambda *, initialize: config)
     monkeypatch.setattr(
         repo,
         "read_runtime_env",
-        lambda: {
+        lambda *, initialize: {
             "POSTGRES_DB": "payments_worktree",
             "POSTGRES_USER": "test-user",
             "POSTGRES_PASSWORD": "synthetic-password",
             "POSTGRES_PORT": "32053",
-            "POSTGRES_PORT_TEST": "42053",
+            "POSTGRES_PORT_TEST": str(config.test_postgres_port),
         },
     )
-    monkeypatch.setattr(repo, "port_is_free", lambda port: port == 42053)
+    monkeypatch.setattr(repo, "port_is_free", lambda port: port == config.test_postgres_port)
 
     with pytest.raises(repo.HarnessError, match=r"(?s)not running.*python scripts/repo.py test-db up"):
         repo.api_test_environment("api-postgres", {})
 
 
-@pytest.mark.parametrize("mapping", ["", "127.0.0.1:42054\n", "0.0.0.0:42053\n"])
+@pytest.mark.parametrize("mapping", ["", "127.0.0.1:1\n", "0.0.0.0:{port}\n"])
 def test_another_listener_cannot_replace_the_worktree_server(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mapping: str
 ) -> None:
     config = repo.runtime_config(root=tmp_path)
-    monkeypatch.setattr(repo, "load_runtime", lambda: config)
+    monkeypatch.setattr(repo, "load_runtime", lambda *, initialize: config)
     monkeypatch.setattr(
         repo,
         "read_runtime_env",
-        lambda: {
+        lambda *, initialize: {
             "POSTGRES_DB": "payments_worktree",
             "POSTGRES_USER": "test-user",
             "POSTGRES_PASSWORD": "synthetic-password",
-            "POSTGRES_PORT_TEST": "42053",
+            "POSTGRES_PORT_TEST": str(config.test_postgres_port),
         },
     )
     monkeypatch.setattr(repo, "port_is_free", lambda port: False)
@@ -130,7 +193,9 @@ def test_another_listener_cannot_replace_the_worktree_server(
     def compose_port(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         assert command[:4] == ["docker", "compose", "--project-name", f"{config.compose_project}-tests"]
         assert command[-3:] == ["port", "postgres", "5432"]
-        return subprocess.CompletedProcess(command, 0 if mapping else 1, stdout=mapping)
+        return subprocess.CompletedProcess(
+            command, 0 if mapping else 1, stdout=mapping.format(port=config.test_postgres_port)
+        )
 
     monkeypatch.setattr(repo, "run", compose_port)
     with pytest.raises(repo.HarnessError, match=r"(?s)worktree.*python scripts/repo.py test-db up"):

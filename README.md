@@ -82,13 +82,9 @@ design system, using navy/amber, flat dark panels and compact styling.
    npm run repo:setup
    ```
 
-5. Start an isolated worktree environment:
-
-   ```bash
-   npm run repo:up
-   ```
-
-6. Run the canonical checks:
+5. For PostgreSQL-free verification, run `npm run check:fast`. For the full
+   check, use the dedicated test PostgreSQL server. The repository-pinned
+   image must already be installed locally.
 
    ```bash
    python scripts/repo.py test-db up
@@ -96,8 +92,11 @@ design system, using navy/amber, flat dark panels and compact styling.
    python scripts/repo.py test-db stop
    ```
 
-   Use `npm run check:fast` for PostgreSQL-free feedback. Stop the dedicated
-   test server only after its tests finish.
+6. For manual app use or browser E2E, start the worktree application stack:
+
+   ```bash
+   npm run repo:up
+   ```
 
 Runtime state and test evidence are written to the ignored `.harness/`
 directory. Each Git worktree receives an isolated Compose project, database,
@@ -136,8 +135,9 @@ npm run build:api
 The API test boundaries are intentional: `test:api:fast` is PostgreSQL-free,
 `test:api:postgres` runs PostgreSQL with four processes by default, and
 `test:api` runs fast tests serially followed by parallel PostgreSQL. Use
-`npm run test:api:postgres -- --workers 1` for serial diagnosis. Frontend tests
-and browser E2E remain separate commands.
+`npm run test:api:postgres -- --workers 1` for serial diagnosis. The PostgreSQL
+partition needs the dedicated test server or an explicitly configured test
+database server.
 
 Use `npm run check:fast -- --coverage` or `npm run check -- --coverage` to
 collect API-fast and component coverage in their single test executions. The
@@ -145,27 +145,8 @@ complete check also builds web and runs PostgreSQL uninstrumented; browsers
 require a separate run or `RUN_E2E=true` with a running harness stack. Standalone
 `python scripts/repo.py coverage api` covers the complete backend serially.
 
-For local PostgreSQL tests on Unix/WSL, start and stop only the worktree-local
-server through the minimal Makefile shortcuts:
-
-```bash
-make test_db_up
-npm run test:api:postgres
-make test_db_stop
-```
-
-The cross-platform equivalents are `python scripts/repo.py test-db up` and
-`python scripts/repo.py test-db stop`. This starts a dedicated test Compose
-project with a worktree-scoped loopback `POSTGRES_PORT_TEST`, separate from the
-development server and volume. It needs up to **2 GiB RAM** for its tmpfs plus
-PostgreSQL/test-process memory; stopping it loses all disposable test state.
-The pinned PostgreSQL image must already be installed (no automatic pull).
-Compose and `repo.py` own the server container; pytest owns unique per-process
-scenario/template databases and clones the migrated template for each ordinary
-database test. Developers must not manually create or drop these databases.
-See the [Testing Strategy](docs/engineering/TESTING.md) as the detailed authority
-for configuration precedence, lifecycle, focused selectors, workers, reports,
-interruption handling and test-design rules.
+See the [Testing Strategy](docs/engineering/TESTING.md) for server setup,
+configuration precedence, focused selectors and reports.
 
 ## Runtime baseline
 
@@ -250,7 +231,6 @@ npm run dev:web
 npm run dev:api
 npm run lint:web
 npm run build:web
-npm run test:api
 npm run migrate:api
 ```
 

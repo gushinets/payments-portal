@@ -275,26 +275,30 @@ def test_direct_pytest_fixture_uses_canonical_database_precedence(
 def test_direct_pytest_fixture_uses_worktree_runtime_when_no_explicit_input(monkeypatch: pytest.MonkeyPatch) -> None:
     from apps.api.tests.conftest import database_test_url
 
+    config = repo.runtime_config()
+    port = config.test_postgres_port
+    test_environment = repo.worktree_test_postgres_environment(config)
     monkeypatch.setattr(
         repo,
         "read_runtime_env",
-        lambda: {
+        lambda *, initialize: {
             "POSTGRES_USER": "synthetic",
             "POSTGRES_PASSWORD": "synthetic",
             "POSTGRES_PORT": "5433",
-            "POSTGRES_PORT_TEST": "15433",
+            "POSTGRES_PORT_TEST": str(port),
             "POSTGRES_DB": "worktree",
         },
     )
     monkeypatch.setattr(repo, "port_is_free", lambda port: False)
-    monkeypatch.setattr(repo, "load_runtime", repo.runtime_config)
+    monkeypatch.setattr(repo, "load_runtime", lambda *, initialize: config)
     monkeypatch.setattr(repo, "tool", lambda name: name)
     monkeypatch.setattr(
-        repo, "run", lambda command, **kwargs: subprocess.CompletedProcess(command, 0, stdout="127.0.0.1:15433\n")
+        repo, "run", lambda command, **kwargs: subprocess.CompletedProcess(command, 0, stdout=f"127.0.0.1:{port}\n")
     )
     with patch.dict(os.environ, {}, clear=True):
         resolved = database_test_url.__wrapped__()
         assert resolved.database.endswith("_tests") and resolved.database != "worktree_tests"
         assert resolved.host == "127.0.0.1"
-        assert resolved.port == 15433
-        assert resolved.username == resolved.password == "synthetic"
+        assert resolved.port == port
+        assert resolved.username == test_environment["POSTGRES_USER"]
+        assert resolved.password == test_environment["POSTGRES_PASSWORD"]

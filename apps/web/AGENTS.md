@@ -158,6 +158,8 @@ npm run build:web
 npm run test:e2e
 ```
 
+Start the worktree application stack with `npm run repo:up` before browser E2E.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know

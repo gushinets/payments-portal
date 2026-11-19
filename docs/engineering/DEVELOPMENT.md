@@ -1,7 +1,7 @@
 # Development Environment
 
 Status: authoritative
-Last verified: 2026-11-13 (test workflow; dated mock evidence below is unchanged)
+Last verified: 2026-11-19 (test workflow)
 
 Use `scripts/repo.py` through root npm commands. It derives a stable worktree ID,
 Compose project, database port, and service ports without sharing state with
@@ -13,9 +13,10 @@ npm run repo:setup
 npm run repo:up
 ```
 
-The harness writes `.harness/runtime.json` and `.harness/runtime.env`; both are
-untracked. Use `npm run repo:down` for normal teardown and `npm run repo:reset`
-only when disposable database state may be removed.
+The application harness writes `.harness/runtime.json` and
+`.harness/runtime.env`. Use `npm run repo:down` for normal teardown. The
+[local database reset procedure](../architecture/deployment.md#one-time-step-4-recreate-and-current-bootstrap)
+documents the destructive reset separately.
 
 Lower-level commands are diagnostic interfaces, not substitutes for the
 canonical full check:
@@ -24,7 +25,6 @@ canonical full check:
 npm run dev:web
 npm run dev:api
 npm run lint:web
-npm run test:api
 ```
 
 ## API dependency management
@@ -52,14 +52,6 @@ environment, run:
 npm run sync:api
 ```
 
-The normal repository flow is:
-
-```bash
-npm run repo:doctor
-npm run repo:setup
-npm run repo:up
-```
-
 API runtime, migration, test, and build operations are exposed through the
 root aliases `dev:api`, `migrate:api`, `test:api:fast`, `test:api:postgres`,
 `test:api`, and `build:api`. Repository checks remain `npm run check:fast` and
@@ -67,36 +59,13 @@ root aliases `dev:api`, `migrate:api`, `test:api:fast`, `test:api:postgres`,
 without duplicate executions. See the [Testing Strategy](TESTING.md) for exact
 check scope, standalone coverage and CI behavior.
 
-## Minimal Makefile
+## Local PostgreSQL tests
 
-The Makefile contains only the `test_db_up` and `test_db_stop` convenience
-shortcuts. Normal startup uses `npm run repo:up -- --reuse`; direct product
-linking uses the one `app.cli.commercial_mappings` CLI. See the
-[normal LBX connection and link runbook](ANY-709-billing-runbook.md). Historical
-`catalog_preview`/`catalog_preview_publish` shortcuts have been retired.
-
-Compose and `repo.py` own the dedicated worktree test server, separate from the
-development server and persistent volume. It uses a loopback `POSTGRES_PORT_TEST`
-and a 2 GiB tmpfs; allow that RAM plus PostgreSQL/test-process memory. Stopping
-it loses all disposable test state. The pinned image must already be installed;
-`test-db up` does not pull it. pytest owns unique per-process scenario/template
-databases, migration and fresh clones; developers must not create or drop them.
-
-The normal Unix/WSL PostgreSQL flow is:
-
-```bash
-make test_db_up
-npm run test:api:postgres
-make test_db_stop
-```
-
-The complete backend flow uses `npm run test:api` in the middle. The
-`test:api:fast` alias remains PostgreSQL-independent and serial; PostgreSQL
-defaults to four processes. Use `npm run test:api:postgres -- --workers 1` for
-serial diagnosis. Cross-platform server commands are
-`python scripts/repo.py test-db up` and `python scripts/repo.py test-db stop`.
-The [Testing Strategy](TESTING.md) is the detailed authority for configuration
-precedence, safe ownership, selectors, reports and interruption handling.
+The Makefile supplies `test_db_up` and `test_db_stop` on Unix/WSL. Use the
+[test-server lifecycle](TESTING.md#test-environment-and-server-lifecycle) for
+the required image, cross-platform commands and explicit server settings.
+`npm run test:api` and `npm run check` include PostgreSQL. Start the test
+server before either command and stop it after all PostgreSQL tests finish.
 
 
 ## Local Kernel Manifest Mock (ANY-664, development only)
@@ -119,7 +88,10 @@ The same standalone server serves read-only [Swagger UI](http://127.0.0.1:8091/d
 
 The mock uses the standard-library `ThreadingHTTPServer`; an actively delayed manifest request does not block `/docs` or `/openapi.json`. Existing service-auth, exact-scope, browser-origin and explicit development/test startup restrictions remain in place.
 
-For local visual development, [Step 7 wiring](#step-7-optional-http-mock-walkthrough-historical-any-664) adds an opt-in HTTP mock container on the worktree backend network and a real Portal backend/PostgreSQL/localized frontend walkthrough. The joined positive browser acceptance passed on 2026-10-21; see the execution record below. The mock exposes the manifest and local documentation routes, not a whole Kernel or a shared SDK.
+For local visual development, the [billing runbook](ANY-709-billing-runbook.md#connection-and-deployment)
+describes the supported harness mock configuration. The
+[Step 7 walkthrough](#step-7-optional-http-mock-walkthrough-historical-any-664)
+records the Portal/API/PostgreSQL browser acceptance on 2026-10-21.
 
 - Portal implements **one** typed Kernel HTTP client for configured real or explicit dev/test mock sources. Local mock checks do not establish real-producer conformance or sales approval; see the [current integration map](../integrations/platform-kernel.md#observed-implementation) for the implemented producer and pinned evidence. Runtime must not import mock fixtures or fall back to them, and browsers do not call mock internals.
 - Local mock is **disabled by default**; it can be stopped and removed without preventing Portal builds, database migrations, or normal startup. Missing Kernel must fail closed for **new publication and new purchase admission**, with no source-manifest cache fallback; previously confirmed paid subscriptions retain their separate finite trust rules. Mock-derived mapping evidence must be **SIMULATED**, rejected by real admission and excluded from production catalog queries even after changing URLs. No configuration switch upgrades an old simulated revision.
@@ -254,9 +226,11 @@ source cleanup and PostgreSQL lock/CAS. A link is an association, not an accepte
 price or calendar lease. Current offer reads need the configured billing calendar.
 
 The remaining dated ANY-664 sections retain reproduction procedures and evidence
-for their stated snapshots. Current publication/setup uses the
-[connection/link runbook](ANY-709-billing-runbook.md); the historical approval-file
-workflow below is not a current operator requirement.
+for their original revisions. To reproduce those results, use the underlying
+source revision from the
+[ANY-664 execution record](../exec-plans/completed/ANY-664-implementation-plan.md).
+For current setup and publication, use the
+[connection/link runbook](ANY-709-billing-runbook.md).
 
 ## Step 6 stored catalog acceptance (historical ANY-664)
 
@@ -293,52 +267,13 @@ npm run test:api:postgres
 npm --workspace @anytoolai/web run test:components -- tests/components/CatalogTransport.test.ts tests/components/CatalogPreview.test.tsx tests/components/RequestFailures.test.ts
 npm run test:boundaries:web
 npm run typecheck:web
+./.venv/bin/python scripts/repo.py test-db stop
 ```
 
-Then start or update the working harness and publish the fixture through the
-existing publisher with one command. This shortcut selects the repository-root
-virtual environment directly and does not require shell activation.
-
-```bash
-mkdir -p .harness/kernel-walkthrough
-chmod 700 .harness/kernel-walkthrough
-export MAPPING_OPERATOR_LOCK_FILE="$PWD/.harness/kernel-walkthrough/operator.lock"
-make catalog_preview
-# For browser acceptance, use the standalone HTTP publication procedure below.
-```
-
-`make catalog_preview` delegates to `scripts/repo.py up --reuse`, then runs
-`make catalog_preview_publish` only if startup succeeded. Repeating it updates
-the existing stack and republishes through the same guarded use case. It does
-not start the standalone Kernel HTTP mock. Both shortcuts explicitly select
-`MAPPING_ACCOUNT_ID=simulated-ru-lbx-account` and the publication shortcut passes
-the invoking Unix UID via `MAPPING_OPERATOR_UIDS="[$(id -u)]"`.
-
-For an already running harness with that account configured, publication alone is:
-
-```bash
-make catalog_preview_publish
-```
-
-An identical publication returns the existing revision without appending a
-duplicate. The shortcuts default `CATALOG_PREVIEW_PREVIOUS_REVISION` to `0`;
-changed material retains the publisher's revision conflict and approval guards.
-Only after inspecting existing history may the operator pass an explicit
-`CATALOG_PREVIEW_PREVIOUS_REVISION` Make variable. No automatic conflict retry,
-history rewrite or database reset is performed.
-
-The shortcuts do not edit `.env`. Use `make catalog_preview` again on subsequent
-starts, or set the same `MAPPING_ACCOUNT_ID` in local `.env` when using ordinary
-`npm run repo:up -- --reuse` instead.
-The helper loads the existing host-API environment before importing application
-settings, so `INSTANCE_TENANT_ID` and `INSTANCE_REGION` can come from the harness
-even when an older `.env` lacks them. Explicit shell and `.env` values retain
-their existing precedence; mismatched scope or a non-development environment
-still causes refusal. The helper itself never invents a UID allowlist; the
-explicit Make shortcuts supply it only for this declared simulation.
-
-The explicit UID allowlist grants only permission to run the local publisher;
-it does not approve a real product or legal/commercial terms. The helper uses
+The former preview shortcuts were retired in ANY-709. The dated reproduction
+commands remain in the history of this document at commit `e7d12a24`. The
+original helper required the declared simulated account and an explicit UID
+allowlist for the local publisher. The helper used
 the existing Step 5 independently declared approval and isolated Kernel/LBX HTTP
 recordings through the real clients, normalizer, evaluator and PostgreSQL
 publisher. It records the actual authorized OS principal and SIMULATED evidence,
@@ -605,15 +540,13 @@ That recreates the API without the dev source settings/mount. Saved simulation
 remains saved simulation; genuine historic rows remain subject to ordinary
 DB-only selection.
 
-Run the source regressions and canonical checks manually. PostgreSQL tests own
-the disposable `_tests` DB lifecycle and never use the walkthrough DB:
+Use the dedicated test server for the canonical check. pytest owns its
+disposable databases. The walkthrough uses the separate application DB.
 
 ```bash
-npm run test:api:fast
 ./.venv/bin/python scripts/repo.py test-db up
-npm run test:api:postgres
-npm run check:fast
 npm run check
+./.venv/bin/python scripts/repo.py test-db stop
 ```
 
 The new focused files are `test_kernel_mock_dev.py` (opt-in/UID/config guards)
@@ -772,9 +705,8 @@ PYTEST_PROCESSES
 
 .venv/bin/python scripts/repo.py test-db up
 npm run test:api:postgres
-.venv/bin/python scripts/repo.py test-db stop
-
 RUN_E2E=true npm run check
+.venv/bin/python scripts/repo.py test-db stop
 ```
 
 The fast suite includes account-calendar/DST bounds, expiry during Kernel/LBX

@@ -1364,11 +1364,6 @@ def test_test_db_commands_target_only_postgres(monkeypatch: pytest.MonkeyPatch) 
     invocations: list[list[str]] = []
     monkeypatch.setattr(repo, "load_runtime", lambda: config)
     monkeypatch.setattr(repo, "write_runtime", lambda _: None)
-    monkeypatch.setattr(
-        repo,
-        "read_runtime_env",
-        lambda: {"POSTGRES_USER": "test-user", "POSTGRES_PASSWORD": "synthetic", "POSTGRES_PORT_TEST": "15432"},
-    )
     monkeypatch.setattr(repo, "tool", lambda name: name)
     monkeypatch.setattr(repo, "compose_command", lambda _: pytest.fail("Development stack must stay untouched"))
     monkeypatch.setattr(repo, "run", lambda command, **_: invocations.append(command))
@@ -1421,50 +1416,55 @@ def test_api_test_environment_rejects_partial_explicit_postgres_configuration() 
 
 
 def test_api_test_environment_derives_worktree_test_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = repo.runtime_config()
+    port = config.test_postgres_port
     runtime_env = {
         "POSTGRES_DB": "payments_worktree",
         "POSTGRES_USER": "anytoolai",
         "POSTGRES_PASSWORD": "local-password",
         "POSTGRES_PORT": "32053",
-        "POSTGRES_PORT_TEST": "42053",
+        "POSTGRES_PORT_TEST": str(port),
     }
-    monkeypatch.setattr(repo, "read_runtime_env", lambda: runtime_env)
-    config = repo.runtime_config()
-    monkeypatch.setattr(repo, "load_runtime", lambda: config)
+    monkeypatch.setattr(repo, "read_runtime_env", lambda *, initialize: runtime_env)
+    monkeypatch.setattr(repo, "load_runtime", lambda *, initialize: config)
     monkeypatch.setattr(repo, "tool", lambda name: name)
+    test_environment = repo.worktree_test_postgres_environment(config)
     probed_ports: list[int] = []
     monkeypatch.setattr(repo, "port_is_free", lambda port: probed_ports.append(port) or False)
 
     def published_port(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         assert command == [*repo.test_compose_command(config), "port", "postgres", "5432"]
-        assert kwargs["env"] == repo.test_compose_environment(runtime_env, isolated_api_environment(environ={}))
-        return subprocess.CompletedProcess(command, 0, stdout="127.0.0.1:42053\n")
+        assert kwargs["env"] == {**isolated_api_environment(environ={}), **test_environment}
+        return subprocess.CompletedProcess(command, 0, stdout=f"127.0.0.1:{port}\n")
 
     monkeypatch.setattr(repo, "run", published_port)
     environment: dict[str, str] = {}
 
     result = api_test_environment("api", environment)
 
+    user, password = test_environment["POSTGRES_USER"], test_environment["POSTGRES_PASSWORD"]
     assert result["TEST_POSTGRES_DATABASE_URL"] == (
-        "postgresql+psycopg://anytoolai:local-password@127.0.0.1:42053/payments_worktree_tests"
+        f"postgresql+psycopg://{user}:{password}@127.0.0.1:{port}/payments_worktree_tests"
     )
-    assert probed_ports == [42053]
+    assert probed_ports == [port]
 
 
 def test_api_test_environment_ignores_empty_explicit_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = repo.runtime_config()
+    port = config.test_postgres_port
     runtime_env = {
         "POSTGRES_DB": "payments_worktree",
         "POSTGRES_USER": "anytoolai",
         "POSTGRES_PASSWORD": "local-password",
         "POSTGRES_PORT": "32053",
-        "POSTGRES_PORT_TEST": "42053",
+        "POSTGRES_PORT_TEST": str(port),
     }
-    monkeypatch.setattr(repo, "read_runtime_env", lambda: runtime_env)
+    monkeypatch.setattr(repo, "read_runtime_env", lambda *, initialize: runtime_env)
     monkeypatch.setattr(repo, "port_is_free", lambda _: False)
-    monkeypatch.setattr(repo, "load_runtime", repo.runtime_config)
+    monkeypatch.setattr(repo, "load_runtime", lambda *, initialize: config)
     monkeypatch.setattr(repo, "tool", lambda name: name)
     monkeypatch.setattr(
-        repo, "run", lambda command, **kwargs: subprocess.CompletedProcess(command, 0, stdout="127.0.0.1:42053\n")
+        repo, "run", lambda command, **kwargs: subprocess.CompletedProcess(command, 0, stdout=f"127.0.0.1:{port}\n")
     )
     environment = {"TEST_POSTGRES_DATABASE_URL": ""}
 
