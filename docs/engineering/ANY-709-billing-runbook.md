@@ -568,10 +568,12 @@ independent of purchase lifecycle.
 
 ## Browser operation and diagnostics
 
-Prepared product detail links to `/account?purchase=<id>#billing`. The deep link
-selects an owned purchase but never opens payment automatically. One shared
-cabinet Widget serves account/payment views; multiple purchases need explicit
-selection. Owned inventory remains available independently of source catalog.
+The explicit payment CTA on prepared product detail links to
+`/account?purchase=<id>#billing` and starts payment opening on that cabinet
+visit. Direct links, reloads and history navigation restore selection and require
+a fresh click. One shared cabinet Widget serves account and payment views.
+Multiple purchases need explicit selection. Owned inventory remains available
+independently of source catalog.
 Refresh billing disposes the old host, rechecks the same purchase and opens a
 fresh Widget. It creates no subscription/payment; the provider may require
 selecting the intended agreement again. There is no supported payment-completed
