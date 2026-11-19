@@ -65,6 +65,88 @@ DBs, origins, credentials, sellers and provider objects. Do not repoint a
 populated test DB to production or copy its customer IDs. Production uses the
 normal Compose file plus `docker-compose.prod.yml` and its own launch gates.
 
+## Local purchase through paid access
+
+Use this checklist for a manual test from registration through test payment and
+confirmed access in the cabinet.
+
+### Before startup
+
+- Use `APP_ENV=development` or `APP_ENV=test`, an isolated Portal database, and a
+  test LBX environment with an approved test payment method. Check the
+  [LBX and backend settings](#connection-and-deployment). Before running a host
+  migration, confirm that its effective `DATABASE_URL` targets the isolated
+  database as well. A shell override can change the host migration target.
+- Configure a test SMTP sink such as Mailpit. Set `SMTP_HOST` and `SMTP_PORT` to
+  an address and port reachable from the running API, and set `SMTP_FROM_EMAIL`
+  to a test sender. For a local sink without STARTTLS, set `SMTP_USE_TLS=false`.
+  With an empty `SMTP_HOST`, registration can succeed without sending the
+  verification email. Set `APP_PUBLIC_BASE_URL` to the local Portal origin the
+  buyer opens so the verification link returns to that origin.
+- Set `BILLING_WORKER_ENABLED=true` and explicitly set
+  `PAID_ACCESS_CLOCK_SKEW_SECONDS` to a supported value from 1 to 299 seconds.
+  The clock budget has no default. Leaving it empty prevents the worker from
+  issuing new paid access and allowances. See the
+  [worker settings](billing-background-operations.md#embedded-worker-settings-and-resource-limits).
+- For a fresh isolated database, select an enabled product and a supported test
+  offer. Identify the enabled metric and unit in the configured backend manifest
+  and the approved test quantity for publication after startup.
+- The [simulated Brief Decoder test](billing-background-operations.md#monthly-lbx-instance-start-calendar-any-864)
+  requires a prepared isolated fixture with a supported monthly `instance_start`
+  LBX offer already linked to `brief_decoder` without published technical terms.
+  The standard `publish` command creates published terms using the configured
+  source. For the prepared fixture, set `PURCHASE_TEST_TERMS_ENABLED=true`
+  before starting the API. The selected backend manifest must enable
+  `brief_decoder` and its `brief_decoder.test_analyses` metric with unit
+  `analysis`. The [development Kernel mock](#connection-and-deployment) includes
+  this metric and requires `APP_ENV=development` when run by the harness.
+
+### After startup, before purchase
+
+After [startup](#startup-and-restart), verify the environment, database target,
+worker, and clock settings in the running API. For the Compose harness, use the
+helper in the startup section. Compare the printed database host, port, and
+name with the intended isolated target.
+
+```bash
+portal_compose exec -T api printenv APP_ENV BILLING_WORKER_ENABLED PAID_ACCESS_CLOCK_SKEW_SECONDS
+portal_compose exec -T api python -c '
+from os import environ
+from sqlalchemy.engine import make_url
+
+db = make_url(environ["DATABASE_URL"])
+print(db.host, db.port, db.database)
+'
+```
+
+Check `/api/health/ready` and verify that `/api/health/billing` reports `running`.
+With a fresh database, [publish the product link](#cli-execution-and-product-linking)
+using the selected metric, unit, and quantity. Use `--allowance-quantity 300`
+for an approved 300-analysis test. With the simulated fixture, use the product-link
+CLI's `query --product-id brief_decoder` to check that a current link exists and
+its `document` has no `technical_offer`. Confirm the linked product shows the
+expected current offer before registering the buyer.
+
+Register the test buyer, confirm the verification email arrives in the test
+mailbox, and open its link before starting the purchase. Before accepting a
+metered purchase, confirm the review shows the expected metric, unit, and
+quantity. The simulated Brief Decoder case should show 300 analyses with
+simulated terms.
+
+### After test payment
+
+1. Confirm that LBX recorded the test payment on the agreement shown for the
+   selected purchase and that the corresponding subscription is active and unblocked.
+2. After the worker reconciles the subscription, read the
+   [authenticated `GET /api/paid-access`](#authenticated-cabinet-paid-access-read)
+   as the verified buyer. Confirm that `grants` includes the product and that its
+   entry in `products` has `status: confirmed`. For a metered purchase, verify one
+   matching allowance with the accepted metric, unit, and quantity. For the
+   simulated Brief Decoder case, expect one `SIMULATED` allowance of 300 analyses.
+3. Refresh paid access in the cabinet and confirm that it shows the same access
+   and purchased limit. If the paid read stays empty after LBX activates the
+   subscription, check the effective clock setting and worker reconciliation.
+
 ## Startup and restart
 
 From the repository root, use the intended environment and root `.venv`:
