@@ -89,10 +89,8 @@ confirmed access in the cabinet.
   issuing new paid access and allowances. See the
   [worker settings](billing-background-operations.md#embedded-worker-settings-and-resource-limits).
 - For a fresh isolated database, select an enabled product and a supported test
-  offer. Use [product linking](#cli-execution-and-product-linking) with the
-  enabled metric and unit from a configured backend manifest and the approved
-  test quantity, for example `--allowance-quantity 300` for an approved
-  300-analysis test.
+  offer. Identify the enabled metric and unit in the configured backend manifest
+  and the approved test quantity for publication after startup.
 - The [simulated Brief Decoder test](billing-background-operations.md#monthly-lbx-instance-start-calendar-any-864)
   requires a prepared isolated fixture with a supported monthly `instance_start`
   LBX offer already linked to `brief_decoder` without published technical terms.
@@ -103,7 +101,7 @@ confirmed access in the cabinet.
   `analysis`. The [development Kernel mock](#connection-and-deployment) includes
   this metric and requires `APP_ENV=development` when run by the harness.
 
-### Before handing off the running stack
+### After startup, before purchase
 
 After [startup](#startup-and-restart), verify the environment, database target,
 worker, and clock settings in the running API. For the Compose harness, use the
@@ -121,16 +119,18 @@ print(db.host, db.port, db.database)
 '
 ```
 
-Check `/api/health/ready`, verify that `/api/health/billing` reports `running`,
-and confirm the linked product shows the expected current offer. The health
-endpoints report service health. Check paid access separately after payment.
+Check `/api/health/ready` and verify that `/api/health/billing` reports `running`.
+With a fresh database, [publish the product link](#cli-execution-and-product-linking)
+using the selected metric, unit, and quantity. Use `--allowance-quantity 300`
+for an approved 300-analysis test. With the simulated fixture, use the product-link
+CLI's `query --product-id brief_decoder` to check that a current link exists and
+its `document` has no `technical_offer`. Confirm the linked product shows the
+expected current offer before registering the buyer.
 
 Register the test buyer, confirm the verification email arrives in the test
-mailbox, and open its link before starting the purchase. If using the simulated
-fixture, use the product-link CLI's `query --product-id brief_decoder` to check
-that a current link exists and its `document` has no `technical_offer`. Before
-accepting a metered purchase, confirm the review shows the expected metric, unit,
-and quantity. The simulated Brief Decoder case should show 300 analyses with
+mailbox, and open its link before starting the purchase. Before accepting a
+metered purchase, confirm the review shows the expected metric, unit, and
+quantity. The simulated Brief Decoder case should show 300 analyses with
 simulated terms.
 
 ### After test payment
