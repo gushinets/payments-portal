@@ -22,7 +22,7 @@ import urllib.request
 import uuid
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Callable, Iterable, get_type_hints
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -761,13 +761,21 @@ def load_runtime(*, initialize: bool = True) -> RuntimeConfig:
         write_runtime(config)
         return config
     try:
-        return RuntimeConfig(**json.loads(RUNTIME_JSON.read_text(encoding="utf-8")))
+        config = RuntimeConfig(**json.loads(RUNTIME_JSON.read_text(encoding="utf-8")))
     except json.JSONDecodeError as exc:
         reason = f"{exc.msg} at line {exc.lineno}, column {exc.colno}"
     except UnicodeDecodeError:
         reason = "expected UTF-8"
     except TypeError:
         reason = "expected runtime settings"
+    else:
+        for name, expected_type in get_type_hints(RuntimeConfig).items():
+            # JSON booleans must not be accepted as integer ports.
+            if type(getattr(config, name)) is not expected_type:
+                reason = f"{name!r} must be {expected_type.__name__}"
+                break
+        else:
+            return config
     raise HarnessError(
         f"Invalid worktree runtime file {RUNTIME_JSON}: {reason}. "
         "See docs/engineering/TESTING.md#recovering-worktree-runtime-metadata."

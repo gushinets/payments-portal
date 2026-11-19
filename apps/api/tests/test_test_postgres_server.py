@@ -136,23 +136,33 @@ def test_old_runtime_json_still_loads_and_writes_dedicated_test_port(
 
 @pytest.mark.parametrize(
     "content,reason",
-    [('{"worktree_id":', "line 1"), ("[]", "expected runtime settings")],
+    [
+        ('{"worktree_id":', "line 1"),
+        ("[]", "expected runtime settings"),
+        ({"postgres_port": "32000"}, "'postgres_port' must be int"),
+        ({"api_port": True}, "'api_port' must be int"),
+        ({"compose_project": None}, "'compose_project' must be str"),
+    ],
 )
 def test_cli_reports_invalid_runtime_json_without_changing_it(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
-    content: str,
+    content: str | dict[str, object],
     reason: str,
 ) -> None:
     runtime_json, runtime_env = tmp_path / "runtime.json", tmp_path / "runtime.env"
     report = tmp_path / "current.xml"
+    config = repo.runtime_config(37, root=tmp_path)
+    if isinstance(content, dict):
+        content = json.dumps({**asdict(config), **content})
     runtime_json.write_text(content, encoding="utf-8")
-    runtime_env.write_text("POSTGRES_DB=synthetic\nPOSTGRES_PORT_TEST=55432\n", encoding="utf-8")
+    runtime_env.write_text(f"POSTGRES_DB=synthetic\nPOSTGRES_PORT_TEST={config.test_postgres_port}\n", encoding="utf-8")
     monkeypatch.setattr(repo, "RUNTIME_JSON", runtime_json)
     monkeypatch.setattr(repo, "RUNTIME_ENV", runtime_env)
     monkeypatch.setattr(repo, "REPOSITORY_VENV", tmp_path / "nonexistent")
     monkeypatch.setattr(repo, "canonical_check_environment", dict)
+    monkeypatch.setattr(repo, "port_is_free", lambda _: pytest.fail("Must not probe an invalid runtime"))
     monkeypatch.setattr(repo, "write_runtime", lambda _: pytest.fail("Invalid runtime must stay intact"))
     monkeypatch.setattr(repo, "run", lambda *args, **kwargs: pytest.fail("Must not start a subprocess"))
 

@@ -170,9 +170,10 @@ servers may use other storage.
 
 ### Recovering worktree runtime metadata
 
-Malformed `runtime.json` produces an error with the file path and cause.
-The API runner records the cause in the requested JUnit report. Keep a copy
-of any damaged file before restoring a valid backup or regenerating it.
+Invalid `runtime.json` produces an error with the file path and cause. A field
+type error identifies the field and its expected type. The API runner records
+the cause in the requested JUnit report. Keep a copy of any damaged file before
+restoring a valid backup or regenerating it.
 
 To regenerate the metadata for an existing worktree, use the offset passed
 to `npm run repo:up -- --port-offset`, or `0` if it used the default.
