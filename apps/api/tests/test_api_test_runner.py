@@ -12,6 +12,7 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
@@ -548,15 +549,21 @@ def test_early_stop_option_accepts_complete_reports(suite: Path, fail_last: bool
     assert not report.findall(".//error")
 
 
-def test_collection_failure_replaces_previous_report_and_still_runs_other_partition(suite: Path) -> None:
+def test_collection_failure_replaces_previous_report_and_still_runs_other_partition(
+    suite: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(runner.uuid, "uuid4", lambda: UUID("99900000-0000-4000-8000-000000000000"))
     source(suite, "test_broken.py", "raise RuntimeError('collection defect')")
     (suite / "current.xml").write_text('<testsuites tests="999"/>')
     result = run_suite(suite, target="api")
     assert result.returncode == 1
-    assert ET.parse(suite / "current.xml").findall(".//error")
-    assert (result.directory / "fast/collection/pytest.log").is_file()
-    assert (result.directory / "postgres/collection/pytest.log").is_file()
-    assert "999" not in (suite / "current.xml").read_text()
+    report = ET.parse(suite / "current.xml").getroot()
+    assert report.get("tests") == report.get("errors") == "2"
+    logs = [result.directory / partition / "collection/pytest.log" for partition in ("fast", "postgres")]
+    assert all(log.is_file() for log in logs)
+    assert [error.get("message") for error in report.findall(".//error")] == [
+        f"Collection failed (exit 2): {log}" for log in logs
+    ]
 
 
 @pytest.mark.parametrize(

@@ -3431,20 +3431,11 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
                 + " together, missing: "
                 + ", ".join(missing_names)
             )
-        from sqlalchemy.engine import URL
-
         try:
-            test_port = int(environment["POSTGRES_PORT_TEST"])
+            int(environment["POSTGRES_PORT_TEST"])
         except ValueError as exc:
             raise HarnessError("POSTGRES_PORT_TEST must be an integer") from exc
-        environment[test_database_url_name] = URL.create(
-            "postgresql+psycopg",
-            username=environment["POSTGRES_USER_TEST"],
-            password=environment["POSTGRES_PASSWORD_TEST"],
-            host=environment.get("POSTGRES_HOST_TEST") or "localhost",
-            port=test_port,
-            database=environment["POSTGRES_DB_TEST"],
-        ).render_as_string(hide_password=False)
+        # Preserve the individual fields until the fixture assigns its generated database name.
         return environment
 
     runtime_env = read_runtime_env()

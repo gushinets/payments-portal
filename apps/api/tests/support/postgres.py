@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
+import signal
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from threading import current_thread, main_thread
+from types import FrameType
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -91,6 +94,37 @@ def dispose_test_engine(engine: Engine) -> None:
     engine.dispose()
 
 
+@contextmanager
+def _defer_database_interrupts() -> Iterator[None]:
+    """Deliver Ctrl-C or the Windows runner's Ctrl-Break after recording the DDL result."""
+    if current_thread() is not main_thread():
+        yield
+        return
+
+    handlers: dict[int, Callable[[int, FrameType | None], object]] = {}
+    pending: tuple[int, FrameType | None] | None = None
+
+    def defer(signum: int, frame: FrameType | None) -> None:
+        nonlocal pending
+        if pending is None:
+            pending = signum, frame
+
+    interrupts = (signal.SIGINT, signal.SIGBREAK) if hasattr(signal, "SIGBREAK") else (signal.SIGINT,)
+    try:
+        for signum in interrupts:
+            handler = signal.getsignal(signum)
+            if callable(handler):
+                signal.signal(signum, defer)
+                handlers[signum] = handler
+        yield
+    finally:
+        for signum, handler in handlers.items():
+            signal.signal(signum, handler)
+        if pending is not None:
+            signum, frame = pending
+            handlers[signum](signum, frame)
+
+
 class PostgresTestDatabase:
     """Own a session's engine and both databases, including partial setup cleanup."""
 
@@ -106,10 +140,12 @@ class PostgresTestDatabase:
         self._template_created = False
 
     def create(self) -> None:
-        create_test_database(self.database_url, self.admin_url)
-        self._database_created = True
-        create_test_database(self.template_url, self.admin_url)
-        self._template_created = True
+        with _defer_database_interrupts():
+            create_test_database(self.database_url, self.admin_url)
+            self._database_created = True
+        with _defer_database_interrupts():
+            create_test_database(self.template_url, self.admin_url)
+            self._template_created = True
         run_migrations(self.template_url)
 
     def restore(self) -> None:
@@ -117,21 +153,24 @@ class PostgresTestDatabase:
         if not self._database_created:
             raise RuntimeError(f"Test database {self.database_url.database!r} is not owned; refusing replacement")
         dispose_test_engine(self.engine)
-        drop_test_database(self.database_url, self.admin_url)
-        self._database_created = False
-        create_test_database(self.database_url, self.admin_url, template_url=self.template_url)
-        self._database_created = True
+        with _defer_database_interrupts():
+            drop_test_database(self.database_url, self.admin_url)
+            self._database_created = False
+        with _defer_database_interrupts():
+            create_test_database(self.database_url, self.admin_url, template_url=self.template_url)
+            self._database_created = True
 
     def close(self) -> None:
-        try:
-            dispose_test_engine(self.engine)
-            if self._database_created:
-                drop_test_database(self.database_url, self.admin_url)
-                self._database_created = False
-        finally:
-            if self._template_created:
-                drop_test_database(self.template_url, self.admin_url)
-                self._template_created = False
+        with _defer_database_interrupts():
+            try:
+                dispose_test_engine(self.engine)
+                if self._database_created:
+                    drop_test_database(self.database_url, self.admin_url)
+                    self._database_created = False
+            finally:
+                if self._template_created:
+                    drop_test_database(self.template_url, self.admin_url)
+                    self._template_created = False
 
 
 @contextmanager

@@ -1404,18 +1404,15 @@ def test_api_test_environment_preserves_complete_explicit_postgres_configuration
 ) -> None:
     environment = {
         "POSTGRES_USER_TEST": "test-user",
-        "POSTGRES_PASSWORD_TEST": "test-password",
+        "POSTGRES_PASSWORD_TEST": "synthetic pass#@/%+",
         "POSTGRES_PORT_TEST": "5432",
-        "POSTGRES_DB_TEST": "payments_test",
+        "POSTGRES_DB_TEST": "team?qa_tests",
         "POSTGRES_HOST_TEST": "localhost",
     }
     monkeypatch.setattr(repo, "read_runtime_env", lambda: (_ for _ in ()).throw(AssertionError()))
 
     result = api_test_environment("api", environment)
-    assert result == {
-        **isolated_api_environment(environ=environment),
-        "TEST_POSTGRES_DATABASE_URL": "postgresql+psycopg://test-user:test-password@localhost:5432/payments_test",
-    }
+    assert result == isolated_api_environment(environ=environment)
 
 
 def test_api_test_environment_rejects_partial_explicit_postgres_configuration() -> None:

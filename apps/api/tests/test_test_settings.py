@@ -243,7 +243,7 @@ def test_direct_pytest_fixture_uses_canonical_database_precedence(
     complete = {
         "POSTGRES_USER_TEST": "synthetic/user",
         "POSTGRES_PASSWORD_TEST": "synthetic password",
-        "POSTGRES_DB_TEST": "scenario_tests",
+        "POSTGRES_DB_TEST": "team?qa_tests",
         "POSTGRES_PORT_TEST": "5433",
         "PGHOST": "inherited.synthetic.invalid",
     }
@@ -255,7 +255,7 @@ def test_direct_pytest_fixture_uses_canonical_database_precedence(
         _, driver_arguments = resolved.get_dialect()().create_connect_args(resolved)
         assert driver_arguments["host"] == expected_host
         assert resolved.username == "synthetic/user" and resolved.password == "synthetic password"
-        assert resolved.database.endswith("_tests") and resolved.database != "scenario_tests"
+        assert resolved.database.endswith("_tests") and resolved.database != complete["POSTGRES_DB_TEST"]
         os.environ["TEST_POSTGRES_DATABASE_URL"] = "postgresql+psycopg://localhost/url_wins_tests"
         del os.environ["POSTGRES_PASSWORD_TEST"]
         explicit = database_test_url.__wrapped__()

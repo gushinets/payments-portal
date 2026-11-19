@@ -153,10 +153,12 @@ Test database configuration is resolved in this order: an explicit
 `POSTGRES_PASSWORD_TEST`, `POSTGRES_PORT_TEST` and `POSTGRES_DB_TEST`
 (`POSTGRES_HOST_TEST` is optional and defaults to `localhost` when absent or
 empty); then the current worktree runtime configuration, using its dedicated
-test-server port and a derived database name ending in `_tests`. Partial explicit configuration is
-rejected, including a lone shell-exported `POSTGRES_PORT_TEST`; the runtime file
-is read by the harness and need not be sourced. Explicit test servers remain
-supported and need not use tmpfs; the standard performance acceptance
+test-server port and a derived database name ending in `_tests`. The launcher
+checks the explicit fields before starting pytest and passes them individually.
+The fixture assigns an owned database name before rendering the connection URL.
+Partial explicit configuration is rejected, including a lone shell-exported
+`POSTGRES_PORT_TEST`. The harness reads the runtime file directly. Explicit
+test servers need not use tmpfs; the standard performance acceptance
 environment uses tmpfs. Credentials remain environment-provided and are not
 shown in documentation.
 
@@ -184,8 +186,10 @@ prepared purchases, reconciliations or mutable ORM state across tests.
 
 Destructive operations validate targets before connecting or executing SQL.
 The owner records successful creation and cleans up only its own databases,
-including after failed setup or test execution. Name collisions fail without
-pre-dropping existing data. Pools are disposed before replacement; checked-out
+including after failed setup or test execution. During database DDL, the
+fixture defers the runner's graceful interrupt until it records the result.
+Name collisions fail without pre-dropping existing data. Pools are disposed
+before replacement; checked-out
 connections and external connection leaks remain failures. Do not hide them
 with `DROP ... FORCE`, connection termination or cleanup of another run's data.
 

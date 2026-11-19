@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -159,6 +160,33 @@ def test_owned_resources_are_cleaned_after_setup_or_test_failure(
             raise RuntimeError("injected failure")
     assert len(names) == 2
     assert _existing_databases(database_admin_url, names) == []
+
+
+def test_interrupt_after_successful_clone_cleans_owned_databases(
+    database_test_url: URL, database_admin_url: URL, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    url = support.session_test_database_url(database_test_url)
+    create = support.create_test_database
+    cloned: list[URL] = []
+
+    def interrupt_after_clone(target_url: URL, admin_url: URL, *, template_url: URL | None = None) -> None:
+        create(target_url, admin_url, template_url=template_url)
+        if template_url is not None:
+            cloned.append(target_url)
+            signal.raise_signal(signal.SIGINT)
+
+    monkeypatch.setattr(support, "create_test_database", interrupt_after_clone)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            with support.postgres_test_database(url, database_admin_url) as owned:
+                template_name = owned.template_url.database
+                owned.restore()
+        assert cloned == [url]
+        assert _existing_databases(database_admin_url, [url.database, template_name]) == []
+    finally:
+        # Clean up a leaked clone only if this test observed its successful creation.
+        if cloned and _existing_databases(database_admin_url, [url.database]):
+            support.drop_test_database(url, database_admin_url)
 
 
 def test_checked_out_connection_blocks_replacement_and_teardown(

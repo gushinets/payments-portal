@@ -83,7 +83,18 @@ def database_test_url() -> URL:
     from scripts.repo import api_test_environment
 
     environment = api_test_environment("api-postgres", dict(os.environ))
-    return session_test_database_url(make_url(environment["TEST_POSTGRES_DATABASE_URL"]))
+    if configured_url := environment.get("TEST_POSTGRES_DATABASE_URL"):
+        return session_test_database_url(make_url(configured_url))
+    return session_test_database_url(
+        URL.create(
+            "postgresql+psycopg",
+            username=environment["POSTGRES_USER_TEST"],
+            password=environment["POSTGRES_PASSWORD_TEST"],
+            host=environment.get("POSTGRES_HOST_TEST") or "localhost",
+            port=int(environment["POSTGRES_PORT_TEST"]),
+            database=environment["POSTGRES_DB_TEST"],
+        )
+    )
 
 
 @pytest.fixture(scope="session")

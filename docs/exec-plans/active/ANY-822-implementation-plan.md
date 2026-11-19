@@ -5,14 +5,19 @@ Created: 2026-11-13
 Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
 Execution branch: `ANY-822`
 Original base: `2d278f62f0a2f7c4b40fb322618b268580de2301`
-Rebased on main: `aa9d8f996cba91feaaaad6a9937eef0c590ae4fa` (ANY-827, 2026-11-18)
+Rebased on main: `f6b1f1d2415763baa6b4a22b0bbe8b2e874c279d` (ANY-741/864, 2026-11-19)
 
-## 1. Current acceptance (2026-11-18)
+## 1. Current acceptance (2026-11-19)
 
-The full local result below predates the latest rebase and covers source based
-on `5062d7fb5c78990a20ea926356ccdb64337af3b2`. Current base main:
-`aa9d8f996cba91feaaaad6a9937eef0c590ae4fa`; its dependency updates
-are outside the scope of that earlier local run.
+The full local result below covers source based on
+`5062d7fb5c78990a20ea926356ccdb64337af3b2`, before the later rebases and
+dependency updates.
+
+- **CI before the latest rebase:** [run 44214225942](https://github.com/gushinets/payments-portal/actions/runs/44214225942)
+  passed for pushed head `aac8876907fbc2b2f96915c8bd61c8b6d3ea7998`,
+  tested as merge ref `26f99ae661c59ec64d4ce1b6db3b4dbc9c930885` on
+  base `aa9d8f996cba91feaaaad6a9937eef0c590ae4fa`. Verification on the
+  current base is tracked in the [PR checks](https://github.com/gushinets/payments-portal/pull/170/checks).
 
 - **PASSED locally before the latest rebase:** `npm run check -- --coverage`, **850.734 s**:
   **2,417 API-fast**, **1,212 PostgreSQL**, **454 components**, static checks
