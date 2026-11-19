@@ -451,19 +451,19 @@ Client readiness/Widget rendering is not verified by this command.
 
 ## Purchase API and financial recovery (Step 3)
 
-The normal UI reviews and accepts terms on product detail. Once the purchase is
-prepared, its payment link opens the selected purchase's Widget in the cabinet.
-Ordinary account links and reloads restore selection and require a new click to
-open the Widget. Account viewing has its own action.
-For API inspection use the authenticated verified owner's session:
+Use the session of the purchase owner with a verified email for these requests.
 
 1. `POST /api/purchases/review` with `{"product_id":"<enabled product>"}`
-   returns exact decimal terms, `revision_id`, `expected_fingerprint` and legal
-   document versions/text hashes. It creates no consent or provider object.
-2. `POST /api/purchase-intents` with a stable `Idempotency-Key`, reviewed
-   product/revision/fingerprint and `documents` (`document_version_id`,
-   `acceptance_text_hash`) rereads sources and atomically pins acceptance and
-   one user/product hold. Do not submit provider IDs, money or permission flags.
+   returns the exact decimal terms, the values needed to confirm them, and
+   the legal document versions and text hashes. It creates no consent or provider object.
+2. Send `POST /api/purchase-intents` with a stable `Idempotency-Key`. Copy
+   `product_id`, `revision_id`, `expected_fingerprint` and
+   `expected_technical_terms_digest` from the review. If the technical digest
+   is null, send null or omit the field. Omitting a non-null review digest
+   returns `409 terms_changed`. After the buyer accepts all required documents,
+   include each `document_version_id` and `acceptance_text_hash` in `documents`.
+   The Portal rereads the sources and atomically records acceptance and one
+   user/product hold. Do not submit provider IDs, money or permission flags.
    Same key/meaning returns the original purchase; another key cannot bypass its
    hold. `terms_changed` requires fresh review and explicit consent.
 3. Explicit `POST /api/purchase-intents/<id>/advance` ensures the shared customer,
@@ -491,10 +491,10 @@ For API inspection use the authenticated verified owner's session:
    with UUID cursor pagination (default 50, maximum 100).
 5. `POST /api/billing/widget-bootstrap` with `{"purchase_intent_id":"<id>"}`
    requires fresh original customer/agreement/seller and effective subscription
-   proof. The payment response identifies the proven target agreement/seller;
-   only payments are enabled among action flags. Empty-body account viewing
-   stays independent. The customer-wide SDK has no product/agreement ACL or
-   automatic selection: the user selects the displayed intended agreement.
+   proof. The payment response identifies the proven agreement and seller and
+   enables only the payment action. To open the account view, send the JSON
+   body `{}`. The Widget covers the whole customer account. The buyer selects
+   the agreement identified by the Portal.
 
 The backend owns Widget presentation, payment target and action flags. The
 frontend consumes that successful typed response without rechecking those
@@ -568,27 +568,48 @@ independent of purchase lifecycle.
 
 ## Browser operation and diagnostics
 
-The explicit payment CTA on prepared product detail links to
-`/account?purchase=<id>#billing` and starts payment opening on that cabinet
-visit. Direct links, reloads and history navigation restore selection and require
-a fresh click. One shared cabinet Widget serves account and payment views.
-Multiple purchases need explicit selection. Owned inventory remains available
-independently of source catalog.
+The payment button on a prepared product opens the localized cabinet (for
+example, `/ru/account?purchase=<id>#billing`). On that visit, the cabinet
+verifies the purchase and uses the click once to open its Widget. The click
+expires after 30 seconds and is bound to the current session.
+Opening the URL directly, reloading or returning through browser history
+requires a fresh click to open the Widget. On reload, the cabinet reads
+`purchase` from the URL. A manual selection lasts only for the current visit.
+Without a purchase ID, the cabinet preselects the sole purchase in a complete
+list. With several purchases, the buyer chooses one for payment. The same
+Widget serves account viewing, including when the user has no purchases.
+
 Refresh billing disposes the old host, rechecks the same purchase and opens a
-fresh Widget. It creates no subscription/payment; the provider may require
-selecting the intended agreement again. There is no supported payment-completed
-SDK callback and no Portal refresh timer that interrupts checkout.
+fresh Widget. The buyer may need to select the intended agreement again.
+Refreshing creates no subscription or payment. The Portal never reloads
+the Widget on a timer. The SDK has no supported payment-completed callback.
 
 Live catalog/review/confirm/advance/bootstrap requests have a 130-second browser
 deadline covering body consumption. Identity and local purchase GETs use five
-seconds. A lost confirm/advance reply triggers local inspection, retaining its
-original key and purchase. A visible unfinished purchase checks saved status
-with 2, 5 and then 10 seconds between reads for two minutes. While awaiting an
-external result, it then checks once per minute for up to two hours and two
-minutes from the start of that status check. At the limit, the UI directs the
-buyer to the manual status check. Manual inspection and explicit continuation
-remain available. Status reads use Portal records and initiate no provider
-request or payment verification.
+seconds. A lost confirm/advance reply, a generic `internal_server_error`, or
+a 5xx response without an API error code triggers a local status read. The
+original confirmation key and accepted terms remain available for an explicit
+retry. An `advance` response with
+`preflight_deadline_exceeded` also triggers a saved status read because the
+operation may already be durable. A visible unfinished purchase checks saved
+status with 2, 5 and then 10 seconds between reads for two minutes. While
+awaiting an external result, it then checks once per minute for up to two hours
+and two minutes from the start of that status check. At the limit, the UI
+directs the buyer to the manual status check. A purchase status read returning
+401, 403 or 404 stops polling and shows the corresponding sign-in, verification
+or purchase-unavailable message. The cabinet closes the Widget and discards any
+pending opening when the selected purchase returns 401 or 403. The same rule
+applies when the purchase list, paid access or usage read for the current
+session returns 401 `billing_session_required` or 403
+`billing_email_verification_required`. A temporary failure of these reads
+leaves the open Widget in place. After a session refusal, Retry reloads the
+cabinet and checks the session before offering billing
+again. A manual status check on the product page can restore continuation
+once the purchase is readable. Status reads use Portal records and initiate no
+provider request or payment verification. When overlapping list and status
+reads disagree, the cabinet rechecks the selected purchase before offering
+payment.
+
 ANY-715 now supplies persisted observation/reconciliation facts and operator
 diagnostics; it does not add a new public billing-status UI contract. See the
 [billing operations guide](billing-background-operations.md).

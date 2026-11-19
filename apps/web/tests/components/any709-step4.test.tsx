@@ -459,3 +459,124 @@ it("clears an obsolete unknown-outcome warning after recovering the original agr
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   expect(advance).toHaveBeenCalledTimes(1);
 });
+
+it.each(["immediate status", "subsequent poll"] as const)("uses the recovered agreement when it is first visible via %s", async (firstRead) => {
+  advance.mockImplementationOnce(async () => {
+    owned = { ...savedPurchase, state: "preparing", reason: "purchase_pending" };
+    if (firstRead === "subsequent poll") fetcher.mockResolvedValueOnce(json({ detail: { code: "unavailable" } }, 503));
+    throw new TypeError("synthetic_lost_advance_reply");
+  });
+  renderProduct();
+  await accept();
+
+  if (firstRead === "subsequent poll") {
+    expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
+  }
+  await screen.findByText(ru.Purchase.states.preparing, {}, { timeout: 4000 });
+  expect(screen.getByRole("button", { name: ru.Purchase.continue })).toBeEnabled();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(advance).toHaveBeenCalledTimes(1);
+  expect(bootstrap).not.toHaveBeenCalled();
+});
+
+it("moves past the expired advance response once a local read observes the recovered agreement", async () => {
+  const requestId = "expired-advance-check";
+  advance.mockImplementationOnce(async () => {
+    owned = { ...savedPurchase, state: "awaiting_external_result", reason: "purchase_pending" };
+    return json({ detail: { code: "preflight_deadline_exceeded", request_id: requestId } }, 503);
+  });
+  renderProduct();
+  await accept();
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(requestId);
+
+  // GET-only recovery binds the agreement. The subscription still needs an explicit advance.
+  owned = { ...savedPurchase, state: "preparing", reason: "purchase_pending" };
+  await screen.findByText(ru.Purchase.states.preparing, {}, { timeout: 4000 });
+  expect(screen.getByRole("button", { name: ru.Purchase.continue })).toBeEnabled();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(advance).toHaveBeenCalledTimes(1);
+  expect(bootstrap).not.toHaveBeenCalled();
+});
+
+it("finds a late committed confirmation after a gateway failure", async () => {
+  confirm.mockResolvedValueOnce(new Response("Bad Gateway", { status: 502 }));
+  renderProduct();
+  await accept();
+  expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
+  owned = { ...savedPurchase, state: "created" };
+  expect(await screen.findByRole("button", { name: ru.Purchase.continue }, { timeout: 4000 })).toBeEnabled();
+  expect(confirm).toHaveBeenCalledTimes(1);
+  expect(advance).not.toHaveBeenCalled();
+});
+
+it("inspects the original purchase after a gateway timeout on advance", async () => {
+  advance.mockImplementationOnce(async () => {
+    owned = { ...savedPurchase, state: "preparing" };
+    return new Response("Gateway Timeout", { status: 504 });
+  });
+  renderProduct();
+  await accept();
+  expect(await screen.findByText(ru.Purchase.states.preparing)).toBeVisible();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(advance).toHaveBeenCalledTimes(1);
+  expect(bootstrap).not.toHaveBeenCalled();
+});
+
+it.each([
+  [401, "billing_session_required", ru.Billing.errors.session],
+  [403, "billing_email_verification_required", ru.Billing.errors.verification],
+  [404, "purchase_not_found", ru.Billing.selectionUnavailable],
+] as const)("ends product status polling on HTTP %s and allows manual inspection", async (status, code, message) => {
+  vi.useFakeTimers();
+  owned = { ...savedPurchase, state: "awaiting_external_result" };
+  await act(async () => { renderProduct(); });
+  fetcher.mockClear().mockResolvedValueOnce(json({ detail: { code, request_id: "read-refused" } }, status));
+  await act(async () => vi.advanceTimersByTimeAsync(120_000));
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("alert")).toHaveTextContent(message);
+  expect(screen.getByRole("alert")).toHaveTextContent("read-refused");
+  expect(screen.queryByRole("button", { name: ru.Purchase.recover })).not.toBeInTheDocument();
+
+  owned = { ...savedPurchase, state: "preparing" };
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.refresh })); });
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: ru.Purchase.continue })).toBeEnabled();
+  expect(advance).not.toHaveBeenCalled();
+});
+
+it.each(["first inspection", "later poll"])("keeps frozen confirmation disabled after refusal during %s", async (when) => {
+  confirm.mockImplementationOnce(async () => {
+    if (when === "later poll") fetcher.mockResolvedValueOnce(json({ purchase: null }));
+    fetcher.mockResolvedValueOnce(json({ detail: { code: "billing_session_required", request_id: "confirm-read" } }, 401));
+    return json({ detail: { code: "internal_server_error" } }, 500);
+  });
+  renderProduct();
+  await accept();
+  await screen.findByText(ru.Billing.errors.session, {}, { timeout: 4000 });
+  expect(screen.getByRole("alert")).toHaveTextContent("confirm-read");
+  expect(screen.getByRole("button", { name: ru.Purchase.retryConfirm })).toBeDisabled();
+
+  fetcher.mockResolvedValueOnce(new Response("Service Unavailable", { status: 503 }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.refresh })); });
+  expect(screen.getByRole("button", { name: ru.Purchase.retryConfirm })).toBeDisabled();
+
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.refresh })); });
+  fireEvent.click(screen.getByRole("button", { name: ru.Purchase.retryConfirm }));
+  expect(await screen.findByRole("link", { name: ru.Billing.pay })).toBeVisible();
+  expect(confirm).toHaveBeenCalledTimes(2);
+  expect(confirm.mock.calls[1][0].headers["Idempotency-Key"]).toBe(confirm.mock.calls[0][0].headers["Idempotency-Key"]);
+});
+
+it("keeps a typed advance refusal visible while local status still says preparing", async () => {
+  advance.mockImplementationOnce(async () => {
+    owned = { ...savedPurchase, state: "preparing" };
+    return json({ detail: { code: "purchase_billing_not_configured", request_id: "advance-config" } }, 503);
+  });
+  renderProduct();
+  await accept();
+  expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.errors.configuration);
+  expect(await screen.findByText(ru.Purchase.states.preparing, {}, { timeout: 4000 })).toBeVisible();
+  expect(screen.getByRole("alert")).toHaveTextContent("advance-config");
+  expect(advance).toHaveBeenCalledTimes(1);
+});

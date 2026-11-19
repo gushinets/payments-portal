@@ -8,7 +8,10 @@ import { getSession, sessionStorageKey } from "@/shared/api/auth";
 import { advancePurchase, confirmPurchase, currentPurchase, purchaseStatus, reviewPurchase } from "@/shared/api/purchases";
 import { ApiError, apiErrorCode } from "@/shared/api/transport";
 import { subscribeToSessionChanges, useSessionOperation } from "@/shared/session/use-session-operation";
-import { billingErrorKey, newRequestId, safeRequestId, type BillingErrorKey } from "./errors";
+import {
+  billingErrorKey, newRequestId, purchaseReadRefusal, safeRequestId,
+  type BillingErrorKey, type PurchaseReadRefusal
+} from "./errors";
 import { requestPaymentOpening } from "./payment-opening";
 import { PurchaseTerms } from "./PurchaseTerms";
 import { purchaseNeedsStatus, usePurchaseStatusPoll } from "./use-purchase-status-poll";
@@ -19,8 +22,19 @@ type PurchaseState =
   | { kind: "purchase"; purchase: PurchaseIntentResponse };
 const ReviewSubmission = { Draft: "draft", Submitted: "submitted", Uncertain: "uncertain" } as const;
 type ReviewSubmission = typeof ReviewSubmission[keyof typeof ReviewSubmission];
-type Failure = { message: BillingErrorKey; requestId: string };
+type Failure = { message: `errors.${BillingErrorKey}` | PurchaseReadRefusal["message"]; requestId: string; readRefused?: true };
 type ProductBillingProps = { productId: string; offerAvailable: boolean; user?: SessionUserResponse; headingLevel?: 2 | 4 };
+
+function commandOutcomeUncertain(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return true;
+  const code = apiErrorCode(error);
+  // A gateway or generic server failure can arrive after the transaction committed.
+  return error.status >= 500 && (!code || code === "internal_server_error");
+}
+
+function advanceOutcomeUnknown(purchase: PurchaseIntentResponse | null): boolean {
+  return !purchase || (purchase.scope_held && (purchase.state === "created" || purchase.state === "awaiting_external_result"));
+}
 
 export function ProductBilling({ productId, offerAvailable, user, headingLevel = 2 }: ProductBillingProps) {
   return user
@@ -78,7 +92,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
   const ReviewHeading = headingLevel === 2 ? "h3" : "h5";
   const purchase = state.kind === "purchase" ? state.purchase : null;
   const uncertainConfirmation = state.kind === "review" && state.submission === ReviewSubmission.Uncertain;
-  const canPoll = user.email_verified && !working;
+  const canPoll = user.email_verified && !working && !failure?.readRefused;
 
   const poll = usePurchaseStatusPoll(
     canPoll && purchase?.scope_held && purchaseNeedsStatus(purchase) ? purchase : undefined,
@@ -88,10 +102,11 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
       setState({ kind: "purchase", purchase: saved });
       if (uncertainConfirmation || !saved.scope_held || !purchaseNeedsStatus(saved)) {
         setFailure(null);
-      } else if (purchase?.purchase_intent_id === saved.purchase_intent_id && purchase.state === "awaiting_external_result" && saved.state === "preparing") {
-        setFailure((previous) => previous?.message === "financialPending" ? null : previous);
+      } else if (!advanceOutcomeUnknown(saved)) {
+        setFailure((previous) => previous?.message === "errors.financialPending" ? null : previous);
       }
-    }
+    },
+    (refusal) => { if (!busy.current) setFailure(refusal); }
   );
 
   useEffect(() => {
@@ -107,7 +122,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     }, (error: unknown) => {
       if (operation.isCurrent()) {
         setState({ kind: "unavailable" });
-        setFailure({ message: billingErrorKey(error), requestId: safeRequestId(error) || requestId });
+        setFailure(purchaseReadRefusal(error, requestId) ?? { message: `errors.${billingErrorKey(error)}`, requestId: safeRequestId(error) || requestId });
       }
     });
     const unsubscribe = subscribeToSessionChanges(() => {
@@ -115,7 +130,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
       busy.current = false;
       setWorking(false);
       setState({ kind: "unavailable" });
-      setFailure({ message: "session", requestId: "" });
+      setFailure({ message: "errors.session", requestId: "" });
     });
     return () => { cancel(); unsubscribe(); };
   }, [begin, cancel, productId, user.email_verified]);
@@ -132,14 +147,14 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
       if (!operation.token) throw new ApiError(401, { code: "billing_session_required" });
       await work(operation.token, requestId, operation.isCurrent);
     } catch (error) {
-      if (operation.isCurrent()) setFailure({ message: billingErrorKey(error), requestId: safeRequestId(error) || requestId });
+      if (operation.isCurrent()) setFailure({ message: `errors.${billingErrorKey(error)}`, requestId: safeRequestId(error) || requestId, readRefused: failure?.readRefused });
     } finally {
       if (operation.isLatest()) {
         busy.current = false;
         setWorking(false);
         if (!operation.isCurrent()) {
           setState({ kind: "unavailable" });
-          setFailure({ message: "session", requestId });
+          setFailure({ message: "errors.session", requestId });
         }
       }
     }
@@ -147,14 +162,17 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
 
   function refresh() {
     return run(async (token, id, current) => {
-      if (state.kind === "purchase") {
-        const purchase = await purchaseStatus(token, state.purchase.purchase_intent_id, id);
-        if (current()) setState({ kind: "purchase", purchase });
-      } else {
-        const result = await currentPurchase(token, productId, id);
+      try {
+        const purchase = state.kind === "purchase"
+          ? await purchaseStatus(token, state.purchase.purchase_intent_id, id)
+          : (await currentPurchase(token, productId, id)).purchase;
         // A lost confirmation may still be completing. Keep its frozen request/key
         // when no hold is visible yet; a local empty GET is not a release proof.
-        if (current() && (result.purchase || state.kind !== "review")) setState(result.purchase ? { kind: "purchase", purchase: result.purchase } : { kind: "none" });
+        if (current() && (purchase || state.kind !== "review")) setState(purchase ? { kind: "purchase", purchase } : { kind: "none" });
+      } catch (error) {
+        const refusal = purchaseReadRefusal(error, id);
+        if (!refusal) throw error;
+        if (current()) setFailure(refusal);
       }
     });
   }
@@ -169,21 +187,33 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     });
   }
 
+  async function inspectCommandOutcome(token: string, id: string, current: () => boolean, commandError: unknown, purchaseId?: string) {
+    let saved: PurchaseIntentResponse | null = null;
+    try {
+      saved = purchaseId
+        ? await purchaseStatus(token, purchaseId, id)
+        : (await currentPurchase(token, productId, id)).purchase;
+    } catch (error) {
+      const refusal = purchaseReadRefusal(error, id);
+      if (refusal) {
+        if (current()) setFailure(refusal);
+        return;
+      }
+    }
+    if (!current()) return;
+    if (saved) setState({ kind: "purchase", purchase: saved });
+    // A saved intent proves confirmation. Advance also needs evidence of preparation.
+    const pending = purchaseId ? advanceOutcomeUnknown(saved) : !saved;
+    setFailure(pending ? { message: "errors.financialPending", requestId: safeRequestId(commandError) || id } : null);
+  }
+
   async function prepare(token: string, purchase: PurchaseIntentResponse, id: string, current: () => boolean) {
     let result: PurchaseIntentResponse;
     try {
       result = await advancePurchase(token, purchase.purchase_intent_id, id);
     } catch (error) {
-      if (error instanceof ApiError) throw error;
-      // A browser timeout/disconnect does not cancel the server's financial work.
-      // Inspect locally, then let status polling observe durable recovery.
-      let saved: PurchaseIntentResponse | null = null;
-      try { saved = await purchaseStatus(token, purchase.purchase_intent_id, id); }
-      catch { /* Keep the original held intent visible if the status read also fails. */ }
-      if (current()) {
-        if (saved) setState({ kind: "purchase", purchase: saved });
-        setFailure(saved?.state === "linked" ? null : { message: "financialPending", requestId: id });
-      }
+      if (!commandOutcomeUncertain(error) && apiErrorCode(error) !== "preflight_deadline_exceeded") throw error;
+      if (current()) await inspectCommandOutcome(token, id, current, error, purchase.purchase_intent_id);
       return;
     }
     if (!current()) return;
@@ -215,20 +245,10 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
               return;
             }
           } catch { /* Preserve the original conflict and request ID if inspection fails. */ }
-        } else if (current() && !(error instanceof ApiError)) {
-          // Recover an accepted intent from a lost response, without a second POST.
-          // An empty/failed GET retains the frozen confirmation and its original key.
-          try {
-            const existing = await currentPurchase(token, productId, id);
-            if (current() && existing.purchase) {
-              setState({ kind: "purchase", purchase: existing.purchase });
-              return;
-            }
-          } catch { /* The exact submitted review remains reserved in this view. */ }
-          if (current()) {
-            setState({ ...frozen, submission: ReviewSubmission.Uncertain });
-            setFailure({ message: "financialPending", requestId: id });
-          }
+        } else if (current() && commandOutcomeUncertain(error)) {
+          // Freeze the original key and consent until the accepted intent is found.
+          setState({ ...frozen, submission: ReviewSubmission.Uncertain });
+          await inspectCommandOutcome(token, id, current, error);
           return;
         }
         throw error;
@@ -279,17 +299,17 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
           </div>)}
         </fieldset>
         {state.submission !== ReviewSubmission.Draft && <p>{t("confirmationUncertain")}</p>}
-        <button className="btn-primary" type="button" disabled={working || !state.review.documents.length || state.selected.length !== state.review.documents.length} onClick={() => void confirm()}>{t(state.submission === ReviewSubmission.Draft ? "confirm" : "retryConfirm")}</button>
+        <button className="btn-primary" type="button" disabled={working || failure?.readRefused || !state.review.documents.length || state.selected.length !== state.review.documents.length} onClick={() => void confirm()}>{t(state.submission === ReviewSubmission.Draft ? "confirm" : "retryConfirm")}</button>
       </div>}
       {purchase && <div className="purchase-status">
         <p role="status">{t(`states.${purchase.state}`)}</p>
         {purchase.reason && <p>{t(purchase.reason === "terms_changed" ? "termsChanged" : purchase.reason === "purchase_pending" ? "pending" : "reviewRequired")}</p>}
         <p className="catalog-product-id">{t("reference", { id: purchase.purchase_intent_id })}</p>
         <details><summary>{t("acceptedTerms")}</summary><PurchaseTerms review={purchase.accepted} /></details>
-        {resumable && <button className="btn-primary" type="button" disabled={working} onClick={() => void run((token, id, current) => prepare(token, purchase, id, current))}>{t(needsRecovery ? "recover" : "continue")}</button>}
+        {resumable && !failure?.readRefused && <button className="btn-primary" type="button" disabled={working} onClick={() => void run((token, id, current) => prepare(token, purchase, id, current))}>{t(needsRecovery ? "recover" : "continue")}</button>}
         <p>{t("awaitingVerification")}</p>
       </div>}
-      {failure && <div className="notice error" role="alert">{b(`errors.${failure.message}`)}{failure.requestId && <p>{b("requestId", { id: failure.requestId })}</p>}</div>}
+      {failure && <div className="notice error" role="alert">{b(failure.message)}{failure.requestId && <p>{b("requestId", { id: failure.requestId })}</p>}</div>}
       <p className="card-copy">{t("accessInAccount")}</p>
     </>}
   </section>;

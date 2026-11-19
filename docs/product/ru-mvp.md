@@ -1,7 +1,7 @@
 # RU AnyToolAI Portal — As-Built 4F Handoff
 
 Status: authoritative implemented-product specification and deferred-step handoff
-Last updated: 2026-11-11
+Last updated: 2026-11-19
 
 The surface established by ANY-636 4F is a product-centric AnyToolAI Portal:
 public product-first home, catalog/discovery, per-product pages,
@@ -114,14 +114,8 @@ the mockup's remote CSS import.
   sellability, subscription/provider state or purchase controls.
 - The authenticated cabinet places compact email/verification/logout context
   in a supporting rail. The primary workspace has one wide Widget, explicit
-  purchase selection, and brief owned-purchase cards linking to product details.
-  Product pages retain offer, review, consent and preparation. Pending purchases
-  automatically check saved status for a bounded period. A prepared purchase's
-  payment link opens `/account?purchase=<id>#billing` and starts the selected
-  Widget once. The cabinet verifies the purchase and displays the product,
-  proven agreement and seller while waiting for the Widget. A held accepted
-  purchase determines which catalog products appear as owned. Responsive layouts
-  stack the rail and workspace.
+  purchase selection, and compact cards linking to product details. Responsive
+  layouts stack the rail and workspace.
 
 Mockup demo prices (`0/490/990 ₽`), providers such as CloudPayments, plan and
 subscription values, renewal/payment controls, usage (`320/500`, `3/10`),
@@ -144,18 +138,22 @@ documents remain drafts.
    through the existing `AuthForm`. The header sign-in modal remains available.
 3. Registration requires explicit, initially unchecked personal-data and offer
    confirmations using generated canonical RU acceptance text and legal links.
-4. The authenticated cabinet shows one billing workspace and brief cards for
-   the user's held accepted purchases, including resumable unfinished purchases,
-   with detail and full-catalog links. Supporting account context renders the
-   returned email and `email_verified` fact, offers verification/resend when
-   needed, and provides logout.
+4. The authenticated cabinet shows the user's held accepted purchases,
+   including unfinished purchases that can be resumed. Products returned by
+   paid-access or usage reads also have cards, even when absent from the purchase
+   list. Cards link to product details. A separate link opens the full catalog.
+   The account panel shows the email and `email_verified` status, offers
+   verification and resend actions when needed, and provides logout.
 5. A user can request a password-reset email, replace the password through the
    existing reset flow, and complete authenticated email verification.
 6. Each enabled, linked product shows current source-backed commercial terms.
-   ANY-709 adds explicit review/consent, Buy/Continue/Manage and verified payment
-   Widget opening; accepted terms and purchase history remain immutable in
-   PostgreSQL. ANY-765 displays committed paid access and purchased simulated
-   limits through authenticated local `GET /api/paid-access`. Confirmed absence
+   The buyer reviews and accepts terms on the product page, which checks the
+   saved status of a pending purchase for a bounded period. Once the purchase
+   is prepared, the payment button opens the localized cabinet and starts the
+   Widget for that purchase. The cabinet displays the product and the verified
+   agreement and seller while the Widget loads. Accepted terms and purchase
+   history remain immutable in PostgreSQL. ANY-765 displays committed paid access
+   and purchased simulated limits through authenticated local `GET /api/paid-access`. Confirmed absence
    and unavailable evidence remain distinct; actual usage/remaining quota is read
    independently from the saved backend owner through `/api/paid-usage`. Expired
    unprocessed deadlines refuse the read until the worker
