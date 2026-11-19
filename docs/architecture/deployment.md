@@ -183,7 +183,7 @@ current migration chain and table inventory. Do not create a separate
 bootstrap CLI. Before starting normal runtime on a fresh database, verify:
 
 - Alembic reports one head and the database is at that head;
-- the current head is `20261113_0013` and exactly 30 application tables exist;
+- the current head is `20261117_821_merge` and exactly 30 application tables exist;
 - every removed legacy catalog/order/payment/provider/subscription/
   entitlement/trial table is absent;
 - all seventeen billing/link/purchase tables are empty before explicit flows;
@@ -333,9 +333,13 @@ never repair failure by downgrading, stamping or rewriting purchase history.
 
 ### Paired compatibility and synchronized cutover
 
-The current local ANY-766 source pair requires
-Portal migration head `20261113_0013`, Kernel head `0022`, consumer identity V2,
-AccessSnapshot V3, manifest/invalidation/usage/exhaustion V1. Source baselines are
+Deploy the ANY-821 Portal build with Alembic head `20261117_821_merge`. It joins
+the published ANY-766 head `20261113_0013` and terminal resolution revision
+`20261116_821`.
+
+The reviewed ANY-766 source pair used Portal head `20261113_0013` and Kernel head
+`0022`, with consumer identity V2, AccessSnapshot V3 and
+manifest/invalidation/usage/exhaustion V1. Its source baselines were
 Portal `2e328bb59af690ec3a4599da0ce4556f9bedce76` and Kernel
 `c153aaa200770ee156537e30fea1ebb3d085b434`, plus their review corrections.
 Earlier image rehearsals do not verify this corrected pair.
@@ -351,6 +355,12 @@ No image-only rollback to them is supported. Historical documents/digests,
 allowance IDs and quantities remain unchanged. The old Kernel-only delegation
 API and snapshot V2 binaries are also excluded; there is no rolling mixed-wire
 mode for this cutover.
+
+Retained `resolved_external_terminal` rows require an ANY-821-compatible Portal
+reader. Migration `20261116_821` refuses downgrade while those rows remain.
+The existing guards for retained V2 evidence, allowance activation and issuance
+budgets still apply.
+Keep the matching application and database backup together for recovery.
 
 The earlier correction expanded the policy digest to include permissions and
 technical source without a DB migration or wire-version change. When crossing
@@ -371,7 +381,7 @@ replacement. Rebuild older unlabelled images; runtime variables cannot repair a
 missing or foreign build audience. Compatible frontend/backend source revisions
 may still differ.
 
-Before installing this pair over the Step 8 baseline:
+For a paired cutover from the Step 8 baseline:
 
 1. Close both ingress paths and stop Portal API/embedded workers and all extra
    producers. Use the running Kernel revision's `prod-quiesce` to stop admission,
@@ -382,17 +392,16 @@ Before installing this pair over the Step 8 baseline:
    Preserve the existing Kernel audience and identity; never transfer retained
    allowance ownership by changing configuration. Enable Kernel invalidation and
    usage receiver permissions before enabling Portal delivery.
-3. While both old application sets remain stopped, run Portal's selected
-   `migrate` image through head `20261113_0013`: 0009 binds retained delegations
-   and policy scope; 0010 partitions recipient/outbox/work keys and retires stale
-   claims; 0011 adds exhaustion deduplication; 0012 retains allowance activation
-   and introduces V2 internal evidence readers/writers; 0013 bounds new code
-   issuance while preserving expired-token recovery evidence. Downgrade refuses
-   retained V2/activation evidence or issuance budgets. Keep all old Portal
-   APIs/workers stopped and start only updated binaries. Configure consumers before first
-   API startup installs/verifies P/digest and recipient state. Do not run an old
-   worker against migrated delivery keys.
-4. Use the selected Kernel images and its existing runner through the head above:
+3. While both old application sets remain stopped, run the selected Portal
+   `migrate` image to apply `alembic upgrade head`. Verify
+   `20261117_821_merge` for the ANY-821 build. This head includes all ANY-766
+   revisions through `20261113_0013` and the terminal resolution revision. The
+   [schema reference](payment-portal-data-model.md#physical-baseline) lists
+   their effects. Keep the old Portal API and workers stopped. Configure
+   consumers before the updated API starts and verifies P/digest and recipient
+   state.
+4. Use the selected Kernel images and the Kernel runner through head `0022`
+   for this compatibility baseline.
    `0020` retains R floors and usage/reservations while clearing incompatible
    cache metadata and initializing consumer/P; `0021` adds durable exhaustion;
    `0022` binds retained history to one consumer without changing usage/replay keys.

@@ -1,7 +1,7 @@
 # ANY-821 - Terminal resolution for UNKNOWN purchases
 
-Status: Done
-Updated: 2026-11-16
+Status: Implemented on ANY-821, including audited-object recovery and first-binding ownership checks.
+Updated: 2026-11-19
 Execution branch: `ANY-821`
 Issue: [ANY-821](https://linear.app/paveldik/issue/ANY-821/define-and-implement-terminal-resolution-for-purchases-stuck-in)
 
@@ -35,12 +35,12 @@ The following PR snapshots informed implementation decisions on 2026-11-16:
   fixes monthly allowance calendar interpretation. Preserve its regressions;
   it creates no extra purchase-resolution implementation work.
 
-None of these snapshots implements terminal UNKNOWN resolution; their hold
-release covers only changed terms before a possible send. These are historical
-comparisons: local `main` now contains ANY-766 (`ece3590b`). Recheck touched seams
-against the integration target.
+These planning snapshots support automatic release only for changed terms
+before a possible send. The
+[current schema reference](../../architecture/payment-portal-data-model.md#physical-baseline)
+records the integrated Portal migration chain.
 
-## Implementation - three parts
+## Original implementation plan
 
 Before runtime edits, establish focused failing regressions for the affected
 resolution, worker and UI behavior. Reuse existing recovery and audit coverage.
@@ -114,3 +114,72 @@ enablement and real-provider gates remain with their existing owners.
 - [x] Operator completion and minimal state/contract migration.
 - [x] Terminal guards, late-object handling and shared paid-state integration.
 - [x] Existing-screen presentation, runbook and focused verification.
+
+## Review and verification
+
+- GET-only recovery uses permanent bindings and positively attested IDs for both
+  financial operations. It checks a known subscription independently of a failed
+  agreement read. Searching without a subscription ID requires an unambiguous
+  agreement. A disproved receipt alone cannot establish ownership.
+- The late-case writer rechecks bindings and audit evidence under the user lock,
+  including attestations made during the GET. Only an observation of the same
+  relationship completed by the confirmation time can be dismissed as delayed.
+  Positive attestation supersedes older disproof. Earlier commands remain replayable.
+  First binding and attestation serialize by account, object kind and ID across users.
+- The worker records a proven late original on its released purchase. The case
+  blocks new financial CREATEs for that customer and first-primary selection
+  for implicated products, even after a listing omission. Trusted primaries
+  continue normal reconciliation. A listing discrepancy alone pauses admission.
+  A second purchase keeps its operation, fence and receipt unless its own
+  evidence proves a conflict.
+- A retained subscription listed as ended requires a current point read within
+  the existing 20-candidate limit. The cabinet uses the active list for a held
+  purchase and the individual terminal status for a released purchase.
+  The [operations runbook](../../engineering/billing-background-operations.md)
+  documents the proof and operator procedure.
+
+The seven ticket cases are exercised through unsent completion and restart,
+GET-only recovery after a lost reply, empty discovery with the hold retained,
+late discovery after operator action, separate proof for a partial purchase,
+two-hour escalation, and repeated/concurrent actions with a replacement.
+
+Before the rebase, 86 focused tests and 1,289 PostgreSQL tests passed with
+disposable PostgreSQL 18.6 and synthetic LBX. Those runs covered the stale
+listing's effect on the original purchase. On November 19, checking the other
+held purchase exposed two false manual reviews, with and without a different
+CREATE receipt. Both failed on the held purchase's persisted state before the fix.
+
+On the rebased branch, both cases preserve the held purchase, operation, send
+fence, receipt and open reviews. Once the original case closes, GET-only
+recovery binds the held purchase's own subscription. A confirmed conflict on
+its dedicated agreement or CREATE receipt still opens a case on that operation.
+The focused run passed 92 tests covering all seven scenarios, ownership races,
+monthly allowances and Alembic. A Windows-only Mako path test skipped on Linux.
+
+On November 19, the canonical check passed documentation, generated contracts,
+architecture, lint, 503 web tests, 2,413 fast API tests and the Webpack build
+using cached fonts. One Windows-only fast test skipped on Linux. On PostgreSQL
+14.24, 1,292 of 1,297 tests passed on the first four-worker run. Three fixture
+queries, one purchase preflight and the two-consumer Portal/Kernel probe timed
+out. All five passed on a serial retry with the same code and deadlines.
+Four separate Playwright runs on the production build passed on desktop
+Chromium and Pixel 7 with synthetic billing, including held and released deep
+links. The full live-stack browser suite was outside this run.
+
+### Integration with main and ANY-832
+
+ANY-821 was rebased onto `f6b1f1d2`, including the ANY-864 monthly LBX calendar
+and the ANY-741 Mako update. For integration with ANY-832 at `f7639e1a`, keep
+its inventory fact collector and product projection, and incorporate ANY-821's
+released-purchase lookup and case attribution. The three-way preview also
+found overlaps in LBX calendar normalization and reconciliation. Preserve the
+monthly instance-start rules, annual and established calendar anchors, and the
+point evidence from the same GET. The documentation overlaps in the index and
+schema reference were update dates. Verify first-primary selection and both
+calendar profiles on the eventual combined tree.
+
+Earlier verification covered the Webpack production build with cached Manrope
+files and held and released deep links in desktop Chrome and Pixel 7, including
+keyboard focus, layout and billing-section axe checks. Temporary combinations
+with PR #168 at `900e3f2c` and PR #171 at `3e9c1273` passed 70 and 83 selected
+tests respectively. These results apply to their recorded snapshots.

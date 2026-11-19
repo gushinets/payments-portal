@@ -7,6 +7,7 @@ from uuid import UUID
 
 from starlette.concurrency import run_in_threadpool
 
+from app.composition.purchase_inventory_history import observe_released_subscription
 from app.composition.purchase_observation import prepared_subscription_observation
 from app.composition.sources import SourceResources
 from app.core.settings import Settings
@@ -14,22 +15,35 @@ from app.domains.billing.reconciliation import read_source_time
 from app.domains.billing.contracts import CustomerOpen
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.customer_conflicts import record_customer_conflict
-from app.domains.billing.operator_contracts import OriginalOperationProof, ReviewResolution
+from app.domains.billing.operator_contracts import (
+    AuditedObjects,
+    OriginalOperationProof,
+    ReviewResolution,
+    retained_agreement_ids,
+)
 from app.domains.billing.operator_review import digest
 from app.domains.billing.reconciliation_contracts import CommercialProof, IdentityProof, SubscriptionCandidateSubject
+from app.domains.billing.terminal_resolution import released_operation_objects, record_late_object
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases import financial, service
 from app.domains.purchases.contracts import FinancialOperation, FinancialRequestDocument, Purchase, PurchaseRefused
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.client import LbxServerClient
-from app.integrations.lbx.errors import LbxError, LbxScopeMismatch, LbxResponseInvalid
+from app.integrations.lbx.errors import (
+    LbxError,
+    LbxProviderRejected,
+    LbxRateLimited,
+    LbxResponseInvalid,
+    LbxScopeMismatch,
+    LbxTimeout,
+    LbxUnavailable,
+)
 from app.integrations.lbx.financial import (
     Agreement,
     NewAgreement,
     NewSubscription,
     Subscription,
     agreement_is_closed,
-    subscription_lifecycle,
     prove_agreement,
     prove_effective_terms,
 )
@@ -37,7 +51,6 @@ from app.integrations.lbx.reconciliation import normalize_subscription, timely_p
 from app.models import (
     ExternalCreateOperationKind as Kind,
     ExternalCreateOperationState as State,
-    ExternalSubscriptionLifecycleStatus as Lifecycle,
 )
 
 
@@ -116,6 +129,33 @@ async def find_financial(
     )
     if agreement_is_closed(agreement) and operation.state in {State.PENDING, State.PROVEN_NOT_SENT}:
         raise PurchaseRefused("purchase_not_prepared", 409)
+    candidate_id = await _subscription_candidate_id(
+        client,
+        customer,
+        agreement_id,
+        saved=saved,
+        budget=budget,
+        require_discovery=require_discovery,
+    )
+    if candidate_id is None:
+        return None
+    point = await timely_point(lambda: client.get_subscription(subscription_id=candidate_id, budget=budget), budget)
+    if operation.state in {State.PENDING, State.PROVEN_NOT_SENT}:
+        prove_effective_terms(
+            point, agreement_id=agreement_id, selection=purchase.accepted.selection, offer=purchase.accepted.offer
+        )
+    return candidate_id, agreement, point
+
+
+async def _subscription_candidate_id(
+    client: LbxServerClient,
+    customer: CustomerOpen,
+    agreement_id: int,
+    *,
+    budget: PreflightBudget,
+    saved: str | None = None,
+    require_discovery: bool = False,
+) -> int | None:
     rows = await timely_point(
         lambda: client.discover_subscriptions(
             user_id=int(customer.provider_id), agreement_id=agreement_id, budget=budget
@@ -129,14 +169,7 @@ async def find_financial(
         ids = (int(saved),)
     if len(ids) > 1:
         raise LbxScopeMismatch()
-    if not ids:
-        return None
-    point = await timely_point(lambda: client.get_subscription(subscription_id=ids[0], budget=budget), budget)
-    if operation.state in {State.PENDING, State.PROVEN_NOT_SENT}:
-        prove_effective_terms(
-            point, agreement_id=agreement_id, selection=purchase.accepted.selection, offer=purchase.accepted.offer
-        )
-    return ids[0], agreement, point
+    return ids[0] if ids else None
 
 
 async def recover_one(
@@ -290,6 +323,60 @@ async def _already_bound(
     return True
 
 
+async def _observe_released_object(
+    client: LbxServerClient,
+    purchase: Purchase,
+    operation: FinancialOperation,
+    customer: CustomerOpen,
+    factory: SessionFactory,
+    candidate_id: str | None,
+    history: dict[UUID, AuditedObjects],
+    *,
+    budget: PreflightBudget,
+    delegate: Callable[..., Awaitable[Any]],
+) -> None:
+    started = await delegate(read_source_time, factory)
+    if operation.kind == Kind.AGREEMENT:
+        original = replace(operation, bound_id=None, candidate_id=candidate_id)
+        found = await find_financial(client, purchase, original, customer, budget=budget)
+        if found is not None and not agreement_is_closed(found[1]):
+            finished = await delegate(read_source_time, factory)
+            await delegate(
+                record_late_object, factory, purchase, operation.id, str(found[0]), started, read_finished_at=finished
+            )
+        return
+    agreement = next(op for op in purchase.operations if op.kind == Kind.AGREEMENT)
+    expected_ids = retained_agreement_ids(agreement.bound_id, history.get(agreement.id))
+    # With several original agreements, only a bound or attested subscription identifies the point to read.
+    known_subscription = candidate_id is not None and (
+        candidate_id == operation.bound_id or candidate_id in history.get(operation.id, AuditedObjects()).confirmed
+    )
+    if not expected_ids or (len(expected_ids) > 1 and not known_subscription):
+        raise PurchaseRefused("purchase_history_unproven", 409)
+    if candidate_id is None:
+        (agreement_id,) = expected_ids
+        provider_id = await _subscription_candidate_id(client, customer, int(agreement_id), budget=budget)
+        if provider_id is None:
+            return
+    else:
+        provider_id = int(candidate_id)
+    point = await timely_point(lambda: client.get_subscription(subscription_id=provider_id, budget=budget), budget)
+    if candidate_id is None and str(point.agreement_id) not in expected_ids:
+        raise LbxScopeMismatch()
+    finished = await delegate(read_source_time, factory)
+    await observe_released_subscription(
+        purchase,
+        point,
+        lambda: timely_point(lambda: client.get_agreement(agreement_id=point.agreement_id, budget=budget), budget),
+        read_started_at=started,
+        read_finished_at=finished,
+        subscription_id=provider_id,
+        user_id=int(customer.provider_id),
+        factory=factory,
+        delegate=delegate,
+    )
+
+
 async def recover_financial(
     sources: SourceResources,
     configuration: Settings,
@@ -309,33 +396,50 @@ async def recover_financial(
     purchase = await delegate(service.inspect_purchase, factory, configuration, user_id, purchase_id)
     _connection(purchase, configuration)
     if not purchase.held and purchase.state.resolved and work_claim is None and sources.billing is not None:
-        from app.domains.billing.terminal_resolution import record_late_object
-
         await delegate(service.verify_original_consent, factory, purchase)
         current = await delegate(service.customer_for_purchase, factory, configuration, purchase)
         async with _budget(sources.billing, budget) as active_budget:
             client = sources.require_lbx()
-            read_started = await delegate(read_source_time, factory)
             user = await timely_point(
                 lambda: client.get_user(user_id=int(current.provider_id), budget=active_budget), active_budget
             )
             if user.outer_id != current.outer_key:
                 raise PurchaseRefused("billing_identity_unproven", 409)
+            history = await delegate(released_operation_objects, factory, purchase.id)
+            first_error = None
             for operation in purchase.operations:
                 if operation_id is not None and operation.id != operation_id:
                     continue
-                if not operation.bound_id and operation.state in {State.PENDING, State.PROVEN_NOT_SENT}:
+                objects = history.get(operation.id, AuditedObjects())
+                if not (operation.bound_id or objects.confirmed) and (
+                    first_error is not None or operation.state in {State.PENDING, State.PROVEN_NOT_SENT}
+                ):
                     continue
-                original = replace(operation, bound_id=None, candidate_id=operation.bound_id or operation.candidate_id)
-                found = await find_financial(client, purchase, original, current, budget=active_budget)
-                if found is not None:
-                    provider_id, agreement, point = found
-                    if not agreement_is_closed(agreement) and (
-                        point is None or subscription_lifecycle(point)[0] != Lifecycle.ENDED
-                    ):
-                        await delegate(
-                            record_late_object, factory, purchase, operation.id, str(provider_id), read_started
+                # Without an eligible ID, discover by the original agreement number or relationship.
+                for candidate_id in objects.point_ids(operation) or (None,):
+                    try:
+                        await _observe_released_object(
+                            client,
+                            purchase,
+                            operation,
+                            current,
+                            factory,
+                            candidate_id,
+                            history,
+                            budget=active_budget,
+                            delegate=delegate,
                         )
+                    except (
+                        LbxProviderRejected,
+                        LbxRateLimited,
+                        LbxResponseInvalid,
+                        LbxScopeMismatch,
+                        LbxTimeout,
+                        LbxUnavailable,
+                    ) as error:
+                        first_error = first_error or error
+            if first_error is not None:
+                raise first_error
         return await delegate(service.read_purchase, factory, user_id, purchase_id)
     if not purchase.held or sources.billing is None:
         raise PurchaseRefused("purchase_scope_released", 409)

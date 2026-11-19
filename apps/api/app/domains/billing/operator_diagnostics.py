@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from app.core.settings import Settings
+from app.domains.billing.operator_contracts import LATE_REASON, LateObjectEvidence
 from app.domains.billing.operator_review import case_digest
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
@@ -12,7 +13,27 @@ from app.infrastructure.queries import billing_operator as queries, billing_reco
 from app.infrastructure.queries.billing_customers import diagnostic_user
 from app.infrastructure.queries.billing_background import operation_subject
 from app.domains.billing.customer_scope import connection_account
-from app.domains.billing.terminal_resolution import state_digest
+from app.domains.billing.terminal_resolution import LATE_SCHEMA, state_digest
+from app.models import ManualReviewCase
+
+
+def _review_evidence(case: ManualReviewCase) -> dict:
+    result = {
+        "review_case_id": str(case.review_case_id),
+        "reason": case.reason_code,
+        "scope_kind": case.scope_kind,
+        "scope_reference": case.scope_reference,
+        "state": case.case_state,
+        "expected_case_digest": case_digest(case),
+        "schema": case.evidence_schema_version,
+        "resolution_schema": case.resolution_schema_version,
+        "resolved_at": case.resolved_at.isoformat() if case.resolved_at else None,
+    }
+    if case.reason_code == LATE_REASON and case.evidence_schema_version == LATE_SCHEMA:
+        result["late_object"] = LateObjectEvidence.model_validate(case.evidence_document).model_dump(
+            mode="json", exclude={"purchase_intent_id"}
+        )
+    return result
 
 
 def inspect_operation(factory: SessionFactory, configuration: Settings, operation_id: UUID) -> dict:
@@ -74,7 +95,12 @@ def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: 
         )
         work = queries.work(db, references)
         reviews = queries.reviews(
-            db, purchase.id, purchase.customer_id, sub.subscription_id if sub else None, include_paid_diagnostics=True
+            db,
+            purchase.id,
+            purchase.customer_id,
+            sub.subscription_id if sub else None,
+            include_paid_diagnostics=True,
+            open_first=True,
         )
         now = as_utc(billing_reconciliation.database_now(db))
         return {
@@ -151,20 +177,7 @@ def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: 
                 }
                 for item in work[:100]
             ],
-            "reviews": [
-                {
-                    "review_case_id": str(case.review_case_id),
-                    "reason": case.reason_code,
-                    "scope_kind": case.scope_kind,
-                    "scope_reference": case.scope_reference,
-                    "state": case.case_state,
-                    "expected_case_digest": case_digest(case),
-                    "schema": case.evidence_schema_version,
-                    "resolution_schema": case.resolution_schema_version,
-                    "resolved_at": case.resolved_at.isoformat() if case.resolved_at else None,
-                }
-                for case in reviews[:100]
-            ],
+            "reviews": [_review_evidence(case) for case in reviews[:100]],
             "work_truncated": len(work) > 100,
             "reviews_truncated": len(reviews) > 100,
         }

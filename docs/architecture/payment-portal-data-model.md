@@ -270,10 +270,13 @@ when migration heads match. See the
 
 ANY-821 adds `resolved_external_terminal` through migration `20261116_821` after
 `20261031_0006`. Audited operator completion uses existing `manual_review_cases`,
-sets `resolved_at` and releases the exact purchase hold without deleting accepted
-history or external objects. `purchase-terminal-resolution:v1` retains command
-expectations, per-operation evidence, sender shutdown/confirmation times and
-principal; `purchase-late-object:v1` records later contradictions without rebinding.
+sets `purchase_intents.resolved_at` and releases the exact purchase hold while
+retaining accepted history and external objects. The case's
+`resolved_by_principal` column stores the operator principal. Its
+`resolution_document` uses `purchase-terminal-resolution:v1` and stores the
+request, including expected digest, per-operation evidence and shutdown and
+confirmation times, along with the command digest and before/after states.
+`purchase-late-object:v1` records later contradictions without rebinding.
 Downgrade refuses while the new terminal state is retained.
 `20261117_821_merge` joins this revision with published ANY-766 head
 `20261113_0013` without changing either migration or adding DDL.

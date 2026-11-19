@@ -27,7 +27,7 @@ from app.domains.purchases.contracts import (
     Purchase,
     PurchaseRefused,
 )
-from app.domains.purchases.preparation import record_first_binding
+from app.domains.purchases.preparation import FinancialObjectConflict, record_first_binding, verify_financial_owner
 from app.domains.purchases.service import _locked, _operation, _verify_original_consent
 from app.infrastructure.queries import billing_operator, purchases as queries
 from app.infrastructure.queries.billing_customers import (
@@ -418,6 +418,7 @@ def _bind_financial(
         existing = queries.linked_subscription(db, purchase.id)
         if existing is not None:
             raise PurchaseRefused("purchase_review_required", 409)
+        verify_financial_owner(db, op, str(provider_id))
         resolved_case = None
         if resolution is not None:
             from app.domains.billing.operator_review import authorize_original_binding
@@ -488,7 +489,7 @@ def bind_financial(
             work_claim=work_claim,
             resolution=resolution,
         )
-    except IntegrityError:
+    except (IntegrityError, FinancialObjectConflict):
         if resolution is not None:
             raise PurchaseRefused("purchase_review_required", 409) from None
         financial_pending(factory, purchase, expected, conflict=True, work_claim=work_claim)
