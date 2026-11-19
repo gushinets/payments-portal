@@ -74,7 +74,9 @@ confirmed access in the cabinet.
 
 - Use `APP_ENV=development` or `APP_ENV=test`, an isolated Portal database, and a
   test LBX environment with an approved test payment method. Check the
-  [LBX and backend settings](#connection-and-deployment).
+  [LBX and backend settings](#connection-and-deployment). Before running a host
+  migration, confirm that its effective `DATABASE_URL` targets the isolated
+  database as well. A shell override can change the host migration target.
 - Configure a test SMTP sink such as Mailpit. Set `SMTP_HOST` and `SMTP_PORT` to
   an address and port reachable from the running API, and set `SMTP_FROM_EMAIL`
   to a test sender. For a local sink without STARTTLS, set `SMTP_USE_TLS=false`.
@@ -86,23 +88,37 @@ confirmed access in the cabinet.
   The clock budget has no default. Leaving it empty prevents the worker from
   issuing new paid access and allowances. See the
   [worker settings](billing-background-operations.md#embedded-worker-settings-and-resource-limits).
-- Select an enabled product and a supported test offer for
-  [product linking](#cli-execution-and-product-linking). For a metered purchase,
-  record the expected metric, unit, and purchased quantity before accepting terms.
-- To reproduce the [simulated Brief Decoder test](billing-background-operations.md#monthly-lbx-instance-start-calendar-any-864),
-  use a supported monthly `instance_start` LBX offer linked to `brief_decoder`
-  without published technical terms. Set `PURCHASE_TEST_TERMS_ENABLED=true`
+- For a fresh isolated database, select an enabled product and a supported test
+  offer. Use [product linking](#cli-execution-and-product-linking) with the
+  enabled metric and unit from a configured backend manifest and the approved
+  test quantity, for example `--allowance-quantity 300` for an approved
+  300-analysis test.
+- The [simulated Brief Decoder test](billing-background-operations.md#monthly-lbx-instance-start-calendar-any-864)
+  requires a prepared isolated fixture with a supported monthly `instance_start`
+  LBX offer already linked to `brief_decoder` without published technical terms.
+  The standard `publish` command creates published terms using the configured
+  source. For the prepared fixture, set `PURCHASE_TEST_TERMS_ENABLED=true`
   before starting the API. The selected backend manifest must enable
   `brief_decoder` and its `brief_decoder.test_analyses` metric with unit
-  `analysis`. The development Kernel mock includes this metric.
+  `analysis`. The [development Kernel mock](#connection-and-deployment) includes
+  this metric and requires `APP_ENV=development` when run by the harness.
 
 ### Before handing off the running stack
 
-After [startup](#startup-and-restart), verify both worker and clock settings in
-the running API. For the Compose harness, use the helper in the startup section.
+After [startup](#startup-and-restart), verify the environment, database target,
+worker, and clock settings in the running API. For the Compose harness, use the
+helper in the startup section. Compare the printed database host, port, and
+name with the intended isolated target.
 
 ```bash
-portal_compose exec -T api printenv BILLING_WORKER_ENABLED PAID_ACCESS_CLOCK_SKEW_SECONDS
+portal_compose exec -T api printenv APP_ENV BILLING_WORKER_ENABLED PAID_ACCESS_CLOCK_SKEW_SECONDS
+portal_compose exec -T api python -c '
+from os import environ
+from sqlalchemy.engine import make_url
+
+db = make_url(environ["DATABASE_URL"])
+print(db.host, db.port, db.database)
+'
 ```
 
 Check `/api/health/ready`, verify that `/api/health/billing` reports `running`,
@@ -110,9 +126,12 @@ and confirm the linked product shows the expected current offer. The health
 endpoints report service health. Check paid access separately after payment.
 
 Register the test buyer, confirm the verification email arrives in the test
-mailbox, and open its link before starting the purchase. For the simulated
-Brief Decoder case, confirm the purchase review shows 300 analyses before
-accepting the terms.
+mailbox, and open its link before starting the purchase. If using the simulated
+fixture, use the product-link CLI's `query --product-id brief_decoder` to check
+that a current link exists and its `document` has no `technical_offer`. Before
+accepting a metered purchase, confirm the review shows the expected metric, unit,
+and quantity. The simulated Brief Decoder case should show 300 analyses with
+simulated terms.
 
 ### After test payment
 
