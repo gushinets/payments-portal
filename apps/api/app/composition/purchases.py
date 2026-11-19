@@ -242,6 +242,9 @@ async def _prepare(
                         "reason": facts.reason if facts else "unknown",
                     },
                 )
+                # The possible-send claim already enrolled GET-only recovery.
+                # Return the saved state so the worker can discover a late reply.
+                break
             purchase = await run_in_threadpool(service.read_purchase, factory, purchase.user_id, purchase.id)
             operation = _operation(purchase, kind)
             if not await _recover_one(sources, configuration, purchase, operation, customer, factory, budget=budget):
@@ -310,13 +313,10 @@ async def verify_payment_purchase(
     configuration: Settings,
     *,
     factory: SessionFactory,
-    token: str,
-    purchase_id: UUID,
+    purchase: Purchase,
     customer: CustomerOpen,
     budget: PreflightBudget,
 ) -> ReconciliationResult:
-    user_id = await run_in_threadpool(service.authenticate_user, factory, configuration, token)
-    purchase = await run_in_threadpool(service.read_purchase, factory, user_id, purchase_id)
     _connection(purchase, configuration)
     if (
         purchase.customer_id != customer.customer_id

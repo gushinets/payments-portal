@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AccountBilling } from "@/features/billing";
+import { requestPaymentOpening } from "@/features/billing/payment-opening";
 import type { AccountPurchaseResponse } from "@/generated/api-contracts/types.gen";
 import ru from "@/messages/ru.json";
 import pt from "@/messages/pt.json";
@@ -20,7 +21,7 @@ const bootstrap = vi.fn();
 function renderCabinet(initialPurchaseId?: string, locale: "ru" | "pt" = "ru") {
   return renderWithIntl(<AccountBilling userId={purchaseUser.user_id} emailVerified initialPurchaseId={initialPurchaseId} />, { locale, messages: locale === "ru" ? ru : pt });
 }
-const open = () => fireEvent.click(screen.getByRole("button", { name: ru.Billing.open }));
+const open = (name = ru.Billing.pay) => fireEvent.click(screen.getByRole("button", { name }));
 const selector = () => screen.getByRole("combobox", { name: ru.Billing.selectedPurchase });
 const payloads = () => bootstrap.mock.calls.map(([init]) => JSON.parse(init.body));
 
@@ -45,8 +46,9 @@ beforeEach(() => {
     if (response.payment_target) response.payment_target.purchase_intent_id = body.purchase_intent_id;
     return json(response);
   });
-  mount.mockReset().mockImplementation((node: HTMLElement) => {
+  mount.mockReset().mockImplementation((node: HTMLElement, _response, _title, _current, _failure, ready: () => void) => {
     node.append(document.createElement("iframe"));
+    ready();
     return () => { node.replaceChildren(); dispose(); };
   });
   dispose.mockReset();
@@ -103,6 +105,34 @@ it("loads a deep link locally and requires an explicit action before opening pay
   expect(document.querySelectorAll("iframe")).toHaveLength(0);
 });
 
+it("consumes a verified payment click once and shows the target before Widget READY", async () => {
+  let ready!: () => void;
+  mount.mockImplementationOnce((node: HTMLElement, _response, _title, _current, _failure, onReady: () => void) => {
+    node.append(document.createElement("iframe"));
+    ready = onReady;
+    return () => node.replaceChildren();
+  });
+  requestPaymentOpening(first.purchase_intent_id, purchaseUser.user_id);
+  const view = renderCabinet(first.purchase_intent_id);
+  expect(await screen.findByText(/synthetic-agreement/)).toBeVisible();
+  expect(screen.getByRole("button", { name: ru.Billing.loading })).toBeDisabled();
+  expect(payloads()).toEqual([{ purchase_intent_id: first.purchase_intent_id }]);
+  act(() => ready());
+  expect(screen.getByRole("button", { name: ru.Billing.refresh })).toBeEnabled();
+  view.unmount();
+  renderCabinet(first.purchase_intent_id);
+  expect(await screen.findByRole("button", { name: ru.Billing.pay })).toBeEnabled();
+  expect(bootstrap).toHaveBeenCalledTimes(1);
+});
+
+it("discards a pending payment click after session replacement", async () => {
+  requestPaymentOpening(first.purchase_intent_id, purchaseUser.user_id);
+  window.localStorage.setItem(sessionStorageKey, "replacement-session");
+  renderCabinet(first.purchase_intent_id);
+  expect(await screen.findByRole("button", { name: ru.Billing.pay })).toBeEnabled();
+  expect(bootstrap).not.toHaveBeenCalled();
+});
+
 it("refreshes the same purchase through a fresh bootstrap and removes the old Widget while waiting", async () => {
   renderCabinet(first.purchase_intent_id);
   await waitFor(() => expect(selector()).toHaveValue(first.purchase_intent_id));
@@ -156,7 +186,7 @@ it("disposes the previous Widget when another purchase or account viewing is sel
   renderCabinet();
   await screen.findByRole("heading", { name: second.product_id });
   expect(selector()).toHaveValue("");
-  open();
+  open(ru.Billing.open);
   await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
   expect(mount.mock.calls[0][1].disablePayments).toBe(true);
   fireEvent.change(selector(), { target: { value: second.purchase_intent_id } });
@@ -183,7 +213,7 @@ it.each(["empty", "failed"])("keeps account-only viewing available with %s purch
   list.mockImplementation(async () => kind === "empty" ? json({ purchases: [], next_cursor: null }) : json({ detail: { code: "unavailable" } }, 503));
   renderCabinet();
   await screen.findByText(kind === "empty" ? ru.Account.products.empty : ru.Account.products.unavailable);
-  open();
+  open(ru.Billing.open);
   await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
   expect(payloads()).toEqual([{}]);
   expect(mount.mock.calls[0][1].disablePayments).toBe(true);
@@ -202,7 +232,7 @@ it("pages owned purchases without dropping existing cards or selecting an arbitr
 it("normalizes SDK failures and retries only the same purchase", async () => {
   mount.mockImplementationOnce(() => { throw new Error("private-sdk-detail"); });
   renderCabinet(first.purchase_intent_id);
-  await waitFor(() => expect(screen.getByRole("button", { name: ru.Billing.open })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole("button", { name: ru.Billing.pay })).toBeEnabled());
   open();
   expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.errors.sdk);
   open();
@@ -214,7 +244,7 @@ it.each(["logout", "user", "silent_user", "selection", "unmount"])("cannot mount
   let finish!: (response: Response) => void;
   bootstrap.mockImplementation(() => new Promise<Response>((resolve) => { finish = resolve; }));
   const view = renderCabinet(first.purchase_intent_id);
-  await waitFor(() => expect(screen.getByRole("button", { name: ru.Billing.open })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole("button", { name: ru.Billing.pay })).toBeEnabled());
   open();
   await waitFor(() => expect(bootstrap).toHaveBeenCalledTimes(1));
   if (change === "unmount") view.unmount();
@@ -232,7 +262,7 @@ it("keeps explicit account viewing when a delayed inventory later finds one purc
   let finish!: (response: Response) => void;
   list.mockImplementation(() => new Promise<Response>((resolve) => { finish = resolve; }));
   renderCabinet();
-  open();
+  open(ru.Billing.open);
   await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
   await act(async () => finish(json({ purchases: [first], next_cursor: null })));
   await screen.findByRole("article");
@@ -244,7 +274,7 @@ it("refuses released purchase deep links while retaining owned history separatel
   status.mockResolvedValue(json({ ...savedPurchase, state: "failed_before_external_effect", scope_held: false }));
   renderCabinet(first.purchase_intent_id);
   expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.selectionUnavailable);
-  expect(screen.getByRole("button", { name: ru.Billing.open })).toBeDisabled();
+  expect(screen.getByRole("button", { name: ru.Billing.pay })).toBeDisabled();
   expect(bootstrap).not.toHaveBeenCalled();
 });
 

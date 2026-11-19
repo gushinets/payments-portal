@@ -74,7 +74,7 @@ it("does not request paid access before email verification", async () => {
 it("reads local committed state again after closing the Widget", async () => {
   renderCabinet();
   await screen.findByText(a.confirmed);
-  fireEvent.click(screen.getByRole("button", { name: ru.Billing.open }));
+  fireEvent.click(screen.getByRole("button", { name: ru.Billing.pay }));
   await screen.findByRole("button", { name: ru.Billing.close });
   paid.mockImplementation(async () => Response.json(paidState({ access_revision: 2, grants: [], allowances: [], effective_until: null, products: [{ product_id: "proposal_ai", status: "no_paid_access", observed_at: null, effective_until: null }] })));
   fireEvent.click(screen.getByRole("button", { name: ru.Billing.close }));
@@ -153,7 +153,7 @@ it("a Widget close refreshes saved paid state without browser-derived grants or 
   paid.mockImplementation(async () => Response.json(paidState({ access_revision: 0, grants: [], allowances: [], products: [{ product_id: "proposal_ai", status: "unavailable", observed_at: null, effective_until: null }], effective_until: null })));
   renderCabinet();
   await screen.findByRole("article");
-  fireEvent.click(screen.getByRole("button", { name: ru.Billing.open }));
+  fireEvent.click(screen.getByRole("button", { name: ru.Billing.pay }));
   await screen.findByRole("button", { name: ru.Billing.close });
   fireEvent.click(screen.getByRole("button", { name: ru.Billing.close }));
   await waitFor(() => expect(paid).toHaveBeenCalledTimes(2));

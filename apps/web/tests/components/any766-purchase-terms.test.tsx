@@ -85,7 +85,7 @@ it("shows configured terms before consent and requires unchecked consent again a
   expect(screen.getByRole("button", { name: ru.Purchase.confirm })).toBeDisabled();
   fireEvent.click(screen.getByRole("checkbox"));
   fireEvent.click(screen.getByRole("button", { name: ru.Purchase.confirm }));
-  expect(await screen.findByRole("link", { name: ru.Purchase.manage })).toBeVisible();
+  expect(await screen.findByRole("link", { name: ru.Billing.pay })).toBeVisible();
   expect(confirmations).toHaveLength(2);
   expect(confirmations[1]).toMatchObject({ revision_id: currentReview.revision_id, expected_technical_terms_digest: currentReview.expected_technical_terms_digest });
 });

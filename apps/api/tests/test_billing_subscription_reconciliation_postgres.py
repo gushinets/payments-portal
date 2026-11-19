@@ -437,8 +437,7 @@ async def test_billing_subscription_reconciliation_normal_termination_is_not_fin
                 sources,
                 step1_settings(),
                 factory=factory,
-                token=TOKEN,
-                purchase_id=purchase.id,
+                purchase=current,
                 customer=customer,
                 budget=budget,
             )

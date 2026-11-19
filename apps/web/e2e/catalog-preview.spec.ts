@@ -163,7 +163,7 @@ for (const locale of ["ru", "pt"] as const) {
     const products = page.getByRole("region", { name: messages.Account.products.title });
     await products.getByRole("link", { name: messages.Account.products.detailAction }).click();
     await expect(page).toHaveURL(new RegExp(`/${locale}/products/proposal_ai$`), { timeout: 20000 });
-    await expect(page.getByRole("link", { name: messages.Purchase.manage })).toBeVisible();
+    await expect(page.getByRole("link", { name: messages.Billing.pay })).toBeVisible();
     state.unavailable = true;
     await page.goto(`/${locale}/account`);
     await expect(products.getByRole("article")).toHaveCount(1);

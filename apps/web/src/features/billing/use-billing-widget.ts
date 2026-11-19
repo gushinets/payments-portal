@@ -9,10 +9,18 @@ import { billingErrorKey, newRequestId, safeRequestId, type BillingErrorKey } fr
 import { mountOfficialWidget } from "./official-widget-sdk";
 import { reportBillingWidgetFailure, type WidgetFailureReason } from "@/shared/observability/sentry";
 
+export const WidgetStatus = {
+  Closed: "closed",
+  Bootstrapping: "bootstrapping",
+  Rendering: "rendering",
+  Open: "open",
+  Error: "error"
+} as const;
+
 type WidgetState =
-  | { status: "closed" | "loading" }
-  | { status: "open"; target: WidgetPaymentTarget | null }
-  | { status: "error"; message: BillingErrorKey; requestId: string };
+  | { status: typeof WidgetStatus.Closed | typeof WidgetStatus.Bootstrapping }
+  | { status: typeof WidgetStatus.Rendering | typeof WidgetStatus.Open; target: WidgetPaymentTarget | null }
+  | { status: typeof WidgetStatus.Error; message: BillingErrorKey; requestId: string };
 
 // A new presentation destroys the previous host, including an account-only JWT.
 const widgetOpeningEvent = "anytoolai_billing_widget_opening";
@@ -20,7 +28,7 @@ const widgetOpeningEvent = "anytoolai_billing_widget_opening";
 export function useBillingWidget(userId: string, emailVerified: boolean) {
   const t = useTranslations("Billing");
   const { begin, cancel } = useSessionOperation();
-  const [state, setState] = useState<WidgetState>({ status: "closed" });
+  const [state, setState] = useState<WidgetState>({ status: WidgetStatus.Closed });
   const node = useRef<HTMLDivElement>(null);
   const dispose = useRef<(() => void) | undefined>(undefined);
   const opening = useRef(false);
@@ -33,7 +41,7 @@ export function useBillingWidget(userId: string, emailVerified: boolean) {
       dispose.current?.();
       dispose.current = undefined;
       opening.current = false;
-      setState({ status: "closed" });
+      setState({ status: WidgetStatus.Closed });
     };
     const otherOpening = (event: Event) => {
       if (event instanceof CustomEvent && event.detail !== owner.current) clear();
@@ -50,7 +58,7 @@ export function useBillingWidget(userId: string, emailVerified: boolean) {
     };
   }, [userId, emailVerified, cancel]);
 
-  async function open(purchaseId?: string) {
+  const open = useCallback(async (purchaseId?: string) => {
     if (!emailVerified || opening.current) return;
     window.dispatchEvent(new CustomEvent(widgetOpeningEvent, { detail: owner.current }));
     opening.current = true;
@@ -58,52 +66,62 @@ export function useBillingWidget(userId: string, emailVerified: boolean) {
     dispose.current = undefined;
     const operation = begin();
     const correlationId = newRequestId();
-    setState({ status: "loading" });
+    setState({ status: WidgetStatus.Bootstrapping });
+    if (!operation.token) {
+      opening.current = false;
+      setState({ status: WidgetStatus.Error, message: "session", requestId: "" });
+      return;
+    }
     try {
-      if (!operation.token) {
-        setState({ status: "error", message: "session", requestId: "" });
-        return;
-      }
       const response = purchaseId
         ? await bootstrapWidget(operation.token, correlationId, purchaseId)
         : await bootstrapWidget(operation.token, correlationId);
       if (!operation.isCurrent() || !node.current) {
         response.credential = "";
-        if (operation.isLatest()) setState({ status: "error", message: "session", requestId: correlationId });
+        if (operation.isLatest()) {
+          opening.current = false;
+          setState({ status: WidgetStatus.Error, message: "session", requestId: correlationId });
+        }
         return;
       }
       const id = response.request_id || correlationId;
+      const target = response.payment_target ?? null;
       let failureReported = false;
       const sdkFailure = (reason: WidgetFailureReason = "sdk_failed") => {
         if (operation.isCurrent() && !failureReported) {
           failureReported = true;
+          opening.current = false;
           dispose.current?.();
           dispose.current = undefined;
           reportBillingWidgetFailure(id, reason);
-          setState({ status: "error", message: "sdk", requestId: id });
+          setState({ status: WidgetStatus.Error, message: "sdk", requestId: id });
         }
       };
       try {
-        dispose.current = mountOfficialWidget(node.current, response, t("frameTitle"), operation.isCurrent, sdkFailure);
-        setState({ status: "open", target: response.payment_target ?? null });
+        setState({ status: WidgetStatus.Rendering, target });
+        dispose.current = mountOfficialWidget(node.current, response, t("frameTitle"), operation.isCurrent, sdkFailure, () => {
+          if (!operation.isCurrent() || failureReported) return;
+          opening.current = false;
+          setState({ status: WidgetStatus.Open, target });
+        });
       } catch {
         response.credential = "";
         sdkFailure();
       }
     } catch (error) {
-      if (operation.isCurrent()) setState({ status: "error", message: billingErrorKey(error), requestId: safeRequestId(error) || correlationId });
-    } finally {
       if (operation.isLatest()) opening.current = false;
+      if (operation.isCurrent()) setState({ status: WidgetStatus.Error, message: billingErrorKey(error), requestId: safeRequestId(error) || correlationId });
     }
-  }
+  }, [begin, emailVerified, t]);
 
   function close() {
     cancel();
     dispose.current?.();
     dispose.current = undefined;
     opening.current = false;
-    setState({ status: "closed" });
+    setState({ status: WidgetStatus.Closed });
   }
 
-  return { state, attachNode, open, close };
+  const loading = state.status === WidgetStatus.Bootstrapping || state.status === WidgetStatus.Rendering;
+  return { state, loading, attachNode, open, close };
 }

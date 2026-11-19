@@ -258,6 +258,10 @@
   gap: 10px;
 }
 
+.billing-widget-rendering {
+  visibility: hidden;
+}
+
 .purchase-review,
 .purchase-status,
 .billing-widget {

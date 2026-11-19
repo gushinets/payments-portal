@@ -7,8 +7,10 @@ import { Link } from "@/i18n/navigation";
 import { purchaseStatus } from "@/shared/api/purchases";
 import { subscribeToSessionChanges, useSessionOperation } from "@/shared/session/use-session-operation";
 import { newRequestId, safeRequestId } from "./errors";
+import { takePaymentOpening } from "./payment-opening";
 import { useAccountPurchases } from "./use-account-purchases";
-import { useBillingWidget } from "./use-billing-widget";
+import { WidgetStatus, useBillingWidget } from "./use-billing-widget";
+import { purchaseNeedsStatus, usePurchaseStatusPoll } from "./use-purchase-status-poll";
 import { WidgetView } from "./WidgetView";
 import { usePaidAccess } from "./use-paid-access";
 import { PaidProductAccess } from "./PaidProductAccess";
@@ -33,6 +35,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   const paid = usePaidAccess(emailVerified);
   const usage = usePaidUsage(emailVerified);
   const widget = useBillingWidget(userId, emailVerified);
+  const openWidget = widget.open;
   const { begin, cancel } = useSessionOperation();
   // undefined permits a visible single-purchase default; null explicitly selects account viewing.
   const [selectedId, setSelectedId] = useState<string | null | undefined>(initialPurchaseId);
@@ -43,18 +46,27 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
     if (!initialPurchaseId || !emailVerified) return;
     const operation = begin();
     const requestId = newRequestId();
-    async function load() {
+    async function load(purchaseId: string) {
       if (!operation.token) throw new Error("session_required");
-      const result = await purchaseStatus(operation.token, initialPurchaseId!, requestId);
+      const result = await purchaseStatus(operation.token, purchaseId, requestId);
       if (operation.isCurrent()) {
-        if (!result.scope_held) { setSelectionState({ status: "error", requestId }); return; }
+        const openRequested = takePaymentOpening(purchaseId, userId);
+        if (!result.scope_held || result.purchase_intent_id !== purchaseId) {
+          setSelectionState({ status: "error", requestId });
+          return;
+        }
         setDeepPurchase(result);
         setSelectionState({ status: "ready" });
+        if (openRequested && result.state === "linked") void openWidget(result.purchase_intent_id);
       }
     }
-    void load().catch((error: unknown) => { if (operation.isCurrent()) setSelectionState({ status: "error", requestId: safeRequestId(error) || requestId }); });
+    void load(initialPurchaseId).catch((error: unknown) => {
+      if (!operation.isCurrent()) return;
+      takePaymentOpening(initialPurchaseId, userId);
+      setSelectionState({ status: "error", requestId: safeRequestId(error) || requestId });
+    });
     return cancel;
-  }, [begin, cancel, emailVerified, initialPurchaseId]);
+  }, [begin, cancel, emailVerified, initialPurchaseId, openWidget, userId]);
 
   useEffect(() => subscribeToSessionChanges(() => {
     cancel();
@@ -63,12 +75,23 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
     setSelectionState({ status: "error", requestId: "" });
   }), [cancel]);
 
-  const options = deepPurchase && !purchases.items.some((item) => item.purchase_intent_id === deepPurchase.purchase_intent_id)
-    ? [deepPurchase, ...purchases.items] : purchases.items;
+  const options = deepPurchase
+    ? [deepPurchase, ...purchases.items.filter((item) => item.purchase_intent_id !== deepPurchase.purchase_intent_id)]
+    : purchases.items;
   const defaultPurchase = purchases.status === "ready" && !purchases.cursor && purchases.items.length === 1 ? purchases.items[0] : undefined;
   const selection = selectedId === undefined ? defaultPurchase : options.find((item) => item.purchase_intent_id === selectedId);
   const selectionBlocked = selectionState.status !== "ready" || (!!selectedId && !selection);
   const canPay = selection?.state === "linked";
+  const widgetOpen = widget.state.status === WidgetStatus.Open;
+
+  const poll = usePurchaseStatusPoll(
+    emailVerified && !selectionBlocked && selection && purchaseNeedsStatus(selection) ? selection : undefined,
+    undefined,
+    (saved) => {
+      purchases.applyStatus(saved);
+      if (deepPurchase?.purchase_intent_id === saved.purchase_intent_id) setDeepPurchase(saved.scope_held ? saved : null);
+    }
+  );
   const paidOnlyProducts = [...new Set([
     ...(paid.state.status === PaidReadStatus.Ready ? [...paid.state.data.grants, ...paid.state.data.products].map((item) => item.product_id) : []),
     ...(usage.state.status === PaidReadStatus.Ready ? usage.state.data.items.map((item) => item.product_id) : []),
@@ -82,6 +105,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   function choose(id: string) {
     cancel();
     widget.close();
+    poll.clearPause();
     setSelectedId(id || null);
     setSelectionState({ status: "ready" });
   }
@@ -113,12 +137,13 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
         {selectionState.status === "loading" && <p role="status">{p("loading")}</p>}
         {selectionBlocked && selectionState.status !== "loading" && <div className="notice error" role="alert"><p>{b("selectionUnavailable")}</p>{selectionState.status === "error" && selectionState.requestId && <p>{b("requestId", { id: selectionState.requestId })}</p>}</div>}
         {selection && <p className="billing-selected-product">{b("selectedProduct", { product: selection.product_id })}</p>}
+        {poll.paused && <p role="status">{p("statusPollingPaused")}</p>}
         {selection && !canPay && <p>{b("preparationRequired")} <Link href={`/products/${encodeURIComponent(selection.product_id)}`}>{p("continue")}</Link></p>}
       </div>}
-      <button className="btn-primary" type="button" aria-describedby={widget.state.status === "open" ? "billing-refresh-hint" : undefined} disabled={!emailVerified || selectionBlocked || (!!selection && !canPay) || widget.state.status === "loading"} onClick={openSelected}>
-        {widget.state.status === "loading" ? b("loading") : widget.state.status === "open" ? b("refresh") : b("open")}
+      <button className="btn-primary" type="button" aria-describedby={widgetOpen ? "billing-refresh-hint" : undefined} disabled={!emailVerified || selectionBlocked || (!!selection && !canPay) || widget.loading} onClick={openSelected}>
+        {widget.loading ? b("loading") : widgetOpen ? b("refresh") : canPay ? b("pay") : b("open")}
       </button>
-      {widget.state.status === "open" && <p id="billing-refresh-hint" className="card-copy">{b("refreshHint")}</p>}
+      {widgetOpen && <p id="billing-refresh-hint" className="card-copy">{b("refreshHint")}</p>}
       <WidgetView widget={widget} onClose={refreshPaid} />
     </section>
     <section className="account-products-panel" aria-label={t("title")}>
