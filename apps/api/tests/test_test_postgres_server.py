@@ -4,6 +4,8 @@ import argparse
 import json
 import os
 import subprocess
+import sys
+import xml.etree.ElementTree as ET
 from dataclasses import asdict
 from pathlib import Path
 
@@ -130,6 +132,69 @@ def test_old_runtime_json_still_loads_and_writes_dedicated_test_port(
     assert environment["POSTGRES_PORT_TEST"] == str(config.test_postgres_port)
     assert environment["POSTGRES_PORT"] == str(config.postgres_port)
     assert environment["DATABASE_URL"].endswith(f"@postgres:5432/{config.database_name}")
+
+
+@pytest.mark.parametrize(
+    "content,reason",
+    [('{"worktree_id":', "line 1"), ("[]", "expected runtime settings")],
+)
+def test_cli_reports_invalid_runtime_json_without_changing_it(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    content: str,
+    reason: str,
+) -> None:
+    runtime_json, runtime_env = tmp_path / "runtime.json", tmp_path / "runtime.env"
+    report = tmp_path / "current.xml"
+    runtime_json.write_text(content, encoding="utf-8")
+    runtime_env.write_text("POSTGRES_DB=synthetic\nPOSTGRES_PORT_TEST=55432\n", encoding="utf-8")
+    monkeypatch.setattr(repo, "RUNTIME_JSON", runtime_json)
+    monkeypatch.setattr(repo, "RUNTIME_ENV", runtime_env)
+    monkeypatch.setattr(repo, "REPOSITORY_VENV", tmp_path / "nonexistent")
+    monkeypatch.setattr(repo, "canonical_check_environment", dict)
+    monkeypatch.setattr(repo, "write_runtime", lambda _: pytest.fail("Invalid runtime must stay intact"))
+    monkeypatch.setattr(repo, "run", lambda *args, **kwargs: pytest.fail("Must not start a subprocess"))
+
+    for arguments in (["test", "api-postgres", "--junitxml", str(report)], ["test-db", "up"]):
+        monkeypatch.setattr(sys, "argv", ["repo.py", *arguments])
+        assert repo.main() == 1
+        error = capsys.readouterr().err
+        assert str(runtime_json) in error and reason in error
+        assert "docs/engineering/TESTING.md" in error
+
+    junit_error = ET.parse(report).find(".//error")
+    assert junit_error is not None
+    assert str(runtime_json) in junit_error.attrib["message"] and reason in junit_error.attrib["message"]
+    assert runtime_json.read_text(encoding="utf-8") == content
+
+
+def test_write_runtime_keeps_existing_json_if_atomic_replace_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime_json = tmp_path / "runtime.json"
+    monkeypatch.setattr(repo, "HARNESS_DIR", tmp_path)
+    monkeypatch.setattr(repo, "RUNTIME_JSON", runtime_json)
+    monkeypatch.setattr(repo, "RUNTIME_ENV", tmp_path / "runtime.env")
+    monkeypatch.setattr(repo, "read_dotenv", dict)
+    previous = repo.runtime_config(root=tmp_path)
+    updated = repo.runtime_config(1, root=tmp_path)
+    repo.write_runtime(previous)
+    real_replace = os.replace
+
+    def fail_json_replace(source: Path, destination: Path) -> None:
+        if destination == runtime_json:
+            assert repo.load_runtime() == previous
+            assert json.loads(source.read_text(encoding="utf-8")) == asdict(updated)
+            raise OSError("simulated JSON replace failure")
+        real_replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", fail_json_replace)
+    with pytest.raises(OSError, match="simulated JSON replace failure"):
+        repo.write_runtime(updated)
+
+    assert repo.load_runtime() == previous
+    assert not list(tmp_path.glob(".runtime.json.*.tmp"))
 
 
 @pytest.mark.parametrize("test_port", [None, "", "not-a-port", "-1", "0", "65536"])

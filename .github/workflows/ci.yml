@@ -251,6 +251,12 @@ jobs:
       - if: runner.os == 'Windows'
         run: node --test apps/web/tests/typescript-tooling.test.mjs
       - run: python scripts/repo.py harness-smoke
+      - name: Check Windows test launcher exit status
+        if: runner.os == 'Windows'
+        run: |
+          python -m venv --without-pip .venv
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -c "import subprocess, sys; result = subprocess.run([sys.executable, 'scripts/repo.py', 'test', '--invalid-option']); assert result.returncode == 2, result.returncode"
       - run: python scripts/repo.py pr-metadata
         env:
           PR_TITLE: ANY-108 - Validate harness

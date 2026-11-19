@@ -13,6 +13,8 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 from uuid import UUID
 
 import pytest
@@ -187,6 +189,7 @@ def test_command_startup_failure_replaces_previous_report(
         ("api-postgres", "partial-config"),
         ("api-postgres", "invalid-port"),
         ("api", "invalid-port"),
+        ("api", "invalid-worker-range"),
     ],
 )
 def test_cli_startup_failure_returns_error_with_current_report(
@@ -202,6 +205,7 @@ def test_cli_startup_failure_returns_error_with_current_report(
         "unsupported-option": "Unsupported pytest argument",
         "partial-config": "Incomplete PostgreSQL test configuration",
         "invalid-port": "POSTGRES_PORT_TEST must be an integer",
+        "invalid-worker-range": "Workers must be 1–4",
     }[failure]
     if failure == "partial-config":
         inherited["POSTGRES_USER_TEST"] = "synthetic"
@@ -212,6 +216,8 @@ def test_cli_startup_failure_returns_error_with_current_report(
             POSTGRES_DB_TEST="synthetic_tests",
             POSTGRES_PORT_TEST="not-a-port",
         )
+    elif failure == "invalid-worker-range":
+        arguments = ["--workers", "5"]
     result = subprocess.run(
         [
             sys.executable,
@@ -228,7 +234,8 @@ def test_cli_startup_failure_returns_error_with_current_report(
         text=True,
         timeout=15,
     )
-    assert result.returncode == 1 and message in result.stderr
+    assert result.returncode == (2 if failure == "invalid-worker-range" else 1)
+    assert message in result.stderr
     assert "Traceback" not in result.stderr
     assert_startup_error(previous_report, message)
 
@@ -948,24 +955,23 @@ def test_hard_termination_is_reported_and_process_is_joined(monkeypatch: pytest.
         ["check", "--fast", "--coverage"],
     ],
 )
-def test_test_launcher_replaces_venv_shim_so_signals_reach_runner(
+def test_posix_launcher_replaces_venv_shim_so_signals_reach_runner(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, arguments: list[str]
 ) -> None:
     venv = tmp_path / "venv"
-    python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    python = venv / "bin/python"
     python.parent.mkdir(parents=True)
     python.touch()
     monkeypatch.setattr(repo, "REPOSITORY_VENV", venv)
     monkeypatch.setattr(sys, "argv", ["repo.py", *arguments])
     calls: list[tuple[str, list[str]]] = []
     directories: list[Path] = []
-    monkeypatch.setattr(os, "chdir", directories.append)
 
     def replace(path: str, arguments: list[str]) -> None:
         calls.append((path, arguments))
         raise SystemExit(0)
 
-    monkeypatch.setattr(os, "execv", replace)
+    monkeypatch.setattr(repo, "os", SimpleNamespace(name="posix", chdir=directories.append, execv=replace))
     monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: pytest.fail("A waiting shim would swallow SIGTERM"))
     with pytest.raises(SystemExit) as caught:
         repo.reexec_in_repository_venv_if_required()
@@ -977,6 +983,36 @@ def test_test_launcher_replaces_venv_shim_so_signals_reach_runner(
             [str(python), "--", str(Path(repo.__file__).resolve()), *arguments],
         )
     ]
+
+
+@pytest.mark.parametrize("arguments", [["test", "api-fast"], ["check", "--fast"]])
+@pytest.mark.parametrize("interrupted", [False, True])
+def test_windows_launcher_waits_for_venv_process(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    arguments: list[str],
+    interrupted: bool,
+) -> None:
+    def reject_exec(*args: object) -> None:
+        pytest.fail("Windows process replacement loses the child exit status")
+
+    python = tmp_path / "Scripts/python.exe"
+    python.parent.mkdir()
+    python.touch()
+    monkeypatch.setattr(repo, "REPOSITORY_VENV", tmp_path)
+    monkeypatch.setattr(repo, "os", SimpleNamespace(name="nt", chdir=lambda _: None, execv=reject_exec))
+    monkeypatch.setattr(sys, "argv", ["repo.py", *arguments])
+    spawn = MagicMock()
+    child = spawn.return_value.__enter__.return_value
+    child.wait.side_effect = [KeyboardInterrupt, 0] if interrupted else [7]
+    monkeypatch.setattr(subprocess, "Popen", spawn)
+
+    with pytest.raises(SystemExit) as caught:
+        repo.reexec_in_repository_venv_if_required()
+
+    assert caught.value.code == (130 if interrupted else 7)
+    assert child.wait.call_count == (2 if interrupted else 1)
+    spawn.assert_called_once_with([str(python), "--", str(Path(repo.__file__).resolve()), *arguments], cwd=repo.ROOT)
 
 
 def test_windows_break_signal_uses_pytest_interrupt_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1011,7 +1047,7 @@ def test_real_venv_reexec_keeps_cli_arguments_outside_python_and_shell(
     ]
     script = """import json, sys
 from scripts import repo
-# Simulate the external interpreter in this child only; execv starts a real venv process.
+# Simulate an external interpreter and exercise the actual venv handoff.
 sys.prefix = sys.argv[1]
 sys.argv = [str(repo.ROOT / "scripts/repo.py"), *json.loads(sys.argv[2])]
 raise SystemExit(repo.main())

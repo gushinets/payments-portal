@@ -157,9 +157,9 @@ The harness resolves test database settings in this order.
    and `POSTGRES_PORT_TEST` from `.harness/runtime.env` without rewriting
    them and checks that the dedicated Compose service publishes the expected
    loopback endpoint.
-   If either file is missing or the test port is invalid or differs between
-   the files, run `test-db up` to refresh them. It preserves the offset from
-   an existing `runtime.json`.
+   With a valid `runtime.json`, run `test-db up` to refresh missing or stale
+   `runtime.env` data and keep the saved port offset. For a new worktree,
+   `test-db up` initializes both files with the default offset.
 
 Configured ports must be between 1 and 65535. The configured database name
 must end in `_test` or `_tests`. pytest uses it to validate routing and
@@ -167,6 +167,29 @@ assigns its own physical database names. Use a dedicated test server with a
 role that can create databases and connect to the `postgres` admin database.
 The performance target uses the standard tmpfs server. Explicit test
 servers may use other storage.
+
+### Recovering worktree runtime metadata
+
+Malformed `runtime.json` produces an error with the file path and cause.
+The API runner records the cause in the requested JUnit report. Keep a copy
+of any damaged file before restoring a valid backup or regenerating it.
+
+To regenerate the metadata for an existing worktree, use the offset passed
+to `npm run repo:up -- --port-offset`, or `0` if it used the default.
+If only a valid `runtime.env` remains, subtract the default test port reported
+by the command below from the saved `POSTGRES_PORT_TEST` value.
+
+```bash
+python -c "from scripts.repo import runtime_config; print(runtime_config().test_postgres_port)"
+```
+
+From the repository root, regenerate the runtime files with that offset.
+The example uses offset `37`. Then start the dedicated test server.
+
+```bash
+python -c "import sys; from scripts.repo import runtime_config, write_runtime; write_runtime(runtime_config(int(sys.argv[1])))" 37
+python scripts/repo.py test-db up
+```
 
 ### Migrated templates and ownership
 

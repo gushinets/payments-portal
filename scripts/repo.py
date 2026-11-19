@@ -434,11 +434,14 @@ def protect_runtime_env_file(
     )
 
 
-def write_protected_runtime_env_file(path: Path, contents: str) -> None:
-    temporary_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+def _write_runtime_file(
+    path: Path, contents: str, *, protect: Callable[[Path], None] | None = None
+) -> None:
+    temporary_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     try:
-        temporary_path.write_text("", encoding="utf-8")
-        protect_runtime_env_file(temporary_path)
+        if protect is not None:
+            temporary_path.touch()
+            protect(temporary_path)
         temporary_path.write_text(contents, encoding="utf-8")
         os.replace(temporary_path, path)
     except Exception:
@@ -446,10 +449,14 @@ def write_protected_runtime_env_file(path: Path, contents: str) -> None:
         raise
 
 
+def write_protected_runtime_env_file(path: Path, contents: str) -> None:
+    _write_runtime_file(path, contents, protect=protect_runtime_env_file)
+
+
 def write_runtime(config: RuntimeConfig) -> None:
     HARNESS_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     protect_private_directory(HARNESS_DIR)
-    RUNTIME_JSON.write_text(json.dumps(asdict(config), indent=2) + "\n", encoding="utf-8")
+    _write_runtime_file(RUNTIME_JSON, json.dumps(asdict(config), indent=2) + "\n")
     caddy_origin = f"http://localhost:{runtime_caddy_port(config)}"
     local_env = read_dotenv()
     app_public_base_url = local_env.get("APP_PUBLIC_BASE_URL", caddy_origin)
@@ -753,7 +760,18 @@ def load_runtime(*, initialize: bool = True) -> RuntimeConfig:
         config = runtime_config()
         write_runtime(config)
         return config
-    return RuntimeConfig(**json.loads(RUNTIME_JSON.read_text(encoding="utf-8")))
+    try:
+        return RuntimeConfig(**json.loads(RUNTIME_JSON.read_text(encoding="utf-8")))
+    except json.JSONDecodeError as exc:
+        reason = f"{exc.msg} at line {exc.lineno}, column {exc.colno}"
+    except UnicodeDecodeError:
+        reason = "expected UTF-8"
+    except TypeError:
+        reason = "expected runtime settings"
+    raise HarnessError(
+        f"Invalid worktree runtime file {RUNTIME_JSON}: {reason}. "
+        "See docs/engineering/TESTING.md#recovering-worktree-runtime-metadata."
+    )
 
 
 def cmd_down(_: argparse.Namespace) -> None:
@@ -3517,13 +3535,15 @@ def cmd_test(
         workers = getattr(args, "workers", None)
         if workers is None:
             workers = 1 if args.target == "api-fast" else DEFAULT_POSTGRES_WORKERS
-        if not 1 <= workers <= DEFAULT_POSTGRES_WORKERS or (args.target == "api-fast" and workers != 1):
-            raise RunnerError("Workers must be 1–4; api-fast supports only --workers 1")
+        if not 1 <= workers <= DEFAULT_POSTGRES_WORKERS:
+            raise argparse.ArgumentTypeError(f"Workers must be 1–{DEFAULT_POSTGRES_WORKERS}")
+        if args.target == "api-fast" and workers != 1:
+            raise RunnerError("api-fast supports only --workers 1")
         check_env = api_test_environment(
             args.target,
             canonical_check_environment() if environment is None else environment,
         )
-    except (HarnessError, OSError, RunnerError) as exc:
+    except (argparse.ArgumentTypeError, HarnessError, OSError, RunnerError) as exc:
         if junitxml is not None:
             merge_junit([], junitxml, [f"API test startup failed: {exc}"])
         if isinstance(exc, RunnerError):
@@ -3664,7 +3684,7 @@ def build_parser() -> argparse.ArgumentParser:
     test = sub.add_parser("test")
     test.add_argument("target", choices=("api-fast", "api-postgres", "api"))
     test.add_argument("--junitxml")
-    test.add_argument("--workers", type=int, choices=range(1, 5))
+    test.add_argument("--workers", type=int, metavar="COUNT")
     test.add_argument("--pytest-args", nargs=argparse.REMAINDER, default=[],
                       help="Selectors and diagnostic pytest options (must be last)")
     test.set_defaults(func=cmd_test)
@@ -3764,13 +3784,22 @@ def reexec_in_repository_venv_if_required() -> None:
     if Path(sys.prefix).resolve() == REPOSITORY_VENV.resolve():
         return
     if sys.argv[1] in {"test", "check"}:
-        # Replace the waiting shim so it cannot kill the runner during cleanup.
-        # End interpreter options before the fixed script and its CLI arguments.
+        # End interpreter options before the repository-owned script.
+        command = [str(python), "--", str(Path(__file__).resolve()), *sys.argv[1:]]
+        if os.name == "nt":
+            # The child shares the console. Give it time to handle Ctrl+C and
+            # clean up before this launcher exits.
+            with subprocess.Popen(command, cwd=ROOT) as child:  # NOSONAR(S8705) Fixed interpreter and script.
+                try:
+                    returncode = child.wait()
+                except KeyboardInterrupt:
+                    child.wait()
+                    returncode = 130
+            raise SystemExit(returncode)
+        # Preserve the process that the POSIX caller signals and waits on.
         os.chdir(ROOT)
-        # The executable and script are repository-owned. Remaining argv entries
-        # are script arguments parsed by argparse, never Python options or shell code.
         os.execv(  # NOSONAR(S8705) Fixed interpreter/script; CLI data stays after the script.
-            str(python), [str(python), "--", str(Path(__file__).resolve()), *sys.argv[1:]]
+            str(python), command
         )
     result = subprocess.run(
         [str(python), str(Path(__file__).resolve()), *sys.argv[1:]],
@@ -3789,9 +3818,9 @@ def main() -> int:
             sys.path.insert(0, str(ROOT))
         args = build_parser().parse_args()
         args.func(args)
-    except (HarnessError, subprocess.CalledProcessError, OSError) as exc:
+    except (argparse.ArgumentTypeError, HarnessError, subprocess.CalledProcessError, OSError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
-        return 1
+        return 2 if isinstance(exc, argparse.ArgumentTypeError) else 1
     return 0
 
 

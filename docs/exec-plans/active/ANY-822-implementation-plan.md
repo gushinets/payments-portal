@@ -36,10 +36,15 @@ Branch: `ANY-822`, based on `f6b1f1d2`
   fixture extraction, parallel check stages and build/environment caching
   until measurements justify the added maintenance.
 
-See the [Testing Strategy](../../engineering/TESTING.md) for commands, database
-ownership, reports and coverage scope.
+The [six acceleration decisions](https://github.com/gushinets/payments-portal/blob/e7d12a24a8193c08ad872e8fcbbe040721b1e101/docs/exec-plans/active/ANY-822-implementation-plan.md#acceleration-candidate-decisions)
+record the measured costs, trade-offs and reasons for deferred options. See the
+[Testing Strategy](../../engineering/TESTING.md) for current commands, ownership,
+reports and coverage scope.
 
 ## Retained test guarantees
+
+The [full test audit](https://github.com/gushinets/payments-portal/blob/e7d12a24a8193c08ad872e8fcbbe040721b1e101/docs/exec-plans/active/ANY-822-implementation-plan.md#4-test-audit-decisions-and-retained-guarantees)
+records the before/after costs where measured and the cases retained unchanged.
 
 - **Mapping expiry.** Three [PostgreSQL cases](../../../apps/api/tests/test_mapping_publication_expiry_postgres.py)
   cover publication-stage refusal, rollback/history and real lock waiting.
@@ -77,43 +82,32 @@ ownership, reports and coverage scope.
 
 ## Verification
 
-### Latest local follow-up (`e7d12a24` plus worktree fixes)
+With the launcher and runtime fixes on `ee3d4e9d`, focused tooling and
+Portal–Kernel harness checks passed. `npm run check:fast` passed its static
+and web steps. API-fast reproduced five failures with local dnspython and
+OpenTelemetry versions below the lockfile pins. See
+`.harness/api-tests/api-fast-7dc2977504084095952b9753c97fe094/junit.xml`.
 
-- Five new regressions failed before the fixes; the focused tooling suite then
-  passed 526 cases. Two temporary PostgreSQL 14 clusters on the same port proved
-  that the second rejects the first worktree's URL. Another 27 focused
-  PostgreSQL cases passed with no owned databases left. Compose rendered the
-  expected credentials and loopback binding. PostgreSQL 18 container creation
-  stalled and the temporary Compose project was removed.
-- `npm run check:fast` reached and passed static and web checks, including 454
-  components with two Vitest workers. The separate API-fast run had 2,559
-  passes, one Windows-only skip and five failures with installed dnspython
-  and OpenTelemetry versions below the lockfile pins. See
-  `.harness/api-tests/api-fast-f9b4cc4aa4364769bdeb311f1061f56b/junit.xml`.
-- Final acceptance still needs the complete timed `npm run check -- --coverage`
-  using the locked dependencies and a working PostgreSQL 18.4 server, plus
-  [CI for the final head](https://github.com/gushinets/payments-portal/pull/170/checks).
-  Actual CI cancellation and diagnostic upload remain unverified. Windows
-  evidence covers harness smoke only. Standalone serial coverage and
-  joint/live acceptance are outside this verification.
+Final acceptance requires a timed `npm run check -- --coverage` with locked
+dependencies and PostgreSQL 18.4, plus
+[CI for the final head](https://github.com/gushinets/payments-portal/pull/170/checks).
+Native Windows launcher verification and diagnostic upload on actual CI
+cancellation remain pending.
 
 ### Prior evidence
 
 - At `e7d12a24`, `npm run test:api:postgres` passed 1,219 cases with four
   workers on PostgreSQL 18.4. Local Bash probes covered SIGINT and SIGTERM
   cleanup. The browser selection on `8de0f4ba` passed 54 desktop/mobile cases.
-- Before the latest rebase, source based on `5062d7fb` passed
-  `npm run check -- --coverage` in **850.734 s**, with 2,417 API-fast, 1,212
-  PostgreSQL and 454 component tests. Server startup took 2.976 s separately.
-  Evidence is in `.harness/any822-p1-p3-20261117/check-result.json`.
-  The earlier `12b15287` run measured **597.834 s** for the complete PostgreSQL
-  partition. The last recorded [passing CI run](https://github.com/gushinets/payments-portal/actions/runs/44214225942)
-  tested pushed head `aac88769` on the former base `aa9d8f99`.
-- The 24-case control on the same Linux host, with identical inputs and tool
-  versions and one excluded warm-up per side, measured **146.553 / 73.228 /
-  56.941 s** serial on ext4 and **13.334 / 13.373 / 13.243 s** on tmpfs with
-  migrated templates and two active workers. Both paths used normal durability
-  and passed all cases. The baseline spread limits the comparison.
+- Source based on `5062d7fb` passed `npm run check -- --coverage` in
+  **850.734 s**, with **2.976 s** for server startup measured separately.
+  See `.harness/any822-p1-p3-20261117/check-result.json`.
+  At `12b15287`, the complete PostgreSQL partition took **597.834 s**.
+- The 24-case Linux control measured **146.553 / 73.228 / 56.941 s** serial on
+  ext4 at `2d278f62` and **13.334 / 13.373 / 13.243 s** on tmpfs with migrated
+  templates and two active workers on source based on `8496803c`. Both paths
+  used the same inputs, tool versions and normal durability. Each excluded a
+  warm-up and passed all cases. The baseline spread limits the comparison.
   The control IDs, machine/load and cache conditions, phase timings and
   checkpoint records are in the previous plan at `e7d12a24` and
   `.harness/any822-step1-20261113/`, `.harness/any822-step9-20261113/`.
