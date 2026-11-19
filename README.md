@@ -279,6 +279,10 @@ for setup evidence and verification limits.
 
 ## Local Compose workflow
 
+For a manual test from registration through payment and paid access, follow the
+[local purchase checklist](docs/engineering/ANY-709-billing-runbook.md#local-purchase-through-paid-access)
+before starting the stack.
+
 Local Compose runs PostgreSQL, a one-shot Alembic migration service, the FastAPI
 API, and Caddy. Next.js stays on the host so it can use the normal development
 server:

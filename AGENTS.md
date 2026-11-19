@@ -13,6 +13,9 @@ document that applies to the current task.
 ## Sources of truth
 
 - [README.md](README.md) — setup and canonical commands.
+- For a local purchase test that expects paid access, follow the
+  [local purchase checklist](docs/engineering/ANY-709-billing-runbook.md#local-purchase-through-paid-access)
+  before startup.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — current boundaries and dependency rules.
 - For all new billing work, follow this target authority chain in order:
   1. [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md)

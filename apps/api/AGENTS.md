@@ -15,6 +15,9 @@ retained billing document:
 4. [Accepted live-source admission amendment](../../docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
 
 Operational commands are in the [billing runbook](../../docs/engineering/ANY-709-billing-runbook.md).
+For a local purchase test that expects paid access, follow the
+[local purchase checklist](../../docs/engineering/ANY-709-billing-runbook.md#local-purchase-through-paid-access)
+before startup.
 
 The [payment-provider document](../../docs/architecture/payment-providers.md)
 is historical characterization of the physically removed direct-provider

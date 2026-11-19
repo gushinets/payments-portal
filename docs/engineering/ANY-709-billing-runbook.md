@@ -65,6 +65,54 @@ DBs, origins, credentials, sellers and provider objects. Do not repoint a
 populated test DB to production or copy its customer IDs. Production uses the
 normal Compose file plus `docker-compose.prod.yml` and its own launch gates.
 
+## Local purchase through paid access
+
+Use this checklist for a manual test from registration through test payment and
+confirmed access in the cabinet.
+
+### Before startup
+
+- Use `APP_ENV=development` or `APP_ENV=test`, an isolated Portal database, a
+  test mailbox, and a test LBX environment with an approved test payment method.
+  Set `APP_PUBLIC_BASE_URL` to the local Portal origin the buyer opens so the
+  verification link returns to that origin. Check the
+  [LBX and backend settings](#connection-and-deployment).
+- Set `BILLING_WORKER_ENABLED=true` and explicitly set
+  `PAID_ACCESS_CLOCK_SKEW_SECONDS` to a supported value from 1 to 299 seconds.
+  The clock budget has no default. Leaving it empty prevents the worker from
+  issuing new paid access and allowances. See the
+  [worker settings](billing-background-operations.md#embedded-worker-settings-and-resource-limits).
+- Select an enabled product and a supported test offer for
+  [product linking](#cli-execution-and-product-linking). For a metered purchase,
+  record the expected metric, unit, and purchased quantity before accepting terms.
+
+### Before handing off the running stack
+
+After [startup](#startup-and-restart), verify both worker and clock settings in
+the running API. For the Compose harness, use the helper in the startup section.
+
+```bash
+portal_compose exec -T api printenv BILLING_WORKER_ENABLED PAID_ACCESS_CLOCK_SKEW_SECONDS
+```
+
+Check `/api/health/ready`, verify that `/api/health/billing` reports `running`,
+and confirm the linked product shows the expected current offer. The health
+endpoints report service health. Check paid access separately after payment.
+
+### After test payment
+
+1. Confirm that LBX recorded the test payment on the agreement shown for the
+   selected purchase and that the corresponding subscription is active and unblocked.
+2. After the worker reconciles the subscription, read the
+   [authenticated `GET /api/paid-access`](#authenticated-cabinet-paid-access-read)
+   as the verified buyer. Confirm that `grants` includes the product and that its
+   entry in `products` has `status: confirmed`. For a metered purchase, verify one
+   matching allowance with the accepted metric, unit, and quantity, such as 300
+   analyses for the [Brief Decoder test offer](billing-background-operations.md#monthly-lbx-instance-start-calendar-any-864).
+3. Refresh paid access in the cabinet and confirm that it shows the same access
+   and purchased limit. If the paid read stays empty after LBX activates the
+   subscription, check the effective clock setting and worker reconciliation.
+
 ## Startup and restart
 
 From the repository root, use the intended environment and root `.venv`:
