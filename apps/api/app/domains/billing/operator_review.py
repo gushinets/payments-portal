@@ -10,7 +10,10 @@ from app.core.settings import Settings
 from app.domains.billing.customers import lock_customer, lock_user
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.operator_contracts import (
+    LATE_REASON,
     RESOLUTION_SCHEMA,
+    TERMINAL_AUDIT_REASONS,
+    TERMINAL_SCHEMA,
     OriginalOperationProof,
     ResolutionRequest,
     ReviewResolution,
@@ -247,6 +250,20 @@ def authorize_original_binding(
     return authorize_resolution(db, resolution, row, operations, subscription, restoring=False)
 
 
+def has_late_purchase_review_for_product(
+    db: Session, customer_id: UUID, product_id: str, *, tariff_id: int | None = None
+) -> bool:
+    return queries.has_open_purchase_review_for_product(
+        db,
+        customer_id,
+        reason=LATE_REASON,
+        product_id=product_id,
+        tariff_id=tariff_id,
+        audit_schema=TERMINAL_SCHEMA,
+        audit_reasons=TERMINAL_AUDIT_REASONS,
+    )
+
+
 def authorize_resolution(
     db: Session,
     resolution: ReviewResolution,
@@ -266,6 +283,13 @@ def authorize_resolution(
     )
     validate_inventory(db, resolution.inventory)
     request = resolution.request
+    if request.resolution == "select-primary" and has_late_purchase_review_for_product(
+        db,
+        row.customer_id,
+        row.product_id,
+        tariff_id=resolution.purchase.accepted.selection.tariff_id,
+    ):
+        raise PurchaseRefused("purchase_existing_subscription_review", 409)
     now = as_utc(billing_reconciliation.database_now(db))
     if (
         now >= resolution.expires_at

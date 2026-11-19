@@ -1,4 +1,4 @@
-"""Shared PostgreSQL serialization for origin-backed connection admission."""
+"""Transaction locks for origin-backed connections and financial object identities."""
 
 from __future__ import annotations
 
@@ -27,8 +27,12 @@ def connection_lock_key(tenant_id: str, region: str, provider_origin: str) -> in
     Hash collisions only serialize unrelated connections. SQL evidence still
     decides scope; acquiring the lock never establishes provider identity.
     """
+    return billing_scope_key("payments-portal/connection-scope/v1", tenant_id, region, provider_origin)
+
+
+def billing_scope_key(*parts: str | None) -> int:
     encoded = json.dumps(
-        ["payments-portal/connection-scope/v1", tenant_id, region, provider_origin],
+        parts,
         ensure_ascii=False,
         separators=(",", ":"),
     ).encode("utf-8")
@@ -44,12 +48,17 @@ def lock_connection_scope(db: Session, *, tenant_id: str, region: str, provider_
     """
     if not tenant_id or not region or not provider_origin:
         raise ValueError("connection lock requires deployment scope and normalized origin")
+    lock_billing_key(db, connection_lock_key(tenant_id, region, provider_origin))
+
+
+def lock_billing_key(db: Session, key: int) -> None:
+    """After waiting, the caller's next read must see the previous writer's commit."""
     if db.get_bind().dialect.name != "postgresql" or db.connection().get_isolation_level() != "READ COMMITTED":
         raise ConnectionIsolationUnsupported()
     try:
         db.execute(
             text("SELECT pg_advisory_xact_lock(:key)"),
-            {"key": connection_lock_key(tenant_id, region, provider_origin)},
+            {"key": key},
         )
     except DBAPIError as error:
         if getattr(error.orig, "sqlstate", None) == "55P03":

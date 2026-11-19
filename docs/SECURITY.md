@@ -200,14 +200,18 @@ no loading timer may interrupt an active checkout.
 
 ## High-risk review paths
 
-ANY-715 privileged purchase commands retain the existing OS/deployment access
-boundary. `inspect` is local and read-only; other rechecks use bounded GETs.
-Only fresh original-object proof plus current review/evidence/fence expectations
-permits the two audited resolutions. Principal, bounded reason/reference,
-before/after identities and proof summary stay in existing durable review storage,
-atomically with shared apply/bind. Never include secrets/PII in operator text or
-logs. No terminal hold release, arbitrary identity override, admin API, new role,
-manual paid marking or quota editing is exposed. See the exact
+Privileged purchase commands retain the existing OS/deployment access boundary.
+`inspect` reads local evidence. Recovery and reconciliation use bounded GETs.
+`resolve-review` requires fresh original-object proof and current review, evidence
+and fence expectations. `resolve-purchase` can release the original hold using
+request-specific evidence for both financial operations. For any possible send,
+the [terminal procedure](engineering/billing-background-operations.md#terminal-completion-any-821)
+requires stopping the actual senders before obtaining final LBX confirmation.
+Both commands commit the audit with their authorized changes. The audit records
+the operator principal, bounded reason/reference and supporting evidence.
+Keep secrets and personal data out of operator text and logs. Arbitrary identity
+overrides, admin APIs, role changes, manual paid marking and quota editing remain
+outside this CLI's authority. See the exact
 [effects and refusals](engineering/billing-background-operations.md#privileged-purchase-operations).
 
 Authentication, payments, legal sources and seeds, migrations, telemetry

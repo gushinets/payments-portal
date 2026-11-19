@@ -410,7 +410,8 @@ work without changing send authority, deadlines or holds. Use
 
 `customer_inventory`, pre-send admission and operator recovery share one bounded
 inventory implementation: fewer than 100 discovery rows, at most 20 relevant
-candidates and a stable complete re-list under one read budget. Capped, duplicate,
+candidates and a stable complete re-list under one read budget. A retained
+subscription listed as ended still needs a current point read. Capped, duplicate,
 unstable or partial discovery never proves absence. Permanent original bindings
 identify known subscriptions, including another product already in review;
 proposal_ai and brief_decoder may share a tariff without sharing product identity.
@@ -494,8 +495,8 @@ not that payment or positive source proof was established. Exit 1 returns only
 
 - `inspect`: local read-only evidence; no source I/O, row changes or leases.
   Output includes original operations/fences, current subscription facts/trust,
-  `expected_resolution_digest`, financial request correlation keys and known
-  external object/receipt IDs for request-specific support confirmation,
+  `expected_resolution_digest`, financial request correlation keys, permanently
+  bound object IDs (`external_object_id`) and saved CREATE IDs (`receipt_candidate_id`),
   recent observation summaries, work and review IDs/digests. Work/review lists
   cap at 100 with truncation flags; observations contain the latest 20 records.
   No customer keys, raw requests, credentials or accepted amounts are exposed.
@@ -505,10 +506,22 @@ not that payment or positive source proof was established. Exit 1 returns only
   commands, and opens no source resources. It uses the same trusted OS boundary.
 - `recover`: bounded GET-only recovery of the original possible-send operation.
   It may prove a binding or close deadline-only review, but cannot send CREATE,
-  adopt PENDING/PROVEN_NOT_SENT or clear known conflicts. For a bound subscription,
-  use `reconcile`. For a completed purchase it only inspects original objects
-  and records unexpected live objects for review; it never rebinds or resumes it.
-- `reconcile`: bounded authoritative recheck of the canonical subscription.
+  adopt PENDING/PROVEN_NOT_SENT or clear known conflicts. For a completed purchase,
+  use `recover` to inspect retained original objects and record late objects or
+  conflicting relationships for review. It point-reads permanently bound or
+  positively attested agreement and subscription IDs even if discovery omits
+  them. This includes a subscription confirmed during a later review. Recovery
+  checks the point relationship against the bound agreement, or against all
+  positively attested agreements if no binding exists. An explicitly disproved
+  receipt alone does not select an object. With no eligible ID, recovery searches
+  by the original agreement number or by subscription relationship. Subscription
+  discovery requires one unambiguous original agreement, and the point read
+  must confirm that relationship before the discovered ID can open a review.
+  A failed point read is reported after independently known objects are
+  checked within the existing budget. Recorded cases remain available through
+  `inspect`.
+- `reconcile`: bounded authoritative recheck of the canonical subscription
+  for a purchase that still holds its scope.
   It records waiting/active/blocked/ended/incomplete/conflicting evidence and
   schedules follow-up. Known conflicts remain open. The budget is
   `PREFLIGHT_TOTAL_TIMEOUT_SECONDS` with its cleanup reserve; active work may
@@ -540,7 +553,11 @@ subscription; the command does not close LBX objects itself. If confirmation is
 unavailable, retain the hold and restart normal operation; investigate again later.
 
 The UTF-8 evidence file (maximum 32 KiB) contains one entry per original operation.
-Replace UUID/ID/timestamp examples with inspected identities and actual evidence:
+Use `inspect` for operation IDs, bindings, receipts and the current digest.
+For an original object identified only in an earlier terminal audit, use the
+request-specific LBX confirmation retained with that decision. Supply a fresh
+confirmation for the current action. Replace the example values below with
+these identities and actual timestamps.
 
 ```json
 {
@@ -555,35 +572,83 @@ Replace UUID/ID/timestamp examples with inspected identities and actual evidence
 ```
 
 Use `not_sent` with no object ID for a locally proven no-send operation.
-All-no-send completion needs neither timestamp; otherwise confirmation must
-follow sender shutdown and the latest possible-send attempt, and cannot be in
-the future. Reference the retained LBX support confirmation in `--reference`;
-do not paste provider payloads, secrets or personal data into reason/reference.
+If LBX identifies a receipt or late-case candidate as unrelated to the original
+request, list the inspected ID in that operation's optional
+`unrelated_object_ids` array. For `no_external_effect`, the same post-shutdown
+confirmation must establish that the original request had no effect and can
+no longer apply. For `external_terminal`, identify the actual terminal object
+in `external_object_id`. Permanent bindings and previously confirmed original
+objects remain part of the audit and cannot be listed as unrelated.
+Omit both timestamps when all operations are proven unsent. For any possible
+send, record the actual shutdown in `senders_stopped_at` at or after the latest
+possible-send attempt. Record the final LBX confirmation in `confirmed_at`
+after shutdown and at or before the current time. Set `--reference` to the LBX
+support confirmation reference. Keep provider payloads, secrets and personal
+data out of reason/reference.
 
 ```bash
 .venv/bin/python scripts/repo.py billing-purchase resolve-purchase --user-id <portal-user-uuid> --purchase-id <purchase-intent-uuid> --expected-digest <sha256:digest> --evidence-file <confirmation.json> --reason 'Customer requests restart; original outcome confirmed' --reference 'LBX support confirmation reference'
 ```
 
-The transaction retains original accepted terms, requests and binding history,
-records operator/evidence audit, revokes old work and releases only this purchase's
-hold. `resolved_no_external_effect` means proven absence of effect;
+Initial completion retains original accepted terms, requests and binding history,
+records the audit, revokes old work and releases this purchase's hold.
+`resolved_no_external_effect` records proven absence of effect.
 `resolved_external_terminal` retains created objects that have ended. Exact replay
-returns the saved result even after a replacement purchase exists. Changed or
-stale evidence refuses. `purchase_resolution_confirmation_required` and
+returns the saved result even after a replacement purchase exists. A first
+binding and a positive terminal attestation check the same external account,
+object kind and ID under a transaction lock. An object identified by another
+operation cannot be adopted. Ordinary recovery opens a financial binding
+review and an operator resolution with contradictory proof refuses.
+Changed or stale evidence refuses. `purchase_resolution_confirmation_required` and
 `purchase_resolution_proof_incomplete` require better evidence, never a force flag.
 
 Return to normal operation after resolution. The customer can inspect the old
 result at the localized `/account?purchase=<id>#billing` link and start a new
 purchase with current terms; there is no automatic charge, access grant or quota
-reset. A late live original discovered by `recover` or inventory opens a
+reset. A late live original or contradictory subscription relationship found
+by `recover` or inventory opens a
 `purchase_late_external_object` case on the original purchase without changing
 its terminal history or adopting it into the replacement. Any open late-object
-case blocks new financial CREATE for that customer independently of later
-listings. Independently proven access for other products remains eligible.
-Correct the source, obtain fresh final confirmation and run the same action
-with `--case-id` and a fresh digest to close that exact case. An old delayed GET
-cannot reopen a case whose confirmation supersedes that read. Fresh contradictory
-evidence can.
+case blocks new financial CREATE for that customer and first-primary selection
+for the implicated products independently of later listings. A relationship
+conflict includes any permanent owner and the products linked to the observed
+agreement by a binding or a positive terminal audit, as well as products
+currently using the observed tariff. A point read and a permanent
+binding establish their contradiction even when discovery omits the subscription
+or the original agreement endpoint is unavailable. A disagreement between
+discovery and a point read leaves inventory incomplete. A durable review needs
+a retained subscription ID or an original agreement verified through point
+reads. Already trusted primaries continue to reconcile on their own evidence.
+If a held purchase's candidate proof returns a different agreement, inventory
+uses that point response to check for a late original of a released purchase.
+A saved receipt for a different subscription ID or an existing binding review
+blocks use of the candidate for that held purchase. Inventory still reads the
+candidate within its budget to check for a late original under another agreement.
+A stale listing can pause admission for this attempt. Opening a separate
+case on the held purchase requires evidence from its own agreement or receipt.
+If only the listing pointed to that purchase, its operation and send fence are
+preserved. Once the original case is resolved and the listing corrected, normal
+GET-only recovery can bind the held purchase's own subscription.
+
+Use `inspect` to match the case ID to its operation, external object ID, latest
+read time, observed agreement and tariff, and any conflict with a permanent
+binding. A subscription permanently bound to another operation cannot be
+attested as the original object of this purchase. Correct the source and follow
+the same stop-and-confirm procedure, obtaining final confirmation after the
+completion of the case's latest read. Run `resolve-purchase` on the original
+purchase with `--case-id` set to the case's `review_case_id` and
+`--expected-digest` set to the current `inspect.expected_resolution_digest`.
+This closes the exact case and preserves the purchase's terminal outcome.
+The agreement, tariff and permanent ownership evidence identify a repeated
+observation. Closing a case can dismiss a delayed point read for the same
+relationship if it completed
+by the confirmation time. A read that finishes after confirmation can reopen
+the review. An identical observation of a disproved relationship keeps its
+audited disposition until a positive terminal attestation identifies the same
+ID as an original object.
+A fresh live observation with a different tariff or an incomplete old
+comparison gets a fresh review. Earlier audits remain available for command
+replay.
 
 ### Existing original-object resolutions
 

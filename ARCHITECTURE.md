@@ -106,13 +106,13 @@ bindings and claimed reconciliation; operator exits reuse that same inventory.
 See [billing operations](docs/engineering/billing-background-operations.md).
 
 The privileged purchase CLI supplies local inspection, GET-only
-recovery/reconciliation and audited restore-original, bind-original and
-select-primary resolutions.
+recovery/reconciliation and audited restore-original, bind-original,
+select-primary and terminal purchase resolutions.
 Fresh proof, expected review/evidence/fences and OS principal are rechecked in the
 shared writer; facts/binding, review audit and scheduling commit atomically.
-`select-primary` requires a bound, freshly proven eligible source; operators
-cannot supply arbitrary objects, access flags or quota. No terminal hold
-release or arbitrary rebind is implemented.
+`select-primary` requires a bound, freshly proven eligible source. The
+`resolve-purchase` action releases the exact original hold using per-operation
+terminal evidence and preserves the accepted and financial history.
 
 The canonical target is defined, in precedence order, by
 [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md), the

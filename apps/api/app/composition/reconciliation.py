@@ -29,7 +29,10 @@ from app.infrastructure.preflight import PreflightAdmission, PreflightBudget, Pr
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.operator_contracts import ReviewResolution
 from app.integrations.lbx.client import LbxServerClient
-from app.integrations.lbx.reconciliation import read_subscription_proof as read_lbx_subscription_proof
+from app.integrations.lbx.reconciliation import (
+    SubscriptionSourceRead,
+    read_subscription_source as read_lbx_subscription,
+)
 
 
 async def read_subscription_proof(
@@ -42,13 +45,35 @@ async def read_subscription_proof(
     delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
     check_agreement_inventory: bool = False,
 ) -> SubscriptionProof:
+    source = await read_subscription_source(
+        client,
+        subject,
+        configuration,
+        factory=factory,
+        budget=budget,
+        delegate=delegate,
+        check_agreement_inventory=check_agreement_inventory,
+    )
+    return source.proof
+
+
+async def read_subscription_source(
+    client: LbxServerClient,
+    subject: ReconciliationSubject | SubscriptionCandidateSubject,
+    configuration: Settings,
+    *,
+    factory: SessionFactory,
+    budget: PreflightBudget,
+    delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
+    check_agreement_inventory: bool = False,
+) -> SubscriptionSourceRead:
     """Persist only the DB-clock interval surrounding this actual source read."""
     started = await delegate(read_source_time, factory)
-    proof = await read_lbx_subscription_proof(
+    source = await read_lbx_subscription(
         client, subject, configuration, budget=budget, check_agreement_inventory=check_agreement_inventory
     )
     finished = await delegate(read_source_time, factory)
-    return replace(proof, read_started_at=started, read_finished_at=finished)
+    return replace(source, proof=replace(source.proof, read_started_at=started, read_finished_at=finished))
 
 
 async def reconcile_subscription(

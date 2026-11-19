@@ -77,7 +77,12 @@ async def background_scenario(
 
 
 def synthetic_prepare(
-    factory: sessionmaker[Session], transport: PurchaseTransport, purchase: Purchase, *, uncertain: bool
+    factory: sessionmaker[Session],
+    transport: PurchaseTransport,
+    purchase: Purchase,
+    *,
+    uncertain: bool,
+    subscription_receipt: int | None = None,
 ) -> Purchase:
     """Original possible-send history plus synthetic GET objects; no source POST."""
     config = step1_settings()
@@ -106,7 +111,8 @@ def synthetic_prepare(
             factory, purchase, op, command.request_document(), configuration=config, token=TOKEN
         )
         if kind == Kind.SUBSCRIPTION and uncertain:
-            pass  # Simulated lost reply/crash after possible-send commit.
+            if subscription_receipt is not None:
+                financial.record_receipt(factory, purchase, claimed, subscription_receipt)
         else:
             financial.bind_financial(
                 factory,

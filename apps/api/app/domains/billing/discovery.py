@@ -14,6 +14,7 @@ from app.domains.billing import work
 from app.domains.billing.background_recovery import INVENTORY, INVENTORY_SECONDS
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.customers import lock_user
+from app.domains.billing.operator_review import has_late_purchase_review_for_product
 from app.domains.billing.paid_access import apply_paid_source, resolve_access_end
 from app.domains.billing.paid_policy import MeteringPolicy, CandidateConclusion, PrimaryCandidate, first_primary
 from app.domains.billing.reconciliation_contracts import RECONCILIATION_READ_SCHEMAS, ReconciliationResult
@@ -23,7 +24,12 @@ from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import financial, service
 from app.domains.purchases.contracts import Purchase
-from app.infrastructure.queries import billing_reconciliation, paid_access, purchases, billing_background as queries
+from app.infrastructure.queries import (
+    billing_reconciliation,
+    paid_access,
+    purchases,
+    billing_background as queries,
+)
 from app.models import (
     BillingProductAccessScope,
     BillingStateObservation,
@@ -233,6 +239,13 @@ def select_primaries(
             continue
         for sub in eligible:
             purchase = sources[sub.subscription_id].purchase
+            if has_late_purchase_review_for_product(
+                db,
+                result.customer.customer_id,
+                product.product_id,
+                tariff_id=purchase.accepted.selection.tariff_id,
+            ):
+                continue
             if scope.primary_retired_at is not None and as_utc(purchase.created_at) <= as_utc(scope.primary_retired_at):
                 primary_review(db, sub)
                 continue
