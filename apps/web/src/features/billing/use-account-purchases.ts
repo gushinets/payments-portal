@@ -7,9 +7,11 @@ import { subscribeToSessionChanges, useSessionOperation } from "@/shared/session
 import { newRequestId, safeRequestId } from "./errors";
 
 type ReadState = { status: "loading" | "ready" } | { status: "error"; requestId: string };
+type ObservedStatus = Pick<PurchaseIntentResponse, "state" | "scope_held">;
 
 export function useAccountPurchases(emailVerified: boolean) {
-  const [items, setItems] = useState<AccountPurchaseResponse[]>([]);
+  const [listed, setListed] = useState<AccountPurchaseResponse[]>([]);
+  const [observed, setObserved] = useState(() => new Map<string, ObservedStatus>());
   const [cursor, setCursor] = useState<string | null>(null);
   const [state, setState] = useState<ReadState>({ status: emailVerified ? "loading" : "ready" });
   const busy = useRef(false);
@@ -26,7 +28,7 @@ export function useAccountPurchases(emailVerified: boolean) {
     }
     void request().then((result) => {
       if (operation.isCurrent()) {
-        setItems((previous) => after ? [...previous, ...result.purchases.filter((item) => !previous.some((old) => old.purchase_intent_id === item.purchase_intent_id))] : result.purchases);
+        setListed((previous) => after ? [...previous, ...result.purchases.filter((item) => !previous.some((old) => old.purchase_intent_id === item.purchase_intent_id))] : result.purchases);
         setCursor(result.next_cursor);
         setState({ status: "ready" });
       }
@@ -42,7 +44,8 @@ export function useAccountPurchases(emailVerified: boolean) {
     const unsubscribe = subscribeToSessionChanges(() => {
       cancel();
       busy.current = false;
-      setItems([]);
+      setListed([]);
+      setObserved(new Map());
       setCursor(null);
       setState({ status: "error", requestId: "" });
     });
@@ -54,11 +57,16 @@ export function useAccountPurchases(emailVerified: boolean) {
     void fetchPage(after);
   }
 
-  function applyStatus(purchase: PurchaseIntentResponse) {
-    setItems((previous) => purchase.scope_held
-      ? previous.map((item) => item.purchase_intent_id === purchase.purchase_intent_id ? { ...item, state: purchase.state } : item)
-      : previous.filter((item) => item.purchase_intent_id !== purchase.purchase_intent_id));
-  }
+  const applyStatus = useCallback(({ purchase_intent_id, state, scope_held }: PurchaseIntentResponse) => {
+    setObserved((previous) => new Map(previous).set(purchase_intent_id, { state, scope_held }));
+  }, []);
+
+  // Point reads may finish before the first list page, or while a later page is in flight.
+  const items = listed.flatMap((item) => {
+    const status = observed.get(item.purchase_intent_id);
+    if (!status) return [item];
+    return status.scope_held ? [{ ...item, state: status.state }] : [];
+  });
 
   return { items, cursor, status: state.status, requestId: state.status === "error" ? state.requestId : "", load, applyStatus };
 }

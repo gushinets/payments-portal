@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import type { PurchaseIntentResponse } from "@/generated/api-contracts/types.gen";
 import { Link } from "@/i18n/navigation";
 import { purchaseStatus } from "@/shared/api/purchases";
 import { subscribeToSessionChanges, useSessionOperation } from "@/shared/session/use-session-operation";
 import { newRequestId, safeRequestId } from "./errors";
-import { takePaymentOpening } from "./payment-opening";
+import { claimPaymentOpening } from "./payment-opening";
 import { useAccountPurchases } from "./use-account-purchases";
 import { WidgetStatus, useBillingWidget } from "./use-billing-widget";
 import { purchaseNeedsStatus, usePurchaseStatusPoll } from "./use-purchase-status-poll";
@@ -32,11 +32,13 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   const p = useTranslations("Purchase");
   const a = useTranslations("Account.products.paid");
   const purchases = useAccountPurchases(emailVerified);
+  const { applyStatus } = purchases;
   const paid = usePaidAccess(emailVerified);
   const usage = usePaidUsage(emailVerified);
   const widget = useBillingWidget(userId, emailVerified);
   const openWidget = widget.open;
   const { begin, cancel } = useSessionOperation();
+  const visit = useRef(Symbol());
   // undefined permits a visible single-purchase default; null explicitly selects account viewing.
   const [selectedId, setSelectedId] = useState<string | null | undefined>(initialPurchaseId);
   const [deepPurchase, setDeepPurchase] = useState<PurchaseIntentResponse | null>(null);
@@ -44,17 +46,19 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
 
   useEffect(() => {
     if (!initialPurchaseId || !emailVerified) return;
+    const consumeOpening = claimPaymentOpening(initialPurchaseId, userId, visit.current);
     const operation = begin();
     const requestId = newRequestId();
     async function load(purchaseId: string) {
       if (!operation.token) throw new Error("session_required");
       const result = await purchaseStatus(operation.token, purchaseId, requestId);
       if (operation.isCurrent()) {
-        const openRequested = takePaymentOpening(purchaseId, userId);
+        const openRequested = consumeOpening?.();
         if (!result.scope_held || result.purchase_intent_id !== purchaseId) {
           setSelectionState({ status: "error", requestId });
           return;
         }
+        applyStatus(result);
         setDeepPurchase(result);
         setSelectionState({ status: "ready" });
         if (openRequested && result.state === "linked") void openWidget(result.purchase_intent_id);
@@ -62,11 +66,11 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
     }
     void load(initialPurchaseId).catch((error: unknown) => {
       if (!operation.isCurrent()) return;
-      takePaymentOpening(initialPurchaseId, userId);
+      consumeOpening?.();
       setSelectionState({ status: "error", requestId: safeRequestId(error) || requestId });
     });
     return cancel;
-  }, [begin, cancel, emailVerified, initialPurchaseId, openWidget, userId]);
+  }, [applyStatus, begin, cancel, emailVerified, initialPurchaseId, openWidget, userId]);
 
   useEffect(() => subscribeToSessionChanges(() => {
     cancel();
@@ -88,7 +92,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
     emailVerified && !selectionBlocked && selection && purchaseNeedsStatus(selection) ? selection : undefined,
     undefined,
     (saved) => {
-      purchases.applyStatus(saved);
+      applyStatus(saved);
       if (deepPurchase?.purchase_intent_id === saved.purchase_intent_id) setDeepPurchase(saved.scope_held ? saved : null);
     }
   );

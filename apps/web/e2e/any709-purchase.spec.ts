@@ -365,3 +365,38 @@ test("nested Widget READY timeout keeps a correlated safe error and retries the 
   expect(state.advances).toBe(0);
   await page.screenshot({ path: testInfo.outputPath("cabinet-ready-retry.png"), fullPage: true });
 });
+
+test("returning to an abandoned account visit requires a fresh payment click", async ({ page }) => {
+  const state = await syntheticBilling(page);
+  state.owned = savedPurchase;
+  const path = "/api/purchase-intents/" + savedPurchase.purchase_intent_id;
+  let unblock!: () => void;
+  const blocked = new Promise<void>((resolve) => { unblock = resolve; });
+  let reads = 0;
+  await page.route("**" + path, async (route) => {
+    reads += 1;
+    if (reads === 1) await blocked;
+    await route.fulfill({ json: savedPurchase });
+  });
+
+  const panel = await openProduct(page);
+  const firstCheck = page.waitForRequest((request) => new URL(request.url()).pathname === path);
+  await panel.getByRole("link", { name: ru.Billing.pay }).click();
+  await firstCheck;
+  const billing = page.getByRole("region", { name: ru.Billing.title });
+  await expect(billing.getByRole("combobox")).toBeDisabled();
+  await page.evaluate(() => window.history.back());
+  await expect(panel.getByRole("link", { name: ru.Billing.pay })).toBeVisible();
+  unblock();
+
+  const secondCheck = page.waitForResponse((response) => new URL(response.url()).pathname === path);
+  await page.evaluate(() => window.history.forward());
+  await secondCheck;
+  const pay = billing.getByRole("button", { name: ru.Billing.pay, exact: true });
+  await expect(pay).toBeEnabled({ timeout: 4000 });
+  expect(state.bootstraps).toEqual([]);
+
+  await pay.click();
+  await expect(billing.getByRole("button", { name: ru.Billing.refresh })).toBeEnabled();
+  expect(state.bootstraps).toEqual([{ purchase_intent_id: savedPurchase.purchase_intent_id }]);
+});

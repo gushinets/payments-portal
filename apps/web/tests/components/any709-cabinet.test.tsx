@@ -1,4 +1,5 @@
-import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { NextIntlClientProvider } from "next-intl";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AccountBilling } from "@/features/billing";
 import { requestPaymentOpening } from "@/features/billing/payment-opening";
@@ -113,7 +114,12 @@ it("consumes a verified payment click once and shows the target before Widget RE
     return () => node.replaceChildren();
   });
   requestPaymentOpening(first.purchase_intent_id, purchaseUser.user_id);
-  const view = renderCabinet(first.purchase_intent_id);
+  const view = render(
+    <NextIntlClientProvider locale="ru" messages={ru}>
+      <AccountBilling userId={purchaseUser.user_id} emailVerified initialPurchaseId={first.purchase_intent_id} />
+    </NextIntlClientProvider>,
+    { reactStrictMode: true }
+  );
   expect(await screen.findByText(/synthetic-agreement/)).toBeVisible();
   expect(screen.getByRole("button", { name: ru.Billing.loading })).toBeDisabled();
   expect(payloads()).toEqual([{ purchase_intent_id: first.purchase_intent_id }]);
@@ -131,6 +137,22 @@ it("discards a pending payment click after session replacement", async () => {
   renderCabinet(first.purchase_intent_id);
   expect(await screen.findByRole("button", { name: ru.Billing.pay })).toBeEnabled();
   expect(bootstrap).not.toHaveBeenCalled();
+});
+
+it("does not transfer a claimed payment click to a new account visit", async () => {
+  let finish!: (response: Response) => void;
+  status.mockReturnValueOnce(new Promise<Response>((resolve) => { finish = resolve; }));
+  requestPaymentOpening(first.purchase_intent_id, purchaseUser.user_id);
+  const firstVisit = renderCabinet(first.purchase_intent_id);
+  expect(selector()).toBeDisabled();
+  firstVisit.unmount();
+
+  renderCabinet(first.purchase_intent_id);
+  await act(async () => finish(json(savedPurchase)));
+  expect(await screen.findByRole("button", { name: ru.Billing.pay })).toBeEnabled();
+  expect(bootstrap).not.toHaveBeenCalled();
+  open();
+  await waitFor(() => expect(bootstrap).toHaveBeenCalledTimes(1));
 });
 
 it("refreshes the same purchase through a fresh bootstrap and removes the old Widget while waiting", async () => {
@@ -327,4 +349,21 @@ it("does not display an unsafe server request ID", async () => {
   expect(alert).not.toHaveTextContent("private unsafe");
   const request = fetcher.mock.calls.find(([url]) => new URL(String(url)).pathname === "/api/purchase-intents");
   expect(alert).toHaveTextContent(new Headers(request?.[1]?.headers).get("X-Request-ID")!);
+});
+
+it.each(["linked", "awaiting_external_result"] as const)("keeps the freshly linked purchase in sync when an older list response arrives after a %s point read", async (initialState) => {
+  let resolveList!: (response: Response) => void;
+  list.mockReturnValueOnce(new Promise<Response>((resolve) => { resolveList = resolve; }));
+  status.mockImplementationOnce(async () => json({ ...savedPurchase, state: initialState }));
+  renderCabinet(first.purchase_intent_id);
+  if (initialState === "awaiting_external_result") {
+    expect(await screen.findByText(ru.Billing.preparationRequired, { exact: false })).toBeVisible();
+  }
+
+  expect(await screen.findByRole("button", { name: ru.Billing.pay }, { timeout: 3000 })).toBeEnabled();
+  await act(async () => resolveList(json({ purchases: [{ ...first, state: "awaiting_external_result" }], next_cursor: null })));
+
+  const card = await screen.findByRole("article");
+  expect(within(card).getByText(ru.Account.products.prepared)).toBeVisible();
+  expect(within(card).queryByText(ru.Account.products.pending)).not.toBeInTheDocument();
 });

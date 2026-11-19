@@ -426,3 +426,36 @@ it("official SDK accepts the server payment presentation and keeps all unsupport
   destroy();
   expect(node.childElementCount).toBe(0);
 });
+
+it("continues checking a lost confirmation after an empty manual status check", async () => {
+  confirm.mockRejectedValueOnce(new TypeError("synthetic_lost_reply"));
+  renderProduct();
+  await accept();
+  expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: ru.Purchase.refresh }));
+  });
+  expect(screen.getByRole("button", { name: ru.Purchase.retryConfirm })).toBeEnabled();
+
+  owned = { ...savedPurchase, state: "created" };
+  expect(await screen.findByRole("button", { name: ru.Purchase.continue }, { timeout: 3000 })).toBeEnabled();
+  expect(confirm).toHaveBeenCalledTimes(1);
+  expect(advance).not.toHaveBeenCalled();
+});
+
+it("clears an obsolete unknown-outcome warning after recovering the original agreement", async () => {
+  advance.mockImplementationOnce(async () => {
+    owned = { ...savedPurchase, state: "awaiting_external_result", reason: "purchase_pending" };
+    throw new TypeError("synthetic_lost_advance_reply");
+  });
+  renderProduct();
+  await accept();
+  expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
+  expect(screen.getByRole("button", { name: ru.Purchase.recover })).toBeEnabled();
+
+  owned = { ...savedPurchase, state: "preparing", reason: "purchase_pending" };
+  expect(await screen.findByRole("button", { name: ru.Purchase.continue }, { timeout: 3000 })).toBeEnabled();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(advance).toHaveBeenCalledTimes(1);
+});

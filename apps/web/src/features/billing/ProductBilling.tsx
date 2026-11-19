@@ -15,8 +15,10 @@ import { purchaseNeedsStatus, usePurchaseStatusPoll } from "./use-purchase-statu
 
 type PurchaseState =
   | { kind: "loading" | "unavailable" | "none" }
-  | { kind: "review"; review: PurchaseReviewResponse; key: string; selected: string[]; submitted: boolean }
+  | { kind: "review"; review: PurchaseReviewResponse; key: string; selected: string[]; submission: ReviewSubmission }
   | { kind: "purchase"; purchase: PurchaseIntentResponse };
+const ReviewSubmission = { Draft: "draft", Submitted: "submitted", Uncertain: "uncertain" } as const;
+type ReviewSubmission = typeof ReviewSubmission[keyof typeof ReviewSubmission];
 type Failure = { message: BillingErrorKey; requestId: string };
 type ProductBillingProps = { productId: string; offerAvailable: boolean; user?: SessionUserResponse; headingLevel?: 2 | 4 };
 
@@ -75,7 +77,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
   const Heading = headingLevel === 2 ? "h2" : "h4";
   const ReviewHeading = headingLevel === 2 ? "h3" : "h5";
   const purchase = state.kind === "purchase" ? state.purchase : null;
-  const uncertainConfirmation = state.kind === "review" && state.submitted && failure?.message === "financialPending";
+  const uncertainConfirmation = state.kind === "review" && state.submission === ReviewSubmission.Uncertain;
   const canPoll = user.email_verified && !working;
 
   const poll = usePurchaseStatusPoll(
@@ -84,7 +86,11 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     (saved) => {
       if (busy.current) return;
       setState({ kind: "purchase", purchase: saved });
-      if (uncertainConfirmation || !saved.scope_held || !purchaseNeedsStatus(saved)) setFailure(null);
+      if (uncertainConfirmation || !saved.scope_held || !purchaseNeedsStatus(saved)) {
+        setFailure(null);
+      } else if (purchase?.purchase_intent_id === saved.purchase_intent_id && purchase.state === "awaiting_external_result" && saved.state === "preparing") {
+        setFailure((previous) => previous?.message === "financialPending" ? null : previous);
+      }
     }
   );
 
@@ -159,7 +165,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
       if (!current()) return;
       if (result.purchase) { setState({ kind: "purchase", purchase: result.purchase }); return; }
       const terms = await reviewPurchase(token, productId, id);
-      if (current()) setState({ kind: "review", review: terms, key: newRequestId(), selected: [], submitted: false });
+      if (current()) setState({ kind: "review", review: terms, key: newRequestId(), selected: [], submission: ReviewSubmission.Draft });
     });
   }
 
@@ -188,7 +194,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     if (state.kind !== "review" || !state.review.documents.length || state.selected.length !== state.review.documents.length) return;
     const frozen = state;
     return run(async (token, id, current) => {
-      setState({ ...frozen, submitted: true });
+      if (frozen.submission === ReviewSubmission.Draft) setState({ ...frozen, submission: ReviewSubmission.Submitted });
       let result: PurchaseIntentResponse;
       try {
         result = await confirmPurchase(token, {
@@ -219,7 +225,10 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
               return;
             }
           } catch { /* The exact submitted review remains reserved in this view. */ }
-          if (current()) setFailure({ message: "financialPending", requestId: id });
+          if (current()) {
+            setState({ ...frozen, submission: ReviewSubmission.Uncertain });
+            setFailure({ message: "financialPending", requestId: id });
+          }
           return;
         }
         throw error;
@@ -259,7 +268,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
         <ReviewHeading>{t("reviewTitle")}</ReviewHeading>
         <PurchaseTerms review={state.review} />
         <p>{t("draftLegal")}</p>
-        <fieldset className="purchase-consents" disabled={working || state.submitted}>
+        <fieldset className="purchase-consents" disabled={working || state.submission !== ReviewSubmission.Draft}>
           <legend>{t("consents")}</legend>
           {state.review.documents.map((doc) => <div key={doc.document_version_id}>
             <a href={doc.url_path} lang="ru" target="_blank" rel="noreferrer">{doc.title} · {doc.version}</a>
@@ -269,8 +278,8 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
             }} /><span lang="ru">{doc.acceptance_text}</span></label>
           </div>)}
         </fieldset>
-        {state.submitted && <p>{t("confirmationUncertain")}</p>}
-        <button className="btn-primary" type="button" disabled={working || !state.review.documents.length || state.selected.length !== state.review.documents.length} onClick={() => void confirm()}>{t(state.submitted ? "retryConfirm" : "confirm")}</button>
+        {state.submission !== ReviewSubmission.Draft && <p>{t("confirmationUncertain")}</p>}
+        <button className="btn-primary" type="button" disabled={working || !state.review.documents.length || state.selected.length !== state.review.documents.length} onClick={() => void confirm()}>{t(state.submission === ReviewSubmission.Draft ? "confirm" : "retryConfirm")}</button>
       </div>}
       {purchase && <div className="purchase-status">
         <p role="status">{t(`states.${purchase.state}`)}</p>
