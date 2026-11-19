@@ -1,6 +1,5 @@
 """One bounded inventory scan for admission, customer work and operator proof."""
 
-from collections import Counter
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -214,7 +213,7 @@ async def collect_inventory(
             relevant.setdefault(provider_id, None)
         within_read_limit = len(relevant) <= MAX_RELEVANT_SUBSCRIPTIONS
         complete &= within_read_limit
-        counts = Counter(row.agreement_id for row in rows)
+        confirmed_agreements: set[int] = set()
         for provider_id, candidate in relevant.items():
             budget.check()
             known = bindings.get(provider_id)
@@ -255,7 +254,7 @@ async def collect_inventory(
             # UNKNOWN candidate, even when LBX now places it on this agreement.
             if candidate is not None and known is None and owner is not None and history is None:
                 operation = next(op for op in owner.operations if op.kind == Kind.SUBSCRIPTION)
-                if counts[candidate.agreement_id] == 1 and operation.bound_id is None:
+                if operation.bound_id is None:
                     agreement_conflict = False
                     if (
                         reuse is not None
@@ -315,6 +314,13 @@ async def collect_inventory(
                             # The customer writer invalidated every source fence.
                             # Never apply this snapshot as a purchase-only review.
                             raise InventoryStale()
+                        # Point reads (or the caller's proven original) establish multiplicity on this agreement.
+                        if (point is not None and point.agreement_id == candidate.agreement_id) or (
+                            point is None and proof.identity == IdentityProof.MATCH
+                        ):
+                            if candidate.agreement_id in confirmed_agreements:
+                                conflicts.add(owner.id)
+                            confirmed_agreements.add(candidate.agreement_id)
                         if (
                             proof.identity == IdentityProof.MATCH
                             and proof.commercial == CommercialProof.MATCH

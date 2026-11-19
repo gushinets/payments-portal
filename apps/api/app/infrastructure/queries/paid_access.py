@@ -18,6 +18,7 @@ from app.models import (
     PaidAccessState,
     PurchasedAllowance,
     PurchaseIntent,
+    PurchaseIntentState,
     BillingWorkItem,
     User,
 )
@@ -72,15 +73,32 @@ def scopes(db: Session, user_id: UUID) -> list[BillingProductAccessScope]:
     )
 
 
+def _subscriptions(user_id: UUID, product_id: str) -> Select[tuple[ExternalSubscription]]:
+    return (
+        select(ExternalSubscription)
+        .where(ExternalSubscription.user_id == user_id, ExternalSubscription.product_id == product_id)
+        .order_by(ExternalSubscription.subscription_id)
+        .with_for_update(of=ExternalSubscription)
+    )
+
+
 def subscriptions(db: Session, user_id: UUID, product_id: str) -> list[ExternalSubscription]:
-    return list(
-        db.scalars(
-            select(ExternalSubscription)
-            .where(ExternalSubscription.user_id == user_id, ExternalSubscription.product_id == product_id)
-            .order_by(ExternalSubscription.subscription_id)
-            .with_for_update()
+    return list(db.scalars(_subscriptions(user_id, product_id)))
+
+
+def subscriptions_with_purchase_state(
+    db: Session, user_id: UUID, product_id: str
+) -> list[tuple[ExternalSubscription, PurchaseIntentState | None]]:
+    query = (
+        _subscriptions(user_id, product_id)
+        .add_columns(PurchaseIntent.state)
+        .outerjoin(
+            PurchaseIntent,
+            (PurchaseIntent.purchase_intent_id == ExternalSubscription.purchase_intent_id)
+            & (PurchaseIntent.user_id == user_id),
         )
     )
+    return [(sub, state) for sub, state in db.execute(query)]
 
 
 def state(db: Session, user_id: UUID) -> PaidAccessState | None:

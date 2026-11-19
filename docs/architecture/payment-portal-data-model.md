@@ -1,7 +1,7 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-11-17 (ANY-821 integration with ANY-766)
+Last updated: 2026-11-19 (ANY-821 integration with ANY-766)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
@@ -237,7 +237,7 @@ characters; existing users receive no fabricated names.
 `purchase_intents` ties one user/customer/account/product/offer to a published
 mapping revision, exact legal acceptance event, accepted commercial
 fingerprint, immutable accepted snapshot, and client idempotency key. Its
-closed states are `created`, `preparing`, `awaiting_external_result`, `linked`,
+allowed states are `created`, `preparing`, `awaiting_external_result`, `linked`,
 `resolved_no_external_effect`, `resolved_external_terminal`, `failed_before_external_effect`, and
 `manual_review`. PostgreSQL triggers keep the accepted evidence/provenance
 fields immutable. ANY-765 writes `accepted-purchase:v2`, including the optional

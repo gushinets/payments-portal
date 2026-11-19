@@ -45,6 +45,10 @@ class LbxScopeMismatch(LbxError):
         super().__init__("lbx_scope_mismatch")
 
 
+class LbxSubscriptionListingMismatch(LbxScopeMismatch):
+    """Discovery disagrees with subscription ownership; retry before attributing a conflict."""
+
+
 class LbxResponseInvalid(LbxError):
     def __init__(self) -> None:
         super().__init__("lbx_response_invalid")

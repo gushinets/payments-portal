@@ -34,12 +34,64 @@ it.each(["resolved_no_external_effect", "resolved_external_terminal", "failed_be
   expect(screen.queryByRole("button", { name: ru.Purchase.manage })).not.toBeInTheDocument();
 });
 
-it("uses the active list status when a held deep link returns an earlier state", async () => {
-  status.mockResolvedValue(json({ ...savedPurchase, state: "created", scope_held: true }));
+it.each([
+  ["created", "linked", "linked"],
+  ["linked", "created", "linked"],
+  ["preparing", "linked", "preparing"],
+  ["linked", "manual_review", "manual_review"],
+] as const)("rechecks differing held snapshots (list %s, detail %s, latest %s)", async (listed, detail, latest) => {
+  list.mockResolvedValueOnce(json({ purchases: [{ ...first, state: listed }], next_cursor: null }));
+  status.mockResolvedValueOnce(json({ ...savedPurchase, state: detail }));
+  let finish!: (value: Response) => void;
+  status.mockImplementationOnce(() => new Promise<Response>(resolve => { finish = resolve; }));
   renderCabinet(first.purchase_intent_id);
-  await waitFor(() => expect(status).toHaveBeenCalledTimes(1));
-  await waitFor(() => expect(screen.getByRole("button", { name: ru.Billing.open })).toBeEnabled());
+  await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
+  expect(screen.getByRole("button", { name: ru.Billing.open })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: ru.Purchase.manage })?.hasAttribute("disabled") ?? true).toBe(true);
+  await act(async () => finish(json({ ...savedPurchase, state: latest })));
+  if (latest === "linked") {
+    expect(screen.getByRole("button", { name: ru.Billing.open })).toBeEnabled();
+    expect(screen.getByRole("button", { name: ru.Purchase.manage })).toBeEnabled();
+  } else {
+    expect(screen.getByRole("button", { name: ru.Billing.open })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: ru.Purchase.manage })).not.toBeInTheDocument();
+  }
   expect(selector()).toHaveValue(first.purchase_intent_id);
+});
+
+it("closes the selected Widget when a later status read confirms release", async () => {
+  let finishList!: (value: Response) => void;
+  list.mockImplementationOnce(() => new Promise<Response>(resolve => { finishList = resolve; }));
+  status.mockResolvedValueOnce(json(savedPurchase));
+  status.mockResolvedValueOnce(json({ ...savedPurchase, state: "resolved_external_terminal", scope_held: false }));
+  renderCabinet(first.purchase_intent_id);
+  await waitFor(() => expect(screen.getByRole("button", { name: ru.Billing.open })).toBeEnabled());
+  open();
+  await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
+  await act(async () => finishList(json({ purchases: [{ ...first, state: "manual_review" }], next_cursor: null })));
+  expect(await screen.findByText(ru.Purchase.states.resolved_external_terminal)).toBeVisible();
+  expect(dispose).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole("article")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: ru.Billing.open })).toBeDisabled();
+});
+
+it("updates the original card after switching to account viewing during discovery", async () => {
+  let finishList!: (value: Response) => void;
+  list.mockImplementationOnce(() => new Promise<Response>(resolve => { finishList = resolve; }));
+  status.mockResolvedValueOnce(json(savedPurchase));
+  status.mockResolvedValueOnce(json({ ...savedPurchase, state: "manual_review" }));
+  renderCabinet(first.purchase_intent_id);
+  await waitFor(() => expect(selector()).toBeEnabled());
+  fireEvent.change(selector(), { target: { value: "" } });
+  open();
+  await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
+  await act(async () => finishList(json({ purchases: [{ ...first, state: "manual_review" }], next_cursor: null })));
+  const card = within(await screen.findByRole("article"));
+  await waitFor(() => expect(card.getByText(ru.Account.products.pending)).toBeVisible());
+  expect(card.queryByRole("button", { name: ru.Purchase.manage })).not.toBeInTheDocument();
+  expect(selector()).toHaveValue("");
+  expect(dispose).not.toHaveBeenCalled();
+  expect(payloads()).toEqual([{}]);
 });
 
 it("shows a neutral selected-purchase placeholder while its deep link is loading", async () => {

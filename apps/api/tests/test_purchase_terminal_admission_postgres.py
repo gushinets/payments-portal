@@ -1,11 +1,13 @@
 """A retained late-object review fences financial claims until audited closure."""
 
 import asyncio
+import json
 from datetime import UTC, date, datetime, timedelta
 import time
 from typing import Any
 from uuid import UUID
 
+import httpx
 import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -14,7 +16,7 @@ from app.composition import purchase_inventory, purchase_recovery
 from app.composition.billing_operator import resolve_review
 from app.composition.purchase_recovery import recover_financial
 from app.composition.purchases import advance_purchase
-from app.composition.sources import SourceResources
+from app.composition.sources import SourceResources, source_resources
 from app.core.settings import Settings
 from app.domains.billing import terminal_resolution as terminal
 from app.domains.billing.discovery import apply_inventory, persist_discoveries
@@ -766,12 +768,15 @@ async def test_stale_discovery_owner_cannot_displace_the_point_owner_at_first_pr
     assert late["late_object"]["relationship_conflict"] is False
 
 
-async def test_confirmed_held_agreement_with_a_different_receipt_requires_review(
-    background_scenario: tuple, postgres_session_factory: sessionmaker[Session]
+@pytest.mark.parametrize("receipt", [568, None], ids=["different-receipt", "two-point-confirmed-ids"])
+async def test_confirmed_held_agreement_conflict_requires_review(
+    background_scenario: tuple, postgres_session_factory: sessionmaker[Session], receipt: int | None
 ) -> None:
     transport, sources, purchase = background_scenario
     factory = postgres_session_factory
-    purchase = synthetic_prepare(factory, transport, purchase, uncertain=True, subscription_receipt=568)
+    purchase = synthetic_prepare(factory, transport, purchase, uncertain=True, subscription_receipt=receipt)
+    if receipt is None:
+        transport.subscriptions.append({**transport.subscriptions[0], "subscription_id": 568})
     operation = next(item for item in purchase.operations if item.kind == Kind.SUBSCRIPTION)
     assert transport.subscriptions[0]["subscription_id"] == 567
     evidence = await conflict_case(sources, factory, transport, purchase)
@@ -781,19 +786,26 @@ async def test_confirmed_held_agreement_with_a_different_receipt_requires_review
     ]
     saved = service.read_purchase(factory, purchase.user_id, purchase.id)
     saved_operation = next(item for item in saved.operations if item.id == operation.id)
-    assert saved_operation.bound_id is None and saved_operation.candidate_id == "568"
+    assert saved_operation.bound_id is None and saved_operation.candidate_id == (str(receipt) if receipt else None)
     assert all(call.method == "GET" for call in transport.requests)
 
 
 @pytest.mark.parametrize(
-    "mode",
+    ("mode", "include_own", "entry"),
     [
-        "held-agreement-in-list",
-        "correct-agreement-in-list",
-        "different-create-receipt",
-        "existing-binding-review",
-        "same-create-receipt",
-        "wrong-held-seller",
+        ("held-agreement-in-list", False, "inventory"),
+        ("correct-agreement-in-list", False, "inventory"),
+        ("different-create-receipt", False, "inventory"),
+        ("existing-binding-review", False, "inventory"),
+        ("same-create-receipt", False, "inventory"),
+        ("wrong-held-seller", False, "inventory"),
+        ("held-agreement-in-list", True, "inventory"),
+        ("different-create-receipt", True, "inventory"),
+        ("held-agreement-in-list", False, "advance"),
+        ("different-create-receipt", False, "recover"),
+        ("held-agreement-in-list", True, "recover"),
+        ("different-create-receipt", True, "advance"),
+        ("different-create-receipt", True, "recover-partial"),
     ],
 )
 async def test_late_original_is_reviewed_when_list_points_to_a_held_purchase(
@@ -801,6 +813,8 @@ async def test_late_original_is_reviewed_when_list_points_to_a_held_purchase(
     postgres_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
     mode: str,
+    include_own: bool,
+    entry: str,
 ) -> None:
     transport, sources, original = background_scenario
     factory = postgres_session_factory
@@ -846,22 +860,26 @@ async def test_late_original_is_reviewed_when_list_points_to_a_held_purchase(
 
     # The list places the late original under a held purchase's agreement.
     # Only the point read shows the original agreement and its actual owner.
-    client = sources.require_lbx()
-    discover = client.discover_subscriptions
+    fail_own_point = False
 
-    async def incomplete_discovery(
-        *, user_id: int, budget: PreflightBudget, agreement_id: int | None = None
-    ) -> tuple[Subscription, ...]:
-        rows = await discover(user_id=user_id, budget=budget, agreement_id=agreement_id)
-        return tuple(
-            item.model_copy(update={"agreement_id": other_agreement["agreement_id"]})
-            if mode != "correct-agreement-in-list" and item.subscription_id == point["subscription_id"]
-            else item
-            for item in rows
-            if item.subscription_id != other_point["subscription_id"]
+    def stale_listing(req: httpx.Request) -> httpx.Response:
+        if fail_own_point and req.url.path.endswith(f"/subscriptions/{other_point['subscription_id']}"):
+            transport.requests.append(req)
+            return transport.response({}, status=404)
+        if req.method != "GET" or not req.url.path.endswith("/subscriptions"):
+            return transport.respond(req)
+        transport.requests.append(req)
+        listed = [
+            dict(row, agreement_id=other_agreement["agreement_id"])
+            if row is point and mode != "correct-agreement-in-list"
+            else row
+            for row in transport.subscriptions
+            if include_own or row is not other_point
+        ]
+        agreement_id = json.loads(req.content).get("agreement_id")
+        return transport.response(
+            [row for row in listed if agreement_id is None or row["agreement_id"] == agreement_id]
         )
-
-    monkeypatch.setattr(client, "discover_subscriptions", incomplete_discovery)
 
     before_other = service.read_purchase(factory, other.user_id, other.id)
     before_reviews = inspect_evidence(factory, config, other.user_id, other.id)["reviews"]
@@ -873,7 +891,16 @@ async def test_late_original_is_reviewed_when_list_points_to_a_held_purchase(
         )
         assert subscription_id is not None
     first_read = len(transport.requests)
-    await run_inventory(Scenario(factory, config, transport, sources, subscription_id))
+    async with source_resources(
+        config, kernel_transport=httpx.MockTransport(transport.kernel), lbx_transport=httpx.MockTransport(stale_listing)
+    ) as disputed:
+        await run_inventory(Scenario(factory, config, transport, disputed, subscription_id))
+        worker_calls = transport.requests[first_read:]
+        if entry == "advance":
+            await advance_purchase(disputed, config, factory=factory, token=TOKEN, purchase_id=other.id)
+        elif entry.startswith("recover"):
+            fail_own_point = entry == "recover-partial"
+            await recover_financial(disputed, config, factory=factory, user_id=other.user_id, purchase_id=other.id)
     assert not any(grant["product_id"] == "proposal_ai" for grant in effective(factory)[1]["grants"])
     [late] = [
         item
@@ -883,13 +910,7 @@ async def test_late_original_is_reviewed_when_list_points_to_a_held_purchase(
     assert late["late_object"]["external_object_id"] == str(point["subscription_id"])
     assert late["late_object"]["observed_agreement_id"] == str(old_agreement["agreement_id"])
     assert late["late_object"]["relationship_conflict"] is False
-    assert (
-        sum(
-            call.url.path.endswith(f"/subscriptions/{point['subscription_id']}")
-            for call in transport.requests[first_read:]
-        )
-        == 1
-    )
+    assert sum(call.url.path.endswith(f"/subscriptions/{point['subscription_id']}") for call in worker_calls) == 1
     saved_other = service.read_purchase(factory, other.user_id, other.id)
     operation = next(item for item in saved_other.operations if item.id == claim.id)
     assert saved_other.held and operation.bound_id is None
@@ -905,7 +926,6 @@ async def test_late_original_is_reviewed_when_list_points_to_a_held_purchase(
 
     if mode in {"held-agreement-in-list", "different-create-receipt"}:
         # Once the original case is resolved, the held purchase can recover its own object.
-        monkeypatch.setattr(client, "discover_subscriptions", discover)
         old_agreement["close_date"] = today.isoformat()
         point["state"] = 3
         _confirm_late_subscription(factory, old, UUID(late["review_case_id"]), str(point["subscription_id"]))

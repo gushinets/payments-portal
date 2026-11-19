@@ -30,11 +30,13 @@ from app.domains.purchases.contracts import FinancialOperation, FinancialRequest
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.errors import (
+    LbxAttemptsExhausted,
     LbxError,
     LbxProviderRejected,
     LbxRateLimited,
     LbxResponseInvalid,
     LbxScopeMismatch,
+    LbxSubscriptionListingMismatch,
     LbxTimeout,
     LbxUnavailable,
 )
@@ -47,7 +49,7 @@ from app.integrations.lbx.financial import (
     prove_agreement,
     prove_effective_terms,
 )
-from app.integrations.lbx.reconciliation import normalize_subscription, timely_point
+from app.integrations.lbx.reconciliation import MAX_RELEVANT_SUBSCRIPTIONS, normalize_subscription, timely_point
 from app.models import (
     ExternalCreateOperationKind as Kind,
     ExternalCreateOperationState as State,
@@ -129,7 +131,7 @@ async def find_financial(
     )
     if agreement_is_closed(agreement) and operation.state in {State.PENDING, State.PROVEN_NOT_SENT}:
         raise PurchaseRefused("purchase_not_prepared", 409)
-    candidate_id = await _subscription_candidate_id(
+    candidate = await _subscription_candidate(
         client,
         customer,
         agreement_id,
@@ -137,9 +139,9 @@ async def find_financial(
         budget=budget,
         require_discovery=require_discovery,
     )
-    if candidate_id is None:
+    if candidate is None:
         return None
-    point = await timely_point(lambda: client.get_subscription(subscription_id=candidate_id, budget=budget), budget)
+    candidate_id, point = candidate
     if operation.state in {State.PENDING, State.PROVEN_NOT_SENT}:
         prove_effective_terms(
             point, agreement_id=agreement_id, selection=purchase.accepted.selection, offer=purchase.accepted.offer
@@ -147,7 +149,7 @@ async def find_financial(
     return candidate_id, agreement, point
 
 
-async def _subscription_candidate_id(
+async def _subscription_candidate(
     client: LbxServerClient,
     customer: CustomerOpen,
     agreement_id: int,
@@ -155,21 +157,48 @@ async def _subscription_candidate_id(
     budget: PreflightBudget,
     saved: str | None = None,
     require_discovery: bool = False,
-) -> int | None:
+) -> tuple[int, Subscription] | None:
     rows = await timely_point(
         lambda: client.discover_subscriptions(
             user_id=int(customer.provider_id), agreement_id=agreement_id, budget=budget
         ),
         budget,
     )
-    ids = tuple(row.subscription_id for row in rows)
-    if saved:
-        if any(value != int(saved) for value in ids) or (require_discovery and ids != (int(saved),)):
+    ids = [row.subscription_id for row in rows]
+    receipt = int(saved) if saved else None
+    missing_required = require_discovery and receipt is not None and receipt not in ids
+    if receipt is not None and receipt not in ids:
+        ids.append(receipt)
+    if len(ids) > MAX_RELEVANT_SUBSCRIPTIONS:
+        raise LbxResponseInvalid()
+    candidate = None
+    disputed = missing_required or len(ids) > 1
+    for identity in ids:
+        try:
+            point = await timely_point(lambda: client.get_subscription(subscription_id=identity, budget=budget), budget)
+        except (
+            LbxResponseInvalid,
+            LbxProviderRejected,
+            LbxTimeout,
+            LbxUnavailable,
+            LbxRateLimited,
+            LbxAttemptsExhausted,
+        ):
+            if disputed:
+                continue  # Another point can still prove a conflict. A partial set can never bind.
+            raise
+        if point.agreement_id != agreement_id:
+            if identity == receipt:
+                raise LbxScopeMismatch()
+            disputed = True
+        elif candidate is not None or (receipt is not None and identity != receipt):
+            # Two point-confirmed IDs, or an object on our dedicated agreement contradicting our receipt.
             raise LbxScopeMismatch()
-        ids = (int(saved),)
-    if len(ids) > 1:
-        raise LbxScopeMismatch()
-    return ids[0] if ids else None
+        else:
+            candidate = identity, point
+    if disputed:
+        raise LbxSubscriptionListingMismatch()
+    return candidate
 
 
 async def recover_one(
@@ -283,6 +312,10 @@ async def recover_one(
             if bound
             else await _already_bound(sources, configuration, factory, purchase, operation, budget, delegate)
         )
+    except LbxSubscriptionListingMismatch:
+        if resolution is not None:
+            raise
+        return False  # A disputed listing cannot change this operation or its send fence.
     except LbxError as error:
         if resolution is not None:
             raise
@@ -355,14 +388,13 @@ async def _observe_released_object(
         raise PurchaseRefused("purchase_history_unproven", 409)
     if candidate_id is None:
         (agreement_id,) = expected_ids
-        provider_id = await _subscription_candidate_id(client, customer, int(agreement_id), budget=budget)
-        if provider_id is None:
+        candidate = await _subscription_candidate(client, customer, int(agreement_id), budget=budget)
+        if candidate is None:
             return
+        provider_id, point = candidate
     else:
         provider_id = int(candidate_id)
-    point = await timely_point(lambda: client.get_subscription(subscription_id=provider_id, budget=budget), budget)
-    if candidate_id is None and str(point.agreement_id) not in expected_ids:
-        raise LbxScopeMismatch()
+        point = await timely_point(lambda: client.get_subscription(subscription_id=provider_id, budget=budget), budget)
     finished = await delegate(read_source_time, factory)
     await observe_released_subscription(
         purchase,

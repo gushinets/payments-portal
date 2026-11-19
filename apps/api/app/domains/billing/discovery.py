@@ -189,7 +189,7 @@ def select_primaries(
         ):
             raise InventoryStale()
         scope = billing_reconciliation.scope(db, cause.user_id, product.product_id)
-        local = paid_access.subscriptions(db, cause.user_id, product.product_id)
+        local = paid_access.subscriptions_with_purchase_state(db, cause.user_id, product.product_id)
         if (scope.primary_subscription_id, scope.primary_retired_at) != (
             product.primary_subscription_id,
             product.primary_retired_at,
@@ -203,9 +203,8 @@ def select_primaries(
             if source.purchase.accepted.selection.product_id == product.product_id
         }
         candidates = {item.identity: PrimaryCandidate(item.identity, item.conclusion) for item in product.candidates}
-        for sub in local:
-            owner = purchases.owned(db, cause.user_id, sub.purchase_intent_id) if sub.purchase_intent_id else None
-            if owner is not None and owner.state.resolved:
+        for sub, owner_state in local:
+            if owner_state is not None and owner_state.resolved:
                 candidates[sub.external_subscription_id] = PrimaryCandidate(
                     sub.external_subscription_id, CandidateConclusion.INELIGIBLE
                 )
@@ -227,7 +226,7 @@ def select_primaries(
                 )
         eligible = [
             sub
-            for sub in local
+            for sub, _ in local
             if sub.subscription_id in sources
             and candidates.get(sub.external_subscription_id)
             == PrimaryCandidate(sub.external_subscription_id, CandidateConclusion.ELIGIBLE)
