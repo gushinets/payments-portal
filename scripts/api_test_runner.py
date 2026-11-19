@@ -131,7 +131,8 @@ def validate_arguments(
                 continue
             if argument == "--durations" and not value.isdecimal():
                 raise RunnerError("--durations requires a nonnegative integer")
-            options.extend([argument, value])
+            # Keep values attached so pytest treats a leading @ as part of the value.
+            options.append(f"{argument}={value}")
             index += 2
             continue
         if argument in {

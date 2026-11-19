@@ -262,11 +262,26 @@ def test_selector_and_marker_validation_preserves_spaces_and_metacharacters(suit
         [str(path) + "::test_case[x $() ; ]", "-m", "postgres", "-k", "case", "--durations=3"], "api-postgres", suite
     )
     assert args == runner.PytestArguments(
-        ["-k", "case", "--durations=3"], ["apps/api/tests/test_space.py::test_case[x $() ; ]"]
+        ["-k=case", "--durations=3"], ["apps/api/tests/test_space.py::test_case[x $() ; ]"]
     )
     assert runner.validate_arguments(["-m", "not postgres"], "api-fast", suite).options == []
     with pytest.raises(runner.RunnerError):
         runner.validate_arguments(["-m", "postgres"], "api", suite)
+
+
+def test_pytest_keyword_expression_does_not_expand_argument_files(suite: Path) -> None:
+    source(suite, "test_keywords.py", "def test_plain():\n    pass\n")
+    (suite / "selection.txt").write_text("plain\n", encoding="utf-8")
+
+    result = run_suite(suite, target="api-fast", workers=1, arguments=("-k", "@selection.txt"))
+
+    assert result.returncode == 1
+    assert json.loads((result.directory / "result.json").read_text())["process_returncodes"] == [
+        pytest.ExitCode.USAGE_ERROR
+    ]
+    collection_log = result.directory / "fast" / "collection" / "pytest.log"
+    assert "Wrong expression passed to '-k': @selection.txt" in collection_log.read_text(encoding="utf-8")
+    assert report_nodes(result.directory / "junit.xml") == []
 
 
 def test_one_and_four_workers_have_identical_collections_and_skip_reports(suite: Path) -> None:
