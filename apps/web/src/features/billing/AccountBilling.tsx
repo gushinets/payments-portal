@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { purchaseStatus } from "@/shared/api/purchases";
@@ -104,6 +104,14 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   const checking = selection?.checking === true;
   const canPay = !selectionBlocked && selection?.state === "linked" && !checking;
   const widgetOpen = widget.state.status === WidgetStatus.Open;
+  const paymentPurchaseId = "purchaseId" in widget.state ? widget.state.purchaseId : undefined;
+  const paymentUnavailable = paymentPurchaseId !== undefined && (
+    selectionState.status === "error" || selectionId !== paymentPurchaseId || (!checking && selection?.state !== "linked")
+  );
+
+  useLayoutEffect(() => {
+    if (paymentUnavailable) closeWidget();
+  }, [closeWidget, paymentUnavailable]);
 
   useEffect(() => {
     if (!checking && selectionState.status === "ready" && selectionState.openPayment?.() && canPay && selectionId && selectionId === initialPurchaseId) {
@@ -116,7 +124,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
     undefined,
     applyStatus,
     handleRefusal,
-    checking
+    checking ? 0 : undefined
   );
   const paidOnlyProducts = [...new Set([
     ...(paid.state.status === PaidReadStatus.Ready ? [...paid.state.data.grants, ...paid.state.data.products].map((item) => item.product_id) : []),

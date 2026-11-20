@@ -52,6 +52,7 @@ async function syntheticBilling(page: Page, signedIn = true) {
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/auth/session") return route.fulfill({ json: { authenticated: true, user: purchaseUser } });
     if (path === "/api/paid-access") return route.fulfill({ json: emptyPaidState() });
+    if (path === "/api/paid-usage") return route.fulfill({ json: { access_revision: 0, items: [] } });
     if (path.startsWith("/api/catalog/products")) return route.fulfill(state.catalogUnavailable
       ? { status: 503, json: { detail: { code: "catalog_unavailable" } } }
       : { json: path === "/api/catalog/products" ? { products: [simulatedProduct] } : simulatedProduct });
@@ -235,8 +236,9 @@ test("status polling observes durable preparation without another financial requ
   await panel.getByRole("checkbox").check();
   await panel.getByRole("button", { name: ru.Purchase.confirm }).click();
   await expect(panel.getByRole("button", { name: ru.Purchase.recover })).toBeEnabled();
+  await panel.getByRole("button", { name: ru.Purchase.recover }).focus();
   state.owned = savedPurchase;
-  await expect(panel.getByRole("link", { name: ru.Billing.pay })).toBeVisible({ timeout: 8000 });
+  await expect(panel.getByRole("link", { name: ru.Billing.pay })).toBeFocused({ timeout: 8000 });
   expect(state.confirmations).toHaveLength(1);
   expect(state.advances).toBe(1);
   expect(state.bootstraps).toEqual([]);

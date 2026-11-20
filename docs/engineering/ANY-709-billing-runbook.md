@@ -576,8 +576,10 @@ Opening the URL directly, reloading or returning through browser history
 requires a fresh click to open the Widget. On reload, the cabinet reads
 `purchase` from the URL. A manual selection lasts only for the current visit.
 Without a purchase ID, the cabinet preselects the sole purchase in a complete
-list. With several purchases, the buyer chooses one for payment. The same
-Widget serves account viewing, including when the user has no purchases.
+list. With several purchases, the buyer chooses one for payment. To open the
+account view, choose **View account without selecting a purchase** in the
+purchase selector, then open billing. The account view is also available when
+the user has no purchases.
 
 Refresh billing disposes the old host, rechecks the same purchase and opens a
 fresh Widget. The buyer may need to select the intended agreement again.
@@ -591,31 +593,42 @@ a 5xx response without an API error code triggers a local status read. The
 original confirmation key and accepted terms remain available for an explicit
 retry. An `advance` response with
 `preflight_deadline_exceeded` also triggers a saved status read because the
-operation may already be durable. A visible unfinished purchase checks saved
-status with 2, 5 and then 10 seconds between reads for two minutes. While
-awaiting an external result, it then checks once per minute for up to two hours
-and two minutes from the start of that status check. At the limit, the UI
-directs the buyer to the manual status check. A purchase status read returning
-401, 403 or 404 stops polling and shows the corresponding sign-in, verification
-or purchase-unavailable message. The cabinet closes the Widget and discards any
-pending opening when the selected purchase returns 401 or 403. The same rule
-applies when the purchase list, paid access or usage read for the current
-session returns 401 `billing_session_required` or 403
-`billing_email_verification_required`. A temporary failure of these reads
-leaves the open Widget in place. After a session refusal, Retry reloads the
-cabinet and checks the session before offering billing
-again. A manual status check on the product page can restore continuation
-once the purchase is readable. Status reads use Portal records and initiate no
-provider request or payment verification. When overlapping list and status
-reads disagree, the cabinet rechecks the selected purchase before offering
-payment.
+operation may already be durable. If advance is still waiting for its reply
+after five seconds, the product page checks saved status for the same purchase.
+A held, linked result makes the payment action available while that reply is
+pending.
+
+With the tab visible, the product page polls a held purchase in `created`,
+`preparing` or `awaiting_external_result`. After an uncertain confirmation it
+can poll for the current purchase by product. The cabinet polls only the
+selected purchase in those states. If overlapping list and point reads disagree,
+the cabinet starts a fresh point read before offering payment. Routine polling
+starts after two seconds, then waits five and ten seconds between reads for up
+to two minutes. In `awaiting_external_result`, polling continues on a
+one-minute interval for up to two hours and two minutes from the start of that
+polling window. At the limit, the UI directs the buyer to the manual status check
+on the product page. Status reads use saved Portal records. Provider proof is
+collected by the purchase, Widget and recovery flows.
+
+A purchase status read returning 401, 403 or 404 stops polling and shows the
+corresponding sign-in, verification or purchase-unavailable message. The cabinet
+closes the Widget and discards any pending opening when the selected purchase
+returns 401 or 403. The same rule applies when the purchase list, paid access or
+usage read for the current session returns 401 `billing_session_required` or
+403 `billing_email_verification_required`. When a purchase read confirms that
+the selected purchase is unavailable for payment, the cabinet closes its
+payment Widget or cancels its opening. Temporary read failures leave the open
+Widget in place. After a session refusal, Retry reloads the cabinet and checks
+the session before offering billing again. A manual status check on the product
+page can restore continuation once the purchase is readable.
 
 ANY-715 now supplies persisted observation/reconciliation facts and operator
 diagnostics; it does not add a new public billing-status UI contract. See the
 [billing operations guide](billing-background-operations.md).
 
-The Portal shows the proven agreement and seller while the isolated host waits up to 20 seconds for
-`lbx-widget` READY from the exact nested window at the configured provider origin.
+For payment, the Portal shows the proven agreement and seller while the
+isolated host waits up to 20 seconds for `lbx-widget` READY from the exact
+nested window at the configured provider origin.
 Failure removes the host and shows its safe request ID; successful READY stops
 the loading timer. Correlate `billing_widget_load_failed` with server bootstrap
 logs. Never weaken CSP/sandbox or infer payment/access from READY/browser return.

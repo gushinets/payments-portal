@@ -359,15 +359,17 @@ need audited resolution; a deadline-only escalation permits explicit user/CLI
 GET-only recovery after automatic discovery has paused.
 Advance, worker and operator use the same GET-only original-operation collector
 and transactional binder. After an ambiguous financial reply, advance returns
-the saved pending state and the enrolled worker discovers the original operation.
-An owned purchase status read exposes that progress. If the worker binds the
-open agreement before the subscription was sent, the purchase returns to
-`preparing` and the UI offers explicit continuation. That advance checks
-admission again before sending the subscription. The original saved command, actual possible-send
-history and fresh ownership/effective terms are required. A known binding never
-re-enters preparation: completed recovery is a no-op, while lifecycle updates
-require the existing subscription lease. A concurrent first binder discards the
-losing candidate proof and forces fresh claimed reconciliation.
+the saved state. The enrolled worker looks for the original operation while
+the outcome is uncertain. An owned purchase status read exposes the saved
+progress. If recovery binds an open agreement while the purchase is
+`awaiting_external_result` and the subscription operation is PENDING or
+PROVEN_NOT_SENT, the purchase returns to `preparing`. The buyer can explicitly
+continue. That advance checks admission again before sending the subscription.
+Recovery requires the original saved command, possible-send history and fresh
+proof of ownership and effective terms. A committed binding makes further
+recovery of that operation a no-op. Subscription lifecycle updates use the
+existing reconciliation lease. A concurrent first binder discards the losing
+candidate proof and forces fresh claimed reconciliation.
 
 Original termination is recoverable history, including a closed agreement.
 First binding atomically retains the binding and normalized negative, with zero

@@ -12,10 +12,21 @@
    worker after an ambiguous reply and expose when the buyer can continue.
 3. Poll owned local status in the active browser flow. Open the selected payment
    Widget from a single explicit, session-bound click. Show the target before
-   READY and preserve explicit account viewing and repeat opening.
+   READY and preserve explicit account viewing and repeat opening. While an
+   advance reply is outstanding, use the saved held and linked status to make
+   payment available. Close the selected payment Widget on a confirmed
+   non-payable or missing purchase.
 4. Verify locally with synthetic source responses and PostgreSQL. On the
-   approved test LBX stand, compare timings and repeat W02 with multiple
-   agreements. Record live acceptance separately from simulated results.
+   approved test LBX stand, compare timings and repeat
+   [W02](https://linear.app/paveldik/issue/ANY-819#comment-a2679865-ce7a-4099-8d1a-3d397ff6c909)
+   with multiple agreements. Record live acceptance separately from simulated
+   results.
+
+Moving new financial CREATEs to the worker would require a new background-work
+contract and would still leave the buyer waiting for the agreement and
+subscription. Keep explicit preparation and let the existing GET-only worker
+recover the original operation. The browser can use the durable result as soon
+as it observes it.
 
 ## Local verification
 
@@ -25,16 +36,16 @@
   advance has already searched once for the agreement before sending. It returns
   the saved pending state. The baseline ran a second search in the same request.
   Separate regressions cover provider-key drift and a changed local customer fence.
-- An earlier backend run passed 16 focused PostgreSQL cases covering changed
-  customer keys and fences, lost replies, GET-only recovery, closed agreements,
-  restart and session checks.
-- On 2026-11-19, `npm run check:fast` passed on the local ANY-819 changes,
-  including 497 component tests and 2,408 fast API tests. One API test was
-  skipped. The production webpack build passed using a cached local font.
-- On that build, 60 browser scenarios passed across desktop and mobile Chromium
-  with synthetic API and Widget responses (28 purchase and 32 catalog). The purchase
-  tests cover a single payment click, status recovery, Widget readiness and
-  expiry of the current session during checkout.
+- On 2026-11-20, the local review fixes on top of `970a428f` passed
+  `npm run check:fast` with
+  504 component tests and 2,408 fast API tests, with one API test skipped.
+  All seven concurrent purchase scenarios passed on an isolated PostgreSQL 14
+  instance. The UNKNOWN case verifies a committed ambiguous subscription
+  result, GET-only worker recovery and safe continuation of the second purchase.
+  The webpack build with a cached local font and all 60 browser scenarios
+  passed on desktop and mobile Chromium (28 purchase and 32 catalog). The
+  browser tests used synthetic sources and exercised the payment viewport and
+  keyboard focus.
 
 ## Live test setup and baseline
 
@@ -54,7 +65,9 @@ agreement visible. These successful opening and refresh samples start from
 already accepted purchases, so they do not establish a first-attempt
 acceptance-to-READY baseline.
 
-## Live result before the review fixes
+## Live samples from the initial implementation
+
+The initial ANY-819 timing records omit the tested build SHA.
 
 - The first purchase took 74.9 s from acceptance to verified Widget READY.
   Confirmation took 5.7 s and advance 29.8 s. In the first advance, the number
@@ -71,7 +84,10 @@ acceptance-to-READY baseline.
   after. This is one pair of test samples. The changed fresh-buyer journey made
   exactly one customer, two agreement and two subscription CREATE calls.
 
-## Live results after the review fixes
+## Live samples from an earlier review build
+
+The earlier review timing records omit the tested build SHA. The latest local
+review fixes have synthetic verification evidence above.
 
 - On a separate local copy, the official LBX 043 Widget reached READY for both
   retained test purchases. Click to READY took 12.8 s for Brief Decoder and
@@ -83,8 +99,16 @@ acceptance-to-READY baseline.
 
 ## Open acceptance items
 
-- Compare the first attempt from acceptance to Widget READY for a fresh
-  purchase on the baseline and the revised code under the same conditions.
-- Complete W02 with a confirmed test payment method and verify that the
-  selected agreement receives the credit and the other agreement keeps its
-  original balance.
+- Measure a fresh buyer's first attempt from accepting terms to the official
+  Widget READY on baseline `f6b1f1d2` and the final revision. Use the same LBX
+  test stand, equivalent fresh buyers and offers, and the same
+  `BILLING_WORKER_ENABLED` and `PREFLIGHT_TOTAL_TIMEOUT_SECONDS` settings.
+  Record the tested SHAs and settings. Capture confirmation, preparation,
+  navigation, bootstrap and Widget startup separately, with buyer wait,
+  first-attempt errors and retries recorded separately from successful timings.
+- Complete W02 as a verified test buyer with two prepared purchases on
+  different agreements. Record both balances, open payment for one purchase
+  and select the agreement identified by the Portal. Complete one payment
+  with a confirmed test method. After settlement, compare both balances
+  against the recorded values and confirm that only the intended agreement
+  received the credit.

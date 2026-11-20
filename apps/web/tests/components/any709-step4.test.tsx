@@ -169,6 +169,42 @@ it("shows Continue when status polling learns the agreement has been recovered",
   expect(advance).toHaveBeenCalledTimes(1);
 });
 
+it.each([ru.Purchase.recover, ru.Purchase.refresh])("announces recovery and moves focus from %s to payment", async (action) => {
+  vi.useFakeTimers();
+  owned = { ...savedPurchase, state: "awaiting_external_result" };
+  await act(async () => { renderProduct(); });
+  const status = screen.getByText(ru.Purchase.states.awaiting_external_result).closest('[role="status"]');
+  expect(status).toBeInTheDocument();
+  screen.getByRole("button", { name: action }).focus();
+
+  owned = savedPurchase;
+  await act(async () => vi.advanceTimersByTimeAsync(2100));
+
+  expect(status).toHaveTextContent(ru.Purchase.states.linked);
+  expect(screen.getByRole("link", { name: ru.Billing.pay })).toHaveFocus();
+});
+
+it("offers payment from saved status before advance replies and ignores the older reply", async () => {
+  vi.useFakeTimers();
+  const reply = Promise.withResolvers<Response>();
+  advance.mockReturnValueOnce(reply.promise);
+  await act(async () => { renderProduct(); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.buy })); });
+  fireEvent.click(screen.getByRole("checkbox"));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.confirm })); });
+  expect(advance).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole("link", { name: ru.Billing.pay })).not.toBeInTheDocument();
+
+  owned = savedPurchase;
+  await act(async () => vi.advanceTimersByTimeAsync(10_000));
+
+  expect(screen.getByRole("link", { name: ru.Billing.pay })).toBeVisible();
+  await act(async () => reply.resolve(json({ ...savedPurchase, state: "awaiting_external_result" })));
+  expect(screen.getByRole("link", { name: ru.Billing.pay })).toBeVisible();
+  expect(confirm).toHaveBeenCalledTimes(1);
+  expect(advance).toHaveBeenCalledTimes(1);
+});
+
 it("observes a subscription recovered after the fast polling window using status reads only", async () => {
   vi.useFakeTimers();
   owned = { ...savedPurchase, state: "awaiting_external_result", reason: "purchase_pending" };

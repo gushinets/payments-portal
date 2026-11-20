@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import type { PurchaseIntentResponse, PurchaseReviewResponse, SessionUserResponse } from "@/generated/api-contracts/types.gen";
 import { Link } from "@/i18n/navigation";
@@ -22,6 +22,8 @@ type PurchaseState =
   | { kind: "purchase"; purchase: PurchaseIntentResponse };
 const ReviewSubmission = { Draft: "draft", Submitted: "submitted", Uncertain: "uncertain" } as const;
 type ReviewSubmission = typeof ReviewSubmission[keyof typeof ReviewSubmission];
+const PurchaseWork = { Idle: "idle", Working: "working", Advancing: "advancing" } as const;
+type PurchaseWork = typeof PurchaseWork[keyof typeof PurchaseWork];
 type Failure = { message: `errors.${BillingErrorKey}` | PurchaseReadRefusal["message"]; requestId: string; readRefused?: true };
 type ProductBillingProps = { productId: string; offerAvailable: boolean; user?: SessionUserResponse; headingLevel?: 2 | 4 };
 
@@ -85,20 +87,45 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
   const b = useTranslations("Billing");
   const [state, setState] = useState<PurchaseState>({ kind: "loading" });
   const [failure, setFailure] = useState<Failure | null>(null);
-  const [working, setWorking] = useState(false);
+  const [work, setWork] = useState<PurchaseWork>(PurchaseWork.Idle);
   const busy = useRef(false);
+  const workFinishedAt = useRef(0);
+  const refreshButton = useRef<HTMLButtonElement>(null);
+  const resumeButton = useRef<HTMLButtonElement>(null);
+  const focusPayment = useRef(false);
   const { begin, cancel } = useSessionOperation();
   const Heading = headingLevel === 2 ? "h2" : "h4";
   const ReviewHeading = headingLevel === 2 ? "h3" : "h5";
   const purchase = state.kind === "purchase" ? state.purchase : null;
   const uncertainConfirmation = state.kind === "review" && state.submission === ReviewSubmission.Uncertain;
-  const canPoll = user.email_verified && !working && !failure?.readRefused;
+  const working = work !== PurchaseWork.Idle;
+  const advancing = work === PurchaseWork.Advancing;
+  const canPoll = user.email_verified && work !== PurchaseWork.Working && !failure?.readRefused;
+  const finishWork = useCallback(() => {
+    workFinishedAt.current = performance.now();
+    busy.current = false;
+    setWork(PurchaseWork.Idle);
+  }, []);
+  const attachPayment = useCallback((link: HTMLAnchorElement | null) => {
+    if (!link || !focusPayment.current) return;
+    focusPayment.current = false;
+    if (document.activeElement === document.body) link.focus();
+  }, []);
 
   const poll = usePurchaseStatusPoll(
-    canPoll && purchase?.scope_held && purchaseNeedsStatus(purchase) ? purchase : undefined,
-    canPoll && uncertainConfirmation ? productId : undefined,
-    (saved) => {
-      if (busy.current) return;
+    canPoll && purchase?.scope_held && (advancing || purchaseNeedsStatus(purchase)) ? purchase : undefined,
+    canPoll && !advancing && uncertainConfirmation ? productId : undefined,
+    (saved, readStartedAt) => {
+      if (readStartedAt < workFinishedAt.current) return;
+      const linked = saved.scope_held && saved.state === "linked";
+      if (busy.current) {
+        if (!advancing || !linked) return;
+        // The saved binding can be used before the POST replies. Retire its UI update.
+        cancel();
+        finishWork();
+      }
+      const focused = document.activeElement;
+      focusPayment.current = linked && (focused === refreshButton.current || focused === resumeButton.current);
       setState({ kind: "purchase", purchase: saved });
       if (uncertainConfirmation || !saved.scope_held || !purchaseNeedsStatus(saved)) {
         setFailure(null);
@@ -106,7 +133,15 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
         setFailure((previous) => previous?.message === "errors.financialPending" ? null : previous);
       }
     },
-    (refusal) => { if (!busy.current) setFailure(refusal); }
+    (refusal) => {
+      if (busy.current) {
+        if (!advancing) return;
+        cancel();
+        finishWork();
+      }
+      setFailure(refusal);
+    },
+    advancing ? 5_000 : undefined
   );
 
   useEffect(() => {
@@ -127,19 +162,18 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     });
     const unsubscribe = subscribeToSessionChanges(() => {
       cancel();
-      busy.current = false;
-      setWorking(false);
+      finishWork();
       setState({ kind: "unavailable" });
       setFailure({ message: "errors.session", requestId: "" });
     });
     return () => { cancel(); unsubscribe(); };
-  }, [begin, cancel, productId, user.email_verified]);
+  }, [begin, cancel, finishWork, productId, user.email_verified]);
 
   async function run(work: (token: string, requestId: string, current: () => boolean) => Promise<void>) {
     if (busy.current || !user.email_verified) return;
     busy.current = true;
     poll.clearPause();
-    setWorking(true);
+    setWork(PurchaseWork.Working);
     setFailure(null);
     const operation = begin();
     const requestId = newRequestId();
@@ -150,8 +184,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
       if (operation.isCurrent()) setFailure({ message: `errors.${billingErrorKey(error)}`, requestId: safeRequestId(error) || requestId, readRefused: failure?.readRefused });
     } finally {
       if (operation.isLatest()) {
-        busy.current = false;
-        setWorking(false);
+        finishWork();
         if (!operation.isCurrent()) {
           setState({ kind: "unavailable" });
           setFailure({ message: "errors.session", requestId });
@@ -208,6 +241,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
   }
 
   async function prepare(token: string, purchase: PurchaseIntentResponse, id: string, current: () => boolean) {
+    setWork(PurchaseWork.Advancing);
     let result: PurchaseIntentResponse;
     try {
       result = await advancePurchase(token, purchase.purchase_intent_id, id);
@@ -259,26 +293,28 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     });
   }
 
-  const resumable = purchase && purchase.scope_held && purchase.state !== "linked";
+  const linked = purchase?.state === "linked";
+  const resumable = purchase && purchase.scope_held && !linked;
   const needsRecovery = purchase?.state === "awaiting_external_result" || purchase?.state === "manual_review";
   const released = purchase && !purchase.scope_held && (purchase.state === "resolved_no_external_effect" || purchase.state === "failed_before_external_effect");
-  if (purchase?.state === "linked") return <section className="purchase-panel purchase-complete" aria-label={t("title")}>
-    <Heading>{t("states.linked")}</Heading>
-    <p className="card-copy">{t("managedInAccount")}</p>
-    <p className="card-copy">{t("accessInAccount")}</p>
-    <Link className="btn-primary" href={`/account?purchase=${encodeURIComponent(purchase.purchase_intent_id)}#billing`}
-      onNavigate={() => requestPaymentOpening(purchase.purchase_intent_id, user.user_id)}>{b("pay")}</Link>
-    <details><summary>{t("acceptedTerms")}</summary><PurchaseTerms review={purchase.accepted} /></details>
-  </section>;
-  return <section className="purchase-panel" aria-label={t("title")}>
-    <Heading>{t("title")}</Heading>
-    {!user.email_verified ? <>
+  return <section className={linked ? "purchase-panel purchase-complete" : "purchase-panel"} aria-label={t("title")}>
+    {!linked && <Heading>{t("title")}</Heading>}
+    <div role="status">
+      {linked ? <Heading>{t("states.linked")}</Heading> : purchase && <p>{t(`states.${purchase.state}`)}</p>}
+    </div>
+    {linked ? <>
+      <p className="card-copy">{t("managedInAccount")}</p>
+      <p className="card-copy">{t("accessInAccount")}</p>
+      <Link ref={attachPayment} className="btn-primary" href={`/account?purchase=${encodeURIComponent(purchase.purchase_intent_id)}#billing`}
+        onNavigate={() => requestPaymentOpening(purchase.purchase_intent_id, user.user_id)}>{b("pay")}</Link>
+      <details><summary>{t("acceptedTerms")}</summary><PurchaseTerms review={purchase.accepted} /></details>
+    </> : !user.email_verified ? <>
       <p>{t("verification")}</p>
       <Link className="btn-secondary" href="/account">{t("verifyAction")}</Link>
     </> : <>
       <div className="purchase-actions">
         {(state.kind === "none" || released) && <button className="btn-primary" type="button" disabled={working || !offerAvailable} onClick={() => void review()}>{t("buy")}</button>}
-        {(state.kind === "unavailable" || state.kind === "review" || purchase) && <button className="btn-secondary" type="button" disabled={working} onClick={() => void refresh()}>{t("refresh")}</button>}
+        {(state.kind === "unavailable" || state.kind === "review" || purchase) && <button ref={refreshButton} className="btn-secondary" type="button" disabled={working} onClick={() => void refresh()}>{t("refresh")}</button>}
       </div>
       {state.kind === "loading" && <p role="status">{t("loading")}</p>}
       {working && <p role="status">{t("working")}</p>}
@@ -302,11 +338,10 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
         <button className="btn-primary" type="button" disabled={working || failure?.readRefused || !state.review.documents.length || state.selected.length !== state.review.documents.length} onClick={() => void confirm()}>{t(state.submission === ReviewSubmission.Draft ? "confirm" : "retryConfirm")}</button>
       </div>}
       {purchase && <div className="purchase-status">
-        <p role="status">{t(`states.${purchase.state}`)}</p>
         {purchase.reason && <p>{t(purchase.reason === "terms_changed" ? "termsChanged" : purchase.reason === "purchase_pending" ? "pending" : "reviewRequired")}</p>}
         <p className="catalog-product-id">{t("reference", { id: purchase.purchase_intent_id })}</p>
         <details><summary>{t("acceptedTerms")}</summary><PurchaseTerms review={purchase.accepted} /></details>
-        {resumable && !failure?.readRefused && <button className="btn-primary" type="button" disabled={working} onClick={() => void run((token, id, current) => prepare(token, purchase, id, current))}>{t(needsRecovery ? "recover" : "continue")}</button>}
+        {resumable && !failure?.readRefused && <button ref={resumeButton} className="btn-primary" type="button" disabled={working} onClick={() => void run((token, id, current) => prepare(token, purchase, id, current))}>{t(needsRecovery ? "recover" : "continue")}</button>}
         <p>{t("awaitingVerification")}</p>
       </div>}
       {failure && <div className="notice error" role="alert">{b(failure.message)}{failure.requestId && <p>{b("requestId", { id: failure.requestId })}</p>}</div>}
