@@ -1,0 +1,2014 @@
+{
+  "baselineSource": "aa9d8f996cba91feaaaad6a9937eef0c590ae4fa",
+  "implementationSource": "2eddd69c86d07e64f2cf3cf1f606637f61a1471f",
+  "lockHashes": {
+    "before": "9abec257fd2308d30e7f8ed464a0c6a9c3fc24e50c2fd6002426106358b0c9af",
+    "after": "7a478a026e1b6f943c3a052e8b45ac4fecf049cb4425b57150b42cb18ce3d267"
+  },
+  "toolchain": {
+    "node": "24.19.0",
+    "npm": "11.17.0",
+    "uv": "0.12.7"
+  },
+  "database": {
+    "Version": 2,
+    "NextUpdate": "2026-11-19T07:15:21.579241907Z",
+    "UpdatedAt": "2026-11-18T07:15:21.579242117Z",
+    "DownloadedAt": "2026-11-18T11:27:33.461222143Z"
+  },
+  "databaseHashes": {
+    "metadata.json": "8c59e6665d9d3392c21fdc8f10be0a121ee31729fa28e6c64f010c61e4d678c8",
+    "trivy.db": "b4b9f44be196aac7bf3c359abdcacfaa97a7ccaf56297d04745b7dae554eae86"
+  },
+  "scannerImage": "sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f",
+  "inventory": {
+    "before": [
+      {
+        "path": "apps/web/node_modules/@eslint/config-array",
+        "version": "0.23.5",
+        "dev": true,
+        "dependencies": {
+          "@eslint/object-schema": "^3.0.5",
+          "debug": "^4.3.1",
+          "minimatch": "^10.2.4"
+        }
+      },
+      {
+        "path": "apps/web/node_modules/eslint",
+        "version": "10.8.1",
+        "dev": true,
+        "dependencies": {
+          "@eslint-community/eslint-utils": "^4.8.0",
+          "@eslint-community/regexpp": "^4.12.2",
+          "@eslint/config-array": "^0.23.5",
+          "@eslint/config-helpers": "^0.7.0",
+          "@eslint/core": "^1.2.1",
+          "@eslint/plugin-kit": "^0.7.2",
+          "@humanfs/node": "^0.16.6",
+          "@humanwhocodes/module-importer": "^1.0.1",
+          "@humanwhocodes/retry": "^0.4.2",
+          "@types/estree": "^1.0.6",
+          "ajv": "^6.14.0",
+          "cross-spawn": "^7.0.6",
+          "debug": "^4.3.2",
+          "escape-string-regexp": "^4.0.0",
+          "eslint-scope": "^9.1.2",
+          "eslint-visitor-keys": "^5.0.1",
+          "espree": "^11.2.0",
+          "esquery": "^1.7.0",
+          "esutils": "^2.0.2",
+          "fast-deep-equal": "^3.1.3",
+          "file-entry-cache": "^8.0.0",
+          "find-up": "^5.0.0",
+          "glob-parent": "^6.0.2",
+          "ignore": "^5.2.0",
+          "imurmurhash": "^0.1.4",
+          "is-glob": "^4.0.0",
+          "json-stable-stringify-without-jsonify": "^1.0.1",
+          "minimatch": "^10.2.5",
+          "natural-compare": "^1.4.0",
+          "optionator": "^0.9.3"
+        }
+      },
+      {
+        "path": "apps/web/node_modules/minimatch",
+        "version": "10.2.6",
+        "dev": true,
+        "dependencies": {
+          "brace-expansion": "^5.0.8"
+        }
+      },
+      {
+        "path": "node_modules/@eslint/config-array",
+        "version": "0.21.2",
+        "dev": true,
+        "dependencies": {
+          "@eslint/object-schema": "^2.1.7",
+          "debug": "^4.3.1",
+          "minimatch": "^3.1.5"
+        }
+      },
+      {
+        "path": "node_modules/@eslint/eslintrc",
+        "version": "3.3.6",
+        "dev": true,
+        "dependencies": {
+          "ajv": "^6.14.0",
+          "debug": "^4.3.2",
+          "espree": "^10.0.1",
+          "globals": "^14.0.0",
+          "ignore": "^5.2.0",
+          "import-fresh": "^3.2.1",
+          "js-yaml": "^4.3.0",
+          "minimatch": "^3.1.5",
+          "strip-json-comments": "^3.1.1"
+        }
+      },
+      {
+        "path": "node_modules/@sentry/bundler-plugins",
+        "version": "11.4.0",
+        "dev": false,
+        "dependencies": {
+          "@sentry/core": "11.4.0",
+          "dotenv": "^17.4.2",
+          "glob": "^13.0.6",
+          "magic-string": "~0.30.8 || ^1.0.0",
+          "oxc-parser": "^0.152.0",
+          "sentry": "^0.45.0",
+          "supports-color": "^8.1.1"
+        }
+      },
+      {
+        "path": "node_modules/@sentry/bundler-plugins/node_modules/glob",
+        "version": "13.0.6",
+        "dev": false,
+        "dependencies": {
+          "minimatch": "^10.2.2",
+          "minipass": "^7.1.3",
+          "path-scurry": "^2.0.2"
+        }
+      },
+      {
+        "path": "node_modules/@sentry/bundler-plugins/node_modules/minimatch",
+        "version": "10.2.6",
+        "dev": false,
+        "dependencies": {
+          "brace-expansion": "^5.0.8"
+        }
+      },
+      {
+        "path": "node_modules/@typescript-eslint/typescript-estree",
+        "version": "8.67.0",
+        "dev": true,
+        "dependencies": {
+          "@typescript-eslint/project-service": "8.67.0",
+          "@typescript-eslint/tsconfig-utils": "8.67.0",
+          "@typescript-eslint/types": "8.67.0",
+          "@typescript-eslint/visitor-keys": "8.67.0",
+          "debug": "^4.4.3",
+          "minimatch": "^10.2.2",
+          "semver": "^7.7.3",
+          "tinyglobby": "^0.2.15",
+          "ts-api-utils": "^2.5.0"
+        }
+      },
+      {
+        "path": "node_modules/@typescript-eslint/typescript-estree/node_modules/minimatch",
+        "version": "10.2.6",
+        "dev": true,
+        "dependencies": {
+          "brace-expansion": "^5.0.8"
+        }
+      },
+      {
+        "path": "node_modules/eslint",
+        "version": "9.39.5",
+        "dev": true,
+        "dependencies": {
+          "@eslint-community/eslint-utils": "^4.8.0",
+          "@eslint-community/regexpp": "^4.12.1",
+          "@eslint/config-array": "^0.21.2",
+          "@eslint/config-helpers": "^0.4.2",
+          "@eslint/core": "^0.17.0",
+          "@eslint/eslintrc": "^3.3.6",
+          "@eslint/js": "9.39.5",
+          "@eslint/plugin-kit": "^0.4.1",
+          "@humanfs/node": "^0.16.6",
+          "@humanwhocodes/module-importer": "^1.0.1",
+          "@humanwhocodes/retry": "^0.4.2",
+          "@types/estree": "^1.0.6",
+          "ajv": "^6.14.0",
+          "chalk": "^4.0.0",
+          "cross-spawn": "^7.0.6",
+          "debug": "^4.3.2",
+          "escape-string-regexp": "^4.0.0",
+          "eslint-scope": "^8.4.0",
+          "eslint-visitor-keys": "^4.2.1",
+          "espree": "^10.4.0",
+          "esquery": "^1.5.0",
+          "esutils": "^2.0.2",
+          "fast-deep-equal": "^3.1.3",
+          "file-entry-cache": "^8.0.0",
+          "find-up": "^5.0.0",
+          "glob-parent": "^6.0.2",
+          "ignore": "^5.2.0",
+          "imurmurhash": "^0.1.4",
+          "is-glob": "^4.0.0",
+          "json-stable-stringify-without-jsonify": "^1.0.1",
+          "lodash.merge": "^4.6.2",
+          "minimatch": "^3.1.5",
+          "natural-compare": "^1.4.0",
+          "optionator": "^0.9.3"
+        }
+      },
+      {
+        "path": "node_modules/eslint-plugin-import",
+        "version": "2.32.0",
+        "dev": true,
+        "dependencies": {
+          "@rtsao/scc": "^1.1.0",
+          "array-includes": "^3.1.9",
+          "array.prototype.findlastindex": "^1.2.6",
+          "array.prototype.flat": "^1.3.3",
+          "array.prototype.flatmap": "^1.3.3",
+          "debug": "^3.2.7",
+          "doctrine": "^2.1.0",
+          "eslint-import-resolver-node": "^0.3.9",
+          "eslint-module-utils": "^2.12.1",
+          "hasown": "^2.0.2",
+          "is-core-module": "^2.16.1",
+          "is-glob": "^4.0.3",
+          "minimatch": "^3.1.2",
+          "object.fromentries": "^2.0.8",
+          "object.groupby": "^1.0.3",
+          "object.values": "^1.2.1",
+          "semver": "^6.3.1",
+          "string.prototype.trimend": "^1.0.9",
+          "tsconfig-paths": "^3.15.0"
+        }
+      },
+      {
+        "path": "node_modules/eslint-plugin-jsx-a11y",
+        "version": "6.10.2",
+        "dev": true,
+        "dependencies": {
+          "aria-query": "^5.3.2",
+          "array-includes": "^3.1.8",
+          "array.prototype.flatmap": "^1.3.2",
+          "ast-types-flow": "^0.0.8",
+          "axe-core": "^4.10.0",
+          "axobject-query": "^4.1.0",
+          "damerau-levenshtein": "^1.0.8",
+          "emoji-regex": "^9.2.2",
+          "hasown": "^2.0.2",
+          "jsx-ast-utils": "^3.3.5",
+          "language-tags": "^1.0.9",
+          "minimatch": "^3.1.2",
+          "object.fromentries": "^2.0.8",
+          "safe-regex-test": "^1.0.3",
+          "string.prototype.includes": "^2.0.1"
+        }
+      },
+      {
+        "path": "node_modules/eslint-plugin-react",
+        "version": "7.37.5",
+        "dev": true,
+        "dependencies": {
+          "array-includes": "^3.1.8",
+          "array.prototype.findlast": "^1.2.5",
+          "array.prototype.flatmap": "^1.3.3",
+          "array.prototype.tosorted": "^1.1.4",
+          "doctrine": "^2.1.0",
+          "es-iterator-helpers": "^1.2.1",
+          "estraverse": "^5.3.0",
+          "hasown": "^2.0.2",
+          "jsx-ast-utils": "^2.4.1 || ^3.0.0",
+          "minimatch": "^3.1.2",
+          "object.entries": "^1.1.9",
+          "object.fromentries": "^2.0.8",
+          "object.values": "^1.2.1",
+          "prop-types": "^15.8.1",
+          "resolve": "^2.0.0-next.5",
+          "semver": "^6.3.1",
+          "string.prototype.matchall": "^4.0.12",
+          "string.prototype.repeat": "^1.0.0"
+        }
+      },
+      {
+        "path": "node_modules/minimatch",
+        "version": "3.1.5",
+        "dev": true,
+        "dependencies": {
+          "brace-expansion": "^1.1.7"
+        }
+      }
+    ],
+    "after": [
+      {
+        "path": "apps/web/node_modules/@eslint/config-array",
+        "version": "0.23.6",
+        "dev": true,
+        "dependencies": {
+          "@eslint/object-schema": "^3.0.5",
+          "debug": "^4.3.1",
+          "minimatch": "^11.0.5"
+        }
+      },
+      {
+        "path": "apps/web/node_modules/eslint",
+        "version": "10.15.0",
+        "dev": true,
+        "dependencies": {
+          "@eslint-community/eslint-utils": "^4.8.0",
+          "@eslint-community/regexpp": "^4.12.2",
+          "@eslint/config-array": "^0.23.6",
+          "@eslint/config-helpers": "^0.7.0",
+          "@eslint/core": "^1.2.1",
+          "@eslint/plugin-kit": "^0.7.3",
+          "@humanfs/node": "^0.16.8",
+          "@humanwhocodes/module-importer": "^1.0.1",
+          "@humanwhocodes/retry": "^0.4.2",
+          "@types/estree": "^1.0.6",
+          "ajv": "^6.14.0",
+          "cross-spawn": "^7.0.6",
+          "debug": "^4.3.2",
+          "escape-string-regexp": "^4.0.0",
+          "eslint-scope": "^9.1.2",
+          "eslint-visitor-keys": "^5.0.1",
+          "espree": "^11.2.0",
+          "esquery": "^1.7.0",
+          "esutils": "^2.0.2",
+          "fast-deep-equal": "^3.1.3",
+          "file-entry-cache": "11.1.5 || >11.1.6 <12",
+          "find-up": "^5.0.0",
+          "glob-parent": "^6.0.2",
+          "ignore": "^5.2.0",
+          "imurmurhash": "^0.1.4",
+          "is-glob": "^4.0.0",
+          "json-stable-stringify-without-jsonify": "^1.0.1",
+          "minimatch": "^11.0.5",
+          "natural-compare": "^1.4.0",
+          "optionator": "^0.9.3"
+        }
+      },
+      {
+        "path": "apps/web/node_modules/minimatch",
+        "version": "11.0.9",
+        "dev": true,
+        "dependencies": {
+          "@isaacs/nonrecursive-glob-match": "^1.1.0",
+          "brace-expansion": "^5.0.12"
+        }
+      },
+      {
+        "path": "node_modules/@eslint/config-array",
+        "version": "0.21.2",
+        "dev": true,
+        "dependencies": {
+          "@eslint/object-schema": "^2.1.7",
+          "debug": "^4.3.1",
+          "minimatch": "^3.1.5"
+        }
+      },
+      {
+        "path": "node_modules/@eslint/eslintrc",
+        "version": "3.3.6",
+        "dev": true,
+        "dependencies": {
+          "ajv": "^6.14.0",
+          "debug": "^4.3.2",
+          "espree": "^10.0.1",
+          "globals": "^14.0.0",
+          "ignore": "^5.2.0",
+          "import-fresh": "^3.2.1",
+          "js-yaml": "^4.3.0",
+          "minimatch": "^3.1.5",
+          "strip-json-comments": "^3.1.1"
+        }
+      },
+      {
+        "path": "node_modules/@sentry/bundler-plugins",
+        "version": "11.11.0",
+        "dev": false,
+        "dependencies": {
+          "@sentry/core": "11.11.0",
+          "dotenv": "^17.4.2",
+          "glob": "^14.0.3",
+          "magic-string": "~0.30.8 || ^1.0.0",
+          "oxc-parser": "^0.152.0",
+          "sentry": "^0.45.0",
+          "supports-color": "^8.1.1"
+        }
+      },
+      {
+        "path": "node_modules/@typescript-eslint/parser/node_modules/@typescript-eslint/typescript-estree",
+        "version": "8.73.0",
+        "dev": true,
+        "dependencies": {
+          "@typescript-eslint/project-service": "8.73.0",
+          "@typescript-eslint/tsconfig-utils": "8.73.0",
+          "@typescript-eslint/types": "8.73.0",
+          "@typescript-eslint/visitor-keys": "8.73.0",
+          "debug": "^4.4.3",
+          "minimatch": "^11.0.1",
+          "semver": "^7.7.3",
+          "tinyglobby": "^0.2.15",
+          "ts-api-utils": "^2.5.0"
+        }
+      },
+      {
+        "path": "node_modules/@typescript-eslint/parser/node_modules/minimatch",
+        "version": "11.0.9",
+        "dev": true,
+        "dependencies": {
+          "@isaacs/nonrecursive-glob-match": "^1.1.0",
+          "brace-expansion": "^5.0.12"
+        }
+      },
+      {
+        "path": "node_modules/@typescript-eslint/type-utils/node_modules/@typescript-eslint/typescript-estree",
+        "version": "8.73.0",
+        "dev": true,
+        "dependencies": {
+          "@typescript-eslint/project-service": "8.73.0",
+          "@typescript-eslint/tsconfig-utils": "8.73.0",
+          "@typescript-eslint/types": "8.73.0",
+          "@typescript-eslint/visitor-keys": "8.73.0",
+          "debug": "^4.4.3",
+          "minimatch": "^11.0.1",
+          "semver": "^7.7.3",
+          "tinyglobby": "^0.2.15",
+          "ts-api-utils": "^2.5.0"
+        }
+      },
+      {
+        "path": "node_modules/@typescript-eslint/type-utils/node_modules/minimatch",
+        "version": "11.0.9",
+        "dev": true,
+        "dependencies": {
+          "@isaacs/nonrecursive-glob-match": "^1.1.0",
+          "brace-expansion": "^5.0.12"
+        }
+      },
+      {
+        "path": "node_modules/@typescript-eslint/utils/node_modules/@typescript-eslint/typescript-estree",
+        "version": "8.73.0",
+        "dev": true,
+        "dependencies": {
+          "@typescript-eslint/project-service": "8.73.0",
+          "@typescript-eslint/tsconfig-utils": "8.73.0",
+          "@typescript-eslint/types": "8.73.0",
+          "@typescript-eslint/visitor-keys": "8.73.0",
+          "debug": "^4.4.3",
+          "minimatch": "^11.0.1",
+          "semver": "^7.7.3",
+          "tinyglobby": "^0.2.15",
+          "ts-api-utils": "^2.5.0"
+        }
+      },
+      {
+        "path": "node_modules/@typescript-eslint/utils/node_modules/minimatch",
+        "version": "11.0.9",
+        "dev": true,
+        "dependencies": {
+          "@isaacs/nonrecursive-glob-match": "^1.1.0",
+          "brace-expansion": "^5.0.12"
+        }
+      },
+      {
+        "path": "node_modules/eslint",
+        "version": "9.39.5",
+        "dev": true,
+        "dependencies": {
+          "@eslint-community/eslint-utils": "^4.8.0",
+          "@eslint-community/regexpp": "^4.12.1",
+          "@eslint/config-array": "^0.21.2",
+          "@eslint/config-helpers": "^0.4.2",
+          "@eslint/core": "^0.17.0",
+          "@eslint/eslintrc": "^3.3.6",
+          "@eslint/js": "9.39.5",
+          "@eslint/plugin-kit": "^0.4.1",
+          "@humanfs/node": "^0.16.6",
+          "@humanwhocodes/module-importer": "^1.0.1",
+          "@humanwhocodes/retry": "^0.4.2",
+          "@types/estree": "^1.0.6",
+          "ajv": "^6.14.0",
+          "chalk": "^4.0.0",
+          "cross-spawn": "^7.0.6",
+          "debug": "^4.3.2",
+          "escape-string-regexp": "^4.0.0",
+          "eslint-scope": "^8.4.0",
+          "eslint-visitor-keys": "^4.2.1",
+          "espree": "^10.4.0",
+          "esquery": "^1.5.0",
+          "esutils": "^2.0.2",
+          "fast-deep-equal": "^3.1.3",
+          "file-entry-cache": "^8.0.0",
+          "find-up": "^5.0.0",
+          "glob-parent": "^6.0.2",
+          "ignore": "^5.2.0",
+          "imurmurhash": "^0.1.4",
+          "is-glob": "^4.0.0",
+          "json-stable-stringify-without-jsonify": "^1.0.1",
+          "lodash.merge": "^4.6.2",
+          "minimatch": "^3.1.5",
+          "natural-compare": "^1.4.0",
+          "optionator": "^0.9.3"
+        }
+      },
+      {
+        "path": "node_modules/eslint-plugin-import",
+        "version": "2.32.0",
+        "dev": true,
+        "dependencies": {
+          "@rtsao/scc": "^1.1.0",
+          "array-includes": "^3.1.9",
+          "array.prototype.findlastindex": "^1.2.6",
+          "array.prototype.flat": "^1.3.3",
+          "array.prototype.flatmap": "^1.3.3",
+          "debug": "^3.2.7",
+          "doctrine": "^2.1.0",
+          "eslint-import-resolver-node": "^0.3.9",
+          "eslint-module-utils": "^2.12.1",
+          "hasown": "^2.0.2",
+          "is-core-module": "^2.16.1",
+          "is-glob": "^4.0.3",
+          "minimatch": "^3.1.2",
+          "object.fromentries": "^2.0.8",
+          "object.groupby": "^1.0.3",
+          "object.values": "^1.2.1",
+          "semver": "^6.3.1",
+          "string.prototype.trimend": "^1.0.9",
+          "tsconfig-paths": "^3.15.0"
+        }
+      },
+      {
+        "path": "node_modules/eslint-plugin-jsx-a11y",
+        "version": "6.10.2",
+        "dev": true,
+        "dependencies": {
+          "aria-query": "^5.3.2",
+          "array-includes": "^3.1.8",
+          "array.prototype.flatmap": "^1.3.2",
+          "ast-types-flow": "^0.0.8",
+          "axe-core": "^4.10.0",
+          "axobject-query": "^4.1.0",
+          "damerau-levenshtein": "^1.0.8",
+          "emoji-regex": "^9.2.2",
+          "hasown": "^2.0.2",
+          "jsx-ast-utils": "^3.3.5",
+          "language-tags": "^1.0.9",
+          "minimatch": "^3.1.2",
+          "object.fromentries": "^2.0.8",
+          "safe-regex-test": "^1.0.3",
+          "string.prototype.includes": "^2.0.1"
+        }
+      },
+      {
+        "path": "node_modules/eslint-plugin-react",
+        "version": "7.37.5",
+        "dev": true,
+        "dependencies": {
+          "array-includes": "^3.1.8",
+          "array.prototype.findlast": "^1.2.5",
+          "array.prototype.flatmap": "^1.3.3",
+          "array.prototype.tosorted": "^1.1.4",
+          "doctrine": "^2.1.0",
+          "es-iterator-helpers": "^1.2.1",
+          "estraverse": "^5.3.0",
+          "hasown": "^2.0.2",
+          "jsx-ast-utils": "^2.4.1 || ^3.0.0",
+          "minimatch": "^3.1.2",
+          "object.entries": "^1.1.9",
+          "object.fromentries": "^2.0.8",
+          "object.values": "^1.2.1",
+          "prop-types": "^15.8.1",
+          "resolve": "^2.0.0-next.5",
+          "semver": "^6.3.1",
+          "string.prototype.matchall": "^4.0.12",
+          "string.prototype.repeat": "^1.0.0"
+        }
+      },
+      {
+        "path": "node_modules/glob",
+        "version": "14.0.6",
+        "dev": false,
+        "dependencies": {
+          "minimatch": "^11.0.5",
+          "minipass": "^7.1.3",
+          "path-scurry": "^3.0.0"
+        }
+      },
+      {
+        "path": "node_modules/glob/node_modules/minimatch",
+        "version": "11.0.9",
+        "dev": false,
+        "dependencies": {
+          "@isaacs/nonrecursive-glob-match": "^1.1.0",
+          "brace-expansion": "^5.0.12"
+        }
+      },
+      {
+        "path": "node_modules/minimatch",
+        "version": "3.1.5",
+        "dev": true,
+        "dependencies": {
+          "brace-expansion": "^1.1.7"
+        }
+      },
+      {
+        "path": "node_modules/typescript-eslint/node_modules/@typescript-eslint/typescript-estree",
+        "version": "8.73.0",
+        "dev": true,
+        "dependencies": {
+          "@typescript-eslint/project-service": "8.73.0",
+          "@typescript-eslint/tsconfig-utils": "8.73.0",
+          "@typescript-eslint/types": "8.73.0",
+          "@typescript-eslint/visitor-keys": "8.73.0",
+          "debug": "^4.4.3",
+          "minimatch": "^11.0.1",
+          "semver": "^7.7.3",
+          "tinyglobby": "^0.2.15",
+          "ts-api-utils": "^2.5.0"
+        }
+      },
+      {
+        "path": "node_modules/typescript-eslint/node_modules/minimatch",
+        "version": "11.0.9",
+        "dev": true,
+        "dependencies": {
+          "@isaacs/nonrecursive-glob-match": "^1.1.0",
+          "brace-expansion": "^5.0.12"
+        }
+      }
+    ]
+  },
+  "audit": {
+    "before": {
+      "sha256": "5b9e4494430e141da28c7d4f2ceb006e1e01e0a6b2415ed565e9325d0c0a1bef",
+      "counts": {
+        "info": 0,
+        "low": 0,
+        "moderate": 12,
+        "high": 17,
+        "critical": 0,
+        "total": 29
+      },
+      "directAdvisories": [
+        {
+          "package": "glob",
+          "url": "https://github.com/advisories/GHSA-3g3m-2fjr-6pw4",
+          "range": ">=9.0.0 <=14.0.1"
+        },
+        {
+          "package": "minimatch",
+          "url": "https://github.com/advisories/GHSA-g3hv-75wg-m249",
+          "range": ">=7.0.0 <11.0.1"
+        },
+        {
+          "package": "next",
+          "url": "https://github.com/advisories/GHSA-mfr8-8qww-v76h",
+          "range": ">=16.3.0 <=16.4.4"
+        },
+        {
+          "package": "next",
+          "url": "https://github.com/advisories/GHSA-vc7v-qv4w-wrv8",
+          "range": ">=16.2.0 <=16.4.4"
+        },
+        {
+          "package": "picomatch",
+          "url": "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",
+          "range": "<=4.0.7"
+        },
+        {
+          "package": "zod",
+          "url": "https://github.com/advisories/GHSA-mrhx-c7xc-m3w5",
+          "range": "<4.6.6"
+        }
+      ],
+      "targetAffectedPaths": {
+        "glob": [
+          "node_modules/@sentry/bundler-plugins/node_modules/glob"
+        ],
+        "minimatch": [
+          "apps/web/node_modules/minimatch",
+          "node_modules/@sentry/bundler-plugins/node_modules/minimatch",
+          "node_modules/@typescript-eslint/typescript-estree/node_modules/minimatch"
+        ]
+      }
+    },
+    "after": {
+      "sha256": "2dade06086be354ffc22f6b6a3c91e3fbdd348382aa5be18e5ef4acbb9f35c4b",
+      "counts": {
+        "info": 0,
+        "low": 0,
+        "moderate": 1,
+        "high": 22,
+        "critical": 0,
+        "total": 23
+      },
+      "directAdvisories": [
+        {
+          "package": "next",
+          "url": "https://github.com/advisories/GHSA-mfr8-8qww-v76h",
+          "range": ">=16.3.0 <=16.4.4"
+        },
+        {
+          "package": "next",
+          "url": "https://github.com/advisories/GHSA-vc7v-qv4w-wrv8",
+          "range": ">=16.2.0 <=16.4.4"
+        },
+        {
+          "package": "picomatch",
+          "url": "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",
+          "range": "<=4.0.7"
+        },
+        {
+          "package": "zod",
+          "url": "https://github.com/advisories/GHSA-mrhx-c7xc-m3w5",
+          "range": "<4.6.6"
+        }
+      ],
+      "targetAffectedPaths": {}
+    }
+  },
+  "trivy": {
+    "before-filesystem": {
+      "sha256": "6a46c506274094825d7ef714af9dee38278769c0f8f8f23fe8e1bfd956bb747f",
+      "createdAt": "2026-11-18T11:53:10.969305821Z",
+      "scanner": {
+        "Version": "0.72.0"
+      },
+      "metadata": null,
+      "results": [
+        {
+          "target": "apps/api/uv.lock",
+          "class": "lang-pkgs",
+          "type": "uv",
+          "findings": [
+            {
+              "id": "CVE-2026-102991",
+              "package": "mako",
+              "path": null,
+              "installed": "1.4.1",
+              "fixed": "1.4.2",
+              "severity": "MEDIUM",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-102991"
+            },
+            {
+              "id": "CVE-2026-126360",
+              "package": "opentelemetry-api",
+              "path": null,
+              "installed": "1.45.1",
+              "fixed": "1.45.2",
+              "severity": "MEDIUM",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-126360"
+            }
+          ]
+        },
+        {
+          "target": "package-lock.json",
+          "class": "lang-pkgs",
+          "type": "npm",
+          "findings": [
+            {
+              "id": "CVE-2026-118773",
+              "package": "glob",
+              "path": null,
+              "installed": "13.0.6",
+              "fixed": "14.0.2",
+              "severity": "MEDIUM",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-118773"
+            },
+            {
+              "id": "CVE-2026-118764",
+              "package": "minimatch",
+              "path": null,
+              "installed": "10.2.6",
+              "fixed": "11.0.1",
+              "severity": "MEDIUM",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-118764"
+            },
+            {
+              "id": "CVE-2026-119351",
+              "package": "next",
+              "path": null,
+              "installed": "16.4.2",
+              "fixed": "16.4.5",
+              "severity": "MEDIUM",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-119351"
+            },
+            {
+              "id": "CVE-2026-119790",
+              "package": "next",
+              "path": null,
+              "installed": "16.4.2",
+              "fixed": "16.4.5",
+              "severity": "MEDIUM",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-119790"
+            },
+            {
+              "id": "CVE-2026-112366",
+              "package": "picomatch",
+              "path": null,
+              "installed": "2.3.2",
+              "fixed": null,
+              "severity": "HIGH",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-112366"
+            },
+            {
+              "id": "CVE-2026-112366",
+              "package": "picomatch",
+              "path": null,
+              "installed": "4.0.5",
+              "fixed": null,
+              "severity": "HIGH",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-112366"
+            },
+            {
+              "id": "CVE-2026-112366",
+              "package": "picomatch",
+              "path": null,
+              "installed": "4.0.7",
+              "fixed": null,
+              "severity": "HIGH",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-112366"
+            }
+          ]
+        }
+      ]
+    },
+    "before-web-image": {
+      "sha256": "aed67235ce70fb4be7149294e5160de6e1d7416cd2c41908bfcf464b2566349d",
+      "createdAt": "2026-11-18T13:15:57.885832695Z",
+      "scanner": {
+        "Version": "0.72.0"
+      },
+      "metadata": {
+        "Size": 228290560,
+        "OS": {
+          "Family": "alpine",
+          "Name": "3.24.3"
+        },
+        "ImageID": "sha256:e87e6bc4285ad9b97ecfe2b2af939cddad4786a9bfea14a11b17db2a340397d4",
+        "DiffIDs": [
+          "sha256:75c137aedfb2760f88629236cb7b797630aed0c3d91d626d1d1bb694878fc2ba",
+          "sha256:1e7c31449d3b67bab8f9bdb22fdd16ea983e167875bf91f9655583354477d417",
+          "sha256:a81b85a0b02f451fac1872d6f0abe015d010d800b457270409335029c55c474d",
+          "sha256:bda40d8c442bd04d0ebe75ffa571b1cefc1845146a081ffd7f642ecb24fefe1d",
+          "sha256:66e6d30c60c4798e13882c6d9f4eebbe12327fe0fa11fc48e51c132c3909e7b2",
+          "sha256:98ac1705c46052d9a6bea9116112dcd8dfadada02d9a52cfdd4661c4aa6f988f",
+          "sha256:0bf55d79d2e11b172fe32d77327eeb10682a97ba0d87b6bf29e29456af2a7572",
+          "sha256:baea4a02e31bdadaf014d2a4ca859af24db876c7679185256c8fa2806b151f15",
+          "sha256:a23bb33386e735ca01ab455950c56a3a6855f48b07e15257fffdd58b73ee094d"
+        ],
+        "RepoTags": [
+          "payment-portal-web:any-828-before"
+        ],
+        "Reference": "payment-portal-web:any-828-before",
+        "ImageConfig": {
+          "architecture": "amd64",
+          "created": "2026-11-18T11:59:15.723853655Z",
+          "history": [
+            {
+              "created": "2026-10-21T22:37:22.870489069Z",
+              "created_by": "ADD alpine-minirootfs-3.24.3-x86_64.tar.gz / # buildkit",
+              "comment": "buildkit.dockerfile.v0"
+            },
+            {
+              "created": "2026-10-21T22:37:22.870489069Z",
+              "created_by": "CMD [\"/bin/sh\"]",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-10-21T22:58:44.109048156Z",
+              "created_by": "ENV NODE_VERSION=24.22.1",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-10-21T22:58:44.109048156Z",
+              "created_by": "RUN /bin/sh -c addgroup -g 1000 node     && adduser -u 1000 -G node -s /bin/sh -D node     && apk add --no-cache         libatomic         libstdc++     && apk add --no-cache --virtual .build-deps         gnupg         curl     && ARCH= OPENSSL_ARCH='linux*' && alpineArch=\"$(apk --print-arch)\"       && case \"${alpineArch##*-}\" in         x86_64) ARCH='x64' OPENSSL_ARCH=linux-x86_64;;         aarch64) OPENSSL_ARCH=linux-aarch64;;         s390x) OPENSSL_ARCH=linux-s390x;;         *) echo \"unsupported architecture\"; exit 1 ;;       esac     && export GNUPGHOME=\"$(mktemp -d)\"     && set -ex     && for key in       5BE8A3F6C8A5C01D106C0AD820B1A390B168D356       DD792F5973C6DE52C432CBDAC77ABFA00DDBF2B7       CC68F5A3106FF448322E48ED27F5E38D5B0A215F       890C08DB8579162FEE0DF9DB8BEAB4DFCF555EF4       C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C       108F52B48DB57BB0CC439B2997B01419BD92F80A       655F3B5C1FB3FA8D1A0CA6BDE4A7D232B936D2FD       A363A499291CBBC940DD62E41F10027AF002F8B0     ; do         { gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys \"$key\" && gpg --batch --fingerprint \"$key\"; } ||         { gpg --batch --keyserver keyserver.ubuntu.com --recv-keys \"$key\" && gpg --batch --fingerprint \"$key\"; } ;     done   && if [ \"$ARCH\" = \"x64\" ]; then     curl -fsSLO --compressed \"https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-$ARCH-musl.tar.xz\"     && curl -fsSLO --compressed \"https://nodejs.org/dist/v$NODE_VERSION/SHASUMS256.txt.asc\"     && gpg --batch --decrypt --output SHASUMS256.txt SHASUMS256.txt.asc     && gpgconf --kill all     && rm -rf \"$GNUPGHOME\"     && grep \" node-v$NODE_VERSION-linux-$ARCH-musl.tar.xz\\$\" SHASUMS256.txt | sha256sum -c -     && tar -xJf \"node-v$NODE_VERSION-linux-$ARCH-musl.tar.xz\" -C /usr/local --strip-components=1 --no-same-owner     && rm \"node-v$NODE_VERSION-linux-$ARCH-musl.tar.xz\" SHASUMS256.txt.asc SHASUMS256.txt     && ln -s /usr/local/bin/node /usr/local/bin/nodejs;   else     echo \"Building from source\"     && apk add --no-cache --virtual .build-deps-full         binutils-gold         g++         gcc         libgcc         linux-headers         make         python3         py-setuptools     && curl -fsSLO --compressed \"https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION.tar.xz\"     && curl -fsSLO --compressed \"https://nodejs.org/dist/v$NODE_VERSION/SHASUMS256.txt.asc\"     && gpg --batch --decrypt --output SHASUMS256.txt SHASUMS256.txt.asc     && gpgconf --kill all     && rm -rf \"$GNUPGHOME\"     && grep \" node-v$NODE_VERSION.tar.xz\\$\" SHASUMS256.txt | sha256sum -c -     && tar -xf \"node-v$NODE_VERSION.tar.xz\"     && cd \"node-v$NODE_VERSION\"     && ./configure     && make -j$(getconf _NPROCESSORS_ONLN) V=     && make install     && apk del .build-deps-full     && cd ..     && rm -Rf \"node-v$NODE_VERSION\"     && rm \"node-v$NODE_VERSION.tar.xz\" SHASUMS256.txt.asc SHASUMS256.txt;   fi   && find /usr/local/include/node/openssl/archs -mindepth 1 -maxdepth 1 ! -name \"$OPENSSL_ARCH\" -exec rm -rf {} \\;   && apk del .build-deps   && node --version   && npm --version   && rm -rf /tmp/* # buildkit",
+              "comment": "buildkit.dockerfile.v0"
+            },
+            {
+              "created": "2026-10-21T22:58:44.109048156Z",
+              "created_by": "ENV YARN_VERSION=1.22.22",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-10-21T22:58:47.921055284Z",
+              "created_by": "RUN /bin/sh -c apk add --no-cache --virtual .build-deps-yarn curl gnupg tar   && export GNUPGHOME=\"$(mktemp -d)\"   && for key in     6A010C5166006599AA17F08146C2130DFD2497F5   ; do     { gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys \"$key\" && gpg --batch --fingerprint \"$key\"; } ||     { gpg --batch --keyserver keyserver.ubuntu.com --recv-keys \"$key\" && gpg --batch --fingerprint \"$key\"; } ;   done   && curl -fsSLO --compressed \"https://yarnpkg.com/downloads/$YARN_VERSION/yarn-v$YARN_VERSION.tar.gz\"   && curl -fsSLO --compressed \"https://yarnpkg.com/downloads/$YARN_VERSION/yarn-v$YARN_VERSION.tar.gz.asc\"   && gpg --batch --verify yarn-v$YARN_VERSION.tar.gz.asc yarn-v$YARN_VERSION.tar.gz   && gpgconf --kill all   && rm -rf \"$GNUPGHOME\"   && mkdir -p /opt   && tar -xzf yarn-v$YARN_VERSION.tar.gz -C /opt/   && ln -s /opt/yarn-v$YARN_VERSION/bin/yarn /usr/local/bin/yarn   && ln -s /opt/yarn-v$YARN_VERSION/bin/yarnpkg /usr/local/bin/yarnpkg   && rm yarn-v$YARN_VERSION.tar.gz.asc yarn-v$YARN_VERSION.tar.gz   && apk del .build-deps-yarn   && yarn --version   && rm -rf /tmp/* # buildkit",
+              "comment": "buildkit.dockerfile.v0"
+            },
+            {
+              "created": "2026-10-21T22:58:47.943775538Z",
+              "created_by": "COPY docker-entrypoint.sh /usr/local/bin/ # buildkit",
+              "comment": "buildkit.dockerfile.v0"
+            },
+            {
+              "created": "2026-10-21T22:58:47.943775538Z",
+              "created_by": "ENTRYPOINT [\"docker-entrypoint.sh\"]",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-10-21T22:58:47.943775538Z",
+              "created_by": "CMD [\"node\"]",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:09.501489754Z",
+              "created_by": "WORKDIR /app",
+              "comment": "buildkit.dockerfile.v0"
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "ARG APP_PUBLIC_BASE_URL=https://payments.example.test",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "ARG NEXT_PUBLIC_SENTRY_DSN",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "ENV APP_PUBLIC_BASE_URL=https://payments.example.test",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "ENV HOSTNAME=0.0.0.0",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "ENV NEXT_PUBLIC_API_BASE_URL=http://localhost:8000",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "ENV NEXT_PUBLIC_SENTRY_DSN=",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "ENV NEXT_TELEMETRY_DISABLED=1",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "ENV NODE_ENV=production",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "ENV PORT=3000",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "RUN |3 APP_PUBLIC_BASE_URL=https://payments.example.test NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 NEXT_PUBLIC_SENTRY_DSN= /bin/sh -c rm -rf     /usr/local/bin/corepack     /usr/local/bin/npm     /usr/local/bin/npx     /usr/local/lib/node_modules/corepack     /usr/local/lib/node_modules/npm # buildkit",
+              "comment": "buildkit.dockerfile.v0"
+            },
+            {
+              "created": "2026-11-18T11:59:14.102402574Z",
+              "created_by": "COPY --chown=node:node /app/apps/web/.next/standalone ./ # buildkit",
+              "comment": "buildkit.dockerfile.v0"
+            },
+            {
+              "created": "2026-11-18T11:59:15.46047281Z",
+              "created_by": "COPY --chown=node:node /app/apps/web/.next/static ./apps/web/.next/static # buildkit",
+              "comment": "buildkit.dockerfile.v0"
+            },
+            {
+              "created": "2026-11-18T11:59:15.723853655Z",
+              "created_by": "COPY --chown=node:node /app/apps/web/public ./apps/web/public # buildkit",
+              "comment": "buildkit.dockerfile.v0"
+            },
+            {
+              "created": "2026-11-18T11:59:15.723853655Z",
+              "created_by": "USER node",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:59:15.723853655Z",
+              "created_by": "EXPOSE [3000/tcp]",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:59:15.723853655Z",
+              "created_by": "CMD [\"node\" \"apps/web/server.js\"]",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            }
+          ],
+          "os": "linux",
+          "rootfs": {
+            "type": "layers",
+            "diff_ids": [
+              "sha256:75c137aedfb2760f88629236cb7b797630aed0c3d91d626d1d1bb694878fc2ba",
+              "sha256:1e7c31449d3b67bab8f9bdb22fdd16ea983e167875bf91f9655583354477d417",
+              "sha256:a81b85a0b02f451fac1872d6f0abe015d010d800b457270409335029c55c474d",
+              "sha256:bda40d8c442bd04d0ebe75ffa571b1cefc1845146a081ffd7f642ecb24fefe1d",
+              "sha256:66e6d30c60c4798e13882c6d9f4eebbe12327fe0fa11fc48e51c132c3909e7b2",
+              "sha256:98ac1705c46052d9a6bea9116112dcd8dfadada02d9a52cfdd4661c4aa6f988f",
+              "sha256:0bf55d79d2e11b172fe32d77327eeb10682a97ba0d87b6bf29e29456af2a7572",
+              "sha256:baea4a02e31bdadaf014d2a4ca859af24db876c7679185256c8fa2806b151f15",
+              "sha256:a23bb33386e735ca01ab455950c56a3a6855f48b07e15257fffdd58b73ee094d"
+            ]
+          },
+          "config": {
+            "Cmd": [
+              "node",
+              "apps/web/server.js"
+            ],
+            "Entrypoint": [
+              "docker-entrypoint.sh"
+            ],
+            "Env": [
+              "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+              "NODE_VERSION=24.22.1",
+              "YARN_VERSION=1.22.22",
+              "APP_PUBLIC_BASE_URL=https://payments.example.test",
+              "HOSTNAME=0.0.0.0",
+              "NEXT_PUBLIC_API_BASE_URL=http://localhost:8000",
+              "NEXT_PUBLIC_SENTRY_DSN=",
+              "NEXT_TELEMETRY_DISABLED=1",
+              "NODE_ENV=production",
+              "PORT=3000"
+            ],
+            "User": "node",
+            "WorkingDir": "/app",
+            "ExposedPorts": {
+              "3000/tcp": {}
+            },
+            "ArgsEscaped": true
+          }
+        },
+        "Layers": [
+          {
+            "Size": 8709632,
+            "Digest": "sha256:7b229517ed222597277036d94892173207d01a731ab3a88eeb1de2e963a2c788",
+            "DiffID": "sha256:75c137aedfb2760f88629236cb7b797630aed0c3d91d626d1d1bb694878fc2ba"
+          },
+          {
+            "Size": 160412160,
+            "Digest": "sha256:15577f11e05afbda845cbd2903e55f0a3da41dc2a576435999474e7a2654651b",
+            "DiffID": "sha256:1e7c31449d3b67bab8f9bdb22fdd16ea983e167875bf91f9655583354477d417"
+          },
+          {
+            "Size": 5391360,
+            "Digest": "sha256:f0a5c9e3ce7dcc7fca3a816f70b3d42bc5324066b627223af466eff9030e171f",
+            "DiffID": "sha256:a81b85a0b02f451fac1872d6f0abe015d010d800b457270409335029c55c474d"
+          },
+          {
+            "Size": 3584,
+            "Digest": "sha256:109c2f814f468711ac666fb9494ce76528e972ee8636468ad822267a0af959e5",
+            "DiffID": "sha256:bda40d8c442bd04d0ebe75ffa571b1cefc1845146a081ffd7f642ecb24fefe1d"
+          },
+          {
+            "Size": 1536,
+            "Digest": "sha256:ecd0fdaea1ed907d1ddda8bc79a624cbc8bf26c1df1863cbcfc0100d2dec2528",
+            "DiffID": "sha256:66e6d30c60c4798e13882c6d9f4eebbe12327fe0fa11fc48e51c132c3909e7b2"
+          },
+          {
+            "Size": 6144,
+            "Digest": "sha256:f86e014675ec3c1b95e62635d3a69591f0bce6609c4adacdbc2bab1ce77bf1fb",
+            "DiffID": "sha256:98ac1705c46052d9a6bea9116112dcd8dfadada02d9a52cfdd4661c4aa6f988f"
+          },
+          {
+            "Size": 52655104,
+            "Digest": "sha256:5aebb4140dbc0ea39478304aaa157f58e609ef977694ab5b2194453cc4a095ca",
+            "DiffID": "sha256:0bf55d79d2e11b172fe32d77327eeb10682a97ba0d87b6bf29e29456af2a7572"
+          },
+          {
+            "Size": 1103872,
+            "Digest": "sha256:1a1cc71da0d96c3eff5de990051ee4ac5935a8a9e9466e025b1d2b5487f22cd1",
+            "DiffID": "sha256:baea4a02e31bdadaf014d2a4ca859af24db876c7679185256c8fa2806b151f15"
+          },
+          {
+            "Size": 7168,
+            "Digest": "sha256:5d6eb8214b89431e2e39888e95222446839d1eb4cd0b75c9fb2e1db50aa2a113",
+            "DiffID": "sha256:a23bb33386e735ca01ab455950c56a3a6855f48b07e15257fffdd58b73ee094d"
+          }
+        ]
+      },
+      "results": [
+        {
+          "target": "/evidence/before-image.tar (alpine 3.24.3)",
+          "class": "os-pkgs",
+          "type": "alpine",
+          "findings": [
+            {
+              "id": "CVE-2026-4738",
+              "package": "zlib",
+              "path": null,
+              "installed": "1.3.2-r1",
+              "fixed": "1.4-r0",
+              "severity": "MEDIUM",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-4738"
+            }
+          ]
+        },
+        {
+          "target": "Node.js",
+          "class": "lang-pkgs",
+          "type": "node-pkg",
+          "findings": [
+            {
+              "id": "CVE-2026-119351",
+              "package": "next",
+              "path": "app/node_modules/next/package.json",
+              "installed": "16.4.2",
+              "fixed": "16.4.5",
+              "severity": "MEDIUM",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-119351"
+            },
+            {
+              "id": "CVE-2026-119790",
+              "package": "next",
+              "path": "app/node_modules/next/package.json",
+              "installed": "16.4.2",
+              "fixed": "16.4.5",
+              "severity": "MEDIUM",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-119790"
+            }
+          ]
+        }
+      ]
+    },
+    "after-filesystem": {
+      "sha256": "45c0f519123a2df9cf033a33dea6a08d40d5f98a193551a1f05a649cb3b95f96",
+      "createdAt": "2026-11-18T11:56:35.888212748Z",
+      "scanner": {
+        "Version": "0.72.0"
+      },
+      "metadata": null,
+      "results": [
+        {
+          "target": "apps/api/uv.lock",
+          "class": "lang-pkgs",
+          "type": "uv",
+          "findings": [
+            {
+              "id": "CVE-2026-102991",
+              "package": "mako",
+              "path": null,
+              "installed": "1.4.1",
+              "fixed": "1.4.2",
+              "severity": "MEDIUM",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-102991"
+            },
+            {
+              "id": "CVE-2026-126360",
+              "package": "opentelemetry-api",
+              "path": null,
+              "installed": "1.45.1",
+              "fixed": "1.45.2",
+              "severity": "MEDIUM",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-126360"
+            }
+          ]
+        },
+        {
+          "target": "package-lock.json",
+          "class": "lang-pkgs",
+          "type": "npm",
+          "findings": [
+            {
+              "id": "CVE-2026-119351",
+              "package": "next",
+              "path": null,
+              "installed": "16.4.2",
+              "fixed": "16.4.5",
+              "severity": "MEDIUM",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-119351"
+            },
+            {
+              "id": "CVE-2026-119790",
+              "package": "next",
+              "path": null,
+              "installed": "16.4.2",
+              "fixed": "16.4.5",
+              "severity": "MEDIUM",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-119790"
+            },
+            {
+              "id": "CVE-2026-112366",
+              "package": "picomatch",
+              "path": null,
+              "installed": "2.3.2",
+              "fixed": null,
+              "severity": "HIGH",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-112366"
+            },
+            {
+              "id": "CVE-2026-112366",
+              "package": "picomatch",
+              "path": null,
+              "installed": "4.0.5",
+              "fixed": null,
+              "severity": "HIGH",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-112366"
+            },
+            {
+              "id": "CVE-2026-112366",
+              "package": "picomatch",
+              "path": null,
+              "installed": "4.0.7",
+              "fixed": null,
+              "severity": "HIGH",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-112366"
+            }
+          ]
+        }
+      ]
+    },
+    "after-web-image": {
+      "sha256": "40a2f1d6275ed49541f0646ac96c0dadf3cec3cc11528e462863317063760c76",
+      "createdAt": "2026-11-18T13:20:38.941501548Z",
+      "scanner": {
+        "Version": "0.72.0"
+      },
+      "metadata": {
+        "Size": 228580352,
+        "OS": {
+          "Family": "alpine",
+          "Name": "3.24.3"
+        },
+        "ImageID": "sha256:4268fb42bc6ec593560a2a6f0a5db1215c90a0cb243a3e1a3dc020325290c4f9",
+        "DiffIDs": [
+          "sha256:75c137aedfb2760f88629236cb7b797630aed0c3d91d626d1d1bb694878fc2ba",
+          "sha256:1e7c31449d3b67bab8f9bdb22fdd16ea983e167875bf91f9655583354477d417",
+          "sha256:a81b85a0b02f451fac1872d6f0abe015d010d800b457270409335029c55c474d",
+          "sha256:bda40d8c442bd04d0ebe75ffa571b1cefc1845146a081ffd7f642ecb24fefe1d",
+          "sha256:66e6d30c60c4798e13882c6d9f4eebbe12327fe0fa11fc48e51c132c3909e7b2",
+          "sha256:98ac1705c46052d9a6bea9116112dcd8dfadada02d9a52cfdd4661c4aa6f988f",
+          "sha256:f425feb9eca77e7cc15adaebc834b8e0401a2e2dac79d70ac364ad07a6301790",
+          "sha256:f77f48c34b5654b7afc42fa24b7e366120a28fa3db6c5d1e4adc7f7af3907cc1",
+          "sha256:81c31cf2417cd88416723e9b948d2c41a567d9397799a5f248ae85f27f12689e"
+        ],
+        "RepoTags": [
+          "payment-portal-web:any-828-after"
+        ],
+        "Reference": "payment-portal-web:any-828-after",
+        "ImageConfig": {
+          "architecture": "amd64",
+          "created": "2026-11-18T13:18:45.545948435Z",
+          "history": [
+            {
+              "created": "2026-10-21T22:37:22.870489069Z",
+              "created_by": "ADD alpine-minirootfs-3.24.3-x86_64.tar.gz / # buildkit",
+              "comment": "buildkit.dockerfile.v0"
+            },
+            {
+              "created": "2026-10-21T22:37:22.870489069Z",
+              "created_by": "CMD [\"/bin/sh\"]",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-10-21T22:58:44.109048156Z",
+              "created_by": "ENV NODE_VERSION=24.22.1",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-10-21T22:58:44.109048156Z",
+              "created_by": "RUN /bin/sh -c addgroup -g 1000 node     && adduser -u 1000 -G node -s /bin/sh -D node     && apk add --no-cache         libatomic         libstdc++     && apk add --no-cache --virtual .build-deps         gnupg         curl     && ARCH= OPENSSL_ARCH='linux*' && alpineArch=\"$(apk --print-arch)\"       && case \"${alpineArch##*-}\" in         x86_64) ARCH='x64' OPENSSL_ARCH=linux-x86_64;;         aarch64) OPENSSL_ARCH=linux-aarch64;;         s390x) OPENSSL_ARCH=linux-s390x;;         *) echo \"unsupported architecture\"; exit 1 ;;       esac     && export GNUPGHOME=\"$(mktemp -d)\"     && set -ex     && for key in       5BE8A3F6C8A5C01D106C0AD820B1A390B168D356       DD792F5973C6DE52C432CBDAC77ABFA00DDBF2B7       CC68F5A3106FF448322E48ED27F5E38D5B0A215F       890C08DB8579162FEE0DF9DB8BEAB4DFCF555EF4       C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C       108F52B48DB57BB0CC439B2997B01419BD92F80A       655F3B5C1FB3FA8D1A0CA6BDE4A7D232B936D2FD       A363A499291CBBC940DD62E41F10027AF002F8B0     ; do         { gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys \"$key\" && gpg --batch --fingerprint \"$key\"; } ||         { gpg --batch --keyserver keyserver.ubuntu.com --recv-keys \"$key\" && gpg --batch --fingerprint \"$key\"; } ;     done   && if [ \"$ARCH\" = \"x64\" ]; then     curl -fsSLO --compressed \"https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-$ARCH-musl.tar.xz\"     && curl -fsSLO --compressed \"https://nodejs.org/dist/v$NODE_VERSION/SHASUMS256.txt.asc\"     && gpg --batch --decrypt --output SHASUMS256.txt SHASUMS256.txt.asc     && gpgconf --kill all     && rm -rf \"$GNUPGHOME\"     && grep \" node-v$NODE_VERSION-linux-$ARCH-musl.tar.xz\\$\" SHASUMS256.txt | sha256sum -c -     && tar -xJf \"node-v$NODE_VERSION-linux-$ARCH-musl.tar.xz\" -C /usr/local --strip-components=1 --no-same-owner     && rm \"node-v$NODE_VERSION-linux-$ARCH-musl.tar.xz\" SHASUMS256.txt.asc SHASUMS256.txt     && ln -s /usr/local/bin/node /usr/local/bin/nodejs;   else     echo \"Building from source\"     && apk add --no-cache --virtual .build-deps-full         binutils-gold         g++         gcc         libgcc         linux-headers         make         python3         py-setuptools     && curl -fsSLO --compressed \"https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION.tar.xz\"     && curl -fsSLO --compressed \"https://nodejs.org/dist/v$NODE_VERSION/SHASUMS256.txt.asc\"     && gpg --batch --decrypt --output SHASUMS256.txt SHASUMS256.txt.asc     && gpgconf --kill all     && rm -rf \"$GNUPGHOME\"     && grep \" node-v$NODE_VERSION.tar.xz\\$\" SHASUMS256.txt | sha256sum -c -     && tar -xf \"node-v$NODE_VERSION.tar.xz\"     && cd \"node-v$NODE_VERSION\"     && ./configure     && make -j$(getconf _NPROCESSORS_ONLN) V=     && make install     && apk del .build-deps-full     && cd ..     && rm -Rf \"node-v$NODE_VERSION\"     && rm \"node-v$NODE_VERSION.tar.xz\" SHASUMS256.txt.asc SHASUMS256.txt;   fi   && find /usr/local/include/node/openssl/archs -mindepth 1 -maxdepth 1 ! -name \"$OPENSSL_ARCH\" -exec rm -rf {} \\;   && apk del .build-deps   && node --version   && npm --version   && rm -rf /tmp/* # buildkit",
+              "comment": "buildkit.dockerfile.v0"
+            },
+            {
+              "created": "2026-10-21T22:58:44.109048156Z",
+              "created_by": "ENV YARN_VERSION=1.22.22",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-10-21T22:58:47.921055284Z",
+              "created_by": "RUN /bin/sh -c apk add --no-cache --virtual .build-deps-yarn curl gnupg tar   && export GNUPGHOME=\"$(mktemp -d)\"   && for key in     6A010C5166006599AA17F08146C2130DFD2497F5   ; do     { gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys \"$key\" && gpg --batch --fingerprint \"$key\"; } ||     { gpg --batch --keyserver keyserver.ubuntu.com --recv-keys \"$key\" && gpg --batch --fingerprint \"$key\"; } ;   done   && curl -fsSLO --compressed \"https://yarnpkg.com/downloads/$YARN_VERSION/yarn-v$YARN_VERSION.tar.gz\"   && curl -fsSLO --compressed \"https://yarnpkg.com/downloads/$YARN_VERSION/yarn-v$YARN_VERSION.tar.gz.asc\"   && gpg --batch --verify yarn-v$YARN_VERSION.tar.gz.asc yarn-v$YARN_VERSION.tar.gz   && gpgconf --kill all   && rm -rf \"$GNUPGHOME\"   && mkdir -p /opt   && tar -xzf yarn-v$YARN_VERSION.tar.gz -C /opt/   && ln -s /opt/yarn-v$YARN_VERSION/bin/yarn /usr/local/bin/yarn   && ln -s /opt/yarn-v$YARN_VERSION/bin/yarnpkg /usr/local/bin/yarnpkg   && rm yarn-v$YARN_VERSION.tar.gz.asc yarn-v$YARN_VERSION.tar.gz   && apk del .build-deps-yarn   && yarn --version   && rm -rf /tmp/* # buildkit",
+              "comment": "buildkit.dockerfile.v0"
+            },
+            {
+              "created": "2026-10-21T22:58:47.943775538Z",
+              "created_by": "COPY docker-entrypoint.sh /usr/local/bin/ # buildkit",
+              "comment": "buildkit.dockerfile.v0"
+            },
+            {
+              "created": "2026-10-21T22:58:47.943775538Z",
+              "created_by": "ENTRYPOINT [\"docker-entrypoint.sh\"]",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-10-21T22:58:47.943775538Z",
+              "created_by": "CMD [\"node\"]",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:09.501489754Z",
+              "created_by": "WORKDIR /app",
+              "comment": "buildkit.dockerfile.v0"
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "ARG APP_PUBLIC_BASE_URL=https://payments.example.test",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "ARG NEXT_PUBLIC_SENTRY_DSN",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "ENV APP_PUBLIC_BASE_URL=https://payments.example.test",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "ENV HOSTNAME=0.0.0.0",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "ENV NEXT_PUBLIC_API_BASE_URL=http://localhost:8000",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "ENV NEXT_PUBLIC_SENTRY_DSN=",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "ENV NEXT_TELEMETRY_DISABLED=1",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "ENV NODE_ENV=production",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "ENV PORT=3000",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T11:55:10.723606628Z",
+              "created_by": "RUN |3 APP_PUBLIC_BASE_URL=https://payments.example.test NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 NEXT_PUBLIC_SENTRY_DSN= /bin/sh -c rm -rf     /usr/local/bin/corepack     /usr/local/bin/npm     /usr/local/bin/npx     /usr/local/lib/node_modules/corepack     /usr/local/lib/node_modules/npm # buildkit",
+              "comment": "buildkit.dockerfile.v0"
+            },
+            {
+              "created": "2026-11-18T13:18:45.18684737Z",
+              "created_by": "COPY --chown=node:node /app/apps/web/.next/standalone ./ # buildkit",
+              "comment": "buildkit.dockerfile.v0"
+            },
+            {
+              "created": "2026-11-18T13:18:45.387442772Z",
+              "created_by": "COPY --chown=node:node /app/apps/web/.next/static ./apps/web/.next/static # buildkit",
+              "comment": "buildkit.dockerfile.v0"
+            },
+            {
+              "created": "2026-11-18T13:18:45.545948435Z",
+              "created_by": "COPY --chown=node:node /app/apps/web/public ./apps/web/public # buildkit",
+              "comment": "buildkit.dockerfile.v0"
+            },
+            {
+              "created": "2026-11-18T13:18:45.545948435Z",
+              "created_by": "USER node",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T13:18:45.545948435Z",
+              "created_by": "EXPOSE [3000/tcp]",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            },
+            {
+              "created": "2026-11-18T13:18:45.545948435Z",
+              "created_by": "CMD [\"node\" \"apps/web/server.js\"]",
+              "comment": "buildkit.dockerfile.v0",
+              "empty_layer": true
+            }
+          ],
+          "os": "linux",
+          "rootfs": {
+            "type": "layers",
+            "diff_ids": [
+              "sha256:75c137aedfb2760f88629236cb7b797630aed0c3d91d626d1d1bb694878fc2ba",
+              "sha256:1e7c31449d3b67bab8f9bdb22fdd16ea983e167875bf91f9655583354477d417",
+              "sha256:a81b85a0b02f451fac1872d6f0abe015d010d800b457270409335029c55c474d",
+              "sha256:bda40d8c442bd04d0ebe75ffa571b1cefc1845146a081ffd7f642ecb24fefe1d",
+              "sha256:66e6d30c60c4798e13882c6d9f4eebbe12327fe0fa11fc48e51c132c3909e7b2",
+              "sha256:98ac1705c46052d9a6bea9116112dcd8dfadada02d9a52cfdd4661c4aa6f988f",
+              "sha256:f425feb9eca77e7cc15adaebc834b8e0401a2e2dac79d70ac364ad07a6301790",
+              "sha256:f77f48c34b5654b7afc42fa24b7e366120a28fa3db6c5d1e4adc7f7af3907cc1",
+              "sha256:81c31cf2417cd88416723e9b948d2c41a567d9397799a5f248ae85f27f12689e"
+            ]
+          },
+          "config": {
+            "Cmd": [
+              "node",
+              "apps/web/server.js"
+            ],
+            "Entrypoint": [
+              "docker-entrypoint.sh"
+            ],
+            "Env": [
+              "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+              "NODE_VERSION=24.22.1",
+              "YARN_VERSION=1.22.22",
+              "APP_PUBLIC_BASE_URL=https://payments.example.test",
+              "HOSTNAME=0.0.0.0",
+              "NEXT_PUBLIC_API_BASE_URL=http://localhost:8000",
+              "NEXT_PUBLIC_SENTRY_DSN=",
+              "NEXT_TELEMETRY_DISABLED=1",
+              "NODE_ENV=production",
+              "PORT=3000"
+            ],
+            "User": "node",
+            "WorkingDir": "/app",
+            "ExposedPorts": {
+              "3000/tcp": {}
+            },
+            "ArgsEscaped": true
+          }
+        },
+        "Layers": [
+          {
+            "Size": 8709632,
+            "Digest": "sha256:7b229517ed222597277036d94892173207d01a731ab3a88eeb1de2e963a2c788",
+            "DiffID": "sha256:75c137aedfb2760f88629236cb7b797630aed0c3d91d626d1d1bb694878fc2ba"
+          },
+          {
+            "Size": 160412160,
+            "Digest": "sha256:15577f11e05afbda845cbd2903e55f0a3da41dc2a576435999474e7a2654651b",
+            "DiffID": "sha256:1e7c31449d3b67bab8f9bdb22fdd16ea983e167875bf91f9655583354477d417"
+          },
+          {
+            "Size": 5391360,
+            "Digest": "sha256:f0a5c9e3ce7dcc7fca3a816f70b3d42bc5324066b627223af466eff9030e171f",
+            "DiffID": "sha256:a81b85a0b02f451fac1872d6f0abe015d010d800b457270409335029c55c474d"
+          },
+          {
+            "Size": 3584,
+            "Digest": "sha256:109c2f814f468711ac666fb9494ce76528e972ee8636468ad822267a0af959e5",
+            "DiffID": "sha256:bda40d8c442bd04d0ebe75ffa571b1cefc1845146a081ffd7f642ecb24fefe1d"
+          },
+          {
+            "Size": 1536,
+            "Digest": "sha256:ecd0fdaea1ed907d1ddda8bc79a624cbc8bf26c1df1863cbcfc0100d2dec2528",
+            "DiffID": "sha256:66e6d30c60c4798e13882c6d9f4eebbe12327fe0fa11fc48e51c132c3909e7b2"
+          },
+          {
+            "Size": 6144,
+            "Digest": "sha256:f86e014675ec3c1b95e62635d3a69591f0bce6609c4adacdbc2bab1ce77bf1fb",
+            "DiffID": "sha256:98ac1705c46052d9a6bea9116112dcd8dfadada02d9a52cfdd4661c4aa6f988f"
+          },
+          {
+            "Size": 52940288,
+            "Digest": "sha256:5d228aadb950b1bb02a5ced4354efd8d2a1eabb7632491f09ca7dbcad1efd8d6",
+            "DiffID": "sha256:f425feb9eca77e7cc15adaebc834b8e0401a2e2dac79d70ac364ad07a6301790"
+          },
+          {
+            "Size": 1108480,
+            "Digest": "sha256:83f1e18906cb524f711a75ca3b3d4161856ac98e5f13c9e01e613f044fd4ecd5",
+            "DiffID": "sha256:f77f48c34b5654b7afc42fa24b7e366120a28fa3db6c5d1e4adc7f7af3907cc1"
+          },
+          {
+            "Size": 7168,
+            "Digest": "sha256:59dd924df03fb413b06f81218a10f39ab9288198b5e2c5b260eea5cac02f797b",
+            "DiffID": "sha256:81c31cf2417cd88416723e9b948d2c41a567d9397799a5f248ae85f27f12689e"
+          }
+        ]
+      },
+      "results": [
+        {
+          "target": "/evidence/after-image.tar (alpine 3.24.3)",
+          "class": "os-pkgs",
+          "type": "alpine",
+          "findings": [
+            {
+              "id": "CVE-2026-4738",
+              "package": "zlib",
+              "path": null,
+              "installed": "1.3.2-r1",
+              "fixed": "1.4-r0",
+              "severity": "MEDIUM",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-4738"
+            }
+          ]
+        },
+        {
+          "target": "Node.js",
+          "class": "lang-pkgs",
+          "type": "node-pkg",
+          "findings": [
+            {
+              "id": "CVE-2026-119351",
+              "package": "next",
+              "path": "app/node_modules/next/package.json",
+              "installed": "16.4.2",
+              "fixed": "16.4.5",
+              "severity": "MEDIUM",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-119351"
+            },
+            {
+              "id": "CVE-2026-119790",
+              "package": "next",
+              "path": "app/node_modules/next/package.json",
+              "installed": "16.4.2",
+              "fixed": "16.4.5",
+              "severity": "MEDIUM",
+              "url": "https://avd.aquasec.com/nvd/cve-2026-119790"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "images": {
+    "before": {
+      "Id": "sha256:1f33825991f012dc90043e68d258ede09c1a1669b4eabaa4ad807720a2a180f3",
+      "RepoDigests": [
+        "payment-portal-web@sha256:1f33825991f012dc90043e68d258ede09c1a1669b4eabaa4ad807720a2a180f3"
+      ],
+      "Created": "2026-11-18T11:59:15.723853655Z"
+    },
+    "after": {
+      "Id": "sha256:aaf34f49b03d594620ab651ff693a37ab715afad4231084c7ecc705177733f15",
+      "RepoDigests": [
+        "payment-portal-web@sha256:aaf34f49b03d594620ab651ff693a37ab715afad4231084c7ecc705177733f15"
+      ],
+      "Created": "2026-11-18T13:18:45.545948435Z"
+    }
+  },
+  "lockProvenance": {
+    "before": {
+      "checkoutFileSha256": "9abec257fd2308d30e7f8ed464a0c6a9c3fc24e50c2fd6002426106358b0c9af",
+      "gitBlobSha256": "106587bdd39820e0ab4fbe7c5735f0f5f361df485f9df769b5ef62be40c0ddd4",
+      "equivalentAfterCRLFtoLF": true
+    },
+    "after": {
+      "checkoutFileSha256": "7a478a026e1b6f943c3a052e8b45ac4fecf049cb4425b57150b42cb18ce3d267",
+      "gitBlobSha256": "1e437f150c78fdf68a95826a319b096e176125278d021991bea9aaaa2317a857",
+      "equivalentAfterCRLFtoLF": true
+    }
+  },
+  "lockHashesDescription": "Hashes of checkout files (CRLF), not canonical Git blobs; see lockProvenance for LF blob hashes.",
+  "ci": {
+    "source": "2eddd69c86d07e64f2cf3cf1f606637f61a1471f",
+    "run": 44311980289,
+    "artifact": 14430842120,
+    "artifactSha256": "c54e18605788f324db275a9bb48fade609ad362e5001f867f6bbe2ac7b703587",
+    "configuration": ".github/workflows/security.yml at implementationSource; full vuln/secret/misconfig FS and vuln/secret images, report redaction unchanged",
+    "reports": {
+      "filesystem": {
+        "sha256": "95b1ebf2fa45f9b49fd8e698d0cdb6112f1d1c71a0dc179eda9cd9ff35b3c721",
+        "createdAt": "2026-11-18T13:16:25.954983588Z",
+        "scanner": {
+          "Version": "0.72.0"
+        },
+        "metadata": {
+          "RepoURL": "https://github.com/gushinets/payments-portal",
+          "Commit": "2615cde17d3e27e228fc07787a7d29d2eedc08c8",
+          "CommitMsg": "Merge 2eddd69c86d07e64f2cf3cf1f606637f61a1471f into aa9d8f996cba91feaaaad6a9937eef0c590ae4fa",
+          "Author": "Josef Vorobev <157483975+JanPer1389@users.noreply.github.com>",
+          "Committer": "GitHub <noreply@github.com>"
+        },
+        "results": [
+          {
+            "target": "apps/api/uv.lock",
+            "class": "lang-pkgs",
+            "type": "uv",
+            "findings": [
+              {
+                "id": "CVE-2026-102991",
+                "package": "mako",
+                "path": null,
+                "installed": "1.4.1",
+                "fixed": "1.4.2",
+                "severity": "MEDIUM",
+                "url": "https://avd.aquasec.com/nvd/cve-2026-102991"
+              },
+              {
+                "id": "CVE-2026-126360",
+                "package": "opentelemetry-api",
+                "path": null,
+                "installed": "1.45.1",
+                "fixed": "1.45.2",
+                "severity": "MEDIUM",
+                "url": "https://avd.aquasec.com/nvd/cve-2026-126360"
+              }
+            ]
+          },
+          {
+            "target": "package-lock.json",
+            "class": "lang-pkgs",
+            "type": "npm",
+            "findings": [
+              {
+                "id": "CVE-2026-119351",
+                "package": "next",
+                "path": null,
+                "installed": "16.4.2",
+                "fixed": "16.4.5",
+                "severity": "MEDIUM",
+                "url": "https://avd.aquasec.com/nvd/cve-2026-119351"
+              },
+              {
+                "id": "CVE-2026-119790",
+                "package": "next",
+                "path": null,
+                "installed": "16.4.2",
+                "fixed": "16.4.5",
+                "severity": "MEDIUM",
+                "url": "https://avd.aquasec.com/nvd/cve-2026-119790"
+              },
+              {
+                "id": "CVE-2026-112366",
+                "package": "picomatch",
+                "path": null,
+                "installed": "2.3.2",
+                "fixed": null,
+                "severity": "HIGH",
+                "url": "https://avd.aquasec.com/nvd/cve-2026-112366"
+              },
+              {
+                "id": "CVE-2026-112366",
+                "package": "picomatch",
+                "path": null,
+                "installed": "4.0.5",
+                "fixed": null,
+                "severity": "HIGH",
+                "url": "https://avd.aquasec.com/nvd/cve-2026-112366"
+              },
+              {
+                "id": "CVE-2026-112366",
+                "package": "picomatch",
+                "path": null,
+                "installed": "4.0.7",
+                "fixed": null,
+                "severity": "HIGH",
+                "url": "https://avd.aquasec.com/nvd/cve-2026-112366"
+              }
+            ]
+          },
+          {
+            "target": "apps/api/Dockerfile",
+            "class": "config",
+            "type": "dockerfile",
+            "findings": []
+          },
+          {
+            "target": "apps/web/Dockerfile",
+            "class": "config",
+            "type": "dockerfile",
+            "findings": []
+          }
+        ]
+      },
+      "web-image": {
+        "sha256": "3e8ffd10485e34ed05b0320ea0a2cc52a8863a54d3bf34e1c6cdb3c00cb60ef3",
+        "createdAt": "2026-11-18T13:19:20.999688139Z",
+        "scanner": {
+          "Version": "0.72.0"
+        },
+        "metadata": {
+          "Size": 228577792,
+          "OS": {
+            "Family": "alpine",
+            "Name": "3.24.3"
+          },
+          "ImageID": "sha256:b65790e6d0b8392947778ce76360094d3f871fdd10bed1d4b04abdb8f03ff32c",
+          "DiffIDs": [
+            "sha256:75c137aedfb2760f88629236cb7b797630aed0c3d91d626d1d1bb694878fc2ba",
+            "sha256:1e7c31449d3b67bab8f9bdb22fdd16ea983e167875bf91f9655583354477d417",
+            "sha256:a81b85a0b02f451fac1872d6f0abe015d010d800b457270409335029c55c474d",
+            "sha256:bda40d8c442bd04d0ebe75ffa571b1cefc1845146a081ffd7f642ecb24fefe1d",
+            "sha256:f164fa0a8872cee637be644551ba0aec7908056ce3082d5860af31b60741c123",
+            "sha256:519765f0c196fa95ca7076bd07296a9c9bffc5fe08662cdea4d7779a28b81b9d",
+            "sha256:b4d3dbe13f1c53ae93f3b9df0aee570644797608a990abd75d9afee0b5969003",
+            "sha256:f120bf0d887395c3f73b8f9a650dab3219489bfc9894df6ce5b8ad032951fb19",
+            "sha256:495e9eed574645243cdd1e709a58eb9d088a58d1284924e765851b552db6c660"
+          ],
+          "RepoTags": [
+            "payment-portal-web:trivy-2615cde17d3e27e228fc07787a7d29d2eedc08c8"
+          ],
+          "RepoDigests": [
+            "payment-portal-web@sha256:b65790e6d0b8392947778ce76360094d3f871fdd10bed1d4b04abdb8f03ff32c"
+          ],
+          "Reference": "payment-portal-web:trivy-2615cde17d3e27e228fc07787a7d29d2eedc08c8",
+          "ImageConfig": {
+            "architecture": "amd64",
+            "created": "2026-11-18T13:19:10.774790686Z",
+            "history": [
+              {
+                "created": "2026-10-21T22:37:22Z",
+                "created_by": "ADD alpine-minirootfs-3.24.3-x86_64.tar.gz / # buildkit",
+                "comment": "buildkit.dockerfile.v0"
+              },
+              {
+                "created": "2026-10-21T22:37:22Z",
+                "created_by": "CMD [\"/bin/sh\"]",
+                "comment": "buildkit.dockerfile.v0",
+                "empty_layer": true
+              },
+              {
+                "created": "2026-10-21T22:58:44Z",
+                "created_by": "ENV NODE_VERSION=24.22.1",
+                "comment": "buildkit.dockerfile.v0",
+                "empty_layer": true
+              },
+              {
+                "created": "2026-10-21T22:58:44Z",
+                "created_by": "RUN /bin/sh -c addgroup -g 1000 node     && adduser -u 1000 -G node -s /bin/sh -D node     && apk add --no-cache         libatomic         libstdc++     && apk add --no-cache --virtual .build-deps         gnupg         curl     && ARCH= OPENSSL_ARCH='linux*' && alpineArch=\"$(apk --print-arch)\"       && case \"${alpineArch##*-}\" in         x86_64) ARCH='x64' OPENSSL_ARCH=linux-x86_64;;         aarch64) OPENSSL_ARCH=linux-aarch64;;         s390x) OPENSSL_ARCH=linux-s390x;;         *) echo \"unsupported architecture\"; exit 1 ;;       esac     && export GNUPGHOME=\"$(mktemp -d)\"     && set -ex     && for key in       5BE8A3F6C8A5C01D106C0AD820B1A390B168D356       DD792F5973C6DE52C432CBDAC77ABFA00DDBF2B7       CC68F5A3106FF448322E48ED27F5E38D5B0A215F       890C08DB8579162FEE0DF9DB8BEAB4DFCF555EF4       C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C       108F52B48DB57BB0CC439B2997B01419BD92F80A       655F3B5C1FB3FA8D1A0CA6BDE4A7D232B936D2FD       A363A499291CBBC940DD62E41F10027AF002F8B0     ; do         { gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys \"$key\" && gpg --batch --fingerprint \"$key\"; } ||         { gpg --batch --keyserver keyserver.ubuntu.com --recv-keys \"$key\" && gpg --batch --fingerprint \"$key\"; } ;     done   && if [ \"$ARCH\" = \"x64\" ]; then     curl -fsSLO --compressed \"https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-$ARCH-musl.tar.xz\"     && curl -fsSLO --compressed \"https://nodejs.org/dist/v$NODE_VERSION/SHASUMS256.txt.asc\"     && gpg --batch --decrypt --output SHASUMS256.txt SHASUMS256.txt.asc     && gpgconf --kill all     && rm -rf \"$GNUPGHOME\"     && grep \" node-v$NODE_VERSION-linux-$ARCH-musl.tar.xz\\$\" SHASUMS256.txt | sha256sum -c -     && tar -xJf \"node-v$NODE_VERSION-linux-$ARCH-musl.tar.xz\" -C /usr/local --strip-components=1 --no-same-owner     && rm \"node-v$NODE_VERSION-linux-$ARCH-musl.tar.xz\" SHASUMS256.txt.asc SHASUMS256.txt     && ln -s /usr/local/bin/node /usr/local/bin/nodejs;   else     echo \"Building from source\"     && apk add --no-cache --virtual .build-deps-full         binutils-gold         g++         gcc         libgcc         linux-headers         make         python3         py-setuptools     && curl -fsSLO --compressed \"https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION.tar.xz\"     && curl -fsSLO --compressed \"https://nodejs.org/dist/v$NODE_VERSION/SHASUMS256.txt.asc\"     && gpg --batch --decrypt --output SHASUMS256.txt SHASUMS256.txt.asc     && gpgconf --kill all     && rm -rf \"$GNUPGHOME\"     && grep \" node-v$NODE_VERSION.tar.xz\\$\" SHASUMS256.txt | sha256sum -c -     && tar -xf \"node-v$NODE_VERSION.tar.xz\"     && cd \"node-v$NODE_VERSION\"     && ./configure     && make -j$(getconf _NPROCESSORS_ONLN) V=     && make install     && apk del .build-deps-full     && cd ..     && rm -Rf \"node-v$NODE_VERSION\"     && rm \"node-v$NODE_VERSION.tar.xz\" SHASUMS256.txt.asc SHASUMS256.txt;   fi   && find /usr/local/include/node/openssl/archs -mindepth 1 -maxdepth 1 ! -name \"$OPENSSL_ARCH\" -exec rm -rf {} \\;   && apk del .build-deps   && node --version   && npm --version   && rm -rf /tmp/* # buildkit",
+                "comment": "buildkit.dockerfile.v0"
+              },
+              {
+                "created": "2026-10-21T22:58:44Z",
+                "created_by": "ENV YARN_VERSION=1.22.22",
+                "comment": "buildkit.dockerfile.v0",
+                "empty_layer": true
+              },
+              {
+                "created": "2026-10-21T22:58:47Z",
+                "created_by": "RUN /bin/sh -c apk add --no-cache --virtual .build-deps-yarn curl gnupg tar   && export GNUPGHOME=\"$(mktemp -d)\"   && for key in     6A010C5166006599AA17F08146C2130DFD2497F5   ; do     { gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys \"$key\" && gpg --batch --fingerprint \"$key\"; } ||     { gpg --batch --keyserver keyserver.ubuntu.com --recv-keys \"$key\" && gpg --batch --fingerprint \"$key\"; } ;   done   && curl -fsSLO --compressed \"https://yarnpkg.com/downloads/$YARN_VERSION/yarn-v$YARN_VERSION.tar.gz\"   && curl -fsSLO --compressed \"https://yarnpkg.com/downloads/$YARN_VERSION/yarn-v$YARN_VERSION.tar.gz.asc\"   && gpg --batch --verify yarn-v$YARN_VERSION.tar.gz.asc yarn-v$YARN_VERSION.tar.gz   && gpgconf --kill all   && rm -rf \"$GNUPGHOME\"   && mkdir -p /opt   && tar -xzf yarn-v$YARN_VERSION.tar.gz -C /opt/   && ln -s /opt/yarn-v$YARN_VERSION/bin/yarn /usr/local/bin/yarn   && ln -s /opt/yarn-v$YARN_VERSION/bin/yarnpkg /usr/local/bin/yarnpkg   && rm yarn-v$YARN_VERSION.tar.gz.asc yarn-v$YARN_VERSION.tar.gz   && apk del .build-deps-yarn   && yarn --version   && rm -rf /tmp/* # buildkit",
+                "comment": "buildkit.dockerfile.v0"
+              },
+              {
+                "created": "2026-10-21T22:58:47Z",
+                "created_by": "COPY docker-entrypoint.sh /usr/local/bin/ # buildkit",
+                "comment": "buildkit.dockerfile.v0"
+              },
+              {
+                "created": "2026-10-21T22:58:47Z",
+                "created_by": "ENTRYPOINT [\"docker-entrypoint.sh\"]",
+                "comment": "buildkit.dockerfile.v0",
+                "empty_layer": true
+              },
+              {
+                "created": "2026-10-21T22:58:47Z",
+                "created_by": "CMD [\"node\"]",
+                "comment": "buildkit.dockerfile.v0",
+                "empty_layer": true
+              },
+              {
+                "created": "2026-11-18T13:17:08Z",
+                "created_by": "WORKDIR /app",
+                "comment": "buildkit.dockerfile.v0"
+              },
+              {
+                "created": "2026-11-18T13:17:08Z",
+                "created_by": "ARG APP_PUBLIC_BASE_URL=https://payments.example.test",
+                "comment": "buildkit.dockerfile.v0",
+                "empty_layer": true
+              },
+              {
+                "created": "2026-11-18T13:17:08Z",
+                "created_by": "ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000",
+                "comment": "buildkit.dockerfile.v0",
+                "empty_layer": true
+              },
+              {
+                "created": "2026-11-18T13:17:08Z",
+                "created_by": "ARG NEXT_PUBLIC_SENTRY_DSN",
+                "comment": "buildkit.dockerfile.v0",
+                "empty_layer": true
+              },
+              {
+                "created": "2026-11-18T13:17:08Z",
+                "created_by": "ENV APP_PUBLIC_BASE_URL=https://payments.example.test",
+                "comment": "buildkit.dockerfile.v0",
+                "empty_layer": true
+              },
+              {
+                "created": "2026-11-18T13:17:08Z",
+                "created_by": "ENV HOSTNAME=0.0.0.0",
+                "comment": "buildkit.dockerfile.v0",
+                "empty_layer": true
+              },
+              {
+                "created": "2026-11-18T13:17:08Z",
+                "created_by": "ENV NEXT_PUBLIC_API_BASE_URL=http://localhost:8000",
+                "comment": "buildkit.dockerfile.v0",
+                "empty_layer": true
+              },
+              {
+                "created": "2026-11-18T13:17:08Z",
+                "created_by": "ENV NEXT_PUBLIC_SENTRY_DSN=",
+                "comment": "buildkit.dockerfile.v0",
+                "empty_layer": true
+              },
+              {
+                "created": "2026-11-18T13:17:08Z",
+                "created_by": "ENV NEXT_TELEMETRY_DISABLED=1",
+                "comment": "buildkit.dockerfile.v0",
+                "empty_layer": true
+              },
+              {
+                "created": "2026-11-18T13:17:08Z",
+                "created_by": "ENV NODE_ENV=production",
+                "comment": "buildkit.dockerfile.v0",
+                "empty_layer": true
+              },
+              {
+                "created": "2026-11-18T13:17:08Z",
+                "created_by": "ENV PORT=3000",
+                "comment": "buildkit.dockerfile.v0",
+                "empty_layer": true
+              },
+              {
+                "created": "2026-11-18T13:17:08Z",
+                "created_by": "RUN |3 APP_PUBLIC_BASE_URL=https://payments.example.test NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 NEXT_PUBLIC_SENTRY_DSN= /bin/sh -c rm -rf     /usr/local/bin/corepack     /usr/local/bin/npm     /usr/local/bin/npx     /usr/local/lib/node_modules/corepack     /usr/local/lib/node_modules/npm # buildkit",
+                "comment": "buildkit.dockerfile.v0"
+              },
+              {
+                "created": "2026-11-18T13:19:10Z",
+                "created_by": "COPY --chown=node:node /app/apps/web/.next/standalone ./ # buildkit",
+                "comment": "buildkit.dockerfile.v0"
+              },
+              {
+                "created": "2026-11-18T13:19:10Z",
+                "created_by": "COPY --chown=node:node /app/apps/web/.next/static ./apps/web/.next/static # buildkit",
+                "comment": "buildkit.dockerfile.v0"
+              },
+              {
+                "created": "2026-11-18T13:19:10Z",
+                "created_by": "COPY --chown=node:node /app/apps/web/public ./apps/web/public # buildkit",
+                "comment": "buildkit.dockerfile.v0"
+              },
+              {
+                "created": "2026-11-18T13:19:10Z",
+                "created_by": "USER node",
+                "comment": "buildkit.dockerfile.v0",
+                "empty_layer": true
+              },
+              {
+                "created": "2026-11-18T13:19:10Z",
+                "created_by": "EXPOSE [3000/tcp]",
+                "comment": "buildkit.dockerfile.v0",
+                "empty_layer": true
+              },
+              {
+                "created": "2026-11-18T13:19:10Z",
+                "created_by": "CMD [\"node\" \"apps/web/server.js\"]",
+                "comment": "buildkit.dockerfile.v0",
+                "empty_layer": true
+              }
+            ],
+            "os": "linux",
+            "rootfs": {
+              "type": "layers",
+              "diff_ids": [
+                "sha256:75c137aedfb2760f88629236cb7b797630aed0c3d91d626d1d1bb694878fc2ba",
+                "sha256:1e7c31449d3b67bab8f9bdb22fdd16ea983e167875bf91f9655583354477d417",
+                "sha256:a81b85a0b02f451fac1872d6f0abe015d010d800b457270409335029c55c474d",
+                "sha256:bda40d8c442bd04d0ebe75ffa571b1cefc1845146a081ffd7f642ecb24fefe1d",
+                "sha256:f164fa0a8872cee637be644551ba0aec7908056ce3082d5860af31b60741c123",
+                "sha256:519765f0c196fa95ca7076bd07296a9c9bffc5fe08662cdea4d7779a28b81b9d",
+                "sha256:b4d3dbe13f1c53ae93f3b9df0aee570644797608a990abd75d9afee0b5969003",
+                "sha256:f120bf0d887395c3f73b8f9a650dab3219489bfc9894df6ce5b8ad032951fb19",
+                "sha256:495e9eed574645243cdd1e709a58eb9d088a58d1284924e765851b552db6c660"
+              ]
+            },
+            "config": {
+              "Cmd": [
+                "node",
+                "apps/web/server.js"
+              ],
+              "Entrypoint": [
+                "docker-entrypoint.sh"
+              ],
+              "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "NODE_VERSION=24.22.1",
+                "YARN_VERSION=1.22.22",
+                "APP_PUBLIC_BASE_URL=https://payments.example.test",
+                "HOSTNAME=0.0.0.0",
+                "NEXT_PUBLIC_API_BASE_URL=http://localhost:8000",
+                "NEXT_PUBLIC_SENTRY_DSN=",
+                "NEXT_TELEMETRY_DISABLED=1",
+                "NODE_ENV=production",
+                "PORT=3000"
+              ],
+              "User": "node",
+              "WorkingDir": "/app",
+              "ExposedPorts": {
+                "3000/tcp": {}
+              },
+              "ArgsEscaped": true
+            }
+          },
+          "Layers": [
+            {
+              "Size": 8709632,
+              "DiffID": "sha256:75c137aedfb2760f88629236cb7b797630aed0c3d91d626d1d1bb694878fc2ba"
+            },
+            {
+              "Size": 160412160,
+              "DiffID": "sha256:1e7c31449d3b67bab8f9bdb22fdd16ea983e167875bf91f9655583354477d417"
+            },
+            {
+              "Size": 5391360,
+              "DiffID": "sha256:a81b85a0b02f451fac1872d6f0abe015d010d800b457270409335029c55c474d"
+            },
+            {
+              "Size": 3584,
+              "DiffID": "sha256:bda40d8c442bd04d0ebe75ffa571b1cefc1845146a081ffd7f642ecb24fefe1d"
+            },
+            {
+              "Size": 1536,
+              "Digest": "sha256:8cbcaf8be8bf35d50cb2aa607a6a803d1fd8ccc6a9410c657f320d1c9790393e",
+              "DiffID": "sha256:f164fa0a8872cee637be644551ba0aec7908056ce3082d5860af31b60741c123"
+            },
+            {
+              "Size": 6144,
+              "Digest": "sha256:4b78235dc4ba8585b1f11b00a32ad7788b4b1f6686a9713a086811d4fde022fd",
+              "DiffID": "sha256:519765f0c196fa95ca7076bd07296a9c9bffc5fe08662cdea4d7779a28b81b9d"
+            },
+            {
+              "Size": 52937728,
+              "Digest": "sha256:a174f331f4ad0bb090937c3f1ba5d428bd35a47575eb112d04c8110c523372f0",
+              "DiffID": "sha256:b4d3dbe13f1c53ae93f3b9df0aee570644797608a990abd75d9afee0b5969003"
+            },
+            {
+              "Size": 1108480,
+              "Digest": "sha256:d9876e618960b3caa5def6051a5e3590711f4591e5852ba0f574bf92a1afba5a",
+              "DiffID": "sha256:f120bf0d887395c3f73b8f9a650dab3219489bfc9894df6ce5b8ad032951fb19"
+            },
+            {
+              "Size": 7168,
+              "Digest": "sha256:6f3727fd74e949610caaa730b1b5718d57369cc50feb150a23239ad86797976a",
+              "DiffID": "sha256:495e9eed574645243cdd1e709a58eb9d088a58d1284924e765851b552db6c660"
+            }
+          ]
+        },
+        "results": [
+          {
+            "target": "payment-portal-web:trivy-2615cde17d3e27e228fc07787a7d29d2eedc08c8 (alpine 3.24.3)",
+            "class": "os-pkgs",
+            "type": "alpine",
+            "findings": [
+              {
+                "id": "CVE-2026-4738",
+                "package": "zlib",
+                "path": null,
+                "installed": "1.3.2-r1",
+                "fixed": "1.4-r0",
+                "severity": "MEDIUM",
+                "url": "https://avd.aquasec.com/nvd/cve-2026-4738"
+              }
+            ]
+          },
+          {
+            "target": "Node.js",
+            "class": "lang-pkgs",
+            "type": "node-pkg",
+            "findings": [
+              {
+                "id": "CVE-2026-119351",
+                "package": "next",
+                "path": "app/node_modules/next/package.json",
+                "installed": "16.4.2",
+                "fixed": "16.4.5",
+                "severity": "MEDIUM",
+                "url": "https://avd.aquasec.com/nvd/cve-2026-119351"
+              },
+              {
+                "id": "CVE-2026-119790",
+                "package": "next",
+                "path": "app/node_modules/next/package.json",
+                "installed": "16.4.2",
+                "fixed": "16.4.5",
+                "severity": "MEDIUM",
+                "url": "https://avd.aquasec.com/nvd/cve-2026-119790"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
