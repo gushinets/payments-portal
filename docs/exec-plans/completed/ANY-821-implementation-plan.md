@@ -1,103 +1,52 @@
 # ANY-821 - Terminal resolution for UNKNOWN purchases
 
 Status: Implemented and verified locally.
-Updated: 2026-11-19
+Updated: 2026-11-20
 Issue: [ANY-821](https://linear.app/paveldik/issue/ANY-821/define-and-implement-terminal-resolution-for-purchases-stuck-in)
 
 ## Implemented scope
 
-Operators can complete a stuck purchase with request-specific evidence for
-both the agreement and subscription. The transaction records the decision,
-fences old work and releases the original hold. The accepted terms and
-external object history survive restart and a replacement purchase.
-The existing two-hour escalation and payment admission rules still apply.
-Foreground latency remains with ANY-819. Production enablement and live LBX
-verification remain with ANY-504.
+A customer can save the purchase status link during preparation and return to
+it after operator completion. The original purchase keeps its accepted terms,
+operation identities and provider history. A new purchase requires current
+terms and consent. Foreground latency belongs to ANY-819. Live LBX verification
+and production enablement remain with ANY-504.
 
-- **Operations.** The [billing runbook](../../engineering/billing-background-operations.md#terminal-completion-any-821)
-  documents the evidence, sender shutdown, exact replay and late-case procedure.
-- **Storage.** The [schema reference](../../architecture/payment-portal-data-model.md#physical-baseline)
-  records the terminal outcome and the merge with the published ANY-766
-  migrations. The existing paid-access reducer updates dependent grants in the
-  same transaction and preserves allowance history.
-- **Customer journey.** The [cabinet](../../product/ru-mvp.md#primary-journey-and-account-states)
-  shows the completed outcome through the original purchase link. A customer
-  can start a new purchase under current terms.
+## Recovery scenarios
 
-## Review and verification
+1. **Request never sent.** If both operations are proven unsent, the operator
+   can record `resolved_no_external_effect` and release the product hold.
+2. **Reply lost.** GET-only recovery can bind a proven original object and let
+   the customer continue the same purchase. The hold stays with that purchase.
+3. **Empty discovery.** The hold stays in place while the request could still
+   take effect. The operator can release it once both operations are accounted
+   for under the terminal completion procedure.
+4. **Object found after release.** A live original or a confirmed relationship
+   conflict opens a case on the completed purchase. The operator resolves that
+   case for the named object. An independent live subscription on the same
+   tariff still blocks duplicate financial creation.
+5. **Partial preparation.** A known agreement and an uncertain subscription
+   require separate evidence. Terminal completion records `resolved_external_terminal`
+   when a created object is confirmed to have ended and the other operation is
+   also accounted for.
+6. **Two-hour deadline.** Automatic discovery pauses for manual review. The
+   customer or operator can still request GET-only recovery. The hold remains.
+7. **Cancellation, replay and replacement.** Operator completion releases the
+   original hold and invalidates old work. The same operator can replay the exact
+   command after restart. A replacement has its own consent and operations.
 
-- GET-only recovery uses permanent bindings and positively attested IDs for both
-  financial operations. It checks a known subscription independently of a failed
-  agreement read. Searching without a subscription ID requires an unambiguous
-  agreement. A disproved receipt alone cannot establish ownership.
-- The late-case writer rechecks bindings and audit evidence under the user lock,
-  including attestations made during the GET. Only an observation of the same
-  relationship completed by the confirmation time can be dismissed as delayed.
-  Positive attestation supersedes older disproof. Earlier commands remain replayable.
-  First binding and attestation serialize by account, object kind and ID across users.
-- The worker records a proven late original on its released purchase. The case
-  blocks new financial CREATEs for that customer and first-primary selection
-  for implicated products, even after a listing omission. Trusted primaries
-  continue normal reconciliation. A listing discrepancy alone pauses admission.
-  A second purchase keeps its operation, fence and receipt unless its own
-  evidence proves a conflict.
-- A retained subscription listed as ended requires a current point read within
-  the existing 20-candidate limit. When the active list and the detail for a
-  held purchase disagree, the cabinet reads the deep-linked purchase again.
-  Its card and billing action use that result. A released purchase keeps its
-  individual terminal status.
+See the [operator procedure](../../engineering/billing-background-operations.md#terminal-completion-any-821),
+[purchase history and downgrade rules](../../architecture/payment-portal-data-model.md#purchase-and-external-create-tables)
+and [customer journey](../../product/ru-mvp.md).
 
-The seven ticket cases are exercised through unsent completion and restart,
-GET-only recovery after a lost reply, empty discovery with the hold retained,
-late discovery after operator action, separate proof for a partial purchase,
-two-hour escalation, and repeated/concurrent actions with a replacement.
+## Final local verification
 
-The regression fixture keeps the held purchase's own subscription visible
-alongside a late object listed under the wrong agreement. It runs recovery
-before correcting the listing and checks the persisted state of both purchases.
-Six PostgreSQL checks failed on `aed33ebb` and passed against the corrected
-worker, `advance` and `recover`. Separate controls verify that a conflict on
-the held purchase's dedicated agreement or CREATE receipt still opens a case.
+On 2026-11-20, `npm run check:fast` passed 38 web boundary checks, 477 component
+tests and 2,414 fast API tests. One Windows-only test skipped on Linux. On
+PostgreSQL 14, 1,315 of 1,316 tests passed together. The Portal–Kernel HTTP test
+passed separately with the Unix socket directory supplied via `PGHOST`.
 
-### Baseline verification at `a14c2bb6`
-
-Documentation, generated contracts, architecture, lint, 508 web tests, 2,413
-fast API tests and the Webpack build passed. One Windows-only API test skipped
-on Linux. On PostgreSQL 14, three timestamp assertions required a UTC connection.
-The four-worker UTC run hit two SQL timeouts and one fixture deadline. All
-1,305 PostgreSQL tests passed in one serial run on a disposable in-memory
-database with the original deadlines.
-
-Six browser checks passed on the production build with synthetic billing in
-desktop Chromium and Pixel 7 emulation, covering stale detail, stale list,
-terminal reload and Widget opening. The full live-stack browser suite was
-outside this run.
-
-### Local verification after PR review fixes
-
-`npm run check:fast` passed with 2,414 fast API tests, 475 web component tests,
-and 38 web boundary checks. One Windows-only API test skipped on Linux.
-A focused PostgreSQL run passed 95 tests on a disposable local database with
-synthetic billing. The final review passed 11 focused checks, including the
-CLI error result with related late reviews and the consistent current-purchase
-read during release.
-
-Six synthetic browser checks passed across desktop Chromium and Pixel 7
-emulation. They covered rechecking a purchase omitted from the complete list
-while payment was open, rechecking after HTTP 409 `purchase_scope_released`,
-and ordinary purchase preparation.
-
-### Integration with main and ANY-832
-
-ANY-821 was rebased onto `f6b1f1d2`, including the ANY-864 monthly LBX calendar
-and the ANY-741 Mako update. For integration with ANY-832 at `f7639e1a`, keep
-its inventory fact collector and product projection, and incorporate ANY-821's
-released-purchase lookup and case attribution. The three-way preview also
-found overlaps in LBX calendar normalization and reconciliation. Retain the
-monthly instance-start rules, annual and established calendar anchors and
-evidence from the same point read. Verify
-first-primary selection and both calendar profiles on the combined tree.
-
-Earlier temporary combinations with PR #168 at `900e3f2c` and PR #171 at
-`3e9c1273` passed 70 and 83 selected tests respectively. These results apply
-to their recorded snapshots.
+The first full check stopped on a Next.js 16.4.2 security advisory. The
+standalone build passed on retry. All 22 synthetic purchase browser checks
+passed across desktop Chromium and Pixel 7 emulation, including reopening a
+saved link after release and reaching the current offer and consent step.

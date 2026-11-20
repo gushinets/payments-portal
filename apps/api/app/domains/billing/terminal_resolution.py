@@ -3,11 +3,8 @@
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from enum import StrEnum
-from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
@@ -24,7 +21,12 @@ from app.domains.billing.operator_contracts import (
     LateObjectResult,
     LateReviewRef,
     LateSubscriptionPoint,
-    ProviderId,
+    OperationEvidence,
+    TerminalAudit,
+    TerminalEvidence as TerminalEvidence,
+    TerminalEvidenceKind,
+    TerminalRequest,
+    TerminalResult,
     retained_agreement_ids,
 )
 from app.domains.billing.operator_review import digest, terminal_state_digest
@@ -44,73 +46,6 @@ from app.models import (
 )
 
 LATE_SCHEMA = "purchase-late-object:v1"
-SafeText = Annotated[str, Field(min_length=1, max_length=500, pattern=r"^[^\x00-\x1f\x7f]+$")]
-
-
-class TerminalEvidenceKind(StrEnum):
-    NOT_SENT = "not_sent"
-    NO_EXTERNAL_EFFECT = "no_external_effect"
-    EXTERNAL_TERMINAL = "external_terminal"
-
-
-class OperationEvidence(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    operation_id: UUID
-    outcome: TerminalEvidenceKind
-    external_object_id: ProviderId | None = None
-    unrelated_object_ids: tuple[ProviderId, ...] = Field(default=(), exclude_if=lambda ids: not ids)
-
-    @model_validator(mode="after")
-    def object_required(self) -> "OperationEvidence":
-        if (self.outcome == TerminalEvidenceKind.EXTERNAL_TERMINAL) != (self.external_object_id is not None):
-            raise ValueError("terminal objects require an ID; absence/no-send cannot name an object")
-        if (
-            len(set(self.unrelated_object_ids)) != len(self.unrelated_object_ids)
-            or self.external_object_id in self.unrelated_object_ids
-            or (self.unrelated_object_ids and self.outcome == TerminalEvidenceKind.NOT_SENT)
-        ):
-            raise ValueError("unrelated IDs must identify distinct candidates from a possible send")
-        return self
-
-
-class TerminalEvidence(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    schema_version: Literal["purchase-terminal-resolution:v1"] = SCHEMA
-    senders_stopped_at: AwareDatetime | None = None
-    confirmed_at: AwareDatetime | None = None
-    operations: tuple[OperationEvidence, ...] = Field(min_length=2, max_length=2)
-
-    @model_validator(mode="after")
-    def distinct_operations(self) -> "TerminalEvidence":
-        if len({item.operation_id for item in self.operations}) != len(self.operations):
-            raise ValueError("duplicate operation evidence")
-        return self
-
-
-class TerminalRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
-    user_id: UUID
-    purchase_id: UUID
-    expected_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
-    reason: SafeText
-    reference: SafeText
-    evidence: TerminalEvidence
-    case_id: UUID | None = None
-
-
-class TerminalResult(BaseModel):
-    review_case_id: UUID
-    purchase_intent_id: UUID
-    state: IntentState
-    already_resolved: bool
-
-
-class TerminalAudit(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    request: TerminalRequest
-    command_digest: str
-    before_state: IntentState
-    after_state: IntentState
 
 
 @dataclass(frozen=True)
@@ -177,18 +112,33 @@ def resolve_purchase(
         elif row.state.resolved or hold is None or hold.purchase_intent_id != purchase.id:
             raise PurchaseRefused("purchase_scope_released", 409)
         now = as_utc(billing_reconciliation.database_now(db))
-        proof = {item.operation_id: item for item in request.evidence.operations}
-        if set(proof) != {op.create_operation_id for op in operations}:
+        supplied = {item.operation_id: item for item in request.evidence.operations}
+        if set(supplied) != {op.create_operation_id for op in operations}:
             raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
-        history = _audited_objects(db, purchase.id, original_cases) if late is not None else {}
+        original_proofs = _saved_proofs(original_cases) if late else frozenset()
+        saved_proofs = original_proofs
+        if late:
+            saved_proofs |= _saved_proofs(
+                queries.purchase_cases(db, purchase.id, reason=LATE_REASON, schema=LATE_SCHEMA, resolved_only=True)
+            )
         external = False
         for op in operations:
-            item = proof[op.create_operation_id]
+            item = supplied[op.create_operation_id]
+            if late and item.operation_id != late.operation_id:
+                # This entry is context for the v1 command, not a second decision.
+                if item not in saved_proofs:
+                    raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
+                continue
             snapshot = service._operation(db, op)
-            retained = history.get(op.create_operation_id, AuditedObjects()).confirmed
+            previous = [proof for proof in saved_proofs if proof.operation_id == item.operation_id]
+            retained = {proof.external_object_id for proof in previous if proof.external_object_id is not None}
             unsent = op.operation_state in {OperationState.PENDING, OperationState.PROVEN_NOT_SENT} and not (
                 snapshot.bound_id or snapshot.candidate_id
             )
+            if late:
+                _check_case_evidence(late, item, original_proofs, previous)
+            if unsent and item.external_object_id is not None and item.external_object_id not in retained:
+                raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
             if item.outcome == TerminalEvidenceKind.NOT_SENT:
                 if not unsent or retained or (late and late.operation_id == op.create_operation_id):
                     raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
@@ -296,26 +246,45 @@ def resolve_purchase(
         return result
 
 
-def _audited_objects(
-    db: Session,
-    purchase_id: UUID,
-    original_cases: list[ManualReviewCase] | None = None,
-) -> dict[UUID, AuditedObjects]:
-    if original_cases is None:
-        original_cases = queries.purchase_cases(
-            db, purchase_id, reason=TERMINAL_REASON, schema=SCHEMA, resolved_only=True
-        )
+def _saved_proofs(cases: list[ManualReviewCase]) -> frozenset[OperationEvidence]:
+    return frozenset(
+        item
+        for case in cases
+        if case.resolution_schema_version == SCHEMA
+        for item in TerminalAudit.model_validate(case.resolution_document).request.evidence.operations
+    )
+
+
+def _check_case_evidence(
+    case: LateObjectEvidence,
+    item: OperationEvidence,
+    original: frozenset[OperationEvidence],
+    previous: list[OperationEvidence],
+) -> None:
+    target = case.external_object_id
+    known_ids = {proof.external_object_id for proof in previous}
+    excluded = {identity for proof in previous for identity in proof.unrelated_object_ids}
+    if target != item.external_object_id and target not in item.unrelated_object_ids:
+        raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
+    if set(item.unrelated_object_ids) - excluded - {target}:
+        raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
+    if item.external_object_id is not None and item.external_object_id not in known_ids:
+        if item.external_object_id != target or any(
+            proof.operation_id == item.operation_id and proof.outcome == TerminalEvidenceKind.NOT_SENT
+            for proof in original
+        ):
+            raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
+
+
+def _audited_objects(db: Session, purchase_id: UUID) -> dict[UUID, AuditedObjects]:
+    original_cases = queries.purchase_cases(db, purchase_id, reason=TERMINAL_REASON, schema=SCHEMA, resolved_only=True)
     cases = queries.purchase_cases(db, purchase_id, reason=LATE_REASON, schema=LATE_SCHEMA, resolved_only=True)
     history: dict[UUID, AuditedObjects] = {}
-    for case in [*original_cases, *cases]:
-        if case.resolution_schema_version != SCHEMA:
-            continue
-        audit = TerminalAudit.model_validate(case.resolution_document)
-        for proof in audit.request.evidence.operations:
-            objects = history.setdefault(proof.operation_id, AuditedObjects())
-            if proof.external_object_id is not None:
-                objects.confirmed.add(proof.external_object_id)
-            objects.unrelated.update(proof.unrelated_object_ids)
+    for proof in _saved_proofs([*original_cases, *cases]):
+        objects = history.setdefault(proof.operation_id, AuditedObjects())
+        if proof.external_object_id is not None:
+            objects.confirmed.add(proof.external_object_id)
+        objects.unrelated.update(proof.unrelated_object_ids)
     return history
 
 
@@ -453,19 +422,19 @@ def record_late_object(
                 continue
             audit = TerminalAudit.model_validate(case.resolution_document)
             confirmed = audit.request.evidence.confirmed_at
-            if confirmed is not None and confirmed >= read_finished_at:
-                return LateObjectResult(LateObjectDisposition.CLEAR)  # An older read of the same relationship.
             if any(
                 proof.operation_id == operation_id and external_object_id in proof.unrelated_object_ids
                 for proof in audit.request.evidence.operations
             ):
                 disproved = True
+            elif confirmed is not None and confirmed >= read_finished_at:
+                return LateObjectResult(LateObjectDisposition.CLEAR)  # An older read of the same relationship.
         if disproved:
             if history is None:
                 history = _audited_objects(db, purchase_id)
             # Positive attestation of an original object supersedes disproof.
             if external_object_id not in history.get(operation_id, AuditedObjects()).confirmed:
-                return LateObjectResult(LateObjectDisposition.CLEAR)
+                return LateObjectResult(LateObjectDisposition.UNRELATED)
         for case in cases:
             if case.case_state == "open":
                 previous = LateObjectEvidence.model_validate(case.evidence_document)

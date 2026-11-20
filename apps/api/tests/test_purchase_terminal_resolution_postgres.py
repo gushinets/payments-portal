@@ -609,8 +609,19 @@ async def test_exact_terminal_replay_ignores_unrelated_closed_history(
     assert repeated.already_resolved and repeated.review_case_id == result.review_case_id
 
 
-async def test_late_unbound_agreement_has_read_only_supported_review_path(
-    background_scenario: tuple, postgres_session_factory: sessionmaker[Session]
+def assert_terminal_downgrade_refused(factory: sessionmaker[Session], database_test_url: URL) -> None:
+    versions = text("SELECT version_num FROM alembic_version")
+    with factory() as db:
+        previous_heads = set(db.scalars(versions))
+    with alembic_test_config(database_test_url) as config, pytest.raises(CommandError, match="downgrade refused"):
+        alembic_command.downgrade(config, "20261031_0006")
+    with factory() as db:
+        assert set(db.scalars(versions)) == previous_heads
+
+
+@pytest.mark.parametrize("attested", [True, False], ids=["attested", "unrelated"])
+async def test_late_unbound_agreement_review_and_downgrade(
+    background_scenario: tuple, postgres_session_factory: sessionmaker[Session], database_test_url: URL, attested: bool
 ) -> None:
     transport, sources, purchase = background_scenario
     factory = postgres_session_factory
@@ -629,11 +640,36 @@ async def test_late_unbound_agreement_has_read_only_supported_review_path(
     assert not saved.held and saved.state == PurchaseIntentState.RESOLVED_NO_EXTERNAL_EFFECT
     assert next(op for op in saved.operations if op.kind == Kind.AGREEMENT).bound_id is None
     with factory() as db:
-        assert (
-            db.scalar(select(ManualReviewCase).where(ManualReviewCase.reason_code == terminal.LATE_REASON)).case_state
-            == "open"
-        )
+        case = db.scalars(select(ManualReviewCase).where(ManualReviewCase.reason_code == terminal.LATE_REASON)).one()
+        assert case.case_state == "open"
+        case_id = case.review_case_id
+        object_id = terminal.LateObjectEvidence.model_validate(case.evidence_document).external_object_id
     assert all(req.method == "GET" for req in transport.requests[count:])
+    assert_terminal_downgrade_refused(factory, database_test_url)
+
+    command = request(factory, saved, confirmed=True)
+    proof = (
+        terminal.OperationEvidence(
+            operation_id=op.id, outcome=terminal.TerminalEvidenceKind.EXTERNAL_TERMINAL, external_object_id=object_id
+        )
+        if attested
+        else terminal.OperationEvidence(
+            operation_id=op.id,
+            outcome=terminal.TerminalEvidenceKind.NO_EXTERNAL_EFFECT,
+            unrelated_object_ids=(object_id,),
+        )
+    )
+    operations = tuple(proof if item.operation_id == op.id else item for item in command.evidence.operations)
+    evidence = command.evidence.model_copy(update={"operations": operations})
+    result = terminal.resolve_purchase(
+        factory, step1_settings(), command.model_copy(update={"case_id": case_id, "evidence": evidence}), PRINCIPAL
+    )
+    assert result.state == PurchaseIntentState.RESOLVED_NO_EXTERNAL_EFFECT
+    if attested:
+        assert_terminal_downgrade_refused(factory, database_test_url)
+    else:
+        with alembic_test_config(database_test_url) as config:
+            alembic_command.downgrade(config, "20261031_0006")
 
 
 async def test_terminal_dependency_reduces_paid_access_and_retains_allowance_history(paid_source: Scenario) -> None:
@@ -1377,15 +1413,11 @@ async def test_ended_listing_candidates_use_the_existing_point_read_budget(
 async def test_terminal_migration_refuses_downgrade_with_retained_external_history(
     background_scenario: tuple,
     postgres_session_factory: sessionmaker[Session],
-    postgres_engine: Engine,
     database_test_url: URL,
 ) -> None:
     transport, _, purchase = background_scenario
     factory = postgres_session_factory
     purchase = synthetic_prepare(factory, transport, purchase, uncertain=True)
     terminal.resolve_purchase(factory, step1_settings(), request(factory, purchase, confirmed=True), PRINCIPAL)
-    with alembic_test_config(database_test_url) as config, pytest.raises(CommandError, match="downgrade refused"):
-        alembic_command.downgrade(config, "20261031_0006")
-    with postgres_engine.connect() as db:
-        assert db.scalar(text("SELECT version_num FROM alembic_version")) == "20261117_821_merge"
+    assert_terminal_downgrade_refused(factory, database_test_url)
     assert not service.read_purchase(factory, purchase.user_id, purchase.id).held

@@ -47,6 +47,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   const checkAgainst = disagreement ?? detail?.checkedListEvidence;
   const disputed = checkAgainst !== detail?.checkedListEvidence;
   const [detailStatus, setDetailStatus] = useState<DetailStatus>({ status: initialPurchaseId && emailVerified ? "loading" : "ready" });
+  const [detailAttempt, setDetailAttempt] = useState(0);
 
   const sessionEnded = detailStatus.status === "session-ended";
   const closeRestrictedWidget = useEffectEvent(() => {
@@ -69,7 +70,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
     }
     void load().catch((error: unknown) => { if (operation.isCurrent()) setDetailStatus({ status: "error", requestId: safeRequestId(error) || requestId }); });
     return cancel;
-  }, [begin, cancel, emailVerified, initialPurchaseId, sessionEnded, checkAgainst]);
+  }, [begin, cancel, emailVerified, initialPurchaseId, sessionEnded, checkAgainst, detailAttempt]);
 
   useEffect(() => subscribeToSessionChanges(() => {
     cancel();
@@ -103,6 +104,11 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
     void usage.refresh();
   }
 
+  function retryDetail() {
+    setDetailStatus({ status: "loading" });
+    setDetailAttempt(attempt => attempt + 1);
+  }
+
   function choose(id: string) {
     widget.close();
     setSelectedId(id || null);
@@ -133,7 +139,11 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
           {options.map((item) => <option key={item.purchase_intent_id} value={item.purchase_intent_id}>{b("purchaseOption", { product: item.product_id, id: item.purchase_intent_id })}</option>)}
         </select>
         {checkingSelection && <p role="status">{p("loading")}</p>}
-        {selectionBlocked && !checkingSelection && <div className="notice error" role="alert"><p>{b("selectionUnavailable")}</p>{detailStatus.status === "error" && detailStatus.requestId && <p>{b("requestId", { id: detailStatus.requestId })}</p>}</div>}
+        {selectionBlocked && !checkingSelection && <div className="notice error" role="alert">
+          <p>{b("selectionUnavailable")}</p>
+          {detailStatus.status === "error" && detailStatus.requestId && <p>{b("requestId", { id: detailStatus.requestId })}</p>}
+          {selectedDeep && detailStatus.status === "error" && <button className="btn-secondary" type="button" onClick={retryDetail}>{p("refresh")}</button>}
+        </div>}
         {selection && <p className="billing-selected-product">{b("selectedProduct", { product: selection.product_id })}</p>}
         {selection && released && <>
           <p role="status">{p(`states.${selection.state}`)}</p>

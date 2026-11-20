@@ -3,7 +3,13 @@
 from uuid import UUID
 
 from app.core.settings import Settings
-from app.domains.billing.operator_contracts import LATE_REASON, LateObjectEvidence
+from app.domains.billing.operator_contracts import (
+    LATE_REASON,
+    TERMINAL_REASON,
+    TERMINAL_SCHEMA,
+    LateObjectEvidence,
+    TerminalAudit,
+)
 from app.domains.billing.operator_review import case_digest, terminal_state_digest
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
@@ -33,6 +39,9 @@ def _review_evidence(case: ManualReviewCase) -> dict:
         result["late_object"] = LateObjectEvidence.model_validate(case.evidence_document).model_dump(
             mode="json", exclude={"purchase_intent_id"}
         )
+    if case.reason_code == TERMINAL_REASON and case.resolution_schema_version == TERMINAL_SCHEMA:
+        audit = TerminalAudit.model_validate(case.resolution_document)
+        result["original_operations"] = [item.model_dump(mode="json") for item in audit.request.evidence.operations]
     return result
 
 

@@ -489,6 +489,7 @@
     "confirmationUncertain": "La confirmación puede haberse completado. Consulta el estado guardado o reintenta la misma confirmación; las condiciones aceptadas no cambiarán.",
     "continue": "Continuar",
     "recover": "Continuar la recuperación",
+    "statusLink": "Estado de la compra",
     "manage": "Gestionar suscripción",
     "termsChanged": "Las condiciones cambiaron antes de la preparación. Revisa la oferta actual y vuelve a dar tu consentimiento.",
     "pending": "La preparación sigue sin resolverse. Continúa esta compra; no se creará otra para sustituirla.",

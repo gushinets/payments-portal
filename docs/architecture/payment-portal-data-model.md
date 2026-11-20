@@ -277,7 +277,9 @@ retaining accepted history and external objects. The case's
 request, including expected digest, per-operation evidence and shutdown and
 confirmation times, along with the command digest and before/after states.
 `purchase-late-object:v1` records later contradictions without rebinding.
-Downgrade refuses while the new terminal state is retained.
+Downgrade refuses while a purchase retains the new terminal state, a
+`purchase_late_external_object` review is open, or a terminal resolution audit
+retains a confirmed external object ID.
 `20261117_821_merge` joins this revision with published ANY-766 head
 `20261113_0013` without changing either migration or adding DDL.
 

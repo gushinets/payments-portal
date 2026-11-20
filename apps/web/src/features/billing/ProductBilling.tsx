@@ -259,6 +259,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
         <p role="status">{t(`states.${purchase.state}`)}</p>
         {purchase.reason && <p>{t(purchase.reason === "terms_changed" ? "termsChanged" : purchase.reason === "purchase_pending" ? "pending" : "reviewRequired")}</p>}
         <p className="catalog-product-id">{t("reference", { id: purchase.purchase_intent_id })}</p>
+        <Link href={`/account?purchase=${encodeURIComponent(purchase.purchase_intent_id)}#billing`}>{t("statusLink")}</Link>
         <details><summary>{t("acceptedTerms")}</summary><PurchaseTerms review={purchase.accepted} /></details>
         {resumable && <button className="btn-primary" type="button" disabled={working} onClick={() => void run((token, id, current) => prepare(token, purchase, id, current))}>{t(purchase.state === "created" ? "continue" : "recover")}</button>}
         <p>{t(released ? "resolvedNext" : "awaitingVerification")}</p>

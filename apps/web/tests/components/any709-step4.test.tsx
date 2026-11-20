@@ -27,8 +27,12 @@ function renderProduct(user = purchaseUser) {
 }
 
 it("does not describe a resolved purchase as still awaiting payment verification", async () => {
-  owned = { ...savedPurchase, state: "resolved_no_external_effect", scope_held: false };
+  owned = { ...savedPurchase, state: "awaiting_external_result" };
   renderProduct();
+  const link = await screen.findByRole("link", { name: ru.Purchase.statusLink });
+  expect(link).toHaveAttribute("href", `/ru/account?purchase=${savedPurchase.purchase_intent_id}#billing`);
+  owned = { ...savedPurchase, state: "resolved_no_external_effect", scope_held: false };
+  fireEvent.click(screen.getByRole("button", { name: ru.Purchase.refresh }));
   expect(await screen.findByText(ru.Purchase.states.resolved_no_external_effect)).toBeVisible();
   expect(screen.queryByText(ru.Purchase.awaitingVerification)).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: ru.Purchase.recover })).not.toBeInTheDocument();
@@ -150,7 +154,7 @@ beforeEach(() => {
     const path = new URL(String(input)).pathname;
     if (path === "/api/catalog/products/proposal_ai") return catalog();
     if (path === "/api/auth/session") return json({ authenticated: true, user: purchaseUser });
-    if (path === "/api/purchase-intents/current") return json({ purchase: owned });
+    if (path === "/api/purchase-intents/current") return json({ purchase: owned?.scope_held ? owned : null });
     if (path === "/api/purchases/review") return review(init);
     if (path === "/api/purchase-intents") return confirm(init);
     if (path.endsWith("/advance")) return advance(init);
