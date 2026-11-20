@@ -11,10 +11,11 @@ cleanup() {
   if [ -n "$network_id" ]; then docker network rm "$network_id" >/dev/null 2>&1 || true; fi
 }
 trap cleanup EXIT HUP INT TERM
+database_password=$(python3 -c 'import secrets; print(secrets.token_hex(24))')
 network_id=$(docker network create --internal "any674-runtime-$$")
 postgres_id=$(docker run --detach --network "$network_id" --network-alias any674-postgres \
   --env POSTGRES_DB=any674_runtime --env POSTGRES_USER=anytoolai \
-  --env POSTGRES_PASSWORD=any674-disposable \
+  --env "POSTGRES_PASSWORD=$database_password" \
   postgres:18.4-alpine3.22@sha256:774521500f4c22761b25a6bdb772a0a3c2e8dd32468210bdad9231c5752ea398)
 attempt=0
 until docker exec "$postgres_id" pg_isready -U anytoolai -d any674_runtime >/dev/null 2>&1; do
@@ -26,9 +27,9 @@ done
 set -- --network "$network_id" \
   --env APP_ENV=test --env APP_PUBLIC_BASE_URL=http://localhost:3000 \
   --env INSTANCE_TENANT_ID=anytoolai --env INSTANCE_REGION=ru \
-  --env DATABASE_URL=postgresql+psycopg://anytoolai:any674-disposable@any674-postgres:5432/any674_runtime \
+  --env "DATABASE_URL=postgresql+psycopg://anytoolai:$database_password@any674-postgres:5432/any674_runtime" \
   --env POSTGRES_DB=any674_runtime --env POSTGRES_USER=anytoolai \
-  --env POSTGRES_PASSWORD=any674-disposable --env POSTGRES_HOST=any674-postgres --env POSTGRES_PORT=5432 \
+  --env "POSTGRES_PASSWORD=$database_password" --env POSTGRES_HOST=any674-postgres --env POSTGRES_PORT=5432 \
   --env CORS_ALLOW_ORIGINS=http://localhost:3000 --env SKIP_LEGAL_SEED=true \
   --env BILLING_WORKER_ENABLED=false --env OTEL_SDK_DISABLED=true
 for migration in 'upgrade head' 'downgrade base' 'upgrade head'; do

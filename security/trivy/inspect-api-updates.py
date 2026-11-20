@@ -85,9 +85,12 @@ if __name__ == "__main__":
     parser.add_argument("--baseline-dockerfile", action="store_true")
     args = parser.parse_args()
     if args.baseline_dockerfile:
-        Path(".harness/any674-comparison/control.Dockerfile").write_text(
-            make_setid_control(Path("apps/api/Dockerfile").read_text(encoding="utf-8")),
-            encoding="utf-8",
+        control = make_setid_control(
+            Path("apps/api/Dockerfile").read_text(encoding="utf-8")
         )
+        with open(
+            ".harness/any674-comparison/control.Dockerfile", "w", encoding="utf-8"
+        ) as output:
+            output.write(control)
     else:
         main()
