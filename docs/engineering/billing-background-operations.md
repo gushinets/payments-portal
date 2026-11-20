@@ -358,10 +358,14 @@ operation, request/key/date, accepted history and hold. Known financial conflict
 need audited resolution; a deadline-only escalation permits explicit user/CLI
 GET-only recovery after automatic discovery has paused.
 Advance, worker and operator use the same GET-only original-operation collector
-and transactional binder. After an ambiguous financial reply, advance returns
-the saved state. The enrolled worker looks for the original operation while
-the outcome is uncertain. An owned purchase status read exposes the saved
-progress. If recovery binds an open agreement while the purchase is
+and transactional binder. When advance completes after an ambiguous financial
+reply, its response contains the saved state. If the preflight deadline
+expires, advance can return HTTP 503 `preflight_deadline_exceeded` after saving
+the uncertain outcome. Read `GET /api/purchase-intents/<id>` as the verified
+purchase owner to check its saved state. See the
+[billing runbook](ANY-709-billing-runbook.md#browser-operation-and-diagnostics).
+The enrolled worker looks for the original operation while the outcome is
+uncertain. If recovery binds an open agreement while the purchase is
 `awaiting_external_result` and the subscription operation is PENDING or
 PROVEN_NOT_SENT, the purchase returns to `preparing`. The buyer can explicitly
 continue. That advance checks admission again before sending the subscription.
