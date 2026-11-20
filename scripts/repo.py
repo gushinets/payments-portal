@@ -3536,11 +3536,16 @@ def cmd_test(
         RunnerError,
         merge_junit,
         run_api_tests,
+        stage_junit_report,
     )
 
     junitxml = Path(args.junitxml).resolve() if args.junitxml else None
     if junitxml is not None:
-        merge_junit([], junitxml, [f"API test run has not completed: preparing {args.target}"])
+        try:
+            with stage_junit_report(junitxml) as staged_report:
+                merge_junit([], staged_report, [f"API test run has not completed: preparing {args.target}"])
+        except ReportPublicationError as exc:
+            raise HarnessError(f"{exc}. Any existing report may be from a previous run.") from exc
     try:
         workers = getattr(args, "workers", None)
         for count in getattr(args, "worker_counts", ()):
@@ -3571,7 +3576,11 @@ def cmd_test(
         raise HarnessError(str(exc)) from exc
     except (argparse.ArgumentTypeError, HarnessError, OSError, RunnerError) as exc:
         if junitxml is not None:
-            merge_junit([], junitxml, [f"API test startup failed: {exc}"])
+            try:
+                with stage_junit_report(junitxml) as staged_report:
+                    merge_junit([], staged_report, [f"API test startup failed: {exc}"])
+            except ReportPublicationError as publication_error:
+                raise HarnessError(f"API test startup failed: {exc}\n{publication_error}") from publication_error
         if isinstance(exc, RunnerError):
             raise HarnessError(str(exc)) from exc
         raise

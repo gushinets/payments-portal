@@ -446,6 +446,21 @@ def merge_junit(
     ET.ElementTree(merged).write(destination, encoding="utf-8", xml_declaration=True)
 
 
+@contextmanager
+def stage_junit_report(destination: Path) -> Iterator[Path]:
+    """Replace the requested report only after a complete write on its filesystem."""
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(dir=destination.parent, prefix=".junit-") as temporary:
+            staged_report = Path(temporary) / "report.xml"
+            yield staged_report
+            with suppress(FileNotFoundError):
+                shutil.copymode(destination, staged_report)
+            staged_report.replace(destination)
+    except OSError as exc:
+        raise ReportPublicationError(f"Cannot publish API test JUnit to {destination}: {exc}") from exc
+
+
 def retain_worker_reports(
     invocations: Sequence[Invocation],
     reports: dict[Path, ET.Element],
@@ -512,15 +527,8 @@ def run_api_tests(
             {"returncode": code, "process_returncodes": returncodes, "errors": report_errors},
         )
         if junitxml is not None:
-            try:
-                with TemporaryDirectory(dir=junitxml.parent, prefix=".junit-") as temporary:
-                    staged_report = Path(temporary) / "report.xml"
-                    shutil.copyfile(merged_report, staged_report)
-                    with suppress(FileNotFoundError):
-                        shutil.copymode(junitxml, staged_report)
-                    staged_report.replace(junitxml)
-            except OSError as exc:
-                raise ReportPublicationError(f"Cannot publish API test JUnit to {junitxml}: {exc}") from exc
+            with stage_junit_report(junitxml) as staged_report:
+                shutil.copyfile(merged_report, staged_report)
         for error in report_errors:
             print(error, file=sys.stderr)
         print(

@@ -256,9 +256,17 @@ collection with selected tests, `expected.json` records the worker assignments.
 Each `worker-*/` directory contains the selected node IDs, pytest log, manifest
 and `junit.xml`. The merged JUnit includes collection-time skips and errors,
 with identical cases from both partitions reported once. With `--junitxml`,
-the CLI marks the requested path incomplete before setup, then writes the
-startup error or replaces it with the finished report. A failure while writing
-the replacement leaves the existing report readable and makes the command fail.
+the CLI publishes an incomplete report before setup, then replaces it with the
+startup error or the finished report. Each write replaces the requested file
+after the new XML is complete. If the initial write fails, the CLI stops before
+setup and reports that an existing file may be from a previous run. If writing
+the startup error fails, the incomplete report remains readable and the CLI
+reports both errors. A failed final publication also leaves the incomplete
+report readable and makes the command fail.
+
+Harness options are parsed before the CLI writes the incomplete report. An
+unknown option or `--workers` without a value can leave a report from a previous
+run. Check the process exit status alongside the requested XML.
 
 Collection failures, crashes and missing or inconsistent required reports make
 the command fail. After a partial launch or handled cancellation, the runner

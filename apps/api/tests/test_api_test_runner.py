@@ -226,10 +226,44 @@ def test_startup_report_write_failure_is_visible_before_preparation(
     blocked = suite / "blocked"
     blocked.write_text("not a directory", encoding="utf-8")
     monkeypatch.setattr(repo, "api_test_environment", lambda *args: pytest.fail("Cannot prepare without a report"))
-    with pytest.raises(OSError):
+    with pytest.raises(repo.HarnessError, match="Cannot publish API test JUnit"):
         repo.cmd_test(
             argparse.Namespace(target="api-fast", workers=1, junitxml=str(blocked / "report")), environment={}
         )
+
+
+@pytest.mark.parametrize("stage", ["preparing", "startup error"])
+def test_partial_startup_report_write_preserves_existing_junit(
+    previous_report: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], stage: str
+) -> None:
+    previous_contents = previous_report.read_bytes()
+    write = ET.ElementTree.write
+
+    def fail_report_write(tree: ET.ElementTree, destination: Path, **kwargs: object) -> None:
+        is_preparing = "not completed" in (tree.findtext(".//error") or "")
+        if is_preparing == (stage == "preparing"):
+            destination.write_bytes(b"<testsuites")
+            raise OSError(errno.EFBIG, "controlled report write failure")
+        write(tree, destination, **kwargs)
+
+    monkeypatch.setattr(ET.ElementTree, "write", fail_report_write)
+    monkeypatch.setattr(repo, "api_test_environment", lambda *args: pytest.fail("Configuration must not start"))
+    monkeypatch.setattr(repo, "REPOSITORY_VENV", Path(sys.prefix))
+    monkeypatch.setattr(
+        sys, "argv", ["repo.py", "test", "api-fast", "--junitxml", str(previous_report), "--workers", "abc"]
+    )
+
+    assert repo.main() == 1
+    stderr = capsys.readouterr().err
+    assert "Cannot publish API test JUnit" in stderr
+    assert "controlled report write failure" in stderr
+    if stage == "preparing":
+        assert previous_report.read_bytes() == previous_contents
+        assert "previous run" in stderr
+    else:
+        assert_startup_error(previous_report, "not completed")
+        assert "invalid int value: 'abc'" in stderr
+    assert list(previous_report.parent.iterdir()) == [previous_report]
 
 
 def test_greedy_partition_keeps_modules_complete_and_case_order() -> None:

@@ -1,11 +1,11 @@
 # ANY-664 Step 5 operator and dependency handoff
 
-**Historical implementation record.** The commands, file approvals, manual
-account IDs, UID allowlist and calendar-input gates below were superseded by
-ANY-709. They do not configure current runtime. Use the single
+**Historical implementation record.** ANY-709 superseded the ANY-664 operator
+commands, file approvals, manual account IDs, UID allowlist and calendar-input
+gates. For current runtime, use the
 [ANY-709 billing runbook](../../../../docs/engineering/ANY-709-billing-runbook.md)
 for direct product links, normal credentials, current offers and purchase UI.
-The completed ANY-664 evidence is retained below.
+The test commands below run the retained regression cases.
 
 Step 5 is implemented in commit `9cb7e340`. The final review correction scopes
 offer identity to tariff + service + period; the owner will commit/push it.

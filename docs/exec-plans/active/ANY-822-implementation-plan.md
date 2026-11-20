@@ -40,8 +40,10 @@ Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
   fixture extraction, parallel check stages and build/environment caching
   until measurements justify the added maintenance.
 
-See the [implementation sequence](https://github.com/gushinets/payments-portal/blob/e7d12a24a8193c08ad872e8fcbbe040721b1e101/docs/exec-plans/active/ANY-822-implementation-plan.md#3-completed-implementation)
-for the ordered steps and their scope. The
+See the [original implementation sequence](https://github.com/gushinets/payments-portal/blob/e7d12a24a8193c08ad872e8fcbbe040721b1e101/docs/exec-plans/active/ANY-822-implementation-plan.md#3-completed-implementation)
+for the ordered steps and their scope. In the runner step, pytest may reorder
+cases during worker collection. The runner uses the worker's actual collection
+order to validate the executed prefix when `-x` stops a worker. The
 [six original acceleration decisions](https://github.com/gushinets/payments-portal/blob/e7d12a24a8193c08ad872e8fcbbe040721b1e101/docs/exec-plans/active/ANY-822-implementation-plan.md#acceleration-candidate-decisions)
 record the measured costs and trade-offs. The paid-access entry below supersedes
 decision 4 on the bounded reader's fixture. See the
