@@ -548,8 +548,38 @@ parser arguments exit 2.
 
 Cancellation is operator-only. Inspect the exact original purchase and obtain
 request-specific evidence for both agreement and subscription operations.
-`not_sent` is accepted only for PENDING/PROVEN_NOT_SENT with no saved receipt or
-binding. An empty discovery result, timeout or the two-hour pause proves nothing.
+`not_sent` requires local proof of PENDING or PROVEN_NOT_SENT without a saved
+receipt or binding. An open financial review can preserve that proof when it
+records the original operation's state before moving it to MANUAL_REVIEW.
+An empty discovery result, timeout or the two-hour pause proves nothing.
+
+For an operation currently in `manual_review`, take the purchase and operation
+IDs from `inspect` and substitute them in this query. Use a read-only SQL session
+in the purchase's contour.
+
+```sql
+SELECT r.evidence_document->>'operation_state_at_conflict' AS prior_state,
+       r.evidence_document->>'send_fence_at_conflict' AS prior_send_fence,
+       o.unknown_since, o.recovery_hint_schema_version
+FROM external_create_operations AS o
+JOIN manual_review_cases AS r
+  ON r.scope_kind = 'create_operation'
+ AND r.scope_reference = o.create_operation_id::text
+ AND r.evidence_document->>'create_operation_id' = o.create_operation_id::text
+ AND r.evidence_document->>'purchase_intent_id' = o.purchase_intent_id::text
+WHERE o.purchase_intent_id = '<purchase-intent-uuid>'::uuid
+  AND o.create_operation_id = '<create-operation-uuid>'::uuid
+  AND o.operation_state = 'manual_review'
+  AND r.case_state = 'open'
+  AND r.evidence_schema_version = 'financial-review:v1';
+```
+
+Check that `inspect` shows `bound: false` and `receipt_saved: false` for the same
+operation. A matching `pending` record supports `not_sent` when `unknown_since`,
+`recovery_hint_schema_version` and the operation's `inspect` deadline are all
+absent. A matching `proven_not_sent` record requires a valid UUID in
+`prior_send_fence`.
+If neither condition is proven, follow the possible-send procedure below.
 
 For any possible send, stop the actual Portal API/worker sender processes through
 the normal authorized deployment procedure. Disabling worker scheduling, rotating
@@ -594,14 +624,24 @@ For any possible send, record the actual shutdown in `senders_stopped_at` at
 or after the latest possible-send attempt. Set `confirmed_at` to the time LBX
 gave final confirmation after shutdown (at or before the current time). Use
 the LBX confirmation reference as `--reference`.
+If a later complete read still shows the original subscription as active or
+inactive, obtain a fresh confirmation before initial completion. A refreshed
+digest alone does not renew the earlier confirmation.
 Keep provider payloads, secrets and personal data out of reason/reference.
 
 ```bash
 .venv/bin/python scripts/repo.py billing-purchase resolve-purchase --user-id <portal-user-uuid> --purchase-id <purchase-intent-uuid> --expected-digest <sha256:digest> --evidence-file <confirmation.json> --reason 'Customer requests restart; original outcome confirmed' --reference 'LBX support confirmation reference'
 ```
 
+The local harness resolves a relative evidence path from the operator's working
+directory.
+
 Initial completion retains original accepted terms, requests and binding history,
 records the audit, revokes old work and releases this purchase's hold.
+It also withdraws effective paid access backed by this purchase and retires the
+linked subscription if it was the product's primary. Purchased allowance records
+remain in history.
+
 `resolved_no_external_effect` records proven absence of effect.
 `resolved_external_terminal` retains created objects that have ended. If the
 command's response is lost, rerun it with the same `os-euid`, original

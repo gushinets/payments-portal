@@ -1,5 +1,6 @@
 """Bounded local evidence reads and review locks for privileged operations."""
 
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import Text, and_, cast, exists, or_, select
@@ -11,9 +12,11 @@ from app.infrastructure.persistence.billing_connections import billing_scope_key
 from app.models import (
     BillingProductAccessScope,
     BillingStateObservation,
+    BillingStateObservationKind,
     BillingWorkItem,
     ExternalCreateOperation,
     ExternalSubscription,
+    ExternalSubscriptionLifecycleStatus as Lifecycle,
     ManualReviewCase,
     PurchaseIntent,
     PurchaseIntentState,
@@ -244,6 +247,21 @@ def observations(db: Session, subscription_id: UUID) -> list[BillingStateObserva
             .limit(20)
         )
     )
+
+
+def has_newer_live_subscription_read(
+    db: Session, subscription_id: UUID, confirmed_at: datetime, *, schemas: tuple[str, ...]
+) -> bool:
+    observation = BillingStateObservation
+    live_read = exists().where(
+        observation.subscription_id == subscription_id,
+        observation.observation_kind == BillingStateObservationKind.AUTHORITATIVE_SUBSCRIPTION_READ,
+        observation.evidence_schema_version.in_(schemas),
+        observation.observed_at > confirmed_at,
+        observation.completeness_classification == "complete",
+        observation.evidence_document["lifecycle"].as_string().in_((Lifecycle.ACTIVE, Lifecycle.INACTIVE)),
+    )
+    return bool(db.scalar(select(live_read)))
 
 
 def work(db: Session, references: tuple[str, ...]) -> list[BillingWorkItem]:

@@ -3845,11 +3845,13 @@ def cmd_billing_purchase(args: argparse.Namespace) -> None:
         "user_id", "purchase_id", "recipient_id",
         "resolution", "case_id", "expected_case_digest",
         "expected_observation_id", "expected_reconciliation_fence",
-        "operation_id", "expected_operation_fence", "reason", "reference", "expected_digest", "evidence_file",
+        "operation_id", "expected_operation_fence", "reason", "reference", "expected_digest",
     ):
         value = getattr(args, name, None)
         if value is not None:
             command.extend(["--" + name.replace("_", "-"), str(value)])
+    if args.evidence_file is not None:
+        command.extend(["--evidence-file", str(args.evidence_file.absolute())])
     result = subprocess.run(
         command,
         cwd=ROOT,
@@ -4277,7 +4279,7 @@ def reexec_in_repository_venv_if_required() -> None:
         )
     result = subprocess.run(
         [str(python), str(Path(__file__).resolve()), *sys.argv[1:]],
-        cwd=ROOT,
+        cwd=Path.cwd() if sys.argv[1] == "billing-purchase" else ROOT,
         check=False,
     )
     raise SystemExit(result.returncode)
