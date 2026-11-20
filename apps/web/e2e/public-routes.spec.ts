@@ -56,9 +56,29 @@ for (const route of routes) {
       }
     });
 
-    const response = await page.goto(route, { waitUntil: "networkidle" });
+    const catalogPath = route === "/ru" || route === "/ru/products"
+      ? "/api/catalog/products"
+      : route === "/ru/products/proposal_ai"
+        ? "/api/catalog/products/proposal_ai"
+        : null;
+    const catalogResponse = catalogPath === null ? null : page.waitForResponse((response) =>
+      response.request().method() === "GET" && new URL(response.url()).pathname === catalogPath
+    );
+    const response = await page.goto(route, { waitUntil: "load" });
     expect(response?.ok()).toBeTruthy();
     await expect(page.locator("main")).toBeVisible();
+    if (catalogResponse !== null) {
+      const catalog = await catalogResponse;
+      expect(catalog.ok()).toBeTruthy();
+      expect(await catalog.finished()).toBeNull();
+      await expect(page.getByRole("main").getByText(
+        ruMessages.CatalogPreview.previewNote, { exact: true }
+      )).toBeVisible();
+    }
+    // The effect-driven banner proves hydration and remains inside the axe scan.
+    await expect(page.getByRole("button", {
+      name: ruMessages.CookieBanner.acceptAction, exact: true
+    })).toBeVisible();
     const navigation = page.getByRole("navigation", { name: ruMessages.Navigation.mainAriaLabel });
     const productsLink = navigation.getByRole("link", { name: ruMessages.Navigation.products, exact: true });
     const pricingLink = navigation.getByRole("link", { name: ruMessages.Navigation.pricing, exact: true });
@@ -117,6 +137,7 @@ for (const route of routes) {
       ).toHaveAttribute("href", "/ru/products");
     }
 
+    await page.evaluate(async () => { await document.fonts.ready; });
     const accessibility = await new AxeBuilder({ page }).analyze();
     const critical = accessibility.violations.filter((violation) =>
       violation.impact === "critical" || violation.impact === "serious"

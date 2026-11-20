@@ -229,7 +229,7 @@ def test_paid_access_integration_calendar_is_lossless(start: str, end: str, anch
             "last_tariffication_period_end": point.last_tariffication_period_end,
             "subscription_instance_start_date": point.subscription_instance_start_date,
         },
-        "instance_start",
+        period(),
     )
     assert normalized.precision == expected and (normalized.start, normalized.end, normalized.anchor) == (
         start,
@@ -263,7 +263,7 @@ def test_paid_access_calendar_anchor_keeps_provider_meaning(
             "last_tariffication_period_start": "2026-10-01",
             "last_tariffication_period_end": "2026-10-31",
         },
-        anchor_kind,
+        period(anchor=anchor_kind),
     )
     assert normalized.anchor == expected
 

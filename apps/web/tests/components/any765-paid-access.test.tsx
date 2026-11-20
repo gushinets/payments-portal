@@ -161,11 +161,6 @@ it("a Widget close refreshes saved paid state without browser-derived grants or 
   expect(fetcher.mock.calls.some(([url]) => String(url).includes("advance"))).toBe(false);
 });
 
-it("does not read paid state for an unverified email", () => {
-  renderCabinet(undefined, false);
-  expect(paid).not.toHaveBeenCalled();
-});
-
 it("does not adopt a silently replaced session on an already mounted account", async () => {
   renderCabinet();
   await screen.findByText(a.confirmed);

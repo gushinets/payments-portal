@@ -1,44 +1,35 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from itertools import count
 from typing import TYPE_CHECKING
 
 import pytest
-from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine, URL, make_url
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from .support.postgres import (
-    create_test_database,
-    drop_test_database,
-    restore_test_database,
-    run_migrations,
-    unique_test_database_url,
+    PostgresTestDatabase,
+    postgres_test_database,
+    session_test_database_url,
 )
-from .support.settings import DEFAULT_API_TEST_ENV
+from .support.settings import configure_api_test_environment
 
 if TYPE_CHECKING:
     from .factories.paid_access import AcceptedSubscription
 
 
-load_dotenv()
-os.environ["SENTRY_DSN"] = ""
-os.environ["SENTRY_RELEASE"] = ""
-# Never start source work from an inherited developer/stand configuration.
-os.environ["BILLING_WORKER_ENABLED"] = "false"
-for name, value in DEFAULT_API_TEST_ENV.items():
-    os.environ.setdefault(name, value)
+configure_api_test_environment()
 
 
 _POSTGRES_FIXTURES = frozenset(
     {
         "database_test_url",
         "database_admin_url",
+        "postgres_database",
         "postgres_engine",
         "postgres_session_factory",
         "migrated_database",
@@ -87,32 +78,23 @@ def database_test_url() -> URL:
     Use this fixture in PostgreSQL compatibility or integration fixtures. Tests
     without PostgreSQL requirements should not depend on it and remain portable.
     """
-    if configured_url := os.getenv("TEST_POSTGRES_DATABASE_URL"):
-        # Temporary CI compatibility: CI currently uses an application database
-        # plus a separately named disposable database. Remove this branch once
-        # local and CI tests share one canonical test database name.
-        database_url = make_url(configured_url)
-    else:
-        required_names = (
-            "POSTGRES_USER_TEST",
-            "POSTGRES_PASSWORD_TEST",
-            "POSTGRES_PORT_TEST",
-            "POSTGRES_DB_TEST",
-        )
-        missing_names = [name for name in required_names if not os.getenv(name)]
-        if missing_names:
-            pytest.skip("PostgreSQL test configuration is unavailable; missing: " + ", ".join(missing_names))
+    import os
 
-        database_url = URL.create(
-            drivername="postgresql+psycopg",
-            username=os.environ["POSTGRES_USER_TEST"],
-            password=os.environ["POSTGRES_PASSWORD_TEST"],
-            host=os.getenv("POSTGRES_HOST_TEST", "localhost"),
-            port=int(os.environ["POSTGRES_PORT_TEST"]),
-            database=os.environ["POSTGRES_DB_TEST"],
-        )
+    from scripts.repo import api_test_environment
 
-    return unique_test_database_url(database_url)
+    environment = api_test_environment("api-postgres", dict(os.environ))
+    if configured_url := environment.get("TEST_POSTGRES_DATABASE_URL"):
+        return session_test_database_url(make_url(configured_url))
+    return session_test_database_url(
+        URL.create(
+            "postgresql+psycopg",
+            username=environment["POSTGRES_USER_TEST"],
+            password=environment["POSTGRES_PASSWORD_TEST"],
+            host=environment.get("POSTGRES_HOST_TEST") or "localhost",
+            port=int(environment["POSTGRES_PORT_TEST"]),
+            database=environment["POSTGRES_DB_TEST"],
+        )
+    )
 
 
 @pytest.fixture(scope="session")
@@ -126,25 +108,19 @@ def database_admin_url(database_test_url: URL) -> URL:
 
 
 @pytest.fixture(scope="session")
-def postgres_engine(
+def postgres_database(
     database_test_url: URL,
     database_admin_url: URL,
-) -> Iterator[Engine]:
-    """Own one uniquely named PostgreSQL database and engine for this process.
+) -> Iterator[PostgresTestDatabase]:
+    """Own unique scenario/template databases and the session's shared engine."""
+    with postgres_test_database(database_test_url, database_admin_url) as database:
+        yield database
 
-    Request this fixture indirectly through ``migrated_database`` or
-    ``db_session``. Schema restoration reuses the engine after disposing its
-    connections; session teardown removes the process-owned database.
-    """
-    create_test_database(database_test_url, database_admin_url)
-    engine = create_engine(database_test_url, pool_pre_ping=True)
 
-    try:
-        yield engine
-    finally:
-        # Dispose pooled connections before PostgreSQL drops the physical DB.
-        engine.dispose()
-        drop_test_database(database_test_url, database_admin_url)
+@pytest.fixture(scope="session")
+def postgres_engine(postgres_database: PostgresTestDatabase) -> Engine:
+    """Provide the owned engine; schema tests retain explicit migration control."""
+    return postgres_database.engine
 
 
 @pytest.fixture(scope="session")
@@ -159,28 +135,11 @@ def postgres_session_factory(postgres_engine: Engine) -> sessionmaker[Session]:
 
 @pytest.fixture
 def migrated_database(
-    postgres_engine: Engine,
-    migrated_template: URL,
+    postgres_database: PostgresTestDatabase,
 ) -> Iterator[Engine]:
-    """Provide a fresh copy of the production-migrated schema for one test.
-
-    Business fixtures and transactions remain function-scoped. Migration tests
-    still execute their own upgrade/downgrade paths against the disposable copy.
-    """
-    restore_test_database(postgres_engine, migrated_template)
-    yield postgres_engine
-
-
-@pytest.fixture(scope="session")
-def migrated_template(database_test_url: URL, database_admin_url: URL) -> Iterator[URL]:
-    """Build one schema/seed template per process; never cache business scenarios."""
-    template_url = unique_test_database_url(database_test_url)
-    create_test_database(template_url, database_admin_url)
-    try:
-        run_migrations(template_url)
-        yield template_url
-    finally:
-        drop_test_database(template_url, database_admin_url)
+    """Clone the real migrated template, retaining per-test mutable state."""
+    postgres_database.restore()
+    yield postgres_database.engine
 
 
 @pytest.fixture

@@ -405,7 +405,14 @@ async def test_billing_background_recovery_customer_send_lease_and_paired_proof(
             data = {"user_id": 345, "outer_id": "foreign-key" if mode == "foreign" else customer.outer_key}
         return httpx.Response(200, json={"code": 200, "response": data})
 
-    async with source_resources(config, lbx_transport=httpx.MockTransport(respond)) as sources:
+    def forbidden_kernel(request: httpx.Request) -> httpx.Response:
+        pytest.fail("Customer recovery must not request Kernel")
+
+    async with source_resources(
+        config,
+        kernel_transport=httpx.MockTransport(forbidden_kernel),
+        lbx_transport=httpx.MockTransport(respond),
+    ) as sources:
         worker = BillingWorker(config, factory, sources.require_lbx())
         assert not await worker.tick(WorkLane.URGENT)
         assert calls == []  # The active explicit send retains its lease.

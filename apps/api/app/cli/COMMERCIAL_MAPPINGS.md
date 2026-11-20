@@ -1,11 +1,11 @@
 # ANY-664 Step 5 operator and dependency handoff
 
-**Historical implementation record.** The commands, file approvals, manual
-account IDs, UID allowlist and calendar-input gates below were superseded by
-ANY-709. They do not configure current runtime. Use the single
+**Historical implementation record.** ANY-709 superseded the ANY-664 operator
+commands, file approvals, manual account IDs, UID allowlist and calendar-input
+gates. For current runtime, use the
 [ANY-709 billing runbook](../../../../docs/engineering/ANY-709-billing-runbook.md)
 for direct product links, normal credentials, current offers and purchase UI.
-The completed ANY-664 evidence is retained unchanged below.
+The test commands below run the retained regression cases.
 
 Step 5 is implemented in commit `9cb7e340`. The final review correction scopes
 offer identity to tariff + service + period; the owner will commit/push it.
@@ -254,29 +254,25 @@ without translating DB failure into a provider outage.
   never fall back to an older one. Explicit historical queries are distinct.
   Build safe public DTOs in the next step; full audit evidence is operator-only.
 
-## Human verification order (not executed)
+## Current commands for the retained tests
 
-From `/home/wstanley/www/work_unirec/payments-portal`:
+From the repository root with the test environment configured as described
+in the [Testing Strategy](../../../../docs/engineering/TESTING.md):
 
 ```bash
-export PATH="/home/wstanley/www/work_unirec/payments-portal/.venv/bin:$PATH"
-./.venv/bin/python -m pytest -q apps/api/tests/test_commercial_sellability.py
+python scripts/repo.py test api-fast --pytest-args apps/api/tests/test_commercial_sellability.py -q
 make test_db_up
-./.venv/bin/python -m pytest -q apps/api/tests/test_commercial_mapping_postgres.py
-npm run test:api:postgres
-make test_db_stop
-npm run architecture:check
-npm run check:fast
+python scripts/repo.py test api-postgres --pytest-args \
+  apps/api/tests/test_commercial_mapping_postgres.py \
+  apps/api/tests/test_mapping_publication_expiry_postgres.py -q
 npm run check
+make test_db_stop
 ```
 
-Use the existing worktree test DB configuration; pytest owns creation, migrated
-schema and removal of the disposable `_tests` database. Do not point these tests
-at a developer/application/production database. If direct pytest lacks the
-worktree's test DB variables, use `npm run test:api:postgres` (the harness supplies
-them). Existing DB guards require the current baseline migration; there is no
-Step 5 schema upgrade. Generation is unnecessary because this step adds no
-Portal HTTP contract.
+The harness supplies the worktree test DB configuration. pytest owns creation,
+migrations and cleanup of its disposable databases. At the Step 5 revision,
+existing DB guards required the baseline migration, and the step added no
+schema migration or Portal HTTP contract.
 
 The focused PostgreSQL suite includes the restricted CLI dry-run → publish →
 query flow, positive real-client/normalizer/evaluator inserts, source outage and

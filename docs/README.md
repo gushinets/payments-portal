@@ -1,7 +1,7 @@
 # Documentation Index
 
 Status: authoritative index
-Last updated: 2026-11-11
+Last updated: 2026-11-18
 
 Start with the smallest document that matches the task.
 
@@ -67,6 +67,9 @@ Start with the smallest document that matches the task.
   and acceptance limits; verification history is in the linked porting plan.
 - [ANY-765 completed porting plan](exec-plans/completed/ANY-765-implementation-plan-refactor.md)
   — DONE and archived by owner request on 2026-11-09; verification and live-evidence limits retained.
+- [ANY-864 monthly LBX calendar and P03 checkpoint](engineering/billing-background-operations.md#monthly-lbx-instance-start-calendar-any-864)
+  — supported profile, sentinel behavior and CONFIRMED_ON_TEST results;
+  [detailed verification record](exec-plans/active/ANY-864-implementation-plan.md#live-lbx-p03-acceptance--2026-11-18).
 - [ANY-664 completed implementation plan](exec-plans/completed/ANY-664-implementation-plan.md)
   — all eight Portal steps DONE; implementation-commit CI evidence, retained
   real-enablement gates and handoff to ANY-504 program Step 7
@@ -128,6 +131,7 @@ Start with the smallest document that matches the task.
 - [Execution plans](exec-plans/README.md)
 - [ANY-766 active implementation plan](exec-plans/active/ANY-766-implementation-plan.md) — authoritative Portal/backend API and Kernel integration plan; Steps 1–17 and five PR corrections complete in the agreed local scope; PR readiness checklist pending; broader acceptance matrix deferred.
 - [Joint paid-runtime harness](../tools/joint_paid_runtime/README.md) — isolated real-app HTTP/PostgreSQL and desktop/mobile smoke, explicit external substitutes and run-owned cleanup.
+- [ANY-822 test-execution acceleration plan](exec-plans/active/ANY-822-implementation-plan.md) — acceptance criteria, retained test guarantees and verification.
 - [ANY-715 completed MVP rebuild plan](exec-plans/completed/ANY-715-mvp-rebuild-plan.md) — Stages 0–6 closed by owner decision; verification evidence, limitations and follow-ups under ANY-820 are retained.
 - [Background billing operations](engineering/billing-background-operations.md) — worker settings, scheduling, polling-only operation, retained inbox history, operator commands and diagnostics.
 

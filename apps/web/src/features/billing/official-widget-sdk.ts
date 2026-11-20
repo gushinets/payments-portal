@@ -89,18 +89,19 @@ export function mountOfficialWidget(
     disableInvoiceGeneration: bootstrap.disableInvoiceGeneration
   };
   bootstrap.credential = "";
+  const payment = bootstrap.presentation === "payment";
   const frame = document.createElement("iframe");
   frame.title = title;
   // The data URL has an opaque origin even with allow-same-origin, allowing
   // the nested HTTPS vendor frame to use its own Client API origin.
   // Payment methods may submit forms or open an acquiring window. Only the
   // proven payment presentation permits those user-driven browser actions.
-  frame.setAttribute("sandbox", bootstrap.presentation === "payment"
+  frame.setAttribute("sandbox", payment
     ? "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
     : "allow-scripts allow-same-origin");
   frame.referrerPolicy = "no-referrer";
   frame.style.width = "100%";
-  frame.style.height = "560px";
+  frame.style.height = payment ? "max(800px, 100dvh)" : "560px";
   frame.style.border = "0";
   const channel = new MessageChannel();
   let disposed = false;
@@ -143,7 +144,7 @@ export function mountOfficialWidget(
     frame.contentWindow?.postMessage("portal_widget_connect", "*", [channel.port2]); // NOSONAR S2819: opaque data: receiver; handshake/port only. See docs/SECURITY.md.
     frame.onload = null;
   };
-  frame.src = "data:text/html;charset=utf-8," + encodeURIComponent(hostDocument(origin.origin, bootstrap.presentation === "payment"));
+  frame.src = "data:text/html;charset=utf-8," + encodeURIComponent(hostDocument(origin.origin, payment));
   node.replaceChildren(frame);
   return dispose;
 }

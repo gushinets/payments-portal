@@ -10,7 +10,7 @@ import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from queue import Queue
 
@@ -26,7 +26,6 @@ from app.domains.catalog.publication import PublicationResult, StoredMapping
 from app.infrastructure.persistence.commercial_mappings import MappingStorageDeadline, lock_mapping_scope
 from app.models import CommercialMappingRevision
 from apps.api.tests.support.commercial_mappings import SIMULATED_OFFER_ID, fresh_fixture, reviewed_fixture
-from apps.api.tests.support.lbx_selected_offer import SelectedOfferRecording, simulated_inputs
 from apps.api.tests.support.operator_processes import OperatorProcesses, processes as processes
 
 
@@ -52,13 +51,11 @@ def assert_history_unchanged(factory: sessionmaker[Session], first: StoredMappin
 
 
 @pytest.mark.parametrize("stage", ["before_database", "after_history", "after_flush"])
-@pytest.mark.parametrize("expiring", ["account_day", "policy", "price"])
 async def test_expiration_never_appends_or_changes_latest_revision(
     migrated_database: Engine,
     postgres_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
     stage: str,
-    expiring: str,
 ) -> None:
     first_fresh = await fresh_fixture(await reviewed_fixture())
     first = publication.publish_mapping(
@@ -70,17 +67,11 @@ async def test_expiration_never_appends_or_changes_latest_revision(
         lock_timeout_seconds=0.2,
         allow_simulated=True,
     ).stored
-    recording, inputs = SelectedOfferRecording(), simulated_inputs()
-    assert inputs.policy is not None
-    if expiring == "policy":
-        inputs = inputs.model_copy(
-            update={"policy": inputs.policy.model_copy(update={"valid_until": date(2026, 10, 17)})}
-        )
-    elif expiring == "price":
-        recording.replace("prices", "2027-01-01", "2026-10-17")
-    reviewed = await reviewed_fixture(allowance=26, revision="fixture-v2", recording=recording, source_inputs=inputs)
+    # All deadline sources share this boundary; their calculation matrix lives
+    # in test_mapping_billing_calendar. PostgreSQL owns stage/rollback coverage.
+    reviewed = await reviewed_fixture(allowance=26, revision="fixture-v2")
     instant = BEFORE_MIDNIGHT
-    fresh = await fresh_fixture(reviewed, recording=recording, source_inputs=inputs, clock=lambda: instant)
+    fresh = await fresh_fixture(reviewed, clock=lambda: instant)
     assert fresh.evidence_valid_until == MIDNIGHT
     factory = postgres_session_factory
     if stage == "before_database":
