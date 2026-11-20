@@ -243,6 +243,68 @@ def test_invalidation_harness_forwards_user_and_recipient(monkeypatch: pytest.Mo
     assert forwarded.recipient_id == "platform-kernel"
 
 
+@pytest.mark.parametrize("reexec", [False, True])
+@pytest.mark.parametrize("absolute", [False, True])
+def test_terminal_evidence_path_uses_callers_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, reexec: bool, absolute: bool
+) -> None:
+    operator = tmp_path / "operator"
+    checkout = tmp_path / "checkout"
+    operator.mkdir()
+    checkout.mkdir()
+    venv = checkout / ".venv"
+    python = venv / ("Scripts/python.exe" if repo.os.name == "nt" else "bin/python")
+    python.parent.mkdir(parents=True)
+    python.touch()
+    monkeypatch.chdir(operator)
+    monkeypatch.setattr(repo, "ROOT", checkout)
+    monkeypatch.setattr(repo, "REPOSITORY_VENV", venv)
+    monkeypatch.setattr(repo, "direct_api_environment", lambda: {})
+    monkeypatch.setattr(repo.sys, "prefix", str(tmp_path if reexec else venv))
+    evidence_path = operator / "evidence.json"
+    monkeypatch.setattr(
+        repo.sys,
+        "argv",
+        [
+            str(ROOT / "scripts/repo.py"),
+            "billing-purchase",
+            "resolve-purchase",
+            "--evidence-file",
+            str(evidence_path) if absolute else evidence_path.name,
+            "--user-id",
+            str(uuid4()),
+            "--purchase-id",
+            str(uuid4()),
+            "--expected-digest",
+            "sha256:" + "a" * 64,
+            "--reason",
+            "test",
+            "--reference",
+            "test",
+        ],
+    )
+    calls: list[Path] = []
+
+    def run(command: list[str], *, cwd: Path, **kwargs: object) -> SimpleNamespace:
+        with monkeypatch.context() as process:
+            process.chdir(cwd)
+            if command[1] != "-m":
+                process.setattr(repo.sys, "prefix", str(repo.REPOSITORY_VENV))
+                process.setattr(repo.sys, "argv", command[1:])
+                with pytest.raises(SystemExit) as finished:
+                    repo.main()
+                return SimpleNamespace(returncode=finished.value.code)
+            args = cli.parser().parse_args(command[3:])
+            calls.append(args.evidence_file.absolute())
+            return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(repo.subprocess, "run", run)
+    with pytest.raises(SystemExit) as finished:
+        repo.main()
+    assert finished.value.code == 0
+    assert calls == [evidence_path]
+
+
 def test_billing_recovery_cli_safe_error(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     def fail(*args: object) -> None:
         raise BillingRefused("billing_review_stale", 409)

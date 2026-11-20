@@ -32,6 +32,7 @@ from app.composition.backend_consumers import initialize_backend_consumers
 from app.composition.billing_operator import resolve_review
 from app.models import (
     ExternalCreateOperationKind as Kind,
+    ExternalCreateOperationState as OperationState,
     ManualReviewCase,
     PurchaseIntentState,
     ExternalSubscription,
@@ -55,7 +56,7 @@ from apps.api.tests.factories.purchase_terms import reviewed_meaning
 from app.composition.purchases import review_purchase, confirm_purchase, advance_purchase
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.support.any709_step3 import PurchaseTransport
-from apps.api.tests.test_any709_step3_postgres import accept, TOKEN
+from apps.api.tests.test_any709_step3_postgres import accept, setup_purchase, TOKEN
 from apps.api.tests.test_billing_worker_postgres import historical_link
 from apps.api.tests.test_billing_background_recovery_postgres import (
     anyio_backend as anyio_backend,
@@ -670,6 +671,90 @@ async def test_late_unbound_agreement_review_and_downgrade(
     else:
         with alembic_test_config(database_test_url) as config:
             alembic_command.downgrade(config, "20261031_0006")
+
+
+@pytest.mark.parametrize("later_state", ["active", "ended"])
+async def test_initial_completion_checks_newer_subscription_read(paid_source: Scenario, later_state: str) -> None:
+    scenario = paid_source
+    factory = scenario.factory
+    with factory() as db:
+        sub = db.get(ExternalSubscription, scenario.subscription_id)
+        purchase = service.read_purchase(factory, sub.user_id, sub.purchase_intent_id)
+    original = request(factory, purchase, confirmed=True)
+    if later_state == "ended":
+        scenario.transport.subscriptions[0]["state"] = 3
+    read = await reconcile(scenario)
+    assert read.proof.complete and read.proof.lifecycle == later_state
+    assert read.proof.read_started_at > original.evidence.confirmed_at
+    with pytest.raises(PurchaseRefused, match="purchase_resolution_stale"):
+        terminal.resolve_purchase(factory, scenario.config, original, PRINCIPAL)
+    refreshed = request(factory, purchase, confirmed=True)
+    old_confirmation = refreshed.model_copy(update={"evidence": original.evidence})
+    if later_state == "active":
+        before = effective(factory)
+        assert before[1]["grants"]
+        with pytest.raises(PurchaseRefused, match="purchase_resolution_confirmation_required"):
+            terminal.resolve_purchase(factory, scenario.config, old_confirmation, PRINCIPAL)
+        assert service.read_purchase(factory, purchase.user_id, purchase.id).held
+        assert effective(factory) == before
+    else:
+        refreshed = old_confirmation
+    assert terminal.resolve_purchase(factory, scenario.config, refreshed, PRINCIPAL).state == (
+        PurchaseIntentState.RESOLVED_EXTERNAL_TERMINAL
+    )
+    assert terminal.resolve_purchase(factory, scenario.config, refreshed, PRINCIPAL).already_resolved
+
+
+@pytest.mark.parametrize("prior_state", [OperationState.PENDING, OperationState.PROVEN_NOT_SENT])
+async def test_terminal_completion_retains_unsent_proof_after_terms_change_review(
+    migrated_database: Engine, postgres_session_factory: sessionmaker[Session], prior_state: OperationState
+) -> None:
+    factory, config = postgres_session_factory, step1_settings()
+    transport = setup_purchase(factory)
+
+    def respond(message: httpx.Request) -> httpx.Response:
+        if message.method == "POST" and message.url.path.endswith("/subscriptions"):
+            assert prior_state == OperationState.PROVEN_NOT_SENT
+            raise httpx.ConnectError("synthetic no-send", request=message)
+        return transport.respond(message)
+
+    if prior_state == OperationState.PENDING:
+        transport.fail_create = "/agreements"
+        transport.hide.add("/agreements")
+    async with source_resources(
+        config, kernel_transport=httpx.MockTransport(transport.kernel), lbx_transport=httpx.MockTransport(respond)
+    ) as sources:
+        purchase = await accept(sources, factory)
+        before = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+        assert before.operations[1].state == prior_state
+        transport.change_price()
+        transport.hide.clear()
+        reviewed = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+    agreement, subscription = reviewed.operations
+    assert agreement.bound_id and subscription.state == OperationState.MANUAL_REVIEW
+    assert reviewed.reason == "purchase_terms_changed_after_preparation"
+    command = request(factory, reviewed, confirmed=True)
+    agreement_proof = command.evidence.operations[0]
+    assert agreement_proof.operation_id == agreement.id
+    wrong = terminal.OperationEvidence(
+        operation_id=subscription.id,
+        outcome=terminal.TerminalEvidenceKind.EXTERNAL_TERMINAL,
+        external_object_id="99999",
+    )
+    wrong_command = command.model_copy(
+        update={"evidence": command.evidence.model_copy(update={"operations": (agreement_proof, wrong)})}
+    )
+    with pytest.raises(PurchaseRefused, match="purchase_resolution_proof_incomplete"):
+        terminal.resolve_purchase(factory, config, wrong_command, PRINCIPAL)
+    assert service.read_purchase(factory, reviewed.user_id, reviewed.id).held
+    unsent = terminal.OperationEvidence(operation_id=subscription.id, outcome=terminal.TerminalEvidenceKind.NOT_SENT)
+    command = command.model_copy(
+        update={"evidence": command.evidence.model_copy(update={"operations": (agreement_proof, unsent)})}
+    )
+    assert terminal.resolve_purchase(factory, config, command, PRINCIPAL).state == (
+        PurchaseIntentState.RESOLVED_EXTERNAL_TERMINAL
+    )
+    assert not service.read_purchase(factory, reviewed.user_id, reviewed.id).held
 
 
 async def test_terminal_dependency_reduces_paid_access_and_retains_allowance_history(paid_source: Scenario) -> None:

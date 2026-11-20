@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.settings import Settings
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.customers import lock_customer, lock_user
+from app.domains.billing.operator_cases import reviewed_unsent_operation
 from app.domains.billing.operator_contracts import (
     AuditedObjects,
     LATE_REASON,
@@ -31,6 +32,7 @@ from app.domains.billing.operator_contracts import (
 )
 from app.domains.billing.operator_review import digest, terminal_state_digest
 from app.domains.billing.paid_access import reduce_paid_access
+from app.domains.billing.reconciliation_contracts import RECONCILIATION_READ_SCHEMAS
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
@@ -132,8 +134,9 @@ def resolve_purchase(
             snapshot = service._operation(db, op)
             previous = [proof for proof in saved_proofs if proof.operation_id == item.operation_id]
             retained = {proof.external_object_id for proof in previous if proof.external_object_id is not None}
-            unsent = op.operation_state in {OperationState.PENDING, OperationState.PROVEN_NOT_SENT} and not (
-                snapshot.bound_id or snapshot.candidate_id
+            unsent = not (snapshot.bound_id or snapshot.candidate_id) and (
+                op.operation_state in {OperationState.PENDING, OperationState.PROVEN_NOT_SENT}
+                or (op.operation_state == OperationState.MANUAL_REVIEW and reviewed_unsent_operation(db, op, snapshot))
             )
             if late:
                 _check_case_evidence(late, item, original_proofs, previous)
@@ -175,6 +178,16 @@ def resolve_purchase(
                 raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
             if not required and retained and item.external_object_id not in retained:
                 raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
+            if (
+                late is None
+                and op.operation_kind == Kind.SUBSCRIPTION
+                and sub is not None
+                and item.external_object_id == sub.external_subscription_id
+                and queries.has_newer_live_subscription_read(
+                    db, sub.subscription_id, evidence.confirmed_at, schemas=RECONCILIATION_READ_SCHEMAS
+                )
+            ):
+                raise PurchaseRefused("purchase_resolution_confirmation_required", 409)
             external |= item.outcome == TerminalEvidenceKind.EXTERNAL_TERMINAL
         before = row.state
         if late_case is None:

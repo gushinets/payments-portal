@@ -1,6 +1,6 @@
 # ANY-821 - Terminal resolution for UNKNOWN purchases
 
-Status: Implemented and verified locally.
+Status: Completed.
 Updated: 2026-11-20
 Issue: [ANY-821](https://linear.app/paveldik/issue/ANY-821/define-and-implement-terminal-resolution-for-purchases-stuck-in)
 
@@ -38,15 +38,3 @@ and production enablement remain with ANY-504.
 See the [operator procedure](../../engineering/billing-background-operations.md#terminal-completion-any-821),
 [purchase history and downgrade rules](../../architecture/payment-portal-data-model.md#purchase-and-external-create-tables)
 and [customer journey](../../product/ru-mvp.md).
-
-## Final local verification
-
-On 2026-11-20, `npm run check:fast` passed 38 web boundary checks, 477 component
-tests and 2,414 fast API tests. One Windows-only test skipped on Linux. On
-PostgreSQL 14, 1,315 of 1,316 tests passed together. The Portal–Kernel HTTP test
-passed separately with the Unix socket directory supplied via `PGHOST`.
-
-The first full check stopped on a Next.js 16.4.2 security advisory. The
-standalone build passed on retry. All 22 synthetic purchase browser checks
-passed across desktop Chromium and Pixel 7 emulation, including reopening a
-saved link after release and reaching the current offer and consent step.

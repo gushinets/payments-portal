@@ -386,6 +386,9 @@ mode for this cutover.
 Migration `20261116_821` refuses downgrade while a purchase retains
 `resolved_external_terminal`, a `purchase_late_external_object` review is open,
 or a terminal resolution audit retains a confirmed external object ID.
+While any of these conditions holds, use a Portal image that can read and
+enforce ANY-821 history. This requirement also applies to image-only rollback
+against the retained database.
 Even after a purchase was completed as `resolved_no_external_effect`, an open
 late-object review requires a compatible Portal reader to block new financial
 CREATEs for that customer. Confirming the object keeps the downgrade blocked.
