@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 import signal
 from pathlib import Path
+from types import FrameType
 
 import pytest
 
@@ -19,6 +21,14 @@ def pytest_configure() -> None:
     # Windows process groups receive CTRL_BREAK_EVENT from the runner.
     if hasattr(signal, "SIGBREAK"):
         signal.signal(signal.SIGBREAK, signal.default_int_handler)
+    elif os.getpgrp() != os.getpid():
+        # Nested pytest shares its parent's group and can receive both the
+        # group interrupt and the one forwarded by the parent during cleanup.
+        def interrupt_once(signum: int, frame: FrameType | None) -> None:
+            signal.signal(signum, signal.SIG_IGN)
+            signal.default_int_handler(signum, frame)
+
+        signal.signal(signal.SIGINT, interrupt_once)
 
 
 def pytest_collection_finish(session: pytest.Session) -> None:

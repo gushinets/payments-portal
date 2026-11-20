@@ -1,6 +1,6 @@
 # ANY-822 — Accelerate test execution
 
-Status: local timing and regression criteria met; final-head CI and human review pending
+Status: MVP timing targets met at `1b3ee7cf`. Full verification of the runner follow-up and human review are pending.
 Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
 Branch: `ANY-822`, based on `791b7f5a`
 
@@ -61,9 +61,10 @@ records the before/after costs where measured and the cases retained unchanged.
   reuse the purchase/reconciliation fixture for the bounded reader. The HTTP
   test compares the complete grants and allowances with committed state, puts
   the paid product beyond the 100-product display cap and checks for writes.
-  This replaces a fixture that manually assembled the same billing rows.
-  Its historical in-module saving was 1.45 s for this case. The combined
-  reader/expiry sample showed no consistent improvement.
+  The earlier fixture that assembled billing rows directly saved 1.45 s in
+  the historical in-module comparison. The combined reader/expiry sample
+  showed no consistent improvement. The shared-fixture measurement is recorded
+  under MVP timing below.
 - **Frontend.** [Subscription guard tests](../../../apps/web/tests/components/SubscriptionStateGuard.test.ts)
   own every wording variant. [Portal E2E](../../../apps/web/e2e/portal-ru.spec.ts)
   still applies the guard to the real page. The effect-settled
@@ -90,6 +91,8 @@ records the before/after costs where measured and the cases retained unchanged.
 
 ## Verification
 
+### MVP timing at `1b3ee7cf`
+
 The complete `check --coverage` handler passed on Linux at `1b3ee7cf` in
 **859.834 s**. PostgreSQL took **566.218 s** with four workers on the dedicated
 PostgreSQL 18.4 tmpfs server, including collection and database cleanup. All
@@ -110,29 +113,35 @@ on loopback. Browser E2E was excluded per the timing criteria. The final log
 and timings are in `.harness/any822-final-check-_3mwaeyw/` and the merged
 PostgreSQL report is in
 `.harness/api-tests/api-postgres-3d4cdf6c11574854beb86aeb9f669c21/`.
-Native Windows launcher behavior and upload on actual CI cancellation were
-not exercised locally. The workflow uses the accelerated commands. The recorded
-full local run is sufficient for MVP timing acceptance. Additional benchmarks,
-a new comparison against `main`, and before-and-after CI timing are outside this
-PR's acceptance scope. See
-[PR checks](https://github.com/gushinets/payments-portal/pull/170/checks) for the
-published revision's CI results.
+The recorded full local run is sufficient for MVP timing acceptance.
+Additional benchmarks, a new comparison against `main`, and before-and-after
+CI timing are outside this PR's acceptance scope.
 
-### Local review follow-up
+### Published revision `52855777`
 
-The collection regressions reproduced missing module skips and import tracebacks
-in merged JUnit. A synthetic child test reproduced the missing finalizer when
-`subprocess.run` killed the child at its deadline. After the fixes, 416 runner,
-dispatch, coverage and documentation checks passed. On a disposable PostgreSQL
-14 server, all 13 focused lifecycle cases passed. An injected child timeout
-after both databases were created let pytest run teardown and left no scenario
-or template databases on that server.
+CI passed the PostgreSQL partition and migration cycles, fast checks with
+coverage, web build and browser tests, and Linux and Windows harness smoke.
+Upload during an actual CI cancellation remains unverified.
+[CI run for `52855777`](https://github.com/gushinets/payments-portal/actions/runs/44657736774)
 
-The canonical fast check passed with an existing Python environment matching
-`uv.lock`: 2,567 API-fast passes and one existing skip, 454 component passes,
-and 38 web boundary passes. The worktree's default Python environment used
-older DNS and telemetry packages and failed five unrelated checks before the
-rerun. The full PostgreSQL partition and native Windows were not rerun.
+The local verification record added in `52855777` reports 416 focused checks,
+13 cases on disposable PostgreSQL 14, and a passing `check:fast` with
+lock-matched dependencies. It covers collection skips and errors in JUnit and
+confirms cleanup after an injected nested pytest timeout.
+
+### Local runner follow-up after `52855777`
+
+The follow-up accepts pytest's reordered worker collection, validates `-x` in
+worker order, and handles repeated `SIGINT` in nested pytest on POSIX.
+All 534 focused checks passed, including group and parent-only interruption.
+All 10 template lifecycle tests passed on disposable PostgreSQL 14 and left no
+scenario or template databases.
+
+`npm run check:fast` passed its earlier stages and reached all 2,573 API-fast
+cases. Five failed with the worktree's older DNS and OpenTelemetry packages.
+All five passed when rerun with the versions pinned in `uv.lock`. A complete
+green `check:fast` in one environment and CI verification remain open for this
+follow-up.
 
 ### Prior evidence
 

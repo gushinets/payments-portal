@@ -49,9 +49,10 @@ suite must be stated explicitly in handoff evidence.
 `test:api:postgres` runs the PostgreSQL layer with **four processes by default**.
 `test:api` runs the fast partition serially, then PostgreSQL with four processes,
 retaining outcomes from both even if the fast partition fails to start or run.
-Whole modules are assigned greedily by collected case count. Order within
-each module is preserved. Small selections use fewer processes when there are
-fewer modules. The runner uses standard-library subprocesses.
+Whole modules are assigned greedily by collected case count. pytest may
+reorder cases when it collects the assigned tests. Small selections use fewer
+processes when there are fewer modules. The runner uses standard-library
+subprocesses.
 
 `check:fast` checks documentation, generated artifacts, architecture, API
 lint/format, web boundaries, components, web lint and API-fast. `check` also
@@ -166,9 +167,12 @@ The harness resolves test database settings in this order.
    publishes the expected loopback endpoint.
 
 Configured ports must be between 1 and 65535. The configured database name
-must end in `_test` or `_tests`. pytest uses it to validate routing and
-assigns its own physical database names. Use a dedicated test server with a
-role that can create databases and connect to the `postgres` admin database.
+must end in `_test` or `_tests`. The fixture validates the name before
+generating its own physical database names and rejects a `dbname` query
+override. For an explicit connection, confirm the effective host and port,
+including any routing overrides in the URL query. The Compose endpoint check
+applies only to the worktree fallback. Use a dedicated test server with a role
+that can create databases and connect to the `postgres` admin database.
 For migration tests, include the username, password and host in the URL
 authority so Alembic can initialize application settings. For example,
 `postgresql+psycopg://test_user:test_password@localhost:42500/portal_tests`.
@@ -260,7 +264,8 @@ during an actual GitHub Actions cancellation is unverified.
 The runner checks JUnit against assigned node IDs and worker exit status, including
 skips and setup/teardown errors. With `--pytest-args -x`, each worker can stop
 after its first failure. Its manifest confirms the stop and its JUnit must cover
-every test through that failure. Other workers and partitions finish normally.
+every test through that failure in the worker's collection order. Other workers
+and partitions finish normally.
 
 On interruption the runner sends a graceful interrupt and waits up to 15 seconds
 for pytest cleanup. It then terminates remaining children and waits up to 5 more
@@ -271,9 +276,11 @@ the active collection or worker directory for forced termination. Report
 leftovers in disposable storage and preserve resources owned by other runs.
 
 The PostgreSQL template lifecycle test applies the same bounded cleanup to its
-nested pytest processes when a child exceeds its 60-second deadline. The failure
-includes the child log, whether termination was forced and the database names
-recorded by the child when available.
+nested pytest processes when a child exceeds its 60-second deadline. On POSIX
+the nested child shares the worker's process group and handles only the first
+`SIGINT`, allowing fixture cleanup to continue if the worker forwards another.
+Deadline failures include the child log, whether termination was forced and
+any database names recorded by the child.
 
 ## Test fixtures
 
@@ -363,6 +370,20 @@ warm-up and repeated measurements; report the spread and machine/load, storage,
 process count and cache conditions. Include collection, database creation,
 cloning and cleanup in test wall time; report server startup separately. A
 diagnostic run or local PASS does not establish final timing or remote CI acceptance.
+
+### Test review checklist
+
+- [ ] Choose the cheapest [test layer](#layers) that exercises the required
+  behavior and meaningful failure paths. For each moved, consolidated or
+  removed case, record the retained assertion or the retired requirement.
+- [ ] Assert observable outcomes. Keep real PostgreSQL, HTTP and browser
+  checks where the boundary itself is part of the guarantee.
+- [ ] Verify [fixture ownership](#test-fixtures), seed restoration and cleanup
+  for resources created by the test.
+- [ ] Check [clock and readiness controls](#clocks-readiness-and-stability).
+  Preserve real timeout, cancellation and lock tests where timing matters.
+- [ ] Run the applicable [canonical checks](#commands). Record results, skips
+  and any coverage scope for the tested revision.
 
 Underlying mechanics and guidance: [PostgreSQL database templates](https://www.postgresql.org/docs/18/sql-createdatabase.html),
 [Docker tmpfs](https://docs.docker.com/engine/storage/tmpfs/),

@@ -313,6 +313,34 @@ def test_skip():
         assert len(list(result.directory.glob("postgres/worker-*/pytest.log"))) == count
 
 
+@pytest.mark.parametrize("workers,fail_module", [(1, None), (2, None), (1, "second")])
+def test_session_fixture_can_reorder_worker_collection(suite: Path, workers: int, fail_module: str | None) -> None:
+    source(
+        suite,
+        "conftest.py",
+        "import pytest\n@pytest.fixture(scope='session', params=[1, 2])\ndef value(request):\n    return request.param\n",
+    )
+    for module in ("first", "second", "third"):
+        assertion = "assert value == 2" if module == fail_module else "assert value in (1, 2)"
+        source(
+            suite,
+            f"test_{module}.py",
+            f"import pytest\npytestmark = pytest.mark.postgres\ndef test_value(value):\n    {assertion}\n",
+        )
+
+    result = run_suite(suite, workers=workers, arguments=("-x",) if fail_module else ())
+
+    assert result.returncode == int(fail_module is not None)
+    report = result.directory / "junit.xml"
+    assert not ET.parse(report).findall(".//error")
+    nodes = report_nodes(report)
+    if fail_module:
+        assert nodes == [f"apps/api/tests/test_{module}.py::test_value[1]" for module in ("first", "second")]
+        assert len(ET.parse(report).findall(".//failure")) == 1
+    else:
+        assert len(nodes) == 6
+
+
 def test_mixed_dispatcher_runs_postgres_after_failed_fast_partition(suite: Path) -> None:
     source(
         suite,
@@ -690,6 +718,91 @@ def test_wait(resource):
         runner.execute([runner.Invocation(command, suite)], suite, environment(), timeout=60, start_new_session=False)
 
     assert (suite / "cleaned").exists() and not (suite / "owned").exists()
+    assert json.loads((suite / "interrupted.json").read_text()) == {"forced_termination": False}
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX process-group cancellation")
+@pytest.mark.parametrize("group_interrupt", [True, False], ids=["group", "parent-only"])
+def test_interrupt_allows_nested_pytest_to_finish_teardown(suite: Path, group_interrupt: bool) -> None:
+    source(
+        suite,
+        "test_wait.py",
+        """import time
+from pathlib import Path
+import pytest
+@pytest.fixture
+def resource():
+    owned = Path('owned')
+    owned.touch()
+    yield
+    Path('cleaning').touch()
+    deadline = time.monotonic() + 10
+    while not Path('finish-cleanup').exists():
+        assert time.monotonic() < deadline
+        time.sleep(0.01)
+    owned.unlink()
+def test_wait(resource):
+    Path('ready').touch()
+    time.sleep(30)
+""",
+    )
+    script = f"""import os, signal, time
+from pathlib import Path
+from scripts import api_test_runner as runner
+
+def interrupt_after_teardown_starts(*_):
+    deadline = time.monotonic() + 10
+    while not Path('cleaning').exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert Path('cleaning').exists()
+    raise KeyboardInterrupt
+
+if {group_interrupt!r}:
+    signal.signal(signal.SIGINT, interrupt_after_teardown_starts)
+root = Path.cwd()
+
+class NotifyingProcess(runner.subprocess.Popen):
+    def wait(self, timeout=None):
+        if timeout is not None:
+            Path('joining').touch()
+        return super().wait(timeout)
+
+runner.subprocess.Popen = NotifyingProcess
+command = runner.pytest_command(root, ['-q', 'apps/api/tests'])
+try:
+    runner.execute([runner.Invocation(command, root)], root, dict(os.environ), start_new_session=False)
+except KeyboardInterrupt:
+    raise SystemExit(130)
+"""
+    with (suite / "parent.log").open("wb") as log:
+        process = subprocess.Popen(
+            [sys.executable, "-c", script],
+            cwd=suite,
+            env=environment(),
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        try:
+            deadline = time.monotonic() + 10
+            while not (suite / "ready").exists() and process.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert (suite / "ready").exists(), (suite / "parent.log").read_text()
+            if group_interrupt:
+                os.killpg(process.pid, signal.SIGINT)
+            else:
+                process.send_signal(signal.SIGINT)
+            deadline = time.monotonic() + 10
+            while not (suite / "joining").exists() and process.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert (suite / "joining").exists(), (suite / "parent.log").read_text()
+            (suite / "finish-cleanup").touch()
+            assert process.wait(timeout=15) == 130
+        finally:
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+    assert not (suite / "owned").exists(), (suite / "pytest.log").read_text()
     assert json.loads((suite / "interrupted.json").read_text()) == {"forced_termination": False}
 
 

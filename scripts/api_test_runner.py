@@ -557,7 +557,8 @@ def run_api_tests(
                             manifest = read_manifest(
                                 invocation.directory / "manifest.json", code
                             )
-                            if manifest["nodeids"] != nodes:
+                            worker_nodes = manifest["nodeids"]
+                            if set(worker_nodes) != set(nodes):
                                 raise RunnerError(
                                     f"Worker collection differs from expected: {invocation.directory}"
                                 )
@@ -570,7 +571,7 @@ def run_api_tests(
                                 )
                             completed = check_junit(
                                 report,
-                                nodes,
+                                worker_nodes,
                                 code,
                                 stopped_after_failure=manifest["stopped_after_failure"],
                             )
