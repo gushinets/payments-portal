@@ -486,8 +486,10 @@ Commands use existing trusted deployment/OS access and identify the operator as
 `billing-customer diagnose --user-id <portal-user-uuid>`; it is read-only and
 cannot resolve review.
 
-Invoke `.venv/bin/python scripts/repo.py billing-purchase <action>` with
-`--user-id <portal-user-uuid>` and `--purchase-id <purchase-intent-uuid>`.
+In the local harness, invoke `.venv/bin/python scripts/repo.py billing-purchase <action>`
+with `--user-id <portal-user-uuid>` and `--purchase-id <purchase-intent-uuid>`.
+For a deployed stack, use the
+[one-off operator CLI](../architecture/deployment.md#billing-operator-cli-while-the-api-is-stopped).
 The read-only `inspect-operation` lookup instead takes only `--operation-id`.
 `inspect-invalidation` and `retry-invalidation` instead take `--recipient-id` and `--user-id`;
 they inspect local delivery state or re-enqueue a parked invalidation after repair.
@@ -562,9 +564,9 @@ for an initial completion or leave the late case open for a released purchase.
 
 The UTF-8 evidence file (maximum 32 KiB) contains one entry per original operation.
 Use `inspect` for operation IDs, bindings, receipts and the current digest.
-Keep the submitted file with the local operator record. If an earlier audit is
-the only source for an original object ID, use its request-specific LBX
-confirmation to identify the object for the current check.
+Keep the submitted file and command arguments with the local operator record.
+If an earlier audit is the only source for an original object ID, use its
+request-specific LBX confirmation to identify the object for the current check.
 
 ```json
 {
@@ -601,9 +603,13 @@ Keep provider payloads, secrets and personal data out of reason/reference.
 Initial completion retains original accepted terms, requests and binding history,
 records the audit, revokes old work and releases this purchase's hold.
 `resolved_no_external_effect` records proven absence of effect.
-`resolved_external_terminal` retains created objects that have ended. Exact replay
-returns the saved result even after a replacement purchase exists. A first
-binding and a positive terminal attestation check the same external account,
+`resolved_external_terminal` retains created objects that have ended. If the
+command's response is lost, rerun it with the same `os-euid`, original
+`--expected-digest`, evidence file and other arguments, including `--case-id`
+when supplied. For a possible send, keep the senders stopped through the
+retry. A committed command returns the saved result with `already_resolved: true`,
+even after a replacement purchase exists.
+A first binding and a positive terminal attestation check the same external account,
 object kind and ID under a transaction lock. An object identified by another
 operation cannot be adopted. Ordinary recovery opens a financial binding
 review and an operator resolution with contradictory proof refuses.
