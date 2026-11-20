@@ -480,7 +480,7 @@ it("continues checking a lost confirmation after an empty manual status check", 
   expect(advance).not.toHaveBeenCalled();
 });
 
-it("clears an obsolete unknown-outcome warning after recovering the original agreement", async () => {
+it("keeps the unknown-outcome warning through preparation and clears it once the purchase is linked", async () => {
   advance.mockImplementationOnce(async () => {
     owned = { ...savedPurchase, state: "awaiting_external_result", reason: "purchase_pending" };
     throw new TypeError("synthetic_lost_advance_reply");
@@ -492,11 +492,16 @@ it("clears an obsolete unknown-outcome warning after recovering the original agr
 
   owned = { ...savedPurchase, state: "preparing", reason: "purchase_pending" };
   expect(await screen.findByRole("button", { name: ru.Purchase.continue }, { timeout: 3000 })).toBeEnabled();
+  expect(screen.getByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
+  expect(advance).toHaveBeenCalledTimes(1);
+
+  owned = savedPurchase;
+  expect(await screen.findByRole("link", { name: ru.Billing.pay }, { timeout: 3000 })).toBeVisible();
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   expect(advance).toHaveBeenCalledTimes(1);
 });
 
-it.each(["immediate status", "subsequent poll"] as const)("uses the recovered agreement when it is first visible via %s", async (firstRead) => {
+it.each(["immediate status", "subsequent poll"] as const)("keeps an unknown-outcome warning when preparing first arrives via %s", async (firstRead) => {
   advance.mockImplementationOnce(async () => {
     owned = { ...savedPurchase, state: "preparing", reason: "purchase_pending" };
     if (firstRead === "subsequent poll") fetcher.mockResolvedValueOnce(json({ detail: { code: "unavailable" } }, 503));
@@ -510,12 +515,12 @@ it.each(["immediate status", "subsequent poll"] as const)("uses the recovered ag
   }
   await screen.findByText(ru.Purchase.states.preparing, {}, { timeout: 4000 });
   expect(screen.getByRole("button", { name: ru.Purchase.continue })).toBeEnabled();
-  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.getByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
   expect(advance).toHaveBeenCalledTimes(1);
   expect(bootstrap).not.toHaveBeenCalled();
 });
 
-it("moves past the expired advance response once a local read observes the recovered agreement", async () => {
+it("keeps the expired advance request ID when an explicit status check still shows preparation", async () => {
   const requestId = "expired-advance-check";
   advance.mockImplementationOnce(async () => {
     owned = { ...savedPurchase, state: "awaiting_external_result", reason: "purchase_pending" };
@@ -526,12 +531,20 @@ it("moves past the expired advance response once a local read observes the recov
   const alert = await screen.findByRole("alert");
   expect(alert).toHaveTextContent(requestId);
 
-  // GET-only recovery binds the agreement. The subscription still needs an explicit advance.
   owned = { ...savedPurchase, state: "preparing", reason: "purchase_pending" };
-  await screen.findByText(ru.Purchase.states.preparing, {}, { timeout: 4000 });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.refresh })); });
+  expect(screen.getByText(ru.Purchase.states.preparing)).toBeVisible();
   expect(screen.getByRole("button", { name: ru.Purchase.continue })).toBeEnabled();
-  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-  expect(advance).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("alert")).toHaveTextContent(requestId);
+
+  fetcher.mockResolvedValueOnce(json({ detail: { code: "unavailable" } }, 503));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.refresh })); });
+  expect(screen.getByRole("alert")).toHaveTextContent(requestId);
+
+  advance.mockResolvedValueOnce(json(owned));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.continue })); });
+  expect(screen.getByRole("alert")).toHaveTextContent(requestId);
+  expect(advance).toHaveBeenCalledTimes(2);
   expect(bootstrap).not.toHaveBeenCalled();
 });
 
@@ -554,7 +567,7 @@ it("inspects the original purchase after a gateway timeout on advance", async ()
   renderProduct();
   await accept();
   expect(await screen.findByText(ru.Purchase.states.preparing)).toBeVisible();
-  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.getByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
   expect(advance).toHaveBeenCalledTimes(1);
   expect(bootstrap).not.toHaveBeenCalled();
 });

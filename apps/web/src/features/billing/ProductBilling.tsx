@@ -35,7 +35,8 @@ function commandOutcomeUncertain(error: unknown): boolean {
 }
 
 function advanceOutcomeUnknown(purchase: PurchaseIntentResponse | null): boolean {
-  return !purchase || (purchase.scope_held && (purchase.state === "created" || purchase.state === "awaiting_external_result"));
+  // Preparing also covers an original CREATE that may still be in flight.
+  return !purchase || (purchase.scope_held && purchaseNeedsStatus(purchase));
 }
 
 export function ProductBilling({ productId, offerAvailable, user, headingLevel = 2 }: ProductBillingProps) {
@@ -97,6 +98,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
   const Heading = headingLevel === 2 ? "h2" : "h4";
   const ReviewHeading = headingLevel === 2 ? "h3" : "h5";
   const purchase = state.kind === "purchase" ? state.purchase : null;
+  const pendingAdvanceFailure = purchase && failure?.message === "errors.financialPending" ? failure : null;
   const uncertainConfirmation = state.kind === "review" && state.submission === ReviewSubmission.Uncertain;
   const working = work !== PurchaseWork.Idle;
   const advancing = work === PurchaseWork.Advancing;
@@ -127,11 +129,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
       const focused = document.activeElement;
       focusPayment.current = linked && (focused === refreshButton.current || focused === resumeButton.current);
       setState({ kind: "purchase", purchase: saved });
-      if (uncertainConfirmation || !saved.scope_held || !purchaseNeedsStatus(saved)) {
-        setFailure(null);
-      } else if (!advanceOutcomeUnknown(saved)) {
-        setFailure((previous) => previous?.message === "errors.financialPending" ? null : previous);
-      }
+      if (uncertainConfirmation || !advanceOutcomeUnknown(saved)) setFailure(null);
     },
     (refusal) => {
       if (busy.current) {
@@ -169,12 +167,12 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     return () => { cancel(); unsubscribe(); };
   }, [begin, cancel, finishWork, productId, user.email_verified]);
 
-  async function run(work: (token: string, requestId: string, current: () => boolean) => Promise<void>) {
+  async function run(work: (token: string, requestId: string, current: () => boolean) => Promise<void>, visibleFailure: Failure | null = null) {
     if (busy.current || !user.email_verified) return;
     busy.current = true;
     poll.clearPause();
     setWork(PurchaseWork.Working);
-    setFailure(null);
+    setFailure(visibleFailure);
     const operation = begin();
     const requestId = newRequestId();
     try {
@@ -201,13 +199,15 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
           : (await currentPurchase(token, productId, id)).purchase;
         // A lost confirmation may still be completing. Keep its frozen request/key
         // when no hold is visible yet; a local empty GET is not a release proof.
-        if (current() && (purchase || state.kind !== "review")) setState(purchase ? { kind: "purchase", purchase } : { kind: "none" });
+        if (!current()) return;
+        if (purchase || state.kind !== "review") setState(purchase ? { kind: "purchase", purchase } : { kind: "none" });
+        if (!advanceOutcomeUnknown(purchase)) setFailure(null);
       } catch (error) {
         const refusal = purchaseReadRefusal(error, id);
-        if (!refusal) throw error;
-        if (current()) setFailure(refusal);
+        if (!refusal && !pendingAdvanceFailure) throw error;
+        if (refusal && current()) setFailure(refusal);
       }
-    });
+    }, pendingAdvanceFailure);
   }
 
   function review() {
@@ -252,6 +252,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     }
     if (!current()) return;
     setState({ kind: "purchase", purchase: result });
+    if (!advanceOutcomeUnknown(result)) setFailure(null);
   }
 
   function confirm() {
@@ -341,7 +342,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
         {purchase.reason && <p>{t(purchase.reason === "terms_changed" ? "termsChanged" : purchase.reason === "purchase_pending" ? "pending" : "reviewRequired")}</p>}
         <p className="catalog-product-id">{t("reference", { id: purchase.purchase_intent_id })}</p>
         <details><summary>{t("acceptedTerms")}</summary><PurchaseTerms review={purchase.accepted} /></details>
-        {resumable && !failure?.readRefused && <button ref={resumeButton} className="btn-primary" type="button" disabled={working} onClick={() => void run((token, id, current) => prepare(token, purchase, id, current))}>{t(needsRecovery ? "recover" : "continue")}</button>}
+        {resumable && !failure?.readRefused && <button ref={resumeButton} className="btn-primary" type="button" disabled={working} onClick={() => void run((token, id, current) => prepare(token, purchase, id, current), pendingAdvanceFailure)}>{t(needsRecovery ? "recover" : "continue")}</button>}
         <p>{t("awaitingVerification")}</p>
       </div>}
       {failure && <div className="notice error" role="alert">{b(failure.message)}{failure.requestId && <p>{b("requestId", { id: failure.requestId })}</p>}</div>}
