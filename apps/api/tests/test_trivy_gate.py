@@ -32,7 +32,7 @@ def report_payload(path: Path, result: dict[str, object] | None) -> dict[str, ob
     return {
         "SchemaVersion": 2,
         "ArtifactName": path.stem if image else ".",
-        "ArtifactType": "container_image" if image else "filesystem",
+        "ArtifactType": "container_image" if image else "repository",
         "Metadata": {"ImageID": "sha256:" + "a" * 64} if image else {},
         "Results": [{"Target": path.stem, "Class": "os-pkgs", **(result or {})}],
     }

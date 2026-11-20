@@ -3124,12 +3124,13 @@ def cmd_validate_production_env(_: argparse.Namespace) -> None:
 
 TRIVY_PRODUCTION_SERVICES = ("postgres", "caddy")
 TRIVY_REPORT_TYPES = {
-    "filesystem.json": "filesystem",
-    "compose.json": "filesystem",
-    "api-image.json": "container_image",
-    "web-image.json": "container_image",
+    # Trivy classifies a filesystem target with Git metadata as a repository.
+    "filesystem.json": ("filesystem", "repository"),
+    "compose.json": ("filesystem", "repository"),
+    "api-image.json": ("container_image",),
+    "web-image.json": ("container_image",),
     **{
-        f"{service}-image.json": "container_image"
+        f"{service}-image.json": ("container_image",)
         for service in TRIVY_PRODUCTION_SERVICES
     },
 }
@@ -3316,19 +3317,18 @@ def read_trivy_report(path: Path) -> dict[str, Any]:
     except (ValueError, OSError) as exc:
         raise HarnessError(f"Cannot read Trivy report {path}") from exc
 
-    artifact_type = TRIVY_REPORT_TYPES.get(path.name)
+    artifact_types = TRIVY_REPORT_TYPES.get(path.name, ())
     if (
         not isinstance(report, dict)
         or report.get("SchemaVersion") != 2
-        or artifact_type is None
-        or report.get("ArtifactType") != artifact_type
+        or report.get("ArtifactType") not in artifact_types
         or not isinstance(report.get("ArtifactName"), str)
         or not report["ArtifactName"].strip()
     ):
         raise HarnessError(
-            f"Invalid Trivy report {path}: expected Trivy v2 {artifact_type} report"
+            f"Invalid Trivy report {path}: unexpected Trivy v2 report type or header"
         )
-    if artifact_type == "container_image":
+    if "container_image" in artifact_types:
         metadata = report.get("Metadata")
         image_id = metadata.get("ImageID") if isinstance(metadata, dict) else None
         if not isinstance(image_id, str) or not re.fullmatch(IMAGE_DIGEST, image_id):
