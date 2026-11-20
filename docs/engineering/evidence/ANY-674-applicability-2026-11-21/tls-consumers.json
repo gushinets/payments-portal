@@ -1,0 +1,152 @@
+{
+  "primary_sources": {
+    "cpython_ssl": {
+      "url": "https://raw.githubusercontent.com/python/cpython/v3.12.16/Modules/_ssl.c",
+      "locations": [
+        "2847-2890 protocol selection",
+        "3748-3767 cadata",
+        "3899-3907 cafile/capath"
+      ],
+      "finding": "Context construction selects TLS methods; public protocol choices do not select DTLS or QUIC. CA-file loading uses SSL_CTX_load_verify_locations; in-memory PEM certificates use PEM_read_bio_X509 then X509_STORE_add_cert. The shown API offers no DANE enable/TLSA setup, CMS encryption, SuiteB certificate-flag setter or arbitrary EVP cipher encryption."
+    },
+    "httpx": {
+      "url": "https://raw.githubusercontent.com/encode/httpx/0.28.1/httpx/_config.py",
+      "locations": [
+        "21-65 create_ssl_context"
+      ],
+      "finding": "verify=True creates Python default SSL context from configured certificate file/directory or certifi. Optional supplied SSLContext and transports require separate review."
+    },
+    "libpq18": {
+      "url": "https://raw.githubusercontent.com/postgres/postgres/REL_18_STABLE/src/interfaces/libpq/fe-secure-openssl.c",
+      "also_read": "https://raw.githubusercontent.com/postgres/postgres/REL_18_0/src/interfaces/libpq/fe-secure-openssl.c",
+      "locations": [
+        "753 SSL_CTX_new(SSLv23_method())",
+        "863 default verify paths",
+        "879 root certificate file",
+        "982 certificate chain",
+        "1292 SSL_connect"
+      ],
+      "finding": "initialize_SSL uses a TLS context and SSL_connect for PostgreSQL client traffic. Root loading uses standard verify-path/file APIs. No DANE/QUIC/DTLS mode is selected by this path. SSLv23_method is an historical alias for TLS_method, not evidence that SSLv2 is used. Engine, password hooks and caller-supplied OpenSSL hooks can extend native behavior; they require effective configuration review. Exact wheel libpq release remains pending."
+    },
+    "openssl_ca": {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/openssl-3.5.7/crypto/x509/by_file.c",
+      "locations": [
+        "219-238 X509_load_cert_crl_file_ex"
+      ],
+      "finding": "The certificate/CRL file loader invokes PEM_X509_INFO_read_bio_ex with a NULL second argument. It therefore does not meet the existing-stack condition for CVE-2026-107493, even when a CA PEM file is malformed."
+    },
+    "openssl_alias": {
+      "url": "https://raw.githubusercontent.com/openssl/openssl/openssl-3.5.7/include/openssl/ssl.h.in",
+      "finding": "SSLv23_method is the compatibility TLS_method alias; QUIC/DTLS require their own protocol method selection."
+    },
+    "cpython_hash": {
+      "url": "https://raw.githubusercontent.com/python/cpython/v3.12.16/Modules/_hashopenssl.c",
+      "finding": "Hashlib provides digest, HMAC and key-derivation operations; it does not make arbitrary provider cipher encryption available merely because libcrypto is linked."
+    }
+  },
+  "local_producer_evidence": [
+    "apps/api/app/integrations/lbx/client.py:95-122 verify=True HTTPX clients",
+    "apps/api/app/integrations/kernel/client.py:227 HTTPX client",
+    "apps/api/app/core/email.py:29 default SSLContext STARTTLS",
+    "apps/api/app/pyproject.toml httpx0.28.1 and psycopg-binary3.3.4"
+  ],
+  "advisories": [
+    {
+      "advisory": "CVE-2026-107493",
+      "required_trigger": "Caller supplies non-NULL existing X509_INFO stack, malformed PEM fails, then caller reuses/frees dangling entries.",
+      "known_consumer_result": "normal_CA_loader_uses_NULL_stack",
+      "reason": "Standard file-based CA loading positively excludes required existing-stack argument. In-memory Python CA ingestion uses individual certificate reader. This is stronger than an import search.",
+      "classification_scope": "Required triggering path is not selected by the described standard app TLS consumers; not a claim that the installed libraries are fixed, lack the code, or cannot be invoked by another program.",
+      "remaining_verification": "Bind wheel libcrypto version to matching by_file.c; inspect nonstandard native callers that directly invoke X509_INFO reader with existing stack.",
+      "vendor_source": "https://security-tracker.debian.org/tracker/CVE-2026-107493"
+    },
+    {
+      "advisory": "CVE-2026-107496",
+      "required_trigger": "Application encrypts CMS to attacker-controlled certificate with explicit EC group order one; ordinary TLS does not enter CMS encryption.",
+      "known_consumer_result": "CMS_encryption_not_in_known_TLS_consumers",
+      "reason": "Known traffic performs TLS handshakes and records; it does not select CMS recipient-certificate encryption. Attacker HTTPS certificate alone cannot convert a TLS exchange into CMS_encrypt.",
+      "classification_scope": "Required triggering path is not selected by the described standard app TLS consumers; not a claim that the installed libraries are fixed, lack the code, or cannot be invoked by another program.",
+      "remaining_verification": "Check any external openssl cms command/job and additional native CMS extension before widening conclusion.",
+      "vendor_source": "https://security-tracker.debian.org/tracker/CVE-2026-107496"
+    },
+    {
+      "advisory": "CVE-2026-124709",
+      "required_trigger": "Established QUIC client repeatedly opens/resets rejected streams; retained stream state grows over connection lifetime.",
+      "known_consumer_result": "OpenSSL_QUIC_server_not_selected",
+      "reason": "Plain HTTP Uvicorn is not an OpenSSL QUIC server. Separate Caddy ingress must be assessed as its own component. Outbound clients and libpq are not QUIC servers.",
+      "classification_scope": "Required triggering path is not selected by the described standard app TLS consumers; not a claim that the installed libraries are fixed, lack the code, or cannot be invoked by another program.",
+      "remaining_verification": "Bind running command/transport to supplied deployment evidence; inventory independent CLI/native service entrypoints.",
+      "vendor_source": "https://security-tracker.debian.org/tracker/CVE-2026-124709"
+    },
+    {
+      "advisory": "CVE-2026-35190",
+      "required_trigger": "Server explicitly calls SSL_CTX_set_cert_flags SSL_CERT_FLAG_SUITEB_128_LOS with TLS1.3 and peer offers no Suite B groups.",
+      "known_consumer_result": "SuiteB_cert_flags_server_trigger_absent_in_described_path",
+      "reason": "Known native traffic is client-side; plain Uvicorn does not construct this TLS server. Normal Python context setup does not set the required SuiteB certificate flag. Cipher-group preferences alone do not substitute for that flag.",
+      "classification_scope": "Required triggering path is not selected by the described standard app TLS consumers; not a claim that the installed libraries are fixed, lack the code, or cannot be invoked by another program.",
+      "remaining_verification": "Review any custom TLS server context/native callback before extending beyond described deployment.",
+      "vendor_source": "https://security-tracker.debian.org/tracker/CVE-2026-35190"
+    },
+    {
+      "advisory": "CVE-2026-84786",
+      "required_trigger": "DANE-enabled client has both PKIX usage0/1 TLSA and DANE-TA2 SPKI1 full0 record, and self-signed peer certificate is also trusted.",
+      "known_consumer_result": "DANE_not_enabled_by_standard_TLS_path",
+      "reason": "Standard hostname/CA verification does not supply DANE TLSA records or call DANE enable APIs. DNS and certificate verification alone do not activate DANE.",
+      "classification_scope": "Required triggering path is not selected by the described standard app TLS consumers; not a claim that the installed libraries are fixed, lack the code, or cannot be invoked by another program.",
+      "remaining_verification": "Inspect custom contexts/native hooks for SSL_dane_enable and SSL_dane_tlsa_add; verify no alternate TLS implementation/transport.",
+      "vendor_source": "https://security-tracker.debian.org/tracker/CVE-2026-84786"
+    },
+    {
+      "advisory": "CVE-2026-88822",
+      "required_trigger": "QUIC handshake detects connected peer using too-small getpeername buffer, especially IPv6, then sends using uninitialized address bytes.",
+      "known_consumer_result": "QUIC_client_method_not_selected",
+      "reason": "Described HTTPX/Pythonssl and PostgreSQL/libpq flows construct TCP TLS methods. Connected TCP getpeername use is not vulnerable QUIC peer autodetection.",
+      "classification_scope": "Required triggering path is not selected by the described standard app TLS consumers; not a claim that the installed libraries are fixed, lack the code, or cannot be invoked by another program.",
+      "remaining_verification": "Record actual HTTP transport and wheel source/version; arbitrary native QUIC clients remain outside reviewed flow.",
+      "vendor_source": "https://security-tracker.debian.org/tracker/CVE-2026-88822"
+    },
+    {
+      "advisory": "CVE-2026-88823",
+      "required_trigger": "Application submits AAD fragments including zero-length update or reuses context; earlier AAD loses authentication or stale AAD leaks into next operation.",
+      "known_consumer_result": "AES_GCM_SIV_not_the_TLS_cipher_path",
+      "reason": "TLS AES-GCM and provider AES-GCM-SIV are different constructions. Known consumers do not submit fragmented AAD to an arbitrary AES-GCM-SIV context.",
+      "classification_scope": "Required triggering path is not selected by the described standard app TLS consumers; not a claim that the installed libraries are fixed, lack the code, or cannot be invoked by another program.",
+      "remaining_verification": "Inspect extra native crypto consumers; cryptography/PyJWT absent per root final-image inventory, not independently assumed from app imports.",
+      "vendor_source": "https://security-tracker.debian.org/tracker/CVE-2026-88823"
+    },
+    {
+      "advisory": "CVE-2026-95690",
+      "required_trigger": "Crafted out-of-sequence DTLS fragments advertise large messages and allocate amplification buffers.",
+      "known_consumer_result": "DTLS_method_not_selected",
+      "reason": "TCP TLS method construction cannot be changed into DTLS by hostile network records. Known SMTP,HTTPS and PostgreSQL paths do not construct DTLS associations.",
+      "classification_scope": "Required triggering path is not selected by the described standard app TLS consumers; not a claim that the installed libraries are fixed, lack the code, or cannot be invoked by another program.",
+      "remaining_verification": "Verify runtime transport selections and native subprocess/hooks; library DTLS capability remains installed.",
+      "vendor_source": "https://security-tracker.debian.org/tracker/CVE-2026-95690"
+    },
+    {
+      "advisory": "CVE-2026-95691",
+      "required_trigger": "Malicious QUIC server retransmits overlapping CRYPTO frames while TLS layer borrows packet memory, triggering UAF.",
+      "known_consumer_result": "QUIC_client_method_not_selected",
+      "reason": "Known client flows use TLS over TCP rather than OpenSSL QUIC CRYPTO stream processing; malicious HTTPS/PG peer cannot select QUIC without client QUIC method construction.",
+      "classification_scope": "Required triggering path is not selected by the described standard app TLS consumers; not a claim that the installed libraries are fixed, lack the code, or cannot be invoked by another program.",
+      "remaining_verification": "Inspect independent QUIC/native clients and exact wheel implementation.",
+      "vendor_source": "https://security-tracker.debian.org/tracker/CVE-2026-95691"
+    },
+    {
+      "advisory": "CVE-2026-95692",
+      "required_trigger": "Application passes non12-byte IV to AES-GCM-SIV EVP initialization; short IV reads beyond buffer and long IV truncates.",
+      "known_consumer_result": "AES_GCM_SIV_non12byte_IV_not_in_known_consumers",
+      "reason": "Known APIs negotiate TLS record ciphers instead of caller-selected AES-GCM-SIV provider initialization with arbitrary IV lengths.",
+      "classification_scope": "Required triggering path is not selected by the described standard app TLS consumers; not a claim that the installed libraries are fixed, lack the code, or cannot be invoked by another program.",
+      "remaining_verification": "Inspect custom EVP/cipher consumers and native plugins; do not infer missing algorithm from missing wrapper package.",
+      "vendor_source": "https://security-tracker.debian.org/tracker/CVE-2026-95692"
+    }
+  ],
+  "limitations": [
+    "Official CPython tag reviewed; final executable build/source must match image metadata.",
+    "REL18 branch and18.0 libpq source reviewed; wheel libpq version/provenance not yet supplied, so this is conditional branch correspondence rather than exact wheel-source attestation.",
+    "OpenSSL3.5.7 upstream source reviewed; Debian patchset and wheel-private OpenSSL version must be bound separately.",
+    "No dynamic tracing performed; native hooks, dlopen/ctypes, custom transports, executable tools, future dependency changes and unrelated installed packages remain outside the scoped app-consumer conclusion.",
+    "Root final-image probes remain authoritative for actual paths/versions/features."
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "image_id": "sha256:3c3d70a3a9095d042169ed5b079ce44cef3c20eb804b0ea275e85ac7b87614c0",
+  "uid": 999,
+  "default_cmd": true,
+  "liveness": "passed",
+  "readiness": "passed",
+  "postgresql": "18.4",
+  "migration_cycle": "upgrade head / downgrade base / upgrade head: passed",
+  "runtime_network": "internal Docker network; no external downloads"
+}

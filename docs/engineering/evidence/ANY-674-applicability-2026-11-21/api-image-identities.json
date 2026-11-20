@@ -1,0 +1,28 @@
+{
+  "images": [
+    {
+      "id": "sha256:3c3d70a3a9095d042169ed5b079ce44cef3c20eb804b0ea275e85ac7b87614c0",
+      "repo_digests": [
+        "payment-portal-api@sha256:3c3d70a3a9095d042169ed5b079ce44cef3c20eb804b0ea275e85ac7b87614c0"
+      ],
+      "platform": "linux/amd64",
+      "user": "app",
+      "command": [
+        "sh",
+        "-c",
+        "PYTHONPATH=apps/api python -c 'from app.core.settings import settings' && exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS:-*}\" --no-access-log --app-dir apps/api"
+      ]
+    },
+    {
+      "id": "sha256:6c42ac8aaafbd5c4746245616910fb24b2935e427339c72e4f888500fb4f70a5",
+      "repo_digests": [
+        "payment-portal-api@sha256:6c42ac8aaafbd5c4746245616910fb24b2935e427339c72e4f888500fb4f70a5"
+      ],
+      "platform": "linux/amd64",
+      "user": "",
+      "command": [
+        "python3"
+      ]
+    }
+  ]
+}

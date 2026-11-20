@@ -1,5 +1,7 @@
 # ANY-674 — Review corrections and refreshed CI evidence
 
+Current all101 component-level investigation: [complete applicability report](ANY-674-complete-applicability.md). Earlier snapshots and completion statements below are historical; the latest ledger retains pending team ownership.
+
 ## Scope and reproduced defects
 
 The existing PR already contained merge `c0fc008f` from main `dac00ead`. That merge was preserved. Runtime correction `df09c29c7db035f82b595989b9b00795aa88a3e2` fixes two introduced verification defects without changing package choices, application dependencies or deployment policy:

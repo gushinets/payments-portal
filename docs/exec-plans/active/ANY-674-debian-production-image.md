@@ -82,10 +82,24 @@ Status: reopened technical investigation. Earlier completion statements covered 
 
 Baseline: existing PR179 head8cda1229; fetched origin/main49ed895d. Preserve historical218/96→207/95 comparison and refreshed221/101 snapshot. Existing coverage includes60deployment contracts,17shell guard cases, actual-image offline/runtime verifier, CI readiness/Alembic/PostgreSQL. Gaps: vendor-to-binary/function mapping, final-image proof for all component-absence claims, and per-advisory prerequisites.
 
-- [ ] Research authoritative current Debian/upstream status and affected component for every101ID; separate required sibling library from vulnerable utility/feature.
-- [ ] Restore stopped Docker engine without clearing shared data, capture unchanged current final image/inventory/feature/owned-file/process/symbol evidence and supported package candidates.
-- [ ] Apply any justified supported update/removal to disposable candidates; prove actual remaining files/dependencies and startup/TLS/timezone/import/migration behavior.
-- [ ] Produce a101-row evidence-backed applicability ledger with explicit confidence, exposure prerequisites, remediation attempts and concrete unresolved technical questions; keep raw scanner counts/severity and pendingteamownership.
-- [ ] Build/scan actual final target with comparable scanner/database, run focused and canonical verification, independently review and update existing PR. Record blocked/unreached stages honestly.
+- [x] Research authoritative current Debian/upstream status and affected component for every101ID; separate required sibling library from vulnerable utility/feature.
+- [x] Attempt supported Docker Desktop recovery without clearing shared data; record local engine limitation. Use isolated CI to capture actual unchanged/final image, package/feature/file/symbol evidence and signed supported candidates.
+- [x] Apply any justified supported update/removal to disposable candidates; prove actual remaining files/dependencies and startup/TLS/timezone/import/migration behavior.
+- [x] Produce a101-row evidence-backed applicability ledger with explicit confidence, exposure prerequisites, remediation attempts and concrete unresolved technical questions; keep raw scanner counts/severity and pendingteamownership.
+- [x] Build/scan actual final target with comparable scanner/database, run focused and canonical verification, independently review and prepare the existing PR update. Local full PostgreSQL stage blocked; exact-image PostgreSQL cycle/readiness passed in hosted verification. Final-head CI must be checked at handoff.
 
 Parallel read-only research splits glibc/GCC35, native-library families30 and utilities/system services36. Root owns image/build changes and integration; no shared production-file edits by researchers. Docker initially stopped with a socket-forwarder handshake error; supported Desktop restart attempted, no reset/prune/removal of shared resources.
+
+### All101 follow-up outcome
+
+See the [complete applicability report](../../engineering/ANY-674-complete-applicability.md) and [101-row ledger](../../engineering/evidence/ANY-674-applicability-2026-11-21/advisory-analysis.csv). Scope is97 CVE IDs plus4 TEMP IDs. All are mapped to installed packages, actual affected components, triggers, current vendor status, supported options and limits. Current classes:14 component absent,1 other architecture,4 trigger disabled,20 scoped known-consumer trigger unused,62 component present/conditional. These are not scanner suppressions or package fixes.
+
+- Implemented dpkg-statoverride removal of three unnecessary setid modes; final privileged files3→0, capability files0. Added a fail-closed runtime guard and demonstrated two pre-fix failing regression cases.
+- Fresh signed Trixie/security/updates/backports probe:0 upgrades and no installed-package backports candidates. All26 removal simulations preserved;24 dependency/Essential/Protected blocked,2 require native libraries despite no dpkg reverse-dependency block. No further package purge justified.
+- Controlled same-DB Trivy0.72 comparison on a46ce633:71 identical package versions,221 records/101IDs on each side, unchanged severities. Historical16 removals/one Low advisory elimination remain separately preserved. No new Debian patch or advisory elimination claimed.
+- Passing a46ce633 CI/Security, focused69 cases before control-helper addition, and local canonical fast (2559 passed/51 skipped API,454 web). Full local check reached missing worktree PostgreSQL after web build; it is not a full pass. Later focused70-case result and exact scanned-image PostgreSQL follow-up are recorded in the final report.
+- Sonar CLI-path findings fixed by fixed paths in dc21de42. First exact-image PostgreSQL probe completed upgrade/downgrade/upgrade but failed host-port discovery on an internal network;87ed64f3 checks health inside the container and moves report output only after success. Await actual CI before marking verification complete.
+
+No risk acceptance requested or recorded. Ownership criterion remains pending team assignment, review proposed2026-12-02. Do not merge, deploy or close the ticket.
+
+Final runtime evidence: Security44838297198 at1b33a906 passed the same scanned image UID999/default-CMD startup, PostgreSQL18.4 upgrade/downgrade/upgrade, liveness/readiness and offline/native guards. Controlled final71 packages/221records/101IDs; setid3→0; no package/advisory patch claim. Focused71 tests and documentation checks passed. Latest Sonar open-issue query0. The final test/documentation-only commit requires its own CI handoff status; no application/Dockerfile/dependency change after tested runtime source.

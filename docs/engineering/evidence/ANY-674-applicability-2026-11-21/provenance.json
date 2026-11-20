@@ -1,0 +1,28 @@
+{
+  "source_sha": "1b33a906e2884fa28f20a7e9b684678f821bb77e",
+  "origin_main_sha": "49ed895d3925e097ef7e46908c87a6cb75f0fb26",
+  "security_run": 44838297198,
+  "ci_run": 44838297261,
+  "comparison_artifact": {
+    "id": 14678924082,
+    "zip_sha256": "74c6e68b9d5b323bf035d7a11bb4cdef4c6071af93a181cc9f9e9bdcb14aa970"
+  },
+  "final_evidence_artifact": {
+    "id": 14680041348,
+    "zip_sha256": "ce53a0781ec6e5245a333be7a5604f3de178f47a4c2911b4d2f10072f42dee8e"
+  },
+  "comparison": "Same DB file and offline/no-update scanner settings for both final targets; exact 71 package versions and all finding projections equal. Three setid modes removed; no Debian patch or advisory elimination in this follow-up.",
+  "retention_limit": "Full image archives were not published; CI daemon images are ephemeral. Checked-in scans/component inventories and their immutable image IDs persist. Historical local archives are retained separately.",
+  "source_review_date": "2026-11-20; final comparison verified 2026-11-21",
+  "source_tree": "926cb2bec4ed0194af84bc93778642ae7e0360ea",
+  "actions_merge_checkout": "356e18ce68a3500e54bc8f60aab273c3bf818e48",
+  "source_tree_note": "Fetched Actions merge tree equals PR1b33a906 tree; later tests/docs do not alter application or Dockerfile.",
+  "inputs_sha256": {
+    "apps/api/Dockerfile": "7d9feee50ce4aef0a21a8f48921055ce83a1153ac7dddc837e05b3fcf8deca83",
+    "apps/api/uv.lock": "5cfbd8f2965a61cbb3e11be0be2dd2f36e09b1414c6516bccc30c4cc7e815516",
+    "trivy.yaml": "e039e2b33bf0bc3dfb8c1a350393133aae5df8955fd476333d538c9f5d8d3d06",
+    ".trivyignore.yaml": "2ee19eb82f7aeaed4201c6e572a774e8fab67b37fd4c5ff85625f30960b0ef78",
+    "security/trivy/verify-api-runtime.sh": "4242e1f9d5a8450d8c558addd83bdd105cc1b99aa8d1f2964f9f27d8acc1a28b",
+    "security/trivy/verify-api-postgres.sh": "92e4626f280ab3b254b0411e2eecdfe5a10f6850636246a5eab3399c90ca1cb1"
+  }
+}

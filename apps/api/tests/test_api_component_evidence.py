@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import struct
+import subprocess
 import sys
 from pathlib import Path
 
@@ -133,3 +134,22 @@ def test_control_recipe_only_removes_three_privilege_overrides() -> None:
     assert all(line.startswith("- ") and "dpkg-statoverride --update --add" in line for line in changes)
     with pytest.raises(ValueError, match="exactly"):
         updates.make_setid_control(control)
+
+
+def test_control_cli_rejects_arbitrary_input_and_output_paths(tmp_path: Path) -> None:
+    output = tmp_path / "external-control.Dockerfile"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "security/trivy/inspect-api-updates.py"),
+            "--baseline-dockerfile",
+            str(ROOT / "apps/api/Dockerfile"),
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert not output.exists()

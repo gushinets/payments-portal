@@ -1,5 +1,7 @@
 # ANY-674 — Technical handoff and pending team ownership
 
+Current all101 component-level investigation: [complete applicability report](ANY-674-complete-applicability.md). Earlier snapshots and completion statements below are historical; the latest ledger retains pending team ownership.
+
 Latest verification: [review corrections and refreshed CI](ANY-674-review-corrections.md) reports101 current advisory IDs on identical71 package versions. All current ownership is pending team assignment. The95-ID enumeration below preserves the earlier18November scope; the refreshed current ledger adds6glibc/OpenSSL IDs.
 
 ## Technical completion

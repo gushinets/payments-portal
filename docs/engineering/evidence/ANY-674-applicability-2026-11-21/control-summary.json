@@ -1,0 +1,16 @@
+{
+  "image_id": "sha256:7bea11dbbfc91e886109fa93c80a5302409669f762237a41529099550aa8df6e",
+  "scan_time": "2026-11-20T23:41:05.604951706Z",
+  "trivy": {
+    "Version": "0.72.0"
+  },
+  "platform": "linux/amd64",
+  "debian_records": 221,
+  "unique_ids": 101,
+  "severity_records": {
+    "LOW": 61,
+    "HIGH": 43,
+    "MEDIUM": 108,
+    "UNKNOWN": 9
+  }
+}

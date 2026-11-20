@@ -1,0 +1,2483 @@
+{
+  "method": "Stdlib read-only memory OCI layer merge including lower-layer whiteouts; no extraction or ELF execution. ELF64 x86-64 sections parsed for dynamic tags and symbols. Official sdists downloaded into memory and SHA256-checked against apps/api/uv.lock.",
+  "limitations": [
+    "This retained Nov18 archive is not a fresh current-head build; current CI runtime proof remains separate.",
+    "Missing undefined symbols cannot rule out inlined templates or statically linked implementations. Exact sdist source/build provenance is stronger but not a reproduction of wheel compiler headers.",
+    "No vulnerable inputs were executed; no advisory is declared fixed."
+  ],
+  "sources": {
+    "greenlet": {
+      "url": "https://files.pythonhosted.org/packages/0b/d8/7cc97c142388aef03f622e001c572c4f84e9252a439549d483f555771970/greenlet-3.5.5.tar.gz",
+      "sha256": "adb4bae02e91a8e863e48b177e4014bdcac8a6b5e047ea1df687a61534b85e6c",
+      "files_scanned": [
+        "greenlet-3.5.5/pyproject.toml",
+        "greenlet-3.5.5/setup.cfg",
+        "greenlet-3.5.5/setup.py",
+        "greenlet-3.5.5/src/greenlet/CObjects.cpp",
+        "greenlet-3.5.5/src/greenlet/PyGreenlet.cpp",
+        "greenlet-3.5.5/src/greenlet/PyGreenlet.hpp",
+        "greenlet-3.5.5/src/greenlet/PyGreenletUnswitchable.cpp",
+        "greenlet-3.5.5/src/greenlet/PyModule.cpp",
+        "greenlet-3.5.5/src/greenlet/TBrokenGreenlet.cpp",
+        "greenlet-3.5.5/src/greenlet/TExceptionState.cpp",
+        "greenlet-3.5.5/src/greenlet/TGreenlet.cpp",
+        "greenlet-3.5.5/src/greenlet/TGreenlet.hpp",
+        "greenlet-3.5.5/src/greenlet/TGreenletGlobals.cpp",
+        "greenlet-3.5.5/src/greenlet/TMainGreenlet.cpp",
+        "greenlet-3.5.5/src/greenlet/TPythonState.cpp",
+        "greenlet-3.5.5/src/greenlet/TStackState.cpp",
+        "greenlet-3.5.5/src/greenlet/TThreadState.hpp",
+        "greenlet-3.5.5/src/greenlet/TThreadStateCreator.hpp",
+        "greenlet-3.5.5/src/greenlet/TThreadStateDestroy.cpp",
+        "greenlet-3.5.5/src/greenlet/TUserGreenlet.cpp",
+        "greenlet-3.5.5/src/greenlet/greenlet.cpp",
+        "greenlet-3.5.5/src/greenlet/greenlet.h",
+        "greenlet-3.5.5/src/greenlet/greenlet_allocator.hpp",
+        "greenlet-3.5.5/src/greenlet/greenlet_compiler_compat.hpp",
+        "greenlet-3.5.5/src/greenlet/greenlet_cpython_compat.hpp",
+        "greenlet-3.5.5/src/greenlet/greenlet_exceptions.hpp",
+        "greenlet-3.5.5/src/greenlet/greenlet_internal.hpp",
+        "greenlet-3.5.5/src/greenlet/greenlet_msvc_compat.hpp",
+        "greenlet-3.5.5/src/greenlet/greenlet_refs.hpp",
+        "greenlet-3.5.5/src/greenlet/greenlet_slp_switch.hpp",
+        "greenlet-3.5.5/src/greenlet/greenlet_thread_support.hpp",
+        "greenlet-3.5.5/src/greenlet/platform/switch_aarch64_gcc.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_alpha_unix.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_amd64_unix.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_arm32_gcc.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_arm32_ios.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_arm64_msvc.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_csky_gcc.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_loongarch64_linux.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_m68k_gcc.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_mips_unix.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_ppc64_aix.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_ppc64_linux.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_ppc_aix.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_ppc_linux.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_ppc_macosx.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_ppc_unix.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_riscv_unix.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_s390_unix.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_sh_gcc.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_sparc_sun_gcc.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_x32_unix.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_x64_msvc.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_x86_msvc.h",
+        "greenlet-3.5.5/src/greenlet/platform/switch_x86_unix.h",
+        "greenlet-3.5.5/src/greenlet/slp_platformselect.h",
+        "greenlet-3.5.5/src/greenlet/tests/_test_extension.c",
+        "greenlet-3.5.5/src/greenlet/tests/_test_extension_cpp.cpp"
+      ],
+      "cpp_files": [
+        "greenlet-3.5.5/src/greenlet/CObjects.cpp",
+        "greenlet-3.5.5/src/greenlet/PyGreenlet.cpp",
+        "greenlet-3.5.5/src/greenlet/PyGreenlet.hpp",
+        "greenlet-3.5.5/src/greenlet/PyGreenletUnswitchable.cpp",
+        "greenlet-3.5.5/src/greenlet/PyModule.cpp",
+        "greenlet-3.5.5/src/greenlet/TBrokenGreenlet.cpp",
+        "greenlet-3.5.5/src/greenlet/TExceptionState.cpp",
+        "greenlet-3.5.5/src/greenlet/TGreenlet.cpp",
+        "greenlet-3.5.5/src/greenlet/TGreenlet.hpp",
+        "greenlet-3.5.5/src/greenlet/TGreenletGlobals.cpp",
+        "greenlet-3.5.5/src/greenlet/TMainGreenlet.cpp",
+        "greenlet-3.5.5/src/greenlet/TPythonState.cpp",
+        "greenlet-3.5.5/src/greenlet/TStackState.cpp",
+        "greenlet-3.5.5/src/greenlet/TThreadState.hpp",
+        "greenlet-3.5.5/src/greenlet/TThreadStateCreator.hpp",
+        "greenlet-3.5.5/src/greenlet/TThreadStateDestroy.cpp",
+        "greenlet-3.5.5/src/greenlet/TUserGreenlet.cpp",
+        "greenlet-3.5.5/src/greenlet/greenlet.cpp",
+        "greenlet-3.5.5/src/greenlet/greenlet_allocator.hpp",
+        "greenlet-3.5.5/src/greenlet/greenlet_compiler_compat.hpp",
+        "greenlet-3.5.5/src/greenlet/greenlet_cpython_compat.hpp",
+        "greenlet-3.5.5/src/greenlet/greenlet_exceptions.hpp",
+        "greenlet-3.5.5/src/greenlet/greenlet_internal.hpp",
+        "greenlet-3.5.5/src/greenlet/greenlet_msvc_compat.hpp",
+        "greenlet-3.5.5/src/greenlet/greenlet_refs.hpp",
+        "greenlet-3.5.5/src/greenlet/greenlet_slp_switch.hpp",
+        "greenlet-3.5.5/src/greenlet/greenlet_thread_support.hpp",
+        "greenlet-3.5.5/src/greenlet/tests/_test_extension_cpp.cpp"
+      ],
+      "feature_hits": [
+        [
+          "greenlet-3.5.5/src/greenlet/TBrokenGreenlet.cpp",
+          17,
+          "void* BrokenGreenlet::operator new(size_t UNUSED(count))"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/TGreenlet.hpp",
+          722,
+          "static void* operator new(size_t UNUSED(count));"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/TGreenlet.hpp",
+          778,
+          "static void* operator new(size_t UNUSED(count));"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/TGreenlet.hpp",
+          799,
+          "static void* operator new(size_t UNUSED(count));"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/TMainGreenlet.cpp",
+          33,
+          "void* MainGreenlet::operator new(size_t UNUSED(count))"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/TThreadState.hpp",
+          168,
+          "static void* operator new(size_t count)"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/TUserGreenlet.cpp",
+          25,
+          "void* UserGreenlet::operator new(size_t UNUSED(count))"
+        ]
+      ],
+      "standard_includes": [
+        [
+          "greenlet-3.5.5/src/greenlet/PyGreenlet.cpp",
+          10,
+          "#include <Python.h>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/PyGreenletUnswitchable.cpp",
+          11,
+          "#include <Python.h>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/TExceptionState.cpp",
+          4,
+          "#include <Python.h>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/TGreenlet.hpp",
+          8,
+          "#include <Python.h>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/TGreenlet.hpp",
+          10,
+          "#include <atomic>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/TGreenlet.hpp",
+          11,
+          "#include <vector>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/TGreenletGlobals.cpp",
+          15,
+          "#include <algorithm>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/TMainGreenlet.cpp",
+          18,
+          "#include <atomic>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/TPythonState.cpp",
+          4,
+          "#include <Python.h>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/TStackState.cpp",
+          9,
+          "#include <iostream>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/TThreadState.hpp",
+          4,
+          "#include <cstdlib>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/TThreadState.hpp",
+          5,
+          "#include <ctime>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/TThreadState.hpp",
+          6,
+          "#include <stdexcept>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/TThreadState.hpp",
+          7,
+          "#include <atomic>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/TThreadStateCreator.hpp",
+          4,
+          "#include <ctime>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/TThreadStateCreator.hpp",
+          5,
+          "#include <stdexcept>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet.cpp",
+          9,
+          "#include <cstdlib>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet.cpp",
+          10,
+          "#include <string>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet.cpp",
+          11,
+          "#include <algorithm>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet.cpp",
+          12,
+          "#include <exception>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet.cpp",
+          16,
+          "#include <Python.h>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet.h",
+          9,
+          "#include <Python.h>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet_allocator.hpp",
+          5,
+          "#include <Python.h>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet_allocator.hpp",
+          6,
+          "#include <memory>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet_compiler_compat.hpp",
+          39,
+          "#include <cstdint>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet_exceptions.hpp",
+          5,
+          "#include <Python.h>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet_exceptions.hpp",
+          6,
+          "#include <stdexcept>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet_exceptions.hpp",
+          7,
+          "#include <string>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet_internal.hpp",
+          21,
+          "#include <vector>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet_internal.hpp",
+          22,
+          "#include <string>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet_internal.hpp",
+          86,
+          "#include <memory>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet_internal.hpp",
+          87,
+          "#include <stdexcept>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet_msvc_compat.hpp",
+          26,
+          "#include <Python.h>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet_refs.hpp",
+          5,
+          "#include <Python.h>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet_refs.hpp",
+          7,
+          "#include <string>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet_refs.hpp",
+          22,
+          "#include <iostream>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet_thread_support.hpp",
+          13,
+          "#include <stdexcept>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet_thread_support.hpp",
+          14,
+          "#include <thread>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/greenlet_thread_support.hpp",
+          15,
+          "#include <mutex>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/platform/switch_x86_msvc.h",
+          45,
+          "#include <windows.h>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/tests/_test_extension_cpp.cpp",
+          7,
+          "#include <exception>"
+        ],
+        [
+          "greenlet-3.5.5/src/greenlet/tests/_test_extension_cpp.cpp",
+          8,
+          "#include <stdexcept>"
+        ]
+      ],
+      "installed_source_exact_matches": [
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/CObjects.cpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/PyGreenlet.cpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/PyGreenlet.hpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/PyGreenletUnswitchable.cpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/PyModule.cpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/TBrokenGreenlet.cpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/TExceptionState.cpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/TGreenlet.cpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/TGreenlet.hpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/TGreenletGlobals.cpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/TMainGreenlet.cpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/TPythonState.cpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/TStackState.cpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/TThreadState.hpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/TThreadStateCreator.hpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/TThreadStateDestroy.cpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/TUserGreenlet.cpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/greenlet.cpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/greenlet.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/greenlet_allocator.hpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/greenlet_compiler_compat.hpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/greenlet_cpython_compat.hpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/greenlet_exceptions.hpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/greenlet_internal.hpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/greenlet_msvc_compat.hpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/greenlet_refs.hpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/greenlet_slp_switch.hpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/greenlet_thread_support.hpp",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_aarch64_gcc.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_alpha_unix.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_amd64_unix.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_arm32_gcc.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_arm32_ios.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_arm64_msvc.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_csky_gcc.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_loongarch64_linux.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_m68k_gcc.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_mips_unix.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_ppc64_aix.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_ppc64_linux.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_ppc_aix.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_ppc_linux.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_ppc_macosx.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_ppc_unix.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_riscv_unix.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_s390_unix.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_sh_gcc.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_sparc_sun_gcc.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_x32_unix.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_x64_msvc.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_x86_msvc.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/platform/switch_x86_unix.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/slp_platformselect.h",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/tests/_test_extension.c",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/tests/_test_extension_cpp.cpp"
+      ],
+      "installed_source_differences": []
+    },
+    "protobuf": {
+      "url": "https://files.pythonhosted.org/packages/a7/e7/0553e21d25ca4d9f573135775348a372c3ec34a93a71d5f297c3bac38341/protobuf-7.36.0.tar.gz",
+      "sha256": "e8e09cb0d794c6687926fa558a8a6e72aa10edb997d5ca61da0765f12a3e00ea",
+      "files_scanned": [
+        "protobuf-7.36.0/google/protobuf/breaking_changes.h",
+        "protobuf-7.36.0/google/protobuf/descriptor.upb.c",
+        "protobuf-7.36.0/google/protobuf/descriptor.upb.h",
+        "protobuf-7.36.0/google/protobuf/descriptor.upb_minitable.c",
+        "protobuf-7.36.0/google/protobuf/descriptor.upb_minitable.h",
+        "protobuf-7.36.0/google/protobuf/descriptor.upbdefs.c",
+        "protobuf-7.36.0/google/protobuf/descriptor.upbdefs.h",
+        "protobuf-7.36.0/google/protobuf/json_enumvalue_options.upb.c",
+        "protobuf-7.36.0/google/protobuf/json_enumvalue_options.upb.h",
+        "protobuf-7.36.0/google/protobuf/json_enumvalue_options.upb_minitable.c",
+        "protobuf-7.36.0/google/protobuf/json_enumvalue_options.upb_minitable.h",
+        "protobuf-7.36.0/google/protobuf/json_enumvalue_options.upbdefs.c",
+        "protobuf-7.36.0/google/protobuf/json_enumvalue_options.upbdefs.h",
+        "protobuf-7.36.0/python/convert.c",
+        "protobuf-7.36.0/python/convert.h",
+        "protobuf-7.36.0/python/descriptor.c",
+        "protobuf-7.36.0/python/descriptor.h",
+        "protobuf-7.36.0/python/descriptor_containers.c",
+        "protobuf-7.36.0/python/descriptor_containers.h",
+        "protobuf-7.36.0/python/descriptor_pool.c",
+        "protobuf-7.36.0/python/descriptor_pool.h",
+        "protobuf-7.36.0/python/extension_dict.c",
+        "protobuf-7.36.0/python/extension_dict.h",
+        "protobuf-7.36.0/python/map.c",
+        "protobuf-7.36.0/python/map.h",
+        "protobuf-7.36.0/python/message.c",
+        "protobuf-7.36.0/python/message.h",
+        "protobuf-7.36.0/python/protobuf.c",
+        "protobuf-7.36.0/python/protobuf.h",
+        "protobuf-7.36.0/python/python_api.h",
+        "protobuf-7.36.0/python/repeated.c",
+        "protobuf-7.36.0/python/repeated.h",
+        "protobuf-7.36.0/python/unknown_fields.c",
+        "protobuf-7.36.0/python/unknown_fields.h",
+        "protobuf-7.36.0/setup.cfg",
+        "protobuf-7.36.0/setup.py",
+        "protobuf-7.36.0/upb/base/descriptor_constants.h",
+        "protobuf-7.36.0/upb/base/error_handler.h",
+        "protobuf-7.36.0/upb/base/internal/endian.h",
+        "protobuf-7.36.0/upb/base/internal/log2.h",
+        "protobuf-7.36.0/upb/base/status.c",
+        "protobuf-7.36.0/upb/base/status.h",
+        "protobuf-7.36.0/upb/base/string_view.h",
+        "protobuf-7.36.0/upb/base/upcast.h",
+        "protobuf-7.36.0/upb/generated_code_support.h",
+        "protobuf-7.36.0/upb/hash/common.c",
+        "protobuf-7.36.0/upb/hash/common.h",
+        "protobuf-7.36.0/upb/hash/ext_table.h",
+        "protobuf-7.36.0/upb/hash/int_table.h",
+        "protobuf-7.36.0/upb/hash/str_table.h",
+        "protobuf-7.36.0/upb/lex/atoi.c",
+        "protobuf-7.36.0/upb/lex/atoi.h",
+        "protobuf-7.36.0/upb/lex/round_trip.c",
+        "protobuf-7.36.0/upb/lex/round_trip.h",
+        "protobuf-7.36.0/upb/lex/unicode.c",
+        "protobuf-7.36.0/upb/lex/unicode.h",
+        "protobuf-7.36.0/upb/mem/alloc.c",
+        "protobuf-7.36.0/upb/mem/alloc.h",
+        "protobuf-7.36.0/upb/mem/arena.c",
+        "protobuf-7.36.0/upb/mem/arena.h",
+        "protobuf-7.36.0/upb/mem/internal/arena.h",
+        "protobuf-7.36.0/upb/message/accessors.c",
+        "protobuf-7.36.0/upb/message/accessors.h",
+        "protobuf-7.36.0/upb/message/accessors_split64.h",
+        "protobuf-7.36.0/upb/message/array.c",
+        "protobuf-7.36.0/upb/message/array.h",
+        "protobuf-7.36.0/upb/message/compare.c",
+        "protobuf-7.36.0/upb/message/compare.h",
+        "protobuf-7.36.0/upb/message/compat.c",
+        "protobuf-7.36.0/upb/message/compat.h",
+        "protobuf-7.36.0/upb/message/convert.c",
+        "protobuf-7.36.0/upb/message/convert.h",
+        "protobuf-7.36.0/upb/message/copy.c",
+        "protobuf-7.36.0/upb/message/copy.h",
+        "protobuf-7.36.0/upb/message/internal/accessors.h",
+        "protobuf-7.36.0/upb/message/internal/array.h",
+        "protobuf-7.36.0/upb/message/internal/compare_unknown.c",
+        "protobuf-7.36.0/upb/message/internal/compare_unknown.h",
+        "protobuf-7.36.0/upb/message/internal/extension.c",
+        "protobuf-7.36.0/upb/message/internal/extension.h",
+        "protobuf-7.36.0/upb/message/internal/iterator.c",
+        "protobuf-7.36.0/upb/message/internal/iterator.h",
+        "protobuf-7.36.0/upb/message/internal/map.h",
+        "protobuf-7.36.0/upb/message/internal/map_entry.h",
+        "protobuf-7.36.0/upb/message/internal/map_sorter.h",
+        "protobuf-7.36.0/upb/message/internal/message.c",
+        "protobuf-7.36.0/upb/message/internal/message.h",
+        "protobuf-7.36.0/upb/message/internal/types.h",
+        "protobuf-7.36.0/upb/message/map.c",
+        "protobuf-7.36.0/upb/message/map.h",
+        "protobuf-7.36.0/upb/message/map_gencode_util.h",
+        "protobuf-7.36.0/upb/message/map_sorter.c",
+        "protobuf-7.36.0/upb/message/merge.c",
+        "protobuf-7.36.0/upb/message/merge.h",
+        "protobuf-7.36.0/upb/message/message.c",
+        "protobuf-7.36.0/upb/message/message.h",
+        "protobuf-7.36.0/upb/message/promote.c",
+        "protobuf-7.36.0/upb/message/promote.h",
+        "protobuf-7.36.0/upb/message/unknown_fields.c",
+        "protobuf-7.36.0/upb/message/unknown_fields.h",
+        "protobuf-7.36.0/upb/message/value.h",
+        "protobuf-7.36.0/upb/mini_descriptor/build_enum.c",
+        "protobuf-7.36.0/upb/mini_descriptor/build_enum.h",
+        "protobuf-7.36.0/upb/mini_descriptor/decode.c",
+        "protobuf-7.36.0/upb/mini_descriptor/decode.h",
+        "protobuf-7.36.0/upb/mini_descriptor/internal/base92.c",
+        "protobuf-7.36.0/upb/mini_descriptor/internal/base92.h",
+        "protobuf-7.36.0/upb/mini_descriptor/internal/decoder.h",
+        "protobuf-7.36.0/upb/mini_descriptor/internal/encode.c",
+        "protobuf-7.36.0/upb/mini_descriptor/internal/encode.h",
+        "protobuf-7.36.0/upb/mini_descriptor/internal/modifiers.h",
+        "protobuf-7.36.0/upb/mini_descriptor/internal/wire_constants.h",
+        "protobuf-7.36.0/upb/mini_descriptor/link.c",
+        "protobuf-7.36.0/upb/mini_descriptor/link.h",
+        "protobuf-7.36.0/upb/mini_table/compat.c",
+        "protobuf-7.36.0/upb/mini_table/compat.h",
+        "protobuf-7.36.0/upb/mini_table/debug_string.c",
+        "protobuf-7.36.0/upb/mini_table/debug_string.h",
+        "protobuf-7.36.0/upb/mini_table/enum.h",
+        "protobuf-7.36.0/upb/mini_table/extension.h",
+        "protobuf-7.36.0/upb/mini_table/extension_registry.c",
+        "protobuf-7.36.0/upb/mini_table/extension_registry.h",
+        "protobuf-7.36.0/upb/mini_table/field.h",
+        "protobuf-7.36.0/upb/mini_table/file.h",
+        "protobuf-7.36.0/upb/mini_table/generated_registry.c",
+        "protobuf-7.36.0/upb/mini_table/generated_registry.h",
+        "protobuf-7.36.0/upb/mini_table/internal/enum.h",
+        "protobuf-7.36.0/upb/mini_table/internal/extension.h",
+        "protobuf-7.36.0/upb/mini_table/internal/field.h",
+        "protobuf-7.36.0/upb/mini_table/internal/file.h",
+        "protobuf-7.36.0/upb/mini_table/internal/generated_registry.h",
+        "protobuf-7.36.0/upb/mini_table/internal/message.c",
+        "protobuf-7.36.0/upb/mini_table/internal/message.h",
+        "protobuf-7.36.0/upb/mini_table/internal/size_log2.h",
+        "protobuf-7.36.0/upb/mini_table/internal/sub.h",
+        "protobuf-7.36.0/upb/mini_table/message.c",
+        "protobuf-7.36.0/upb/mini_table/message.h",
+        "protobuf-7.36.0/upb/mini_table/sub.h",
+        "protobuf-7.36.0/upb/port/atomic.h",
+        "protobuf-7.36.0/upb/port/sanitizers.h",
+        "protobuf-7.36.0/upb/port/vsnprintf_compat.h",
+        "protobuf-7.36.0/upb/reflection/common.h",
+        "protobuf-7.36.0/upb/reflection/def.h",
+        "protobuf-7.36.0/upb/reflection/def_pool.c",
+        "protobuf-7.36.0/upb/reflection/def_pool.h",
+        "protobuf-7.36.0/upb/reflection/def_type.c",
+        "protobuf-7.36.0/upb/reflection/def_type.h",
+        "protobuf-7.36.0/upb/reflection/desc_state.c",
+        "protobuf-7.36.0/upb/reflection/descriptor_bootstrap.h",
+        "protobuf-7.36.0/upb/reflection/enum_def.c",
+        "protobuf-7.36.0/upb/reflection/enum_def.h",
+        "protobuf-7.36.0/upb/reflection/enum_reserved_range.c",
+        "protobuf-7.36.0/upb/reflection/enum_reserved_range.h",
+        "protobuf-7.36.0/upb/reflection/enum_value_def.c",
+        "protobuf-7.36.0/upb/reflection/enum_value_def.h",
+        "protobuf-7.36.0/upb/reflection/extension_range.c",
+        "protobuf-7.36.0/upb/reflection/extension_range.h",
+        "protobuf-7.36.0/upb/reflection/field_def.c",
+        "protobuf-7.36.0/upb/reflection/field_def.h",
+        "protobuf-7.36.0/upb/reflection/file_def.c",
+        "protobuf-7.36.0/upb/reflection/file_def.h",
+        "protobuf-7.36.0/upb/reflection/internal/def_builder.c",
+        "protobuf-7.36.0/upb/reflection/internal/def_builder.h",
+        "protobuf-7.36.0/upb/reflection/internal/def_pool.h",
+        "protobuf-7.36.0/upb/reflection/internal/desc_state.h",
+        "protobuf-7.36.0/upb/reflection/internal/enum_def.h",
+        "protobuf-7.36.0/upb/reflection/internal/enum_reserved_range.h",
+        "protobuf-7.36.0/upb/reflection/internal/enum_value_def.h",
+        "protobuf-7.36.0/upb/reflection/internal/extension_range.h",
+        "protobuf-7.36.0/upb/reflection/internal/field_def.h",
+        "protobuf-7.36.0/upb/reflection/internal/file_def.h",
+        "protobuf-7.36.0/upb/reflection/internal/message_def.h",
+        "protobuf-7.36.0/upb/reflection/internal/message_reserved_range.h",
+        "protobuf-7.36.0/upb/reflection/internal/method_def.h",
+        "protobuf-7.36.0/upb/reflection/internal/oneof_def.h",
+        "protobuf-7.36.0/upb/reflection/internal/service_def.h",
+        "protobuf-7.36.0/upb/reflection/internal/strdup2.c",
+        "protobuf-7.36.0/upb/reflection/internal/strdup2.h",
+        "protobuf-7.36.0/upb/reflection/internal/upb_edition_defaults.h",
+        "protobuf-7.36.0/upb/reflection/json_enumvalue_options_bootstrap.h",
+        "protobuf-7.36.0/upb/reflection/message.c",
+        "protobuf-7.36.0/upb/reflection/message.h",
+        "protobuf-7.36.0/upb/reflection/message_def.c",
+        "protobuf-7.36.0/upb/reflection/message_def.h",
+        "protobuf-7.36.0/upb/reflection/message_reserved_range.c",
+        "protobuf-7.36.0/upb/reflection/message_reserved_range.h",
+        "protobuf-7.36.0/upb/reflection/method_def.c",
+        "protobuf-7.36.0/upb/reflection/method_def.h",
+        "protobuf-7.36.0/upb/reflection/oneof_def.c",
+        "protobuf-7.36.0/upb/reflection/oneof_def.h",
+        "protobuf-7.36.0/upb/reflection/service_def.c",
+        "protobuf-7.36.0/upb/reflection/service_def.h",
+        "protobuf-7.36.0/upb/text/debug_string.c",
+        "protobuf-7.36.0/upb/text/debug_string.h",
+        "protobuf-7.36.0/upb/text/encode.c",
+        "protobuf-7.36.0/upb/text/encode.h",
+        "protobuf-7.36.0/upb/text/internal/encode.c",
+        "protobuf-7.36.0/upb/text/internal/encode.h",
+        "protobuf-7.36.0/upb/text/options.h",
+        "protobuf-7.36.0/upb/util/def_to_proto.c",
+        "protobuf-7.36.0/upb/util/def_to_proto.h",
+        "protobuf-7.36.0/upb/util/required_fields.c",
+        "protobuf-7.36.0/upb/util/required_fields.h",
+        "protobuf-7.36.0/upb/wire/byte_size.c",
+        "protobuf-7.36.0/upb/wire/byte_size.h",
+        "protobuf-7.36.0/upb/wire/decode.c",
+        "protobuf-7.36.0/upb/wire/decode.h",
+        "protobuf-7.36.0/upb/wire/encode.c",
+        "protobuf-7.36.0/upb/wire/encode.h",
+        "protobuf-7.36.0/upb/wire/eps_copy_input_stream.c",
+        "protobuf-7.36.0/upb/wire/eps_copy_input_stream.h",
+        "protobuf-7.36.0/upb/wire/internal/back_alloc.c",
+        "protobuf-7.36.0/upb/wire/internal/back_alloc.h",
+        "protobuf-7.36.0/upb/wire/internal/constants.h",
+        "protobuf-7.36.0/upb/wire/internal/decoder.c",
+        "protobuf-7.36.0/upb/wire/internal/decoder.h",
+        "protobuf-7.36.0/upb/wire/internal/encoder.c",
+        "protobuf-7.36.0/upb/wire/internal/encoder.h",
+        "protobuf-7.36.0/upb/wire/internal/eps_copy_input_stream.h",
+        "protobuf-7.36.0/upb/wire/internal/reader.h",
+        "protobuf-7.36.0/upb/wire/reader.c",
+        "protobuf-7.36.0/upb/wire/reader.h",
+        "protobuf-7.36.0/upb/wire/types.h",
+        "protobuf-7.36.0/upb/wire/writer.h",
+        "protobuf-7.36.0/utf8_range/utf8_range.c",
+        "protobuf-7.36.0/utf8_range/utf8_range.h"
+      ],
+      "cpp_files": [],
+      "feature_hits": [],
+      "standard_includes": [
+        [
+          "protobuf-7.36.0/google/protobuf/descriptor.upb_minitable.c",
+          9,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/google/protobuf/json_enumvalue_options.upb_minitable.c",
+          9,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/descriptor.h",
+          14,
+          "#include <stdbool.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/descriptor_containers.h",
+          26,
+          "#include <stdbool.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/descriptor_pool.h",
+          14,
+          "#include <stdbool.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/extension_dict.h",
+          14,
+          "#include <stdbool.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/map.h",
+          14,
+          "#include <stdbool.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/message.c",
+          10,
+          "#include <assert.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/message.c",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/message.c",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/message.c",
+          13,
+          "#include <stdlib.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/message.c",
+          14,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/message.h",
+          14,
+          "#include <stdbool.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/protobuf.c",
+          10,
+          "#include <assert.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/protobuf.c",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/protobuf.c",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/protobuf.c",
+          13,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/protobuf.c",
+          36,
+          "#include <pthread.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/protobuf.c",
+          350,
+          "#include <malloc.h>  // malloc_trim()"
+        ],
+        [
+          "protobuf-7.36.0/python/protobuf.h",
+          14,
+          "#include <assert.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/protobuf.h",
+          15,
+          "#include <stdbool.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/protobuf.h",
+          16,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/protobuf.h",
+          17,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/repeated.h",
+          14,
+          "#include <stdbool.h>"
+        ],
+        [
+          "protobuf-7.36.0/python/unknown_fields.h",
+          14,
+          "#include <stdbool.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/base/error_handler.h",
+          11,
+          "#include <setjmp.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/base/internal/endian.h",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/base/internal/log2.h",
+          12,
+          "#include <limits.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/base/internal/log2.h",
+          13,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/base/internal/log2.h",
+          14,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/base/status.c",
+          10,
+          "#include <errno.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/base/status.c",
+          11,
+          "#include <float.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/base/status.c",
+          12,
+          "#include <stdarg.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/base/status.c",
+          13,
+          "#include <stdlib.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/base/status.c",
+          14,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/base/status.h",
+          11,
+          "#include <stdarg.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/base/string_view.h",
+          11,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/hash/common.c",
+          16,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/hash/common.c",
+          17,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/hash/common.c",
+          396,
+          "#include <intrin.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/hash/common.h",
+          30,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/hash/common.h",
+          31,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/hash/ext_table.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/hash/ext_table.h",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/hash/int_table.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/hash/int_table.h",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/hash/str_table.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/hash/str_table.h",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/hash/str_table.h",
+          13,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/lex/atoi.h",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/lex/round_trip.c",
+          10,
+          "#include <float.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/lex/round_trip.c",
+          11,
+          "#include <math.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/lex/round_trip.c",
+          12,
+          "#include <stdio.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/lex/round_trip.c",
+          13,
+          "#include <stdlib.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/lex/unicode.h",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mem/alloc.c",
+          10,
+          "#include <stdlib.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mem/alloc.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mem/arena.c",
+          10,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mem/arena.c",
+          15,
+          "#include <stdatomic.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mem/arena.c",
+          18,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mem/arena.c",
+          19,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mem/arena.c",
+          20,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mem/arena.h",
+          24,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mem/arena.h",
+          25,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mem/internal/arena.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mem/internal/arena.h",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mem/internal/arena.h",
+          13,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/accessors.h",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/accessors_split64.h",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/array.c",
+          10,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/array.c",
+          11,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/array.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/compare.c",
+          10,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/compare.c",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/compare.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/compat.c",
+          10,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/compat.c",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/compat.h",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/convert.c",
+          10,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/convert.c",
+          11,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/copy.c",
+          10,
+          "#include <stdbool.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/copy.c",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/copy.c",
+          12,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/accessors.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/accessors.h",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/accessors.h",
+          13,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/array.h",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/array.h",
+          12,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/compare_unknown.c",
+          10,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/compare_unknown.c",
+          11,
+          "#include <stdlib.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/compare_unknown.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/extension.c",
+          10,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/extension.c",
+          11,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/extension.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/iterator.c",
+          10,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/iterator.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/iterator.h",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/map.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/map.h",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/map.h",
+          13,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/map_entry.h",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/map_sorter.h",
+          13,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/map_sorter.h",
+          14,
+          "#include <stdlib.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/map_sorter.h",
+          15,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/message.c",
+          10,
+          "#include <math.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/message.c",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/message.c",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/message.c",
+          13,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/message.h",
+          18,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/message.h",
+          19,
+          "#include <stdlib.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/message.h",
+          20,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/internal/types.h",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/map.c",
+          10,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/map.c",
+          11,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/map.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/map_sorter.c",
+          10,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/map_sorter.c",
+          11,
+          "#include <stdlib.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/map_sorter.c",
+          12,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/message.c",
+          10,
+          "#include <stdarg.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/message.c",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/message.c",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/message.c",
+          13,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/message.h",
+          15,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/message.h",
+          16,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/promote.c",
+          10,
+          "#include <stdbool.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/promote.c",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/promote.c",
+          12,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/promote.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/promote.h",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/unknown_fields.c",
+          10,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/unknown_fields.c",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/unknown_fields.c",
+          12,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/unknown_fields.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/unknown_fields.h",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/value.h",
+          14,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/message/value.h",
+          15,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_descriptor/build_enum.c",
+          10,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_descriptor/build_enum.c",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_descriptor/decode.c",
+          10,
+          "#include <inttypes.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_descriptor/decode.c",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_descriptor/decode.c",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_descriptor/decode.c",
+          13,
+          "#include <stdlib.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_descriptor/decode.c",
+          14,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_descriptor/decode.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_descriptor/internal/base92.h",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_descriptor/internal/encode.c",
+          10,
+          "#include <assert.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_descriptor/internal/encode.c",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_descriptor/internal/encode.c",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_descriptor/internal/encode.h",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_descriptor/link.c",
+          10,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_descriptor/link.c",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_descriptor/link.c",
+          12,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/compat.c",
+          10,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/compat.c",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/debug_string.c",
+          10,
+          "#include <inttypes.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/debug_string.c",
+          11,
+          "#include <stdarg.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/debug_string.c",
+          12,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/debug_string.c",
+          13,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/debug_string.c",
+          14,
+          "#include <stdio.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/debug_string.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/enum.h",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/extension.h",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/extension_registry.c",
+          10,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/extension_registry.c",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/extension_registry.c",
+          12,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/extension_registry.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/extension_registry.h",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/field.h",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/generated_registry.c",
+          10,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/generated_registry.c",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/generated_registry.c",
+          24,
+          "#include <sched.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/internal/enum.h",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/internal/extension.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/internal/extension.h",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/internal/field.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/internal/field.h",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/internal/message.c",
+          10,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/internal/message.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/internal/message.h",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/internal/message.h",
+          13,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/internal/size_log2.h",
+          12,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/internal/size_log2.h",
+          13,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/message.c",
+          10,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/message.c",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/mini_table/message.h",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/port/atomic.h",
+          16,
+          "#include <stdatomic.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/port/atomic.h",
+          17,
+          "#include <stdbool.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/port/atomic.h",
+          40,
+          "#include <intrin.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/port/atomic.h",
+          41,
+          "#include <stdbool.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/port/atomic.h",
+          42,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/port/atomic.h",
+          273,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/port/sanitizers.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/port/sanitizers.h",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/port/sanitizers.h",
+          13,
+          "#include <stdio.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/port/sanitizers.h",
+          20,
+          "#include <sanitizer/hwasan_interface.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/port/sanitizers.h",
+          24,
+          "#include <sanitizer/msan_interface.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/def_pool.c",
+          10,
+          "#include <assert.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/def_pool.c",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/def_pool.c",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/def_pool.c",
+          13,
+          "#include <stdio.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/def_pool.c",
+          14,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/def_pool.h",
+          13,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/def_pool.h",
+          14,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/enum_def.c",
+          10,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/enum_def.c",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/enum_def.c",
+          12,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/enum_def.h",
+          13,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/enum_def.h",
+          14,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/enum_def.h",
+          15,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/enum_reserved_range.c",
+          10,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/enum_value_def.c",
+          10,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/enum_value_def.c",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/enum_value_def.c",
+          12,
+          "#include <stdlib.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/enum_value_def.h",
+          13,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/extension_range.c",
+          10,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/extension_range.h",
+          13,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/field_def.c",
+          10,
+          "#include <ctype.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/field_def.c",
+          11,
+          "#include <errno.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/field_def.c",
+          12,
+          "#include <stdbool.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/field_def.c",
+          13,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/field_def.c",
+          14,
+          "#include <stdlib.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/field_def.c",
+          15,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/field_def.h",
+          13,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/file_def.c",
+          10,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/file_def.c",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/file_def.c",
+          12,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/internal/def_builder.c",
+          10,
+          "#include <assert.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/internal/def_builder.c",
+          11,
+          "#include <stdarg.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/internal/def_builder.c",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/internal/def_builder.c",
+          13,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/internal/def_builder.h",
+          11,
+          "#include <setjmp.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/internal/def_builder.h",
+          12,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/internal/def_builder.h",
+          13,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/internal/def_builder.h",
+          14,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/internal/enum_value_def.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/internal/field_def.h",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/internal/file_def.h",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/internal/message_def.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/internal/strdup2.c",
+          10,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/internal/strdup2.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/message.c",
+          10,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/message.c",
+          11,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/message.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/message_def.c",
+          10,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/message_def.c",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/message_def.c",
+          12,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/message_reserved_range.c",
+          8,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/oneof_def.c",
+          10,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/oneof_def.c",
+          11,
+          "#include <stdlib.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/oneof_def.c",
+          12,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/oneof_def.h",
+          13,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/oneof_def.h",
+          14,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/service_def.c",
+          10,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/reflection/service_def.c",
+          11,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/text/debug_string.c",
+          10,
+          "#include <inttypes.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/text/debug_string.c",
+          11,
+          "#include <stdarg.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/text/debug_string.c",
+          12,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/text/debug_string.c",
+          13,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/text/debug_string.c",
+          14,
+          "#include <stdio.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/text/debug_string.c",
+          15,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/text/debug_string.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/text/encode.c",
+          10,
+          "#include <inttypes.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/text/encode.c",
+          11,
+          "#include <stdarg.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/text/encode.c",
+          12,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/text/encode.c",
+          13,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/text/encode.c",
+          14,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/text/internal/encode.c",
+          10,
+          "#include <inttypes.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/text/internal/encode.c",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/text/internal/encode.c",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/text/internal/encode.h",
+          11,
+          "#include <stdarg.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/text/internal/encode.h",
+          12,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/util/def_to_proto.c",
+          10,
+          "#include <inttypes.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/util/def_to_proto.c",
+          11,
+          "#include <math.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/util/def_to_proto.c",
+          12,
+          "#include <setjmp.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/util/def_to_proto.c",
+          13,
+          "#include <stdarg.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/util/def_to_proto.c",
+          14,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/util/def_to_proto.c",
+          15,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/util/def_to_proto.c",
+          16,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/util/required_fields.c",
+          10,
+          "#include <assert.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/util/required_fields.c",
+          11,
+          "#include <inttypes.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/util/required_fields.c",
+          12,
+          "#include <setjmp.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/util/required_fields.c",
+          13,
+          "#include <stdarg.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/util/required_fields.c",
+          14,
+          "#include <stdbool.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/util/required_fields.c",
+          15,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/util/required_fields.c",
+          16,
+          "#include <stdlib.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/util/required_fields.c",
+          17,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/util/required_fields.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/byte_size.c",
+          10,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/byte_size.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/decode.c",
+          10,
+          "#include <assert.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/decode.c",
+          11,
+          "#include <stdbool.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/decode.c",
+          12,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/decode.c",
+          13,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/decode.c",
+          14,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/decode.h",
+          13,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/decode.h",
+          14,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/encode.c",
+          12,
+          "#include <stdbool.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/encode.c",
+          13,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/encode.c",
+          14,
+          "#include <stdlib.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/encode.c",
+          15,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/encode.h",
+          13,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/encode.h",
+          14,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/eps_copy_input_stream.c",
+          10,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/eps_copy_input_stream.c",
+          11,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/eps_copy_input_stream.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/eps_copy_input_stream.h",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/internal/back_alloc.c",
+          10,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/internal/back_alloc.c",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/internal/back_alloc.c",
+          12,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/internal/back_alloc.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/internal/decoder.h",
+          16,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/internal/decoder.h",
+          17,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/internal/decoder.h",
+          18,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/internal/encoder.c",
+          12,
+          "#include <setjmp.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/internal/encoder.c",
+          13,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/internal/encoder.c",
+          14,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/internal/encoder.c",
+          15,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/internal/encoder.h",
+          11,
+          "#include <setjmp.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/internal/encoder.h",
+          12,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/internal/encoder.h",
+          13,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/internal/eps_copy_input_stream.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/internal/eps_copy_input_stream.h",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/internal/eps_copy_input_stream.h",
+          13,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/internal/reader.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/internal/reader.h",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/reader.c",
+          10,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/reader.c",
+          11,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/reader.h",
+          11,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/reader.h",
+          12,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/reader.h",
+          13,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/upb/wire/writer.h",
+          4,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/utf8_range/utf8_range.c",
+          20,
+          "#include <stddef.h>"
+        ],
+        [
+          "protobuf-7.36.0/utf8_range/utf8_range.c",
+          21,
+          "#include <stdint.h>"
+        ],
+        [
+          "protobuf-7.36.0/utf8_range/utf8_range.c",
+          22,
+          "#include <string.h>"
+        ],
+        [
+          "protobuf-7.36.0/utf8_range/utf8_range.h",
+          4,
+          "#include <stdbool.h>"
+        ],
+        [
+          "protobuf-7.36.0/utf8_range/utf8_range.h",
+          5,
+          "#include <stddef.h>"
+        ]
+      ],
+      "installed_source_exact_matches": [],
+      "installed_source_differences": []
+    }
+  },
+  "wheel_provenance": [
+    {
+      "package": "greenlet",
+      "url": "https://files.pythonhosted.org/packages/78/ac/5c5b959999b6f09c3026b5dfe171575bc3121c5236ce74f495096f25b203/greenlet-3.5.5-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl",
+      "sha256": "147b25a42e5ca5be3d42356e8f608b37af715a1c196e9bf9d1627f3341adfe1d",
+      "installed_elf_exact_matches": [
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/_greenlet.cpython-312-x86_64-linux-gnu.so",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/tests/_test_extension.cpython-312-x86_64-linux-gnu.so",
+        "opt/api-venv/lib/python3.12/site-packages/greenlet/tests/_test_extension_cpp.cpython-312-x86_64-linux-gnu.so"
+      ],
+      "differences": []
+    },
+    {
+      "package": "protobuf",
+      "url": "https://files.pythonhosted.org/packages/c7/f8/bd5804695ba400e423c33fd4d9f58c28d86633d5ba1945c36ff3967d98cb/protobuf-7.36.0-cp310-abi3-manylinux2014_x86_64.whl",
+      "sha256": "70f5ec8eb0da81a44360c0dc0beac99a0d78071d21956a7076bae8bd2051841b",
+      "installed_elf_exact_matches": [
+        "opt/api-venv/lib/python3.12/site-packages/google/_upb/_message.abi3.so"
+      ],
+      "differences": []
+    }
+  ],
+  "source_interpretation": {
+    "greenlet": "58 source/build files scanned in verified 3.5.5 sdist; all 55 installed C/C++ source/header files with sdist counterparts exactly match. C++ vectors hold OwnedObject, PyGreenlet* and ThreadState*, not bool. Includes algorithm/iostream but source calls std::find and std::min, emits diagnostic ostream output, no std::search/parallel/PBDS/bitset/charconv/fstream. Object-specific new routes to PythonAllocator or malloc; ordinary allocator import _Znwm, no aligned overload. Wheel compiler comment GCC14.2.1 RedHat, not installed Debian gcc14-base package.",
+    "protobuf": "Matching 7.36.0 sdist setup constructs google._upb._message from C source globs (google/protobuf, python, upb, utf8_range), language=c; 226 C/header/build files scanned and zero C++ source files or affected C++ feature matches. Matching official binary wheel exactly equals retained _message.abi3.so. It has libstdc++ DT_NEEDED but zero undefined mangled C++ symbols, consistent with link-time dependency rather than use of seven features. Cannot equate DT_NEEDED with exploit.",
+    "other_extensions": "Every retained ELF inspected, including 37 under opt and wheel-bundled psycopg libraries. Only three direct libstdc++ dependencies: greenlet runtime, greenlet test C++ extension and protobuf upb. No wheel-bundled libstdc++ ELF copy found. C/Rust native modules depend on libgcc independently; that does not make libgcc implement libstdc++ CVEs."
+  },
+  "advisory_assessments": [
+    {
+      "advisory": "CVE-2026-102010",
+      "feature": "PBDS binary_heap erase_if",
+      "evidence_conclusion": "No ext/pb_ds or __gnu_pbds use in matching greenlet sources; protobuf upb is C. No exposed priority-queue erase_if path established.",
+      "next_action": "Inspect build include/dependency manifest if wheel replacement changes; patched template consumer needs rebuild, not only shared library upgrade.",
+      "disposition": "No vulnerable consumer path identified in verified retained wheel/source set; source-package record remains and library is not claimed fixed."
+    },
+    {
+      "advisory": "CVE-2026-114690",
+      "feature": "GNU parallel search",
+      "evidence_conclusion": "Greenlet uses ordinary std::find/min, no search/parallel headers or _GLIBCXX_PARALLEL source/build flag; protobuf C source. No vulnerable parallel-search instantiation identified.",
+      "next_action": "Wheel compiler flags beyond shipped build script remain incompletely attested; preserve unresolved overall until current-image/build confirmation.",
+      "disposition": "No vulnerable consumer path identified in verified retained wheel/source set; source-package record remains and library is not claimed fixed."
+    },
+    {
+      "advisory": "CVE-2026-114691",
+      "feature": "vector<bool>",
+      "evidence_conclusion": "Exact greenlet source vector types are OwnedObject and pointers, no vector<bool>; protobuf C source. Template specialization required by CVE not identified.",
+      "next_action": "Confirm no replaced/vendor wheel source changes; do not describe all vector uses as vulnerable.",
+      "disposition": "No vulnerable consumer path identified in verified retained wheel/source set; source-package record remains and library is not claimed fixed."
+    },
+    {
+      "advisory": "CVE-2026-115455",
+      "feature": "wide-stream bitset extraction",
+      "evidence_conclusion": "No bitset include/type or wide-stream input manipulator in matching source. Greenlet diagnostic ostream output is a different operation; protobuf C source.",
+      "next_action": "No affected application consumer demonstrated; current-image source/package identity must match this retained archive.",
+      "disposition": "No vulnerable consumer path identified in verified retained wheel/source set; source-package record remains and library is not claimed fixed."
+    },
+    {
+      "advisory": "CVE-2026-115456",
+      "feature": "std::from_chars",
+      "evidence_conclusion": "No charconv include/from_chars call in matching sources; none of three direct consumers imports from_chars. Protobuf upb parses using C code, not this C++ API.",
+      "next_action": "Combine source evidence with current runtime symbols; absence of symbol alone would not rule out inline versions.",
+      "disposition": "No vulnerable consumer path identified in verified retained wheel/source set; source-package record remains and library is not claimed fixed."
+    },
+    {
+      "advisory": "CVE-2026-125709",
+      "feature": "basic_filebuf byte output failure",
+      "evidence_conclusion": "Greenlet source has diagnostics using std::ostream/cerr but no fstream/filebuf/ofstream/ifstream construction. Protobuf C implementation. No vulnerable basic_filebuf retry path identified.",
+      "next_action": "Do not count iostream inclusion as the affected filebuf path; check future native consumer file output and failure handling.",
+      "disposition": "No vulnerable consumer path identified in verified retained wheel/source set; source-package record remains and library is not claimed fixed."
+    },
+    {
+      "advisory": "CVE-2026-95619",
+      "feature": "aligned operator new",
+      "evidence_conclusion": "Greenlet ordinary _Znwm symbol is unaligned new(size_t). Source custom new uses PythonAllocator/malloc; no align_val_t/alignas/aligned allocation in matching source. Protobuf C source.",
+      "next_action": "Actual system libstdc++ exports aligned-new implementation, but these retained direct consumer sources do not call it; current image/runtime maps remain to be checked.",
+      "disposition": "No vulnerable consumer path identified in verified retained wheel/source set; source-package record remains and library is not claimed fixed."
+    }
+  ],
+  "direct_consumers": [
+    {
+      "path": "opt/api-venv/lib/python3.12/site-packages/google/_upb/_message.abi3.so",
+      "needed": [
+        "libstdc++.so.6",
+        "libm.so.6",
+        "libc.so.6"
+      ],
+      "cpp_undefined": [],
+      "sha256": "4ac1622d643ff188f4f355cc89a439f6881c397d766911e1246f9f4a215d051d",
+      "compiler_comments": [
+        "GCC: (GNU) 10.2.1 20210130 (Red Hat 10.2.1-11)",
+        "clang version 18.0.0git (https://github.com/llvm/llvm-project 337597e3783fdf51a66b35b5902ff5d8c9edb9d0)"
+      ]
+    },
+    {
+      "path": "opt/api-venv/lib/python3.12/site-packages/greenlet/_greenlet.cpython-312-x86_64-linux-gnu.so",
+      "needed": [
+        "libstdc++.so.6",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libpthread.so.0",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "cpp_undefined": [
+        "_ZSt9terminatev",
+        "_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE9_M_appendEPKcm",
+        "_ZNSt13runtime_errorC1EPKc",
+        "_ZSt20__throw_length_errorPKc",
+        "_ZNSt9bad_allocD1Ev",
+        "_ZSt20__throw_system_errori",
+        "_ZTVN10__cxxabiv117__class_type_infoE",
+        "_ZSt19__throw_logic_errorPKc",
+        "_ZTVSt9bad_alloc",
+        "_Znwm",
+        "_ZdlPvm",
+        "_ZNSt13runtime_errorD1Ev",
+        "_ZNSt13runtime_errorD2Ev",
+        "_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE10_M_disposeEv",
+        "_ZNSt13runtime_errorC2ERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE",
+        "_ZTISt9bad_alloc",
+        "_ZTVN10__cxxabiv120__si_class_type_infoE",
+        "_ZNKSt13runtime_error4whatEv",
+        "_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE9_M_createERmm",
+        "_ZTISt9exception",
+        "_ZNSt13runtime_errorC2EPKc",
+        "_ZTISt13runtime_error"
+      ],
+      "sha256": "962f25455d5489cfba56b5f9ae9938ffa2ef4be1f86e7e496eed8d0aece4a2cc",
+      "compiler_comments": [
+        "GCC: (GNU) 14.2.1 20250110 (Red Hat 14.2.1-11)"
+      ]
+    },
+    {
+      "path": "opt/api-venv/lib/python3.12/site-packages/greenlet/tests/_test_extension_cpp.cpython-312-x86_64-linux-gnu.so",
+      "needed": [
+        "libstdc++.so.6",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libpthread.so.0",
+        "libc.so.6"
+      ],
+      "cpp_undefined": [
+        "_ZNSt13runtime_errorC1EPKc",
+        "_ZTVN10__cxxabiv117__class_type_infoE",
+        "_ZNSt13runtime_errorD1Ev",
+        "_ZTISt13runtime_error"
+      ],
+      "sha256": "5574792528bf90908081403d515deb6cc6a84df292cc674aafb6774587054e18",
+      "compiler_comments": [
+        "GCC: (GNU) 14.2.1 20250110 (Red Hat 14.2.1-11)"
+      ]
+    }
+  ],
+  "archive_image_identity": "sha256:3c894f500266e88c0fd16111c7d1d41decc7667aa0e4970fcfe7beceeb480c9f (OCI index/image inspect identity); config blobs/sha256/c5c7d71efe6973f1e16cd3d613cc641bc491bce007973094d239a5a0beed3ca7"
+}
