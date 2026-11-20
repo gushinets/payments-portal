@@ -74,6 +74,33 @@ assert sqlite3.connect(\":memory:\").execute(\"select 1\").fetchone() == (1,)
   fi
 '
 
+docker run --rm --network none --entrypoint sh "$image_ref" -ec '
+  installer_files=$(find /usr/local /opt/api-venv \( -name pip -o -name pip3 -o -name pip3.12 \
+    -o -name "pip-*.dist-info" -o -name "pip-*.whl" -o -name ensurepip \) -print)
+  if [ -n "$installer_files" ]; then
+    printf "Unexpected production pip or bootstrap files:\n%s\n" "$installer_files" >&2
+    exit 1
+  fi
+
+  for interpreter in /usr/local/bin/python3.12 /opt/api-venv/bin/python; do
+    "$interpreter" -c "
+import sys
+from importlib import metadata, util
+
+for module in (\"pip\", \"ensurepip\"):
+    if util.find_spec(module) is not None:
+        sys.exit(f\"{sys.executable}: unexpected module {module}\")
+try:
+    metadata.version(\"pip\")
+except metadata.PackageNotFoundError:
+    pass
+else:
+    sys.exit(f\"{sys.executable}: unexpected installed pip distribution\")
+"
+  done
+  echo "Verified no pip or pip bootstrap in global Python or the API venv."
+'
+
 container_id=""
 cleanup() {
   if [ -n "$container_id" ]; then
