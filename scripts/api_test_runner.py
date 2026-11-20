@@ -272,6 +272,9 @@ def execute(
     timeout: float | None = None,
     start_new_session: bool = True,
 ) -> list[int]:
+    interrupts: tuple[signal.Signals, ...] = (signal.SIGINT, signal.SIGTERM)
+    if hasattr(signal, "SIGBREAK"):
+        interrupts += (signal.SIGBREAK,)
     processes: list[subprocess.Popen[bytes]] = []
     with ExitStack() as stack:
         try:
@@ -279,7 +282,7 @@ def execute(
                 log = stack.enter_context(
                     (invocation.directory / "pytest.log").open("wb")
                 )
-                with defer_interrupts(signal.SIGINT, signal.SIGTERM):
+                with defer_interrupts(*interrupts):
                     processes.append(
                         subprocess.Popen(
                             invocation.command,
@@ -295,11 +298,8 @@ def execute(
                     )
             return [process.wait(timeout=timeout) for process in processes]
         except BaseException:
-            # A second Ctrl-C must not interrupt resource cleanup/join.
-            previous = {
-                sig: signal.signal(sig, signal.SIG_IGN)
-                for sig in (signal.SIGINT, signal.SIGTERM)
-            }
+            # Ignore repeat interrupts until children are joined.
+            previous = {sig: signal.signal(sig, signal.SIG_IGN) for sig in interrupts}
             try:
                 forced = stop_processes(processes, start_new_session=start_new_session)
                 write_json(

@@ -208,6 +208,13 @@ def test_ci_postgres_uses_ram_and_retains_parallel_runner_diagnostics() -> None:
     assert '> "$CI_ARTIFACTS/postgres-pytest.log" 2>&1' in postgres_step["run"]
     assert "--cov" not in postgres_step["run"]
     assert "continue-on-error" not in postgres_step
+    report = next(step for step in gate["steps"] if step.get("name") == "Upload PostgreSQL test results")
+    assert gate["steps"].index(report) == gate["steps"].index(postgres_step) + 1
+    assert report.get("if", "success()") == "success()"
+    assert report["uses"].startswith("actions/upload-artifact@")
+    assert report["with"]["path"] == "${{ env.CI_ARTIFACTS }}/postgres-junit.xml"
+    assert report["with"]["include-hidden-files"] is True
+    assert report["with"]["if-no-files-found"] == "error"
     diagnostics = next(step for step in gate["steps"] if step.get("name") == "Upload failure diagnostics")
     assert diagnostics["if"] == "failure() || cancelled()"
     assert diagnostics["with"]["include-hidden-files"] is True

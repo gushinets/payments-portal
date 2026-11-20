@@ -717,6 +717,48 @@ def test_detached_windows_worker_is_joined_after_partial_launch(
     assert json.loads((first / "interrupted.json").read_text()) == {"forced_termination": True}
 
 
+def test_windows_break_during_spawn_joins_the_new_worker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from scripts import pytest_manifest
+
+    interrupt = signal.SIGBREAK if hasattr(signal, "SIGBREAK") else signal.SIGUSR1
+    previous = signal.getsignal(interrupt)
+    worker = MagicMock()
+    worker.poll.return_value = None
+
+    def deliver_break() -> None:
+        handler = signal.getsignal(interrupt)
+        if handler != signal.SIG_IGN:
+            assert callable(handler)
+            handler(interrupt, None)
+
+    def interrupted_spawn(*args: object, **kwargs: object) -> subprocess.Popen[bytes]:
+        deliver_break()
+        return worker
+
+    def interrupted_wait(*, timeout: float) -> int:
+        deliver_break()
+        worker.poll.return_value = 130
+        return 130
+
+    worker.wait.side_effect = interrupted_wait
+    monkeypatch.setattr(runner, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(signal, "SIGBREAK", interrupt, raising=False)
+    monkeypatch.setattr(signal, "CTRL_BREAK_EVENT", 1, raising=False)
+    monkeypatch.setattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 512, raising=False)
+    monkeypatch.setattr(subprocess, "Popen", interrupted_spawn)
+    try:
+        pytest_manifest.pytest_configure()
+        with pytest.raises(KeyboardInterrupt):
+            runner.execute([runner.Invocation(["nested pytest"], tmp_path)], tmp_path, {}, start_new_session=False)
+        assert signal.getsignal(interrupt) is signal.default_int_handler
+    finally:
+        signal.signal(interrupt, previous)
+
+    worker.send_signal.assert_called_once_with(signal.CTRL_BREAK_EVENT)
+    worker.wait.assert_called_once()
+    assert json.loads((tmp_path / "interrupted.json").read_text()) == {"forced_termination": False}
+
+
 @pytest.mark.skipif(os.name == "nt", reason="POSIX signal integration; Windows uses CTRL_BREAK_EVENT")
 def test_timed_out_nested_pytest_can_finalize_owned_resource(suite: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     source(

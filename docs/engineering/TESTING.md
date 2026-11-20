@@ -100,10 +100,11 @@ coverage is under `.harness/coverage/web-components/`. CI quality uses
 `npm run check:fast -- --coverage` and publishes both coverage artifacts. The
 production-gate job runs PostgreSQL with four workers on a separate 2 GiB tmpfs
 service. Python receives the step's cancellation signal directly and writes
-command output to `.harness/ci/postgres-pytest.log`. The diagnostics upload
-includes available files in `.harness/ci/` and `.harness/api-tests/` on failure
-or cancellation. Docker logs are collected on failure. See the
-[CI workflow](../../.github/workflows/ci.yml) for the
+command output to `.harness/ci/postgres-pytest.log`. After a successful
+PostgreSQL test step, CI uploads the merged JUnit as `postgres-test-results`.
+The diagnostics upload includes available files in `.harness/ci/` and
+`.harness/api-tests/` on failure or cancellation. Docker logs are collected on
+failure. See the [CI workflow](../../.github/workflows/ci.yml) for the
 exact commands; local checks do not establish remote CI success.
 
 ## Test environment and server lifecycle
