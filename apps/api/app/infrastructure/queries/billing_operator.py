@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Text, and_, cast, exists, or_, select
+from sqlalchemy import Select, Text, and_, cast, exists, or_, select
 from sqlalchemy.orm import InstrumentedAttribute, Session, aliased
 from sqlalchemy.sql import ColumnElement
 from sqlalchemy.sql.selectable import Exists
@@ -275,8 +275,8 @@ def work(db: Session, references: tuple[str, ...]) -> list[BillingWorkItem]:
     )
 
 
-def _open_purchase_reviews(customer_id: UUID, reason: str) -> Exists:
-    return exists().where(
+def _open_purchase_reviews(customer_id: UUID, reason: str) -> Select[tuple[UUID, UUID]]:
+    return select(PurchaseIntent.purchase_intent_id, ManualReviewCase.review_case_id).where(
         PurchaseIntent.customer_id == customer_id,
         ManualReviewCase.scope_kind == "purchase_intent",
         ManualReviewCase.scope_reference == cast(PurchaseIntent.purchase_intent_id, Text),
@@ -286,7 +286,16 @@ def _open_purchase_reviews(customer_id: UUID, reason: str) -> Exists:
 
 
 def has_open_purchase_review(db: Session, customer_id: UUID, *, reason: str) -> bool:
-    return bool(db.scalar(select(_open_purchase_reviews(customer_id, reason))))
+    return bool(db.scalar(select(_open_purchase_reviews(customer_id, reason).exists())))
+
+
+def open_purchase_review_refs(db: Session, customer_id: UUID, *, reason: str, limit: int) -> list[tuple[UUID, UUID]]:
+    query = (
+        _open_purchase_reviews(customer_id, reason)
+        .order_by(ManualReviewCase.created_at.desc(), ManualReviewCase.review_case_id)
+        .limit(limit)
+    )
+    return list(db.execute(query).tuples())
 
 
 def has_open_purchase_review_for_product(
@@ -343,4 +352,4 @@ def has_open_purchase_review_for_product(
             and_(evidence["relationship_conflict"].as_boolean().is_not(False), or_(*affected)),
         )
     )
-    return bool(db.scalar(select(restriction)))
+    return bool(db.scalar(select(restriction.exists())))

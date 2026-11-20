@@ -107,7 +107,12 @@ async def _run(
         return await run_in_threadpool(inspect_operation, SessionLocal, configuration, arguments.operation_id)
     if arguments.command == "inspect":
         return await run_in_threadpool(
-            inspect_evidence, SessionLocal, configuration, arguments.user_id, arguments.purchase_id
+            inspect_evidence,
+            SessionLocal,
+            configuration,
+            arguments.user_id,
+            arguments.purchase_id,
+            include_blocking_late_reviews=True,
         )
     request = resolution_request(arguments) if arguments.command == "resolve-review" else None
     async with source_resources(configuration) as sources:

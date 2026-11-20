@@ -98,8 +98,9 @@ def test_billing_recovery_cli_dispatches_shared_use_cases(
 ) -> None:
     calls = []
 
-    def inspect(*args: object) -> dict:
+    def inspect(*args: object, include_blocking_late_reviews: bool = False) -> dict:
         calls.append("inspect")
+        assert include_blocking_late_reviews == (command == "inspect")
         return {"scope_held": True}
 
     async def recover(*args: object, **kwargs: object) -> None:
@@ -136,7 +137,7 @@ def test_billing_recovery_cli_inspect_opens_no_source_resources(
         raise AssertionError("inspect opened source resources")
 
     monkeypatch.setattr(cli, "source_resources", forbidden)
-    monkeypatch.setattr(cli, "inspect_evidence", lambda *args: {})
+    monkeypatch.setattr(cli, "inspect_evidence", lambda *args, **kwargs: {})
     monkeypatch.setattr(cli, "Settings", step1_settings)
     monkeypatch.setattr(cli, "resolve_operator_principal", lambda: "os-euid:1000")
     assert cli.main(["inspect", "--user-id", str(uuid4()), "--purchase-id", str(uuid4())]) == 0
@@ -306,7 +307,7 @@ def test_terminal_evidence_path_uses_callers_directory(
 
 
 def test_billing_recovery_cli_safe_error(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    def fail(*args: object) -> None:
+    def fail(*args: object, **kwargs: object) -> None:
         raise BillingRefused("billing_review_stale", 409)
 
     monkeypatch.setattr(cli, "inspect_evidence", fail)
@@ -361,7 +362,7 @@ def test_billing_recovery_cli_unexpected_failure_is_reported_once_without_raw_te
 ) -> None:
     reports = []
 
-    def fail(*args: object) -> None:
+    def fail(*args: object, **kwargs: object) -> None:
         raise RuntimeError("PRIVATE token and payload")
 
     monkeypatch.setattr(cli, "inspect_evidence", fail)
