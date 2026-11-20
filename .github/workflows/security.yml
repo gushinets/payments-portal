@@ -18,6 +18,7 @@ concurrency:
 env:
   API_IMAGE: payment-portal-api:trivy-${{ github.sha }}
   APP_PUBLIC_BASE_URL: https://payments.example.test
+  TRIVY_CACHE_DIR: ${{ github.workspace }}/.cache/trivy
   TRIVY_REPORT_DIR: .harness/trivy
   WEB_IMAGE: payment-portal-web:trivy-${{ github.sha }}
 
