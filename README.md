@@ -82,22 +82,28 @@ design system, using navy/amber, flat dark panels and compact styling.
    npm run repo:setup
    ```
 
-5. Start an isolated worktree environment:
+5. For PostgreSQL-free verification, run `npm run check:fast`. For the full
+   check, use the dedicated test PostgreSQL server. On a fresh machine,
+   [pull the pinned PostgreSQL image](docs/engineering/TESTING.md#test-environment-and-server-lifecycle)
+   before starting it.
+
+   ```bash
+   python scripts/repo.py test-db up
+   npm run check
+   python scripts/repo.py test-db stop
+   ```
+
+6. For manual app use or browser E2E, start the worktree application stack:
 
    ```bash
    npm run repo:up
    ```
 
-6. Run the canonical checks:
-
-   ```bash
-   npm run check:fast
-   npm run check
-   ```
-
-Runtime state and test evidence are written to the ignored `.harness/`
-directory. Each Git worktree receives an isolated Compose project, database,
-ports, logs, and browser artifacts.
+Runtime state and test evidence are written to the checkout's ignored
+`.harness/` directory. The harness derives Compose project names and default
+ports from the checkout path. See the
+[test-server lifecycle](docs/engineering/TESTING.md#test-environment-and-server-lifecycle)
+for the limitation when paths differ only by letter case.
 
 ## API development workflow
 
@@ -130,50 +136,20 @@ npm run build:api
 ```
 
 The API test boundaries are intentional: `test:api:fast` is PostgreSQL-free,
-`test:api:postgres` runs the PostgreSQL tests, and `test:api` runs the complete
-backend suite. Frontend tests and browser E2E remain separate commands.
+`test:api:postgres` runs PostgreSQL with four processes by default, and
+`test:api` runs fast tests serially followed by parallel PostgreSQL. Use
+`npm run test:api:postgres -- --workers 1` for serial diagnosis. The PostgreSQL
+partition needs the dedicated test server or an explicitly configured test
+database server.
 
-For local PostgreSQL tests on Unix/WSL, start and stop only the worktree-local
-server through the minimal Makefile shortcuts:
+Use `npm run check:fast -- --coverage` or `npm run check -- --coverage` to
+collect API-fast and component coverage in their single test executions. The
+complete check also builds web and runs PostgreSQL uninstrumented; browsers
+require a separate run or `RUN_E2E=true` with a running harness stack. Standalone
+`python scripts/repo.py coverage api` covers the complete backend serially.
 
-```bash
-make test_db_up
-npm run test:api:postgres
-make test_db_stop
-```
-
-The cross-platform equivalents are `python scripts/repo.py test-db up` and
-`python scripts/repo.py test-db stop`. They use `docker-compose.test.yml` in a
-separate `<worktree-project>-tests` Compose project, on the worktree PostgreSQL
-port plus 10000. Its 2 GiB tmpfs contains only disposable test data; the persistent
-development server and volume are independent. Stopping the test server loses
-its data. No PostgreSQL durability settings are disabled.
-
-`test:api:postgres` uses four independent pytest processes, balanced by collected
-case count while keeping modules together. `test:api` runs the fast partition
-serially first, then the same parallel PostgreSQL partition, and combines their
-JUnit reports. This preserves the existing fast-suite ordering and SQLite
-fixture lifecycle. Each PostgreSQL process creates
-unique `_tests` databases, runs real Alembic migrations once into a template,
-and gives every test using `migrated_database` a fresh schema/seed copy. Business fixtures,
-HTTP clients and real transaction boundaries are unchanged. Explicit migration
-tests retain their own upgrade/downgrade checks. pytest owns database cleanup;
-developers must not manually create or drop these databases.
-
-Use `python scripts/repo.py test api-postgres --workers 1` for serial debugging
-or a constrained/disk-backed server. Direct `.venv/bin/python -m pytest <path>`
-also runs serially with the same per-test isolation. `test:api:fast` remains
-serial and PostgreSQL-free. Parallel logs and per-process JUnit reports are in
-`.harness/test-runs/<run-id>/`; `--junitxml=<path>` combines all worker reports,
-and any worker failure or collection mismatch fails the command.
-
-Test database configuration takes precedence in this order: an explicit
-`TEST_POSTGRES_DATABASE_URL`; a complete explicit `POSTGRES_*_TEST`
-configuration (partial configuration fails clearly); then the current
-worktree runtime configuration, with the mapped host port and an automatically
-derived database name ending in `_tests`. The configured name is validated for
-test use; each pytest process allocates fresh unique names on that server, so
-simultaneous runs never reset each other's databases.
+See the [Testing Strategy](docs/engineering/TESTING.md) for server setup,
+configuration precedence, focused selectors and reports.
 
 ## Runtime baseline
 
@@ -258,7 +234,6 @@ npm run dev:web
 npm run dev:api
 npm run lint:web
 npm run build:web
-npm run test:api
 npm run migrate:api
 ```
 
@@ -278,6 +253,10 @@ resolve or validate them. See [ANY-739](https://linear.app/paveldik/issue/ANY-73
 for setup evidence and verification limits.
 
 ## Local Compose workflow
+
+For a manual test from registration through payment and paid access, follow the
+[local purchase checklist](docs/engineering/ANY-709-billing-runbook.md#local-purchase-through-paid-access)
+before starting the stack.
 
 Local Compose runs PostgreSQL, a one-shot Alembic migration service, the FastAPI
 API, and Caddy. Next.js stays on the host so it can use the normal development

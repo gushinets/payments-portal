@@ -15,6 +15,9 @@ retained billing document:
 4. [Accepted live-source admission amendment](../../docs/superpowers/specs/2026-10-15-live-source-commercial-admission-design-amendment.md)
 
 Operational commands are in the [billing runbook](../../docs/engineering/ANY-709-billing-runbook.md).
+For a local purchase test that expects paid access, follow the
+[local purchase checklist](../../docs/engineering/ANY-709-billing-runbook.md#local-purchase-through-paid-access)
+before startup.
 
 The [payment-provider document](../../docs/architecture/payment-providers.md)
 is historical characterization of the physically removed direct-provider
@@ -122,8 +125,12 @@ operations.
 PostgreSQL tests use the current worktree's test server. Start it with
 `make test_db_up` on Unix/WSL or `python scripts/repo.py test-db up`, then run
 the PostgreSQL or complete API test alias and stop it with the matching
-`test_db_stop` command. pytest remains the owner of the physical `_tests`
-database lifecycle.
+`make test_db_stop` or `python scripts/repo.py test-db stop` command. PostgreSQL
+defaults to four processes; use `npm run test:api:postgres -- --workers 1` for
+serial diagnosis. pytest owns each process's scenario/template databases.
+Follow the [Testing Strategy](../../docs/engineering/TESTING.md) for configuration,
+RAM requirements, ownership, fixtures/factories and the cheapest suitable test
+level; it is the detailed authority for test execution.
 
 ## Safety
 
@@ -150,9 +157,11 @@ database lifecycle.
 ```bash
 npm run test:api:fast
 npm run architecture:check
-npm run migrate:api
 ```
 
-Use `npm run test:api:postgres` for PostgreSQL-only coverage and
+Use `npm run test:api:postgres` for the PostgreSQL partition and
 `npm run test:api` for the complete backend suite after starting the local test
-server or supplying explicit test database configuration.
+server or supplying explicit test database configuration. These commands do
+not instrument coverage; see the Testing Strategy for coverage commands.
+`npm run migrate:api` applies migrations to the configured application
+database. The test fixtures handle migrations for their own databases.

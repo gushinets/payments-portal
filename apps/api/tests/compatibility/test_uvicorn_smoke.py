@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import socket
 import subprocess
 import sys
@@ -57,13 +56,13 @@ def test_uvicorn_retries_connection_timeout_during_startup(
 
 def _assert_uvicorn_serves_application(tmp_path: Path) -> None:
     port = _available_port()
-    environment = {
-        **os.environ,
-        **api_test_environment(),
-        "DATABASE_URL": f"sqlite+pysqlite:///{tmp_path / 'uvicorn-smoke.db'}",
-        "PYTHONPATH": "apps/api",
-        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:4318",
-    }
+    environment = api_test_environment(
+        **{
+            "DATABASE_URL": f"sqlite+pysqlite:///{tmp_path / 'uvicorn-smoke.db'}",
+            "PYTHONPATH": "apps/api",
+            "OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:4318",
+        }
+    )
     subprocess.run(
         [
             sys.executable,

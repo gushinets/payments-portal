@@ -22,7 +22,7 @@ import urllib.request
 import uuid
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Callable, Iterable, get_type_hints
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -280,7 +280,11 @@ def dotenv_value(value: str, line_number: int) -> str:
     return re.sub(escape_pattern, lambda item: escapes[item[1]], match[1])
 
 
-def read_dotenv(path: Path = ROOT / ".env") -> dict[str, str]:
+def read_dotenv(path: Path | None = None) -> dict[str, str]:
+    if path is None:
+        if os.getenv("PYTHON_DOTENV_DISABLED", "").lower() in {"1", "true", "t", "yes", "y"}:
+            return {}
+        path = ROOT / ".env"
     if not path.exists():
         return {}
 
@@ -430,11 +434,14 @@ def protect_runtime_env_file(
     )
 
 
-def write_protected_runtime_env_file(path: Path, contents: str) -> None:
-    temporary_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+def _write_runtime_file(
+    path: Path, contents: str, *, protect: Callable[[Path], None] | None = None
+) -> None:
+    temporary_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     try:
-        temporary_path.write_text("", encoding="utf-8")
-        protect_runtime_env_file(temporary_path)
+        if protect is not None:
+            temporary_path.touch()
+            protect(temporary_path)
         temporary_path.write_text(contents, encoding="utf-8")
         os.replace(temporary_path, path)
     except Exception:
@@ -442,10 +449,14 @@ def write_protected_runtime_env_file(path: Path, contents: str) -> None:
         raise
 
 
+def write_protected_runtime_env_file(path: Path, contents: str) -> None:
+    _write_runtime_file(path, contents, protect=protect_runtime_env_file)
+
+
 def write_runtime(config: RuntimeConfig) -> None:
     HARNESS_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     protect_private_directory(HARNESS_DIR)
-    RUNTIME_JSON.write_text(json.dumps(asdict(config), indent=2) + "\n", encoding="utf-8")
+    _write_runtime_file(RUNTIME_JSON, json.dumps(asdict(config), indent=2) + "\n")
     caddy_origin = f"http://localhost:{runtime_caddy_port(config)}"
     local_env = read_dotenv()
     app_public_base_url = local_env.get("APP_PUBLIC_BASE_URL", caddy_origin)
@@ -590,6 +601,28 @@ def compose_command(config: RuntimeConfig) -> list[str]:
     return command
 
 
+def test_compose_command(config: RuntimeConfig) -> list[str]:
+    return [
+        tool("docker"),
+        "compose",
+        "--project-name",
+        f"{config.compose_project}-tests",
+        "--env-file",
+        os.devnull,
+        "-f",
+        str(ROOT / "docker-compose.test.yml"),
+    ]
+
+
+def worktree_test_postgres_environment(config: RuntimeConfig) -> dict[str, str]:
+    # Keep development credentials separate and bind authentication to the worktree.
+    return {
+        "POSTGRES_USER": f"anytoolai_test_{config.worktree_id}",
+        "POSTGRES_PASSWORD": f"anytoolai-test-{config.worktree_id}-local-only",
+        "POSTGRES_PORT_TEST": str(config.test_postgres_port),
+    }
+
+
 def cmd_doctor(_: argparse.Namespace) -> None:
     failures: list[str] = []
     commands = (
@@ -722,12 +755,31 @@ def cmd_up(args: argparse.Namespace) -> None:
     print(json.dumps(asdict(config), indent=2))
 
 
-def load_runtime() -> RuntimeConfig:
-    if not RUNTIME_JSON.exists():
+def load_runtime(*, initialize: bool = True) -> RuntimeConfig:
+    if initialize and not RUNTIME_JSON.exists():
         config = runtime_config()
         write_runtime(config)
         return config
-    return RuntimeConfig(**json.loads(RUNTIME_JSON.read_text(encoding="utf-8")))
+    try:
+        config = RuntimeConfig(**json.loads(RUNTIME_JSON.read_text(encoding="utf-8")))
+    except json.JSONDecodeError as exc:
+        reason = f"{exc.msg} at line {exc.lineno}, column {exc.colno}"
+    except UnicodeDecodeError:
+        reason = "expected UTF-8"
+    except TypeError:
+        reason = "expected runtime settings"
+    else:
+        for name, expected_type in get_type_hints(RuntimeConfig).items():
+            # JSON booleans must not be accepted as integer ports.
+            if type(getattr(config, name)) is not expected_type:
+                reason = f"{name!r} must be {expected_type.__name__}"
+                break
+        else:
+            return config
+    raise HarnessError(
+        f"Invalid worktree runtime file {RUNTIME_JSON}: {reason}. "
+        "See docs/engineering/TESTING.md#recovering-worktree-runtime-metadata."
+    )
 
 
 def cmd_down(_: argparse.Namespace) -> None:
@@ -735,17 +787,34 @@ def cmd_down(_: argparse.Namespace) -> None:
     run([*compose_command(config), "down"])
 
 
+def test_runtime_config() -> RuntimeConfig:
+    expected = runtime_config(root=ROOT)
+    try:
+        config = load_runtime(initialize=False)
+    except FileNotFoundError:
+        if RUNTIME_ENV.exists():
+            raise HarnessError(
+                f"Missing {RUNTIME_JSON} for an existing worktree. "
+                "See docs/engineering/TESTING.md#recovering-worktree-runtime-metadata."
+            ) from None
+        return expected
+    if (config.worktree_id, config.compose_project) != (expected.worktree_id, expected.compose_project):
+        raise HarnessError(
+            f"Saved runtime file {RUNTIME_JSON} does not belong to this worktree. "
+            "See docs/engineering/TESTING.md#recovering-worktree-runtime-metadata."
+        )
+    if not 1 <= config.test_postgres_port <= 65535:
+        raise HarnessError(f"Invalid test PostgreSQL port in {RUNTIME_JSON}; expected 1–65535")
+    return config
+
+
 def cmd_test_db(args: argparse.Namespace) -> None:
-    config = load_runtime()
-    write_runtime(config)
-    command = [
-        tool("docker"), "compose", "--project-name", f"{config.compose_project}-tests",
-        "--env-file", str(RUNTIME_ENV), "-f", str(ROOT / "docker-compose.test.yml"),
-    ]
+    config = test_runtime_config()
+    environment = {**os.environ, **worktree_test_postgres_environment(config)}
     if args.action == "up":
-        run([*command, "up", "-d", "--no-deps", "--wait", "postgres"])
+        run([*test_compose_command(config), "up", "-d", "--pull", "never", "--wait", "postgres"], env=environment)
         return
-    run([*command, "stop", "postgres"])
+    run([*test_compose_command(config), "down"], env=environment)
 
 
 def cmd_reset(args: argparse.Namespace) -> None:
@@ -977,18 +1046,9 @@ def import_api() -> tuple[object, object]:
     api_root = str(ROOT / "apps" / "api")
     if api_root not in sys.path:
         sys.path.insert(0, api_root)
-    os.environ.setdefault("APP_ENV", "test")
-    os.environ["INSTANCE_TENANT_ID"] = LOCAL_INSTANCE_TENANT_ID
-    os.environ["INSTANCE_REGION"] = LOCAL_INSTANCE_REGION
-    os.environ.setdefault("APP_PUBLIC_BASE_URL", "http://localhost:3000")
-    os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
-    os.environ.setdefault("POSTGRES_DB", "anytoolai")
-    os.environ.setdefault("POSTGRES_USER", "anytoolai")
-    os.environ.setdefault("POSTGRES_PASSWORD", "anytoolai")
-    os.environ.setdefault("POSTGRES_HOST", "postgres")
-    os.environ.setdefault("POSTGRES_PORT", "5432")
-    os.environ.setdefault("CORS_ALLOW_ORIGINS", "http://localhost:3000")
-    os.environ.setdefault("SKIP_LEGAL_SEED", "true")
+    from apps.api.tests.support.settings import configure_api_test_environment
+
+    configure_api_test_environment()
     from app.core.database import Base  # type: ignore
     from app.main import app as fastapi_app  # type: ignore
     importlib.import_module("app.models")
@@ -3229,6 +3289,7 @@ def cmd_trivy(args: argparse.Namespace) -> None:
 
 
 def cmd_check(args: argparse.Namespace) -> None:
+    coverage = getattr(args, "coverage", False)
     check_env = canonical_check_environment()
     cmd_docs(argparse.Namespace())
     cmd_generate(argparse.Namespace(check=True))
@@ -3236,11 +3297,12 @@ def cmd_check(args: argparse.Namespace) -> None:
     cmd_lint(argparse.Namespace(target="api"))
     run([tool("npm"), "run", "test:boundaries:web"], env=check_env)
     run(
-        [tool("npm"), "--workspace", "@anytoolai/web", "run", "test:components"],
+        [tool("npm"), "--workspace", "@anytoolai/web", "run",
+         "test:components:coverage" if coverage else "test:components"],
         env=check_env,
     )
     run([tool("npm"), "run", "lint:web"], env=check_env)
-    cmd_test(
+    (cmd_coverage if coverage else cmd_test)(
         argparse.Namespace(target="api-fast", junitxml=None),
         environment=check_env,
     )
@@ -3390,11 +3452,28 @@ def api_test_marker_args(target: str) -> list[str]:
 
 
 def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, str]:
+    from apps.api.tests.support.settings import api_test_environment as isolated_environment
+    from apps.api.tests.support.settings import parse_test_postgres_port
+
+    environment = isolated_environment(environ=environment)
     if target == "api-fast":
         return environment
 
     test_database_url_name = "TEST_POSTGRES_DATABASE_URL"
-    if environment.get(test_database_url_name):
+    if configured_url := environment.get(test_database_url_name):
+        from sqlalchemy.engine import make_url
+        from sqlalchemy.exc import ArgumentError
+
+        from apps.api.tests.support.postgres import validate_test_database_ports
+
+        try:
+            database_url = make_url(configured_url)
+        except (ArgumentError, ValueError):
+            raise HarnessError(f"{test_database_url_name} is not a valid database URL") from None
+        try:
+            validate_test_database_ports(database_url)
+        except ValueError as exc:
+            raise HarnessError(str(exc)) from exc
         return environment
 
     explicit_names = (
@@ -3415,29 +3494,32 @@ def api_test_environment(target: str, environment: dict[str, str]) -> dict[str, 
                 + " together, missing: "
                 + ", ".join(missing_names)
             )
+        try:
+            parse_test_postgres_port(environment["POSTGRES_PORT_TEST"], "POSTGRES_PORT_TEST")
+        except ValueError as exc:
+            raise HarnessError(str(exc)) from exc
+        # Preserve the individual fields until the fixture assigns its generated database name.
         return environment
 
-    runtime_env = read_runtime_env()
-    runtime_names = ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT_TEST")
-    missing_runtime_names = [name for name in runtime_names if not runtime_env.get(name)]
-    if missing_runtime_names:
+    config = test_runtime_config()
+    test_port = config.test_postgres_port
+    local_test = worktree_test_postgres_environment(config)
+    published = run(
+        [*test_compose_command(config), "port", "postgres", "5432"],
+        check=False,
+        capture=True,
+        env={**environment, **local_test},
+    )
+    if published.returncode or published.stdout.strip() != f"127.0.0.1:{test_port}":
         raise HarnessError(
-            "Cannot derive local PostgreSQL test configuration; runtime.env is missing: "
-            + ", ".join(missing_runtime_names)
-            + ". Run python scripts/repo.py test-db up to refresh it."
-        )
-    if port_is_free(int(runtime_env["POSTGRES_PORT_TEST"])):
-        raise HarnessError(
-            "Local test PostgreSQL server is not running. Start it with:\n"
-            "  python scripts/repo.py test-db up\n"
-            "Unix/WSL shortcut:\n"
-            "  make test_db_up"
+            f"This worktree's test PostgreSQL is not running on 127.0.0.1:{test_port}. "
+            "Start it with: python scripts/repo.py test-db up"
         )
 
     database_environment = {
-        **runtime_env,
-        "POSTGRES_DB": f"{runtime_env['POSTGRES_DB']}_tests",
-        "POSTGRES_PORT": runtime_env["POSTGRES_PORT_TEST"],
+        **local_test,
+        "POSTGRES_PORT": str(test_port),
+        "POSTGRES_DB": f"{config.database_name}_tests",
     }
     environment[test_database_url_name] = host_database_url_from_runtime(database_environment)
     return environment
@@ -3448,62 +3530,78 @@ def cmd_test(
     *,
     environment: dict[str, str] | None = None,
 ) -> None:
-    check_env = api_test_environment(
-        args.target,
-        canonical_check_environment() if environment is None else environment,
+    from scripts.api_test_runner import (
+        DEFAULT_POSTGRES_WORKERS,
+        ReportPublicationError,
+        RunnerError,
+        merge_junit,
+        run_api_tests,
+        stage_junit_report,
     )
-    workers = getattr(args, "workers", None)
-    if workers is None:
-        workers = 1 if args.target == "api-fast" else 4
-    if workers < 1:
-        raise HarnessError("--workers must be positive")
-    if args.target == "api":
-        sys.path.insert(0, str(ROOT))
-        from scripts.pytest_parallel import merge_junit
 
-        reports_dir = HARNESS_DIR / "test-runs" / uuid.uuid4().hex
-        reports_dir.mkdir(parents=True)
-        reports = [reports_dir / "fast.xml", reports_dir / "postgres.xml"]
-        failure: subprocess.CalledProcessError | None = None
-        for target, count, report in zip(("api-fast", "api-postgres"), (1, workers), reports):
+    junitxml = Path(args.junitxml).resolve() if args.junitxml else None
+    if junitxml is not None:
+        try:
+            with stage_junit_report(junitxml) as staged_report:
+                merge_junit([], staged_report, [f"API test run has not completed: preparing {args.target}"])
+        except ReportPublicationError as exc:
+            raise HarnessError(f"{exc}. Any existing report may be from a previous run.") from exc
+    try:
+        workers = getattr(args, "workers", None)
+        for count in getattr(args, "worker_counts", ()):
             try:
-                cmd_test(
-                    argparse.Namespace(target=target, workers=count, junitxml=str(report)),
-                    environment=check_env,
-                )
-            except subprocess.CalledProcessError as exc:
-                failure = exc
-        available = [report for report in reports if report.exists()]
-        if args.junitxml:
-            merge_junit(available, Path(args.junitxml))
-        if failure is not None:
-            raise failure
-        if len(available) != len(reports):
-            raise HarnessError("Incomplete API test reports")
-        return
-    if args.target == "api-fast" and workers != 1:
-        raise HarnessError("api-fast runs serially; --workers applies to the PostgreSQL partition")
-    if workers > 1:
-        command = [sys.executable, "-m", "scripts.pytest_parallel", "--workers", str(workers)]
-        marker_args = api_test_marker_args(args.target)
-        if marker_args:
-            command.extend(["--marker", marker_args[1]])
-        if args.junitxml:
-            command.extend(["--junitxml", args.junitxml])
-        run([*command, API_TEST_PATH], env=check_env)
-        return
-    command = api_pytest_command(*api_test_marker_args(args.target))
-    if args.junitxml:
-        command.insert(-1, f"--junitxml={args.junitxml}")
-    run(command, env=check_env)
+                workers = int(count)
+            except ValueError:
+                raise argparse.ArgumentTypeError(f"argument --workers: invalid int value: {count!r}") from None
+        if workers is None:
+            workers = 1 if args.target == "api-fast" else DEFAULT_POSTGRES_WORKERS
+        if not 1 <= workers <= DEFAULT_POSTGRES_WORKERS:
+            raise argparse.ArgumentTypeError(f"Workers must be 1–{DEFAULT_POSTGRES_WORKERS}")
+        if args.target == "api-fast" and workers != 1:
+            raise HarnessError("api-fast supports only --workers 1")
+        check_env = api_test_environment(
+            args.target,
+            canonical_check_environment() if environment is None else environment,
+        )
+        result = run_api_tests(
+            root=ROOT,
+            artifacts=HARNESS_DIR / "api-tests",
+            target=args.target,
+            workers=workers,
+            environment=check_env,
+            arguments=getattr(args, "pytest_args", ()),
+            junitxml=junitxml,
+        )
+    except ReportPublicationError as exc:
+        raise HarnessError(str(exc)) from exc
+    except (argparse.ArgumentTypeError, HarnessError, OSError, RunnerError) as exc:
+        if junitxml is not None:
+            try:
+                with stage_junit_report(junitxml) as staged_report:
+                    merge_junit([], staged_report, [f"API test startup failed: {exc}"])
+            except ReportPublicationError as publication_error:
+                raise HarnessError(f"API test startup failed: {exc}\n{publication_error}") from publication_error
+        if isinstance(exc, RunnerError):
+            raise HarnessError(str(exc)) from exc
+        raise
+    if result.returncode:
+        raise SystemExit(result.returncode)
 
 
 def api_coverage_xml_path() -> Path:
     return ROOT / ".harness" / "coverage" / "api" / "coverage.xml"
 
 
-def cmd_coverage(args: argparse.Namespace) -> None:
-    check_env = api_test_environment(args.target, canonical_check_environment())
+def cmd_coverage(
+    args: argparse.Namespace,
+    *,
+    environment: dict[str, str] | None = None,
+) -> None:
+    # Coverage stays serial, including the standalone complete-API command.
+    check_env = api_test_environment(
+        args.target,
+        canonical_check_environment() if environment is None else environment,
+    )
     coverage_xml = api_coverage_xml_path()
     coverage_xml.parent.mkdir(parents=True, exist_ok=True)
     run(
@@ -3609,13 +3707,17 @@ def build_parser() -> argparse.ArgumentParser:
     test = sub.add_parser("test")
     test.add_argument("target", choices=("api-fast", "api-postgres", "api"))
     test.add_argument("--junitxml")
-    test.add_argument("--workers", type=int, help="pytest processes (default: 4, api-fast: 1); use 1 for debugging")
+    # Keep the raw values until cmd_test can report an invalid count in JUnit.
+    test.add_argument("--workers", dest="worker_counts", action="append", default=[], metavar="COUNT")
+    test.add_argument("--pytest-args", nargs=argparse.REMAINDER, default=[],
+                      help="Selectors and diagnostic pytest options (must be last)")
     test.set_defaults(func=cmd_test)
     coverage = sub.add_parser("coverage")
     coverage.add_argument("target", choices=("api", "api-fast"))
     coverage.set_defaults(func=cmd_coverage)
     check = sub.add_parser("check")
     check.add_argument("--fast", action="store_true")
+    check.add_argument("--coverage", action="store_true", help="Collect API-fast and component coverage in their test runs")
     check.set_defaults(func=cmd_check)
     sub.add_parser("dev-api").set_defaults(func=cmd_dev_api)
     customer = sub.add_parser(
@@ -3705,6 +3807,24 @@ def reexec_in_repository_venv_if_required() -> None:
         return
     if Path(sys.prefix).resolve() == REPOSITORY_VENV.resolve():
         return
+    if sys.argv[1] in {"test", "check"}:
+        # End interpreter options before the repository-owned script.
+        command = [str(python), "--", str(Path(__file__).resolve()), *sys.argv[1:]]
+        if os.name == "nt":
+            # The child shares the console. Give it time to handle Ctrl+C and
+            # clean up before this launcher exits.
+            with subprocess.Popen(command, cwd=ROOT) as child:  # NOSONAR(S8705) Fixed interpreter and script.
+                try:
+                    returncode = child.wait()
+                except KeyboardInterrupt:
+                    child.wait()
+                    returncode = 130
+            raise SystemExit(returncode)
+        # Preserve the process that the POSIX caller signals and waits on.
+        os.chdir(ROOT)
+        os.execv(  # NOSONAR(S8705) Fixed interpreter/script; CLI data stays after the script.
+            str(python), command
+        )
     result = subprocess.run(
         [str(python), str(Path(__file__).resolve()), *sys.argv[1:]],
         cwd=ROOT,
@@ -3716,11 +3836,15 @@ def reexec_in_repository_venv_if_required() -> None:
 def main() -> int:
     try:
         reexec_in_repository_venv_if_required()
+        # Script execution starts with scripts/ on sys.path; shared test
+        # configuration is repository-owned and also used by module callers.
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
         args = build_parser().parse_args()
         args.func(args)
-    except (HarnessError, subprocess.CalledProcessError, OSError) as exc:
+    except (argparse.ArgumentTypeError, HarnessError, subprocess.CalledProcessError, OSError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
-        return 1
+        return 2 if isinstance(exc, argparse.ArgumentTypeError) else 1
     return 0
 
 
