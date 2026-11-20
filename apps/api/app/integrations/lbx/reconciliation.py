@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 
 from app.core.settings import Settings
 from app.core.time import utc_now
+from app.domains.billing.paid_cycles import CalendarEvidence, CalendarPrecision
 from app.domains.billing.reconciliation_contracts import (
     CommercialProof,
     IdentityProof,
@@ -13,9 +14,10 @@ from app.domains.billing.reconciliation_contracts import (
     SubscriptionCandidateSubject,
     SubscriptionProof,
 )
+from app.domains.catalog.commercial_offer import CommercialPeriod
 from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from app.integrations.lbx.client import LbxServerClient
-from app.integrations.lbx.calendar import normalize_access_end, normalize_calendar
+from app.integrations.lbx.calendar import monthly_instance_start_date, normalize_access_end, normalize_calendar
 from app.integrations.lbx.customer import LbxUser
 from app.integrations.lbx.dto import LbxRead, LbxTariff
 from app.integrations.lbx.errors import LbxError, LbxResponseInvalid, LbxScopeMismatch
@@ -58,7 +60,9 @@ def _calendar_ordered(left: date | datetime, right: date | datetime, *, strict: 
     return left_day < right_day
 
 
-def _calendar_complete(calendar: dict[str, str | None]) -> bool:
+def _calendar_complete(
+    calendar: dict[str, str | None], *, period: CommercialPeriod, cycle: CalendarEvidence | None
+) -> bool:
     """Calendar evidence only: no UTC conversion, settlement or cycle identity."""
     parsed: dict[str, date | datetime] = {}
     try:
@@ -81,15 +85,31 @@ def _calendar_complete(calendar: dict[str, str | None]) -> bool:
             return False
     cycle_start = parsed["last_tariffication_period_start"]
     cycle_end = parsed["last_tariffication_period_end"]
+    # Keep the existing all-date completeness policy; the new start-order proof
+    # is required only when interpreting the observed naive-midnight form.
+    monthly_midnight = (
+        cycle is not None
+        and cycle.precision == CalendarPrecision.DATE
+        and any(
+            isinstance(value, datetime) and monthly_instance_start_date(value, period) is not None
+            for value in (parsed.get("subscription_start_date"), parsed.get("subscription_instance_start_date"))
+        )
+    )
     for prefix in ("subscription", "subscription_instance"):
         start, end = parsed.get(prefix + "_start_date"), parsed.get(prefix + "_end_date")
+        calendar_start = monthly_instance_start_date(start, period) if start is not None and monthly_midnight else None
+        if calendar_start is not None:
+            if not _calendar_ordered(calendar_start, cycle_start):
+                return False
         # Calendar dates may straddle activation/termination. Only explicit
-        # timestamps support a more precise containment check.
-        if (
+        # timestamps or the bounded monthly start representation prove more.
+        elif (
             start
             and (isinstance(start, datetime) or isinstance(cycle_start, datetime))
             and not _calendar_ordered(start, cycle_start)
-        ) or (
+        ):
+            return False
+        if (
             end
             and (isinstance(end, datetime) or isinstance(cycle_end, datetime))
             and not _calendar_ordered(cycle_end, end)
@@ -230,7 +250,8 @@ def normalize_subscription(
 
     lifecycle, financial = None, None
     calendar = {field: getattr(subscription, field) for field in CALENDAR_FIELDS} if subscription else {}
-    calendar_complete = bool(calendar) and _calendar_complete(calendar)
+    cycle = normalize_calendar(calendar, accepted.offer.period)
+    calendar_complete = bool(calendar) and _calendar_complete(calendar, period=accepted.offer.period, cycle=cycle)
     if identity == IdentityProof.MATCH:
         if subscription is not None:
             try:
@@ -269,7 +290,7 @@ def normalize_subscription(
         complete,
         tuple(reasons),
         (),
-        cycle=normalize_calendar(calendar, accepted.offer.period.anchor) if calendar_complete else None,
+        cycle=cycle if calendar_complete else None,
         access_end_at=normalize_access_end(calendar.get("subscription_end_date")),
     )
 

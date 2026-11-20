@@ -16,6 +16,7 @@ from app.core.database import Base
 from app.domains.billing import paid_router as routes, paid_read
 from app.domains.billing.customers import lock_user
 from app.domains.billing.paid_access import commit_paid_state
+from app.domains.billing.paid_contracts import EffectiveState
 from app.domains.identity.services.auth import as_utc
 from app.main import create_app
 from app.models import BillingProductAccessScope
@@ -215,17 +216,28 @@ async def test_paid_read_bounds_display_evidence_without_truncating_effective_co
     factory = postgres_session_factory
     await reconcile(paid_scenario, factory)
     with factory() as db:
+        # These products sort before the paid product and fill the display page.
         db.add_all(
-            BillingProductAccessScope(user_id=paid_scenario[4], product_id=f"synthetic_{index:03}")
+            BillingProductAccessScope(user_id=paid_scenario[4], product_id=f"aaa_synthetic_{index:03}")
             for index in range(101)
         )
         db.commit()
+    revision, document = effective(factory)
+    expected = EffectiveState.model_validate(document)
     before = billing_snapshot(factory)
     response = await paid_client.get("/api/paid-access", headers=headers())
     assert response.status_code == 200
     body = response.json()
     assert len(body["products"]) == 100 and not body["evidence_complete"]
-    assert body["grants"] == effective(factory)[1]["grants"] and len(body["allowances"]) == 1
+    assert body["access_revision"] == revision == 1
+    assert len(expected.grants) == 1
+    assert expected.grants[0].product_id not in {item["product_id"] for item in body["products"]}
+    assert body["grants"] == document["grants"]
+    assert len(body["allowances"]) == 1
+    assert body["allowances"] == [
+        {**item.model_dump(exclude={"cycle", "period_start", "period_end"}), "provenance": "SIMULATED"}
+        for item in expected.allowances
+    ]
     assert billing_snapshot(factory) == before
 
 

@@ -146,6 +146,9 @@ test("purchase prepares once, then one wide cabinet Widget verifies the selected
   await billing.getByRole("button", { name: ru.Billing.open, exact: true }).click();
   const frame = page.frameLocator(`iframe[title="${ru.Billing.frameTitle}"]`).frameLocator('iframe[title="Synthetic LBX"]');
   await expect(frame.getByText("Synthetic payment view")).toBeVisible();
+  const viewportHeight = await page.evaluate(() => window.innerHeight);
+  await expect.poll(() => frame.locator("html").evaluate((element) => element.clientHeight))
+    .toBeGreaterThanOrEqual(Math.max(800, viewportHeight));
   await expect(page.locator("iframe")).toHaveCount(1);
   await expect(billing.getByText(/synthetic-agreement/)).toContainText("synthetic-seller");
   await expect(billing.getByText("Выбранный продукт: proposal_ai")).toBeVisible();

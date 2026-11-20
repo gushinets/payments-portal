@@ -173,7 +173,8 @@ PostgreSQL server; `migrate-api` applies `alembic upgrade head` to that harness
 database. The healthcheck waits for TCP readiness, excluding the socket-only
 temporary server used during cold initialization.
 `test-db up` targets a separate disposable test project and port; it
-does not start the application server and cannot replace this step.
+does not start the application server and cannot replace this step. See the
+[test-server lifecycle](../engineering/TESTING.md#test-environment-and-server-lifecycle).
 
 The clean baseline migration owns schema creation and configured-contour/legal
 bootstrap; subsequent revisions apply through the same `upgrade head`. The
