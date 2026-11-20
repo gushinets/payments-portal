@@ -11,9 +11,10 @@ import yaml
 from scripts.repo import (
     ROOT,
     HarnessError,
+    ProductionImageManifest,
     ProductionScanTarget,
     cmd_trivy,
-    production_manifest_digest,
+    production_image_manifests,
     redact_trivy_report,
     summarize_trivy_report,
 )
@@ -28,12 +29,14 @@ def write_report(path: Path, result: dict[str, object] | None = None) -> None:
 
 
 def report_payload(path: Path, result: dict[str, object] | None) -> dict[str, object]:
-    image = path.name.endswith("-image.json")
+    image = "-image" in path.stem
+    service = path.stem.split("-image", 1)[0]
+    reference = f"example/{service}@{_FIXTURE_IMAGE_ID}" if service in {"postgres", "caddy"} else path.stem
     return {
         "SchemaVersion": 2,
-        "ArtifactName": path.stem if image else ".",
+        "ArtifactName": reference if image else ".",
         "ArtifactType": "container_image" if image else "repository",
-        "Metadata": {"ImageID": "sha256:" + "a" * 64} if image else {},
+        "Metadata": {"ImageID": _FIXTURE_IMAGE_ID} if image else {},
         "Results": [{"Target": path.stem, "Class": "os-pkgs", **(result or {})}],
     }
 
@@ -247,11 +250,32 @@ def test_docker_socket_fixture_requires_both_paths_and_compose_syntaxes(
 
 _IMAGE_REPORTS = ("api-image.json", "web-image.json", "postgres-image.json", "caddy-image.json")
 _SCAN_REPORTS = ("filesystem.json", "compose.json", *_IMAGE_REPORTS)
+_FIXTURE_IMAGE_ID = "sha256:" + "a" * 64
+_OCI_MANIFEST = "application/vnd.oci.image.manifest.v1+json"
+
+
+def write_provenance(directory: Path, service: str, *, arm64: bool = False) -> None:
+    scans = [
+        {
+            "report": f"{service}-image.json",
+            "platform": "linux/amd64",
+            "scanned_reference": f"example/{service}@{_FIXTURE_IMAGE_ID}",
+            "platform_manifest_digest": _FIXTURE_IMAGE_ID,
+            "image_config_digest": _FIXTURE_IMAGE_ID,
+        }
+    ]
+    if arm64:
+        scans.append({**scans[0], "report": f"{service}-image-linux-arm64-v8.json", "platform": "linux/arm64/v8"})
+    path = directory / "provenance" / f"{service}.json"
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(json.dumps({"scans": scans}), encoding="utf-8")
 
 
 def complete_reports(directory: Path) -> None:
     for name in _SCAN_REPORTS:
         write_report(directory / name)
+    for service in ("postgres", "caddy"):
+        write_provenance(directory, service)
 
 
 @pytest.mark.parametrize("action", ["verify-reports", "gate"])
@@ -400,23 +424,131 @@ def test_manifest_resolution_selects_the_platform_digest() -> None:
     requested_digest = "sha256:" + "a" * 64
     selected_digest = "sha256:" + "b" * 64
     target = ProductionScanTarget(f"example/image@{requested_digest}", "linux/amd64")
-    amd64 = {"digest": selected_digest, "platform": {"os": "linux", "architecture": "amd64"}}
-    arm64 = {"digest": "sha256:" + "c" * 64, "platform": {"os": "linux", "architecture": "arm64"}}
+    amd64 = {
+        "mediaType": _OCI_MANIFEST,
+        "digest": selected_digest,
+        "platform": {"os": "linux", "architecture": "amd64"},
+    }
+    arm64 = {
+        "mediaType": _OCI_MANIFEST,
+        "digest": "sha256:" + "c" * 64,
+        "platform": {"os": "linux", "architecture": "arm64"},
+    }
 
-    assert (
-        production_manifest_digest(
-            {"schemaVersion": 2, "manifests": [arm64, amd64]},
-            target,
-        )
-        == selected_digest
-    )
-    assert (
-        production_manifest_digest(
-            {"schemaVersion": 2, "config": {}, "layers": []},
-            target,
-        )
-        == requested_digest
-    )
-    for descriptors in ([arm64], [amd64, amd64]):
-        with pytest.raises(HarnessError, match="Cannot select one linux/amd64"):
-            production_manifest_digest({"schemaVersion": 2, "manifests": descriptors}, target)
+    assert production_image_manifests(
+        {"schemaVersion": 2, "manifests": [arm64, amd64]},
+        target,
+    ) == (ProductionImageManifest(selected_digest, "linux/amd64"),)
+    assert production_image_manifests(
+        {"schemaVersion": 2, "config": {}, "layers": []},
+        ProductionScanTarget(target.requested_reference, None),
+    ) == (ProductionImageManifest(requested_digest, None),)
+    for descriptors, error in (
+        ([arm64], "No matching image manifests"),
+        ([amd64, amd64], "Duplicate linux/amd64 image manifest"),
+        ([{**amd64, "mediaType": "application/vnd.oci.image.index.v1+json"}], "Invalid runtime descriptor"),
+    ):
+        with pytest.raises(HarnessError, match=error):
+            production_image_manifests({"schemaVersion": 2, "manifests": descriptors}, target)
+
+
+@pytest.mark.parametrize("platform", [None, "linux/arm64"])
+def test_scan_production_image_covers_every_selected_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    platform: str | None,
+) -> None:
+    from scripts import repo
+
+    image = "example/postgres@sha256:" + "a" * 64
+    amd64 = "sha256:" + "b" * 64
+    arm64 = "sha256:" + "c" * 64
+    scanned_digests = []
+
+    def run_scan(command: list[str], **kwargs: object) -> CompletedProcess[str]:
+        if command[:2] == ["docker", "compose"]:
+            service = {"image": image}
+            if platform is not None:
+                service["platform"] = platform
+            output = {"services": {"postgres": service}}
+        elif command[:2] == ["docker", "buildx"]:
+            output = {
+                "schemaVersion": 2,
+                "manifests": [
+                    {
+                        "mediaType": _OCI_MANIFEST,
+                        "digest": arm64,
+                        "platform": {"os": "linux", "architecture": "arm64", "variant": "v8"},
+                    },
+                    {"mediaType": _OCI_MANIFEST, "digest": amd64, "platform": {"os": "linux", "architecture": "amd64"}},
+                    {
+                        "digest": "sha256:" + "d" * 64,
+                        "platform": {"os": "unknown", "architecture": "unknown"},
+                        "annotations": {"vnd.docker.reference.type": "attestation-manifest"},
+                    },
+                ],
+            }
+        elif command[0] == "trivy":
+            reference = command[-1]
+            digest = reference.split("@")[1]
+            scanned_digests.append(digest)
+            path = Path(command[command.index("--output") + 1])
+            payload = report_payload(path, None)
+            payload.update(
+                {
+                    "ArtifactName": reference,
+                    "ArtifactType": "container_image",
+                    "Metadata": {
+                        "ImageID": digest,
+                        "RepoDigests": [reference],
+                        "ImageConfig": {"os": "linux", "architecture": "arm64" if digest == arm64 else "amd64"},
+                    },
+                }
+            )
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            return CompletedProcess(command, 0)
+        else:
+            assert command[:3] == ["git", "rev-parse", "HEAD"]
+            return CompletedProcess(command, 0, stdout="e" * 40)
+        return CompletedProcess(command, 0, stdout=json.dumps(output))
+
+    monkeypatch.setattr(repo, "tool", lambda name: name)
+    monkeypatch.setattr(repo, "run", run_scan)
+    repo.scan_production_image(tmp_path, "postgres")
+
+    assert set(scanned_digests) == ({amd64, arm64} if platform is None else {arm64})
+
+
+@pytest.mark.parametrize("action", ["verify-reports", "gate"])
+def test_requires_every_platform_report(tmp_path: Path, action: str) -> None:
+    complete_reports(tmp_path)
+    write_provenance(tmp_path, "postgres", arm64=True)
+
+    with pytest.raises(HarnessError, match="Missing Trivy reports: postgres-image-linux-arm64-v8.json"):
+        cmd_trivy(Namespace(action=action, report_dir=str(tmp_path)))
+
+
+@pytest.mark.parametrize("action", ["verify-reports", "gate"])
+def test_rejects_mismatched_platform_report(tmp_path: Path, action: str) -> None:
+    complete_reports(tmp_path)
+    write_provenance(tmp_path, "postgres", arm64=True)
+    path = tmp_path / "postgres-image-linux-arm64-v8.json"
+    payload = report_payload(path, None)
+    payload["ArtifactName"] = "example/other@" + _FIXTURE_IMAGE_ID
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(HarnessError, match="does not match production scan provenance"):
+        cmd_trivy(Namespace(action=action, report_dir=str(tmp_path)))
+
+
+def test_secondary_platform_report_is_sanitized_and_gated(tmp_path: Path) -> None:
+    complete_reports(tmp_path)
+    write_provenance(tmp_path, "caddy", arm64=True)
+    path = tmp_path / "caddy-image-linux-arm64-v8.json"
+    write_report(path, {"Secrets": [{"Severity": "HIGH", "Match": "example-private-value"}]})
+
+    cmd_trivy(Namespace(action="redact", report_dir=str(tmp_path)))
+    assert "example-private-value" not in path.read_text(encoding="utf-8")
+    cmd_trivy(Namespace(action="verify-reports", report_dir=str(tmp_path)))
+    with pytest.raises(HarnessError, match="policy rejected 1 finding"):
+        cmd_trivy(Namespace(action="gate", report_dir=str(tmp_path)))

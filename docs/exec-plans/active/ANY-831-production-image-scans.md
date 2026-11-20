@@ -13,3 +13,11 @@
 - Verify focused and canonical checks, then validate the exact-revision
   security run and downloaded artifact. Group new findings by advisory and
   source package for remediation follow-up.
+
+## PR review follow-up
+
+Production Compose leaves platform selection to the host. Scan every runtime
+manifest in each digest-pinned index when the service has no explicit platform.
+Honor an explicit Compose platform and exclude Docker's attestation manifests.
+Keep each Trivy report separate, retain its manifest and image config identity,
+and require every resolved platform report in both verification modes.
