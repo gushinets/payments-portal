@@ -32,7 +32,7 @@ from app.domains.billing.operator_contracts import (
 )
 from app.domains.billing.operator_review import digest, terminal_state_digest
 from app.domains.billing.paid_access import reduce_paid_access
-from app.domains.billing.reconciliation_contracts import RECONCILIATION_READ_SCHEMAS
+from app.domains.billing.reconciliation_contracts import RECONCILIATION_READ_SCHEMAS, IdentityProof
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
@@ -184,7 +184,11 @@ def resolve_purchase(
                 and sub is not None
                 and item.external_object_id == sub.external_subscription_id
                 and queries.has_newer_live_subscription_read(
-                    db, sub.subscription_id, evidence.confirmed_at, schemas=RECONCILIATION_READ_SCHEMAS
+                    db,
+                    sub.subscription_id,
+                    evidence.confirmed_at,
+                    schemas=RECONCILIATION_READ_SCHEMAS,
+                    identity=IdentityProof.MATCH,
                 )
             ):
                 raise PurchaseRefused("purchase_resolution_confirmation_required", 409)

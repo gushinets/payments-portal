@@ -250,7 +250,7 @@ def observations(db: Session, subscription_id: UUID) -> list[BillingStateObserva
 
 
 def has_newer_live_subscription_read(
-    db: Session, subscription_id: UUID, confirmed_at: datetime, *, schemas: tuple[str, ...]
+    db: Session, subscription_id: UUID, confirmed_at: datetime, *, schemas: tuple[str, ...], identity: str
 ) -> bool:
     observation = BillingStateObservation
     live_read = exists().where(
@@ -258,7 +258,7 @@ def has_newer_live_subscription_read(
         observation.observation_kind == BillingStateObservationKind.AUTHORITATIVE_SUBSCRIPTION_READ,
         observation.evidence_schema_version.in_(schemas),
         observation.observed_at > confirmed_at,
-        observation.completeness_classification == "complete",
+        observation.evidence_document["identity"].as_string() == identity,
         observation.evidence_document["lifecycle"].as_string().in_((Lifecycle.ACTIVE, Lifecycle.INACTIVE)),
     )
     return bool(db.scalar(select(live_read)))
