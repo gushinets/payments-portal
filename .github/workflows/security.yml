@@ -90,7 +90,9 @@ jobs:
         run: security/trivy/verify-api-runtime.sh "$API_IMAGE"
 
       - name: Verify scanned API image PostgreSQL readiness and migration cycle
-        run: sh security/trivy/verify-api-postgres.sh "$API_IMAGE" > "$TRIVY_REPORT_DIR/api-postgres-runtime.json"
+        run: |
+          sh security/trivy/verify-api-postgres.sh "$API_IMAGE" > "$RUNNER_TEMP/api-postgres-runtime.json"
+          mv "$RUNNER_TEMP/api-postgres-runtime.json" "$TRIVY_REPORT_DIR/api-postgres-runtime.json"
 
       - name: Collect production API component evidence
         run: >-

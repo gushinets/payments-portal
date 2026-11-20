@@ -37,20 +37,17 @@ for migration in 'upgrade head' 'downgrade base' 'upgrade head'; do
   revision=${migration#* }
   docker run --rm "$@" "$image_ref" python -m alembic -c apps/api/alembic.ini "$action" "$revision" >&2
 done
-api_id=$(docker run --detach --publish 127.0.0.1::8000 "$@" "$image_ref")
+api_id=$(docker run --detach "$@" "$image_ref")
 uid=$(docker exec "$api_id" id -u)
 if [ "$uid" -eq 0 ]; then echo "API unexpectedly started as root" >&2; exit 1; fi
-endpoint=$(docker port "$api_id" 8000/tcp)
 attempt=0
-until curl --fail --silent --show-error --max-time 2 "http://$endpoint/api/health/ready" 2>/dev/null \
-  | python3 -c 'import json,sys; assert json.load(sys.stdin)["status"] == "ready"' 2>/dev/null; do
+until docker exec "$api_id" python -c 'import json,urllib.request; assert json.load(urllib.request.urlopen("http://127.0.0.1:8000/api/health/ready",timeout=2))["status"] == "ready"' >/dev/null 2>&1; do
   attempt=$((attempt + 1))
   if [ "$attempt" -ge 60 ] || [ "$(docker inspect --format '{{.State.Running}}' "$api_id")" != true ]; then
     echo "API readiness failed" >&2; exit 1
   fi
   sleep 1
 done
-curl --fail --silent --show-error --max-time 2 "http://$endpoint/api/health/live" \
-  | python3 -c 'import json,sys; assert json.load(sys.stdin)["status"] == "alive"'
+docker exec "$api_id" python -c 'import json,urllib.request; assert json.load(urllib.request.urlopen("http://127.0.0.1:8000/api/health/live",timeout=2))["status"] == "alive"'
 immutable_id=$(docker image inspect --format '{{.Id}}' "$image_ref")
 python3 -c 'import json,sys; print(json.dumps({"image_id":sys.argv[1],"uid":int(sys.argv[2]),"default_cmd":True,"liveness":"passed","readiness":"passed","postgresql":"18.4","migration_cycle":"upgrade head / downgrade base / upgrade head: passed","runtime_network":"internal Docker network; no external downloads"},indent=2))' "$immutable_id" "$uid"
