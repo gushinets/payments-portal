@@ -153,6 +153,12 @@ configured external servers have separate lifecycles. pytest owns the
 scenario/template databases described below. Leave their creation and cleanup
 to pytest.
 
+On case-sensitive filesystems, checkout paths that differ only by letter case
+derive the same worktree ID, Compose project, and default test port. Use
+checkout paths that differ by more than letter case. Otherwise `test-db stop`
+can stop a server shared by both checkouts.
+[ANY-892](https://linear.app/paveldik/issue/ANY-892) tracks the collision.
+
 The harness resolves test database settings in this order.
 
 1. An explicit `TEST_POSTGRES_DATABASE_URL`.
@@ -362,14 +368,16 @@ the final `check`. Record an assertion/guarantee map when consolidating tests,
 and explicitly report skipped or blocked layers. The
 [Agent Workflow](AGENT_WORKFLOW.md) defines the delivery loop.
 
-Keep compact commands, revision, outcomes, timing conclusions and limitations
-in the execution plan. Detailed logs, manifests, JUnit and browser artifacts
-belong in ignored `.harness/` directories or CI artifacts. Performance comparisons
-must retain the same selected inputs, settings and tool versions, an excluded
-warm-up and repeated measurements; report the spread and machine/load, storage,
-process count and cache conditions. Include collection, database creation,
-cloning and cleanup in test wall time; report server startup separately. A
-diagnostic run or local PASS does not establish final timing or remote CI acceptance.
+Record the commands run, tested revision, outcomes, timings and limitations in
+the PR or a separate verification report. Detailed logs, manifests, JUnit and
+browser artifacts belong in ignored `.harness/` directories or CI artifacts.
+
+Performance comparisons must retain the same selected inputs, settings and tool
+versions. Exclude a warm-up, repeat measurements and report the spread, machine
+load, storage, process count and cache conditions. Include collection, database
+creation, cloning and cleanup in test wall time. Report server startup
+separately. A diagnostic run or local PASS does not establish final timing or
+remote CI acceptance.
 
 ### Test review checklist
 

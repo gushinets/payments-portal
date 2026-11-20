@@ -46,12 +46,10 @@ conventions' bounded-exception and owner-escalation guidance for unresolved
 behavior, compatibility, trust, authorization, ownership or unavoidable scope
 decisions. An existing explicit decision does not need approval again.
 
-Keep compact commands, actual revision, outcomes, timings and limitations in
-the plan. Detailed logs, manifests, JUnit and browser artifacts stay under
-ignored `.harness/` paths or in CI artifacts. For performance work, preserve
-controlled inputs and repeated measurements and state startup exclusions,
-storage/process differences and load variability as described in the Testing
-Strategy. Local checks do not establish a remote CI PASS.
+Keep acceptance criteria and verification methods in the execution plan. Follow
+the [Testing Strategy](TESTING.md#verification-and-evidence) to report the tested
+revision, outcomes, timings and limitations in the PR or a separate verification
+report. Local checks do not establish a remote CI PASS.
 
 When an agent struggles, identify the missing fixture, command, documentation,
 guardrail, or runtime signal and improve the harness rather than repeating an

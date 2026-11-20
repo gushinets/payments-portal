@@ -262,7 +262,9 @@ in the [Testing Strategy](../../../../docs/engineering/TESTING.md):
 ```bash
 python scripts/repo.py test api-fast --pytest-args apps/api/tests/test_commercial_sellability.py -q
 make test_db_up
-python scripts/repo.py test api-postgres --pytest-args apps/api/tests/test_commercial_mapping_postgres.py -q
+python scripts/repo.py test api-postgres --pytest-args \
+  apps/api/tests/test_commercial_mapping_postgres.py \
+  apps/api/tests/test_mapping_publication_expiry_postgres.py -q
 npm run check
 make test_db_stop
 ```

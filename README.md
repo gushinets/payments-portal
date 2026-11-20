@@ -99,9 +99,11 @@ design system, using navy/amber, flat dark panels and compact styling.
    npm run repo:up
    ```
 
-Runtime state and test evidence are written to the ignored `.harness/`
-directory. Each Git worktree receives an isolated Compose project, database,
-ports, logs, and browser artifacts.
+Runtime state and test evidence are written to the checkout's ignored
+`.harness/` directory. The harness derives Compose project names and default
+ports from the checkout path. See the
+[test-server lifecycle](docs/engineering/TESTING.md#test-environment-and-server-lifecycle)
+for the limitation when paths differ only by letter case.
 
 ## API development workflow
 

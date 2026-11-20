@@ -3530,13 +3530,24 @@ def cmd_test(
     *,
     environment: dict[str, str] | None = None,
 ) -> None:
-    from scripts.api_test_runner import DEFAULT_POSTGRES_WORKERS, RunnerError, merge_junit, run_api_tests
+    from scripts.api_test_runner import (
+        DEFAULT_POSTGRES_WORKERS,
+        ReportPublicationError,
+        RunnerError,
+        merge_junit,
+        run_api_tests,
+    )
 
     junitxml = Path(args.junitxml).resolve() if args.junitxml else None
     if junitxml is not None:
         merge_junit([], junitxml, [f"API test run has not completed: preparing {args.target}"])
     try:
         workers = getattr(args, "workers", None)
+        for count in getattr(args, "worker_counts", ()):
+            try:
+                workers = int(count)
+            except ValueError:
+                raise argparse.ArgumentTypeError(f"argument --workers: invalid int value: {count!r}") from None
         if workers is None:
             workers = 1 if args.target == "api-fast" else DEFAULT_POSTGRES_WORKERS
         if not 1 <= workers <= DEFAULT_POSTGRES_WORKERS:
@@ -3554,15 +3565,16 @@ def cmd_test(
             workers=workers,
             environment=check_env,
             arguments=getattr(args, "pytest_args", ()),
+            junitxml=junitxml,
         )
+    except ReportPublicationError as exc:
+        raise HarnessError(str(exc)) from exc
     except (argparse.ArgumentTypeError, HarnessError, OSError, RunnerError) as exc:
         if junitxml is not None:
             merge_junit([], junitxml, [f"API test startup failed: {exc}"])
         if isinstance(exc, RunnerError):
             raise HarnessError(str(exc)) from exc
         raise
-    if junitxml is not None:
-        shutil.copyfile(result.directory / "junit.xml", junitxml)
     if result.returncode:
         raise SystemExit(result.returncode)
 
@@ -3686,7 +3698,8 @@ def build_parser() -> argparse.ArgumentParser:
     test = sub.add_parser("test")
     test.add_argument("target", choices=("api-fast", "api-postgres", "api"))
     test.add_argument("--junitxml")
-    test.add_argument("--workers", type=int, metavar="COUNT")
+    # Keep the raw values until cmd_test can report an invalid count in JUnit.
+    test.add_argument("--workers", dest="worker_counts", action="append", default=[], metavar="COUNT")
     test.add_argument("--pytest-args", nargs=argparse.REMAINDER, default=[],
                       help="Selectors and diagnostic pytest options (must be last)")
     test.set_defaults(func=cmd_test)

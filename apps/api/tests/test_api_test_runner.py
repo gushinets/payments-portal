@@ -114,6 +114,8 @@ def assert_startup_error(path: Path, message: str) -> None:
         ("api-postgres", "partial-config"),
         ("api-postgres", "invalid-port"),
         ("api", "invalid-port"),
+        ("api-fast", "nonnumeric-workers"),
+        ("api-fast", "nonnumeric-workers-overridden"),
         ("api", "invalid-worker-range"),
         ("api-fast", "parallel-fast"),
     ],
@@ -131,6 +133,8 @@ def test_cli_startup_failure_returns_error_with_current_report(
         "unsupported-option": "Unsupported pytest argument",
         "partial-config": "Incomplete PostgreSQL test configuration",
         "invalid-port": "POSTGRES_PORT_TEST must be an integer",
+        "nonnumeric-workers": "invalid int value: 'abc'",
+        "nonnumeric-workers-overridden": "invalid int value: 'abc'",
         "invalid-worker-range": "Workers must be 1–4",
         "parallel-fast": "api-fast supports only",
     }[failure]
@@ -143,6 +147,10 @@ def test_cli_startup_failure_returns_error_with_current_report(
             POSTGRES_DB_TEST="synthetic_tests",
             POSTGRES_PORT_TEST="not-a-port",
         )
+    elif failure.startswith("nonnumeric-workers"):
+        arguments = ["--workers", "abc"]
+        if failure == "nonnumeric-workers-overridden":
+            arguments.extend(["--workers", "1"])
     elif failure == "invalid-worker-range":
         arguments = ["--workers", "5"]
     elif failure == "parallel-fast":
@@ -163,7 +171,8 @@ def test_cli_startup_failure_returns_error_with_current_report(
         text=True,
         timeout=15,
     )
-    assert result.returncode == (2 if failure == "invalid-worker-range" else 1)
+    invalid_worker_value = failure.startswith("nonnumeric-workers") or failure == "invalid-worker-range"
+    assert result.returncode == (2 if invalid_worker_value else 1)
     assert message in result.stderr
     assert "Traceback" not in result.stderr
     assert_startup_error(previous_report, message)
@@ -852,7 +861,7 @@ def test_interrupt_during_spawn_joins_the_new_process(
 
     monkeypatch.setattr(runner.subprocess, "Popen", interrupted_spawn)
     try:
-        with runner.interrupt_on_termination(), pytest.raises(KeyboardInterrupt):
+        with runner.interrupt_once(), pytest.raises(KeyboardInterrupt):
             runner.execute([invocation], tmp_path, environment())
         assert len(spawned) == 1 and spawned[0].returncode is not None
         assert json.loads((tmp_path / "interrupted.json").read_text()) == {"forced_termination": False}
@@ -864,7 +873,8 @@ def test_interrupt_during_spawn_joins_the_new_process(
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX signal integration; Windows uses CTRL_BREAK_EVENT")
-def test_interruption_joins_workers_and_allows_fixture_cleanup(suite: Path) -> None:
+@pytest.mark.parametrize("repeat_interrupt", [False, True], ids=["single", "repeated"])
+def test_interruption_joins_workers_and_publishes_available_reports(suite: Path, repeat_interrupt: bool) -> None:
     source(
         suite,
         "test_wait.py",
@@ -876,6 +886,8 @@ pytestmark = pytest.mark.postgres
 def resource():
     yield
     Path("cleaned").write_text("cleaned")
+def test_completed():
+    pass
 def test_wait(resource):
     Path("ready").write_text("ready")
     time.sleep(30)
@@ -883,8 +895,27 @@ def test_wait(resource):
     )
     script = f"""import argparse
 import os
+import shutil
+import signal
 from pathlib import Path
-from scripts import repo
+from scripts import api_test_runner as runner, repo
+
+def repeat_sigint_during(callback):
+    def interrupted(*args, **kwargs):
+        signal.raise_signal(signal.SIGINT)
+        return callback(*args, **kwargs)
+    return interrupted
+
+if {repeat_interrupt!r}:
+    def print_with_interrupt(message, **kwargs):
+        if message.startswith("API tests:"):
+            signal.raise_signal(signal.SIGINT)
+        print(message, **kwargs)
+
+    runner.retain_worker_reports = repeat_sigint_during(runner.retain_worker_reports)
+    shutil.copyfile = repeat_sigint_during(shutil.copyfile)
+    runner.print = print_with_interrupt
+
 repo.ROOT = Path({str(suite)!r})
 repo.HARNESS_DIR = repo.ROOT / "reports"
 repo.cmd_test(
@@ -903,7 +934,7 @@ repo.cmd_test(
                 time.sleep(0.05)
             assert (suite / "ready").exists(), (suite / "parent.log").read_text()
             pending_error = bool(ET.parse(suite / "current.xml").findall(".//error"))
-            process.send_signal(signal.SIGTERM)
+            process.send_signal(signal.SIGINT if repeat_interrupt else signal.SIGTERM)
             assert process.wait(timeout=25) == 130
         finally:
             if process.poll() is None:
@@ -915,7 +946,29 @@ repo.cmd_test(
     assert json.loads(result_path.read_text())["returncode"] == 130
     interruption = next((suite / "reports/api-tests").glob("*/postgres/worker-*/interrupted.json"))
     assert json.loads(interruption.read_text()) == {"forced_termination": False}
+    assert "apps/api/tests/test_wait.py::test_completed" in report_nodes(result_path.with_name("junit.xml"))
+    assert (suite / "current.xml").read_bytes() == result_path.with_name("junit.xml").read_bytes()
     assert ET.parse(suite / "current.xml").findall(".//error")
+
+
+def test_junit_publication_failure_preserves_internal_results(suite: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source(suite, "test_pass.py", "def test_pass():\n    pass\n")
+    check_env = environment()
+    monkeypatch.setattr(repo, "ROOT", suite)
+    monkeypatch.setattr(repo, "HARNESS_DIR", suite / "reports")
+
+    def fail_publication(*args: object) -> None:
+        raise PermissionError("controlled publication failure")
+
+    monkeypatch.setattr(runner.shutil, "copyfile", fail_publication)
+    requested_report = suite / "current.xml"
+    with pytest.raises(repo.HarnessError, match="Cannot publish API test JUnit.*controlled publication failure"):
+        repo.cmd_test(argparse.Namespace(target="api-fast", junitxml=str(requested_report)), environment=check_env)
+
+    result_path = next((suite / "reports/api-tests").glob("*/result.json"))
+    assert json.loads(result_path.read_text())["returncode"] == 0
+    assert report_nodes(result_path.with_name("junit.xml")) == ["apps/api/tests/test_pass.py::test_pass"]
+    assert_startup_error(requested_report, "API test run has not completed")
 
 
 @pytest.mark.parametrize("target,workers", [("api-fast", None), ("api-postgres", None), ("api", 1)])

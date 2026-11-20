@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -27,6 +28,10 @@ TERMINATE_GRACE_SECONDS = 5
 
 
 class RunnerError(RuntimeError):
+    pass
+
+
+class ReportPublicationError(RuntimeError):
     pass
 
 
@@ -175,15 +180,27 @@ def validate_arguments(
 
 
 @contextmanager
-def interrupt_on_termination() -> Iterator[None]:
-    def interrupted(signum: int, frame: object) -> None:
-        raise KeyboardInterrupt
+def interrupt_once() -> Iterator[None]:
+    """Keep repeated signals from interrupting cleanup and report publication."""
+    received = False
 
-    previous = signal.signal(signal.SIGTERM, interrupted)
+    def interrupted(signum: int, frame: object) -> None:
+        nonlocal received
+        if not received:
+            received = True
+            raise KeyboardInterrupt
+
+    previous = {signal.SIGTERM: signal.getsignal(signal.SIGTERM)}
+    sigint_handler = signal.getsignal(signal.SIGINT)
+    if sigint_handler != signal.SIG_IGN:
+        previous[signal.SIGINT] = sigint_handler
     try:
+        for signum in previous:
+            signal.signal(signum, interrupted)
         yield
     finally:
-        signal.signal(signal.SIGTERM, previous)
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
 
 
 def signal_process(
@@ -457,6 +474,7 @@ def run_api_tests(
     workers: int,
     environment: dict[str, str],
     arguments: Sequence[str] = (),
+    junitxml: Path | None = None,
 ) -> RunnerResult:
     directory = artifacts / f"{target}-{uuid.uuid4().hex}"
     arguments = validate_arguments(arguments, target, root)
@@ -477,8 +495,8 @@ def run_api_tests(
     interrupted = False
     worker_failed = False
     invocations: list[Invocation] = []
-    try:
-        with interrupt_on_termination():
+    with interrupt_once():
+        try:
             for partition in partitions:
                 invocations = []
                 try:
@@ -589,35 +607,41 @@ def run_api_tests(
                     errors.append(
                         f"Cannot execute test process for {partition.name.lower()}: {exc}"
                     )
-    except KeyboardInterrupt:
-        interrupted = True
-        if collection_report is not None and collection_report.is_file():
-            try:
-                retain_collection_cases(collection_report, collection_cases)
-            except RunnerError as exc:
-                errors.append(str(exc))
-        retain_worker_reports(invocations, reports, errors)
-        errors.append(
-            "API test run interrupted; children stopped and joined. Inspect interrupted.json for forced termination."
+        except KeyboardInterrupt:
+            interrupted = True
+            if collection_report is not None and collection_report.is_file():
+                try:
+                    retain_collection_cases(collection_report, collection_cases)
+                except RunnerError as exc:
+                    errors.append(str(exc))
+            retain_worker_reports(invocations, reports, errors)
+            errors.append(
+                "API test run interrupted; children stopped and joined. Inspect interrupted.json for forced termination."
+            )
+        roots = list(reports.values())
+        if not roots and not errors:
+            errors.append("No API tests selected")
+        merged_report = directory / "junit.xml"
+        merge_junit(
+            roots,
+            merged_report,
+            errors,
+            collection_cases=list(collection_cases.values()),
         )
-    roots = list(reports.values())
-    if not roots and not errors:
-        errors.append("No API tests selected")
-    merge_junit(
-        roots,
-        directory / "junit.xml",
-        errors,
-        collection_cases=list(collection_cases.values()),
-    )
-    code = 130 if interrupted else int(bool(errors) or worker_failed)
-    write_json(
-        directory / "result.json",
-        {"returncode": code, "process_returncodes": returncodes, "errors": errors},
-    )
-    for error in errors:
-        print(error, file=sys.stderr)
-    print(
-        f"API tests: {len(roots)} worker report(s), exit {code}; JUnit: {directory / 'junit.xml'}",
-        flush=True,
-    )
-    return RunnerResult(code, directory)
+        code = 130 if interrupted else int(bool(errors) or worker_failed)
+        write_json(
+            directory / "result.json",
+            {"returncode": code, "process_returncodes": returncodes, "errors": errors},
+        )
+        if junitxml is not None:
+            try:
+                shutil.copyfile(merged_report, junitxml)
+            except OSError as exc:
+                raise ReportPublicationError(f"Cannot publish API test JUnit to {junitxml}: {exc}") from exc
+        for error in errors:
+            print(error, file=sys.stderr)
+        print(
+            f"API tests: {len(roots)} worker report(s), exit {code}; JUnit: {merged_report}",
+            flush=True,
+        )
+        return RunnerResult(code, directory)

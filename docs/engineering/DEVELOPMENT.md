@@ -3,9 +3,10 @@
 Status: authoritative
 Last verified: 2026-11-19 (test workflow)
 
-Use `scripts/repo.py` through root npm commands. It derives a stable worktree ID,
-Compose project, database port, and service ports without sharing state with
-another worktree.
+Use `scripts/repo.py` through root npm commands. It derives the worktree ID,
+Compose project, and default ports from the checkout path. See the
+[test-server lifecycle](TESTING.md#test-environment-and-server-lifecycle)
+for the limitation when checkout paths differ only by letter case.
 
 ```bash
 npm run repo:doctor

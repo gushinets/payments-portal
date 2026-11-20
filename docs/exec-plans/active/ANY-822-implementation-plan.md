@@ -1,8 +1,6 @@
 # ANY-822 — Accelerate test execution
 
-Status: MVP timing targets met at `1b3ee7cf`. Full verification of the runner follow-up and human review are pending.
 Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
-Branch: `ANY-822`, based on `791b7f5a`
 
 ## Acceptance criteria
 
@@ -15,6 +13,8 @@ Branch: `ANY-822`, based on `791b7f5a`
   and recovery. Document new skips or xfails. Keep assertion strength, timing
   constraints and retry limits intact.
 - Existing developer aliases and CI use the accelerated path by default.
+- A post-change measurement of the CI critical path is sufficient for CI timing
+  acceptance. Report it separately from the local benchmarks.
 
 ## Implementation decisions
 
@@ -61,10 +61,8 @@ records the before/after costs where measured and the cases retained unchanged.
   reuse the purchase/reconciliation fixture for the bounded reader. The HTTP
   test compares the complete grants and allowances with committed state, puts
   the paid product beyond the 100-product display cap and checks for writes.
-  The earlier fixture that assembled billing rows directly saved 1.45 s in
-  the historical in-module comparison. The combined reader/expiry sample
-  showed no consistent improvement. The shared-fixture measurement is recorded
-  under MVP timing below.
+  Direct row assembly offered no consistent gain for the combined reader and
+  expiry scenarios, so the bounded reader retains the shared writer setup.
 - **Frontend.** [Subscription guard tests](../../../apps/web/tests/components/SubscriptionStateGuard.test.ts)
   own every wording variant. [Portal E2E](../../../apps/web/e2e/portal-ru.spec.ts)
   still applies the guard to the real page. The effect-settled
@@ -91,72 +89,16 @@ records the before/after costs where measured and the cases retained unchanged.
 
 ## Verification
 
-### MVP timing at `1b3ee7cf`
+- Compare the same [24 PostgreSQL control cases](https://github.com/gushinets/payments-portal/blob/e7d12a24a8193c08ad872e8fcbbe040721b1e101/docs/exec-plans/active/ANY-822-implementation-plan.md#L234)
+  on the original and accelerated local paths. Keep inputs, tool versions and
+  durability settings equivalent. Exclude a warm-up, repeat measurements and
+  record spread, machine load, storage and active process count.
+- Check the full local timing targets with the dedicated tmpfs server and
+  `npm run check -- --coverage`. Verify the PostgreSQL test count and cleanup
+  of scenario and template databases.
+- Check the retained regressions, including migration cycles, worker isolation,
+  coverage artifacts and desktop/mobile browser checks.
 
-The complete `check --coverage` handler passed on Linux at `1b3ee7cf` in
-**859.834 s**. PostgreSQL took **566.218 s** with four workers on the dedicated
-PostgreSQL 18.4 tmpfs server, including collection and database cleanup. All
-**1,219** PostgreSQL cases passed. Their node IDs
-and order match the two earlier full collections on November 19. No scenario
-or template databases remained before the disposable server was stopped.
-
-API-fast passed 2,563 cases with one existing native Windows filename case
-skipped. All 454 component and 38 web boundary tests passed, including
-typecheck. The web production build passed. Pytest collected 3,795 cases at
-`608b696a` and 3,783 at `1b3ee7cf`.
-All changed node IDs belong to launcher, settings or repository tooling tests.
-The bounded paid-reader HTTP case passed in 1.885 s using the shared fixture.
-
-The check used this worktree's source, an existing Python 3.12 environment
-from a sibling worktree matching the API lock, and cached Manrope files served
-on loopback. Browser E2E was excluded per the timing criteria. The final log
-and timings are in `.harness/any822-final-check-_3mwaeyw/` and the merged
-PostgreSQL report is in
-`.harness/api-tests/api-postgres-3d4cdf6c11574854beb86aeb9f669c21/`.
-The recorded full local run is sufficient for MVP timing acceptance.
-Additional benchmarks, a new comparison against `main`, and before-and-after
-CI timing are outside this PR's acceptance scope.
-
-### Published revision `52855777`
-
-CI passed the PostgreSQL partition and migration cycles, fast checks with
-coverage, web build and browser tests, and Linux and Windows harness smoke.
-Upload during an actual CI cancellation remains unverified.
-[CI run for `52855777`](https://github.com/gushinets/payments-portal/actions/runs/44657736774)
-
-The local verification record added in `52855777` reports 416 focused checks,
-13 cases on disposable PostgreSQL 14, and a passing `check:fast` with
-lock-matched dependencies. It covers collection skips and errors in JUnit and
-confirms cleanup after an injected nested pytest timeout.
-
-### Local runner follow-up after `52855777`
-
-The follow-up accepts pytest's reordered worker collection, validates `-x` in
-worker order, and handles repeated `SIGINT` in nested pytest on POSIX.
-All 534 focused checks passed, including group and parent-only interruption.
-All 10 template lifecycle tests passed on disposable PostgreSQL 14 and left no
-scenario or template databases.
-
-`npm run check:fast` passed its earlier stages and reached all 2,573 API-fast
-cases. Five failed with the worktree's older DNS and OpenTelemetry packages.
-All five passed when rerun with the versions pinned in `uv.lock`. A complete
-green `check:fast` in one environment and CI verification remain open for this
-follow-up.
-
-### Prior evidence
-
-- At `e7d12a24`, `npm run test:api:postgres` passed 1,219 cases with four
-  workers on PostgreSQL 18.4. Local Bash probes covered SIGINT and SIGTERM
-  cleanup. The browser selection on `8de0f4ba` passed 54 desktop/mobile cases.
-- Source based on `5062d7fb` passed `npm run check -- --coverage` in
-  **850.734 s**, with **2.976 s** for server startup measured separately.
-  See `.harness/any822-p1-p3-20261117/check-result.json`.
-  At `12b15287`, the complete PostgreSQL partition took **597.834 s**.
-- The 24-case Linux control measured **146.553 / 73.228 / 56.941 s** serial on
-  ext4 at `2d278f62` and **13.334 / 13.373 / 13.243 s** on tmpfs with migrated
-  templates and two active workers on source based on `8496803c`. Both paths
-  used the same inputs, tool versions and normal durability. Each excluded a
-  warm-up and passed all cases. The baseline spread limits the comparison.
-  The control IDs, machine/load and cache conditions, phase timings and
-  checkpoint records are in the previous plan at `e7d12a24` and
-  `.harness/any822-step1-20261113/`, `.harness/any822-step9-20261113/`.
+Record tested revisions, outcomes, timings and limitations in the
+[PR](https://github.com/gushinets/payments-portal/pull/170), following the
+[Testing Strategy](../../engineering/TESTING.md#verification-and-evidence).
