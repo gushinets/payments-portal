@@ -83,7 +83,7 @@ jobs:
 
       - name: Build production API image
         run: >-
-          docker build --target production --file apps/api/Dockerfile
+          docker build --pull --no-cache --platform linux/amd64 --target production --file apps/api/Dockerfile
           --tag "$API_IMAGE" .
 
       - name: Verify production API runtime
@@ -95,6 +95,13 @@ jobs:
           --mount "type=bind,src=$PWD/security/trivy/inspect-api-components.py,dst=/tmp/inspect-api-components.py,readonly"
           "$API_IMAGE" /tmp/inspect-api-components.py
           > "$TRIVY_REPORT_DIR/api-components.json"
+
+      - name: Check supported Debian candidates in disposable build base
+        run: |
+          docker build --target base --file apps/api/Dockerfile --tag "$API_IMAGE-base" .
+          docker run --rm --entrypoint python             --mount "type=bind,src=$PWD/security/trivy/inspect-api-updates.py,dst=/tmp/inspect-api-updates.py,readonly"             "$API_IMAGE-base" /tmp/inspect-api-updates.py > "$TRIVY_REPORT_DIR/api-debian-updates.json"
+          docker image inspect "$API_IMAGE" "$API_IMAGE-base" > "$TRIVY_REPORT_DIR/api-image-identities.json"
+          trivy image --config trivy.yaml --ignorefile .trivyignore.yaml --scanners vuln,secret             --format json --output "$TRIVY_REPORT_DIR/api-build-base.json" --timeout 15m "$API_IMAGE-base"
 
       - name: Build production web image
         run: >-

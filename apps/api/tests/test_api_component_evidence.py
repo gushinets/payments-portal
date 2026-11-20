@@ -88,3 +88,13 @@ def test_component_elf_decoder_reads_actual_dynamic_needed_record() -> None:
         COMPONENTS.elf_dynamic_info(bytes(invalid))
     with pytest.raises(ValueError, match="truncated"):
         COMPONENTS.elf_dynamic_info(data[:80])
+
+
+def test_upgrade_probe_distinguishes_planned_changes_from_summary() -> None:
+    spec = importlib.util.spec_from_file_location("inspect_api_updates", ROOT / "security/trivy/inspect-api-updates.py")
+    assert spec is not None and spec.loader is not None
+    updates = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(updates)
+
+    assert updates.planned_upgrades("0 upgraded, 0 newly installed.\n") == []
+    assert updates.planned_upgrades("Inst libc6 [old] (new Debian)\n1 upgraded\n") == ["Inst libc6 [old] (new Debian)"]
