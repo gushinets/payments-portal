@@ -331,6 +331,33 @@ and verify separate application/database backups before updating retained data.
 Use the existing backup/recovery procedure and matching reader+database pair;
 never repair failure by downgrading, stamping or rewriting purchase history.
 
+### Billing operator CLI while the API is stopped
+
+For [terminal purchase completion](../engineering/billing-background-operations.md#terminal-completion-any-821),
+keep PostgreSQL running and use a one-off container from the deployed API image.
+Use the deployment's project, protected environment file and Compose file order.
+For a shared VPS, insert `-f "$NETWORK_OVERLAY"` before the image override.
+`run --no-deps` runs the CLI while the API service and its senders stay stopped.
+
+Set `EVIDENCE_FILE` to the absolute path of the protected evidence file, readable
+by the container user. Set the remaining arguments from the operator record.
+Use the same effective UID for the original command and any exact replay.
+
+```bash
+docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" \
+  -f docker-compose.prod.yml -f deploy/compose.images.yml \
+  run --rm -T --no-deps --pull never -e PYTHONPATH=apps/api \
+  --volume "$EVIDENCE_FILE:/run/purchase-evidence.json:ro" \
+  api python -m app.cli.billing_purchases resolve-purchase \
+  --user-id "$USER_ID" --purchase-id "$PURCHASE_ID" \
+  --expected-digest "$EXPECTED_DIGEST" --evidence-file /run/purchase-evidence.json \
+  --reason "$REASON" --reference "$REFERENCE"
+```
+
+To inspect, use the same Compose invocation with the `inspect` action,
+`--user-id` and `--purchase-id`. Omit the evidence mount. For a late case,
+add `--case-id` to `resolve-purchase`.
+
 ### Paired compatibility and synchronized cutover
 
 Deploy the ANY-821 Portal build with Alembic head `20261117_821_merge`. It joins
