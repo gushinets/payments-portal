@@ -1,4 +1,4 @@
-# ANY-674 — Debian production API image remediation
+# ANY-674 вЂ” Debian production API image remediation
 
 ## Objective and scope
 Apply available supported Debian security updates to the final Python 3.12 API production image and provide reproducible before/after evidence for https://linear.app/paveldik/issue/ANY-674.
@@ -56,3 +56,14 @@ Technical investigation and implementation complete at runtime source `f7728c18`
 ## Technical handoff separation
 
 Technical work is complete and handed off with supported-update/removal analysis, before/after scans, startup/readiness and migrations. The [handoff](../../engineering/ANY-674-technical-handoff.md) enumerates all 95 current residual IDs for development-team assignment, with per-ID applicability/options in the evidence ledgers and proposed 2026-12-02 review. Ownership is **pending team assignment**, does not block technical completion and is not assigned to the requester. The ticket ownership criterion stays unchecked. No risk approval, exception, merge, deployment or Done transition.
+
+## Review correction вЂ” fail-closed verification
+
+Starting PR head `c0fc008f` already incorporates current main `dac00ead`; fast-forwarded the existing local branch without rewriting or dropping that merge. Reviewed two introduced verification defects: native traversal/ldd failures were masked by a grep pipeline, and Dockerfile audit exit status was discarded by command substitution inside test.
+
+- [x] Add regressions against actual production RUN and inner verifier shell; reproduce four failures / three passes before fixes.
+- [x] Require successful standalone audit assignment before checking empty output; inspect traversal and each ldd result separately from missing-library text. Preserve the optional pre-existing Tk exclusion.
+- [x] Complete deployment-contract tests:60 passed; shell syntax, ruff lint and formatting pass.
+- [x] Record actual-image CI and canonical status for runtime correction `df09c29c` in the [review correction report](../../engineering/ANY-674-review-corrections.md): CI/Security/all analysis checks pass; local fast passed, full in progress at evidence publication with final outcome reported in PR handoff. Docker became available and the worktree test server was started.
+
+Residual ownership remains **pending team assignment**; existing applicability/options/review dates and historical before/after comparisons remain unchanged. No risk decision, exception, merge or deployment.

@@ -1,5 +1,7 @@
 # ANY-674 — Technical handoff and pending team ownership
 
+Latest verification: [review corrections and refreshed CI](ANY-674-review-corrections.md) reports101 current advisory IDs on identical71 package versions. All current ownership is pending team assignment. The95-ID enumeration below preserves the earlier18November scope; the refreshed current ledger adds6glibc/OpenSSL IDs.
+
 ## Technical completion
 
 Supported in-place remediation and verification are complete for runtime source `f7728c18`. The selected final image and controlled before/after scans, exact versions, removal justification, startup/readiness and migration results are recorded in the [minimization report](ANY-674-runtime-minimization.md). Historical results remain preserved. No additional supported Trixie/security/backports candidate was available for retained affected families at investigation time. Sixteen justified removals were implemented and verified; no speculative removals or distribution migration were adopted.

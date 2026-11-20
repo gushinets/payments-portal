@@ -1,0 +1,32 @@
+# ANY-674 вЂ” Review corrections and refreshed CI evidence
+
+## Scope and reproduced defects
+
+The existing PR already contained merge `c0fc008f` from main `dac00ead`. That merge was preserved. Runtime correction `df09c29c7db035f82b595989b9b00795aa88a3e2` fixes two introduced verification defects without changing package choices, application dependencies or deployment policy:
+
+- P2: the native dependency pipeline masked failed directory traversal and failed ldd execution. Capture traversal successfully first, then require every individual ldd command to succeed before examining missing-library text. Abort before imports after any failed inspection; retain the characterized optional Tk exclusion.
+- P3: `test -z "$(dpkg --audit)"` ignored the audit exit status. Require a successful standalone assignment in the Dockerfile's AND chain before checking empty output. The verifier's existing standalone audit assignment remains intact.
+
+Actual-Dockerfile/inner-verifier shell regressions reproduced **4 failures / 3 passes** before correction: stderr-only audit error, traversal error, first-library inspection error and last-library inspection error incorrectly succeeded. Dirty audit, missing-library and clean cases behaved as expected. After correction the complete deployment-contract file passed **60 tests**. Shell syntax, ruff lint and formatting pass. Fixtures stub account/package commands; no host package mutation occurs. [Reproduction and corrected-test evidence](evidence/ANY-674-review-2026-11-20/SHA256SUMS).
+
+## Actual-image verification
+
+[Security44730453759](https://github.com/gushinets/payments-portal/actions/runs/44730453759) passed on source `df09c29c`, merge checkout `d576aec`. Its production image successfully builds with the corrected audit chain and passes the corrected minimized non-root native/import/liveness verifier. CI image manifest identity: `sha256:42c0c1fd6b37f20a5b730d1750c65d46adeccbaf30f511585b05f38bd10ea643`; config digest: `sha256:442ad55b844dbbab9c8dfec60da7df4565b9b23a24f9c4019c38647272e7f385`.
+
+[CI44730453843](https://github.com/gushinets/payments-portal/actions/runs/44730453843) passed all five jobs: code quality, production gate, browser and Windows/Ubuntu harness smoke. Production logs show PostgreSQL tests, migration cycles, production builds and normal-command API smoke passing, including Alembic upgrades through `20261113_0013`. SonarQube and CodeQL also pass. Existing report-only Trivy enforcement is unchanged. Docker was initially unavailable locally and became available during verification. The worktree disposable PostgreSQL server was then started for the full canonical check. No local image rebuild is claimed for this correction; actual corrected-image execution is verified by CI. Retained historical local-image results remain separate.
+
+## Refreshed scan, not a new controlled remediation comparison
+
+Downloaded CI artifact `14625518250`; ZIP SHA-256 matches GitHub metadata: `c38a47172bbea914f5adf3c2f171ab037745d82999ceed04109d72b4ca8cd22b`. API report SHA-256: `78ca9cb407c4fbbedb4713a791616d1c739fc1eca210c7a0723d761c02f5f9f3`. The full artifact is retained locally under `.harness/any-674-minimize/review-security-artifact/`; all OS findings and complete binary/source version components are published in the [projection](evidence/ANY-674-review-2026-11-20/ci-os-projection.json).
+
+All **71** package identities and full binary/source versions match the retained selected image. Fresh CI scan: **221 records / 101 IDs**, **43 High / 108 Medium / 61 Low / 9 Unknown**. The 18 November final snapshot remains **207 / 95**, and its controlled baseline comparison remains unchanged. No finding disappears. Six newly reported IDs add14 records;13 retained records are reclassified (11 Unknownв†’Medium and2 Unknownв†’Low). These are changed scanner data on identical packages, not package fixes or evidence that the verification correction introduced vulnerable code. The refreshed CI scan does not share the old controlled database snapshot, and the baseline was not rebuilt/rescanned here; it is not substituted into the old before/after comparison.
+
+The additional IDs concern glibc conversion/glob behavior and OpenSSL DANE/DTLS behavior: CVE-2026-121757, CVE-2026-121758, CVE-2026-124024, CVE-2026-126765, CVE-2026-84786 and CVE-2026-95690. The [current101-ID ledger](evidence/ANY-674-review-2026-11-20/current-advisory-dispositions.csv) records their prerequisites, required-library constraint, maintained-fix follow-up, exact versions and authoritative Debian links. Five vendor pages were checked and show affected Trixie versions with no fixed version; CVE-2026-126765's vendor page could not be retrieved, so that status remains scanner evidence rather than a claimed independent confirmation. Lack of demonstrated application use is not treated as proof of non-applicability.
+
+## Ownership and handoff
+
+All **101 current** reported residual IDs are **pending team assignment**, with proposed technical review on **2026-12-02**, earlier on maintained fixes/exposure changes. The prior95-ID ledger remains the historical18November scope; it is not an assertion that the refreshed scanner still reports only95 IDs. The additional6IDs join existing glibc/OpenSSL groups. The ticket ownership criterion and review thread remain pending separately from technical handoff. No requester CVE ownership, risk acceptance, exception, ignore, severity override, merge, deployment or issue completion is recorded.
+
+## Local canonical verification
+
+`npm run check:fast` passed locally on runtime source `df09c29c`:2549 API tests passed /51 skipped on Windows,454 frontend tests passed; docs/generation/architecture/lint passed. `npm run check` started sequentially and was still running at this evidence publication. Its final outcome is recorded in the existing [PR handoff](https://github.com/gushinets/payments-portal/pull/179). This snapshot does not claim that local full verification passed. Broad CI results above are actual remote results, not inferred from local progress. Independent review confirmed both defects resolved and no new actionable findings; tests and snapshot evidence were reviewed without further mutations.

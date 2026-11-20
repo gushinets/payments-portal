@@ -1,5 +1,7 @@
 # ANY-674 — Runtime minimization follow-up
 
+Latest verification: [fail-closed review corrections and refreshed CI](ANY-674-review-corrections.md). The historical controlled comparison below remains unchanged; the newer scan reports101 IDs on identical packages, all pending team assignment.
+
 This follow-up preserves the [original comparison](ANY-674-debian-image-evidence.md): 87 unchanged Debian packages, 218 finding records / 96 advisory IDs, zero attributable Debian fixes or removals, and Python 3.12.14 → 3.12.16. The earlier residual request is historical, not approved. This investigation implements feasible removal before requesting any residual decision.
 
 ## Selected image and measurable outcome
