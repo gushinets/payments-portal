@@ -28,8 +28,10 @@ Branch: `ANY-822`, based on `791b7f5a`
 - Use four PostgreSQL processes by default and a serial API-fast partition.
   Assign whole modules by collected count. The combined API command runs
   PostgreSQL after a fast launch or test failure. Preserve available JUnit and
-  diagnostics from failed or interrupted runs. CI sends cancellation signals
-  directly to Python for worker and fixture cleanup.
+  diagnostics from failed or interrupted runs, including skips and errors from
+  collection. Apply bounded fixture cleanup when the nested lifecycle test
+  times out. CI sends cancellation signals directly to Python for worker and
+  fixture cleanup.
 - Collect API-fast and component coverage during their single canonical
   executions. PostgreSQL stays parallel; standalone API coverage stays serial.
 - Simplify selected test setups and browser readiness checks. Defer broad
@@ -109,10 +111,28 @@ and timings are in `.harness/any822-final-check-_3mwaeyw/` and the merged
 PostgreSQL report is in
 `.harness/api-tests/api-postgres-3d4cdf6c11574854beb86aeb9f669c21/`.
 Native Windows launcher behavior and upload on actual CI cancellation were
-not exercised locally. The workflow uses the accelerated commands. A comparable
-before/after measurement of the CI critical path is pending. See
+not exercised locally. The workflow uses the accelerated commands. The recorded
+full local run is sufficient for MVP timing acceptance. Additional benchmarks,
+a new comparison against `main`, and before-and-after CI timing are outside this
+PR's acceptance scope. See
 [PR checks](https://github.com/gushinets/payments-portal/pull/170/checks) for the
 published revision's CI results.
+
+### Local review follow-up
+
+The collection regressions reproduced missing module skips and import tracebacks
+in merged JUnit. A synthetic child test reproduced the missing finalizer when
+`subprocess.run` killed the child at its deadline. After the fixes, 416 runner,
+dispatch, coverage and documentation checks passed. On a disposable PostgreSQL
+14 server, all 13 focused lifecycle cases passed. An injected child timeout
+after both databases were created let pytest run teardown and left no scenario
+or template databases on that server.
+
+The canonical fast check passed with an existing Python environment matching
+`uv.lock`: 2,567 API-fast passes and one existing skip, 454 component passes,
+and 38 web boundary passes. The worktree's default Python environment used
+older DNS and telemetry packages and failed five unrelated checks before the
+rerun. The full PostgreSQL partition and native Windows were not rerun.
 
 ### Prior evidence
 

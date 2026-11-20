@@ -4,7 +4,6 @@ import json
 import os
 import signal
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -13,6 +12,7 @@ from sqlalchemy.engine import URL
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from apps.api.tests.support import postgres as support
+from scripts.api_test_runner import Invocation, execute, pytest_command
 
 pytestmark = pytest.mark.postgres
 
@@ -55,10 +55,7 @@ def test_fresh_clones_survive_mixed_migration_order_in_separate_processes(
     tmp_path: Path, database_admin_url: URL
 ) -> None:
     """Exercise the real fixtures, one migration build per process and function scope."""
-    module = tmp_path / "test_mixed.py"
-    report = tmp_path / "names.json"
-    module.write_text(
-        """
+    test_source = """
 import json
 from collections.abc import Iterator
 from pathlib import Path
@@ -70,7 +67,10 @@ from sqlalchemy.engine import Engine, URL
 from apps.api.tests.support import postgres as support
 
 @pytest.fixture(scope="session", autouse=True)
-def count_template_migrations() -> Iterator[None]:
+def count_template_migrations(postgres_database: support.PostgresTestDatabase) -> Iterator[None]:
+    Path(__file__).with_name("names.json").write_text(json.dumps([
+        postgres_database.database_url.database, postgres_database.template_url.database,
+    ]), encoding="utf-8")
     with patch.object(support, "run_migrations", wraps=support.run_migrations) as migrate:
         yield
         assert migrate.call_count == 1
@@ -84,11 +84,8 @@ def assert_seed(engine: Engine) -> None:
         assert connection.scalar(text("SELECT to_regclass('public.pollution')")) is None
         assert connection.scalar(text("SELECT version_num FROM alembic_version"))
 
-def test_first(
-    migrated_database: Engine, database_test_url: URL, postgres_database: support.PostgresTestDatabase
-) -> None:
+def test_first(migrated_database: Engine) -> None:
     assert_seed(migrated_database)
-    Path(REPORT).write_text(json.dumps([database_test_url.database, postgres_database.template_url.database]))
     with migrated_database.begin() as connection:
         connection.execute(text("CREATE TABLE pollution (value text)"))
         connection.execute(text("INSERT INTO pollution VALUES ('committed')"))
@@ -106,18 +103,17 @@ def test_schema(postgres_engine: Engine, database_test_url: URL) -> None:
 
 def test_final(migrated_database: Engine) -> None:
     assert_seed(migrated_database)
-""".replace("REPORT", repr(str(report))),
-        encoding="utf-8",
-    )
+"""
     names: list[str] = []
-    for _ in range(2):
-        result = subprocess.run(
+    for index in range(2):
+        directory = tmp_path / f"child-{index + 1}"
+        directory.mkdir()
+        module = directory / "test_mixed.py"
+        module.write_text(test_source, encoding="utf-8")
+        report = directory / "names.json"
+        command = pytest_command(
+            directory,
             [
-                sys.executable,
-                "-m",
-                "pytest",
-                "-p",
-                "no:cacheprovider",
                 "-p",
                 "apps.api.tests.conftest",
                 "-c",
@@ -125,13 +121,26 @@ def test_final(migrated_database: Engine) -> None:
                 "-q",
                 str(module),
             ],
-            env=dict(os.environ),
-            cwd=support.REPOSITORY_ROOT,
-            capture_output=True,
-            text=True,
-            timeout=60,
         )
-        assert result.returncode == 0, result.stdout + result.stderr
+        log = directory / "pytest.log"
+        try:
+            # Keep the child in the outer worker's POSIX group so cancellation can reach both.
+            [returncode] = execute(
+                [Invocation(command, directory)],
+                support.REPOSITORY_ROOT,
+                dict(os.environ),
+                timeout=60,
+                start_new_session=False,
+            )
+        except subprocess.TimeoutExpired:
+            database_names = report.read_text(encoding="utf-8") if report.is_file() else "unknown"
+            interruption = (directory / "interrupted.json").read_text(encoding="utf-8")
+            pytest.fail(
+                f"Nested pytest timed out after 60 seconds. Database names: {database_names}\n"
+                f"Interruption: {interruption}\n{log.read_text(encoding='utf-8', errors='replace')}",
+                pytrace=False,
+            )
+        assert returncode == 0, log.read_text(encoding="utf-8", errors="replace")
         names.extend(json.loads(report.read_text(encoding="utf-8")))
     assert len(set(names)) == 4
     assert _existing_databases(database_admin_url, names) == []

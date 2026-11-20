@@ -477,16 +477,36 @@ def test_early_stop_option_accepts_complete_reports(suite: Path, fail_last: bool
     assert not report.findall(".//error")
 
 
+@pytest.mark.parametrize("target,expected_tests", [("api-fast", 2), ("api", 3)])
+def test_collection_skip_is_reported_once(suite: Path, target: str, expected_tests: int) -> None:
+    source(suite, "test_fast.py", "def test_pass():\n    pass\n")
+    source(suite, "test_postgres.py", "import pytest\n@pytest.mark.postgres\ndef test_pass():\n    pass\n")
+    source(suite, "test_skipped.py", "import pytest\npytest.skip('module unavailable', allow_module_level=True)\n")
+
+    result = run_suite(suite, target=target, workers=1)
+
+    assert result.returncode == 0
+    report = ET.parse(result.directory / "junit.xml").getroot()
+    skipped = report.findall(".//skipped")
+    assert report.get("tests") == str(expected_tests) and report.get("skipped") == "1"
+    assert len(skipped) == 1 and "module unavailable" in (skipped[0].text or "")
+    assert len(report_nodes(result.directory / "junit.xml")) == expected_tests - 1
+
+
 def test_collection_failure_is_reported_for_both_partitions(suite: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(runner.uuid, "uuid4", lambda: UUID("99900000-0000-4000-8000-000000000000"))
     source(suite, "test_broken.py", "raise RuntimeError('collection defect')")
     result = run_suite(suite, target="api")
     assert result.returncode == 1
     report = ET.parse(result.directory / "junit.xml").getroot()
-    assert report.get("tests") == report.get("errors") == "2"
+    assert report.get("tests") == report.get("errors") == "3"
+    collection_cases = [case for case in report.findall(".//testcase") if "test_broken" in case.get("name", "")]
+    assert len(collection_cases) == 1
+    error = collection_cases[0].find("error")
+    assert error is not None and "RuntimeError: collection defect" in (error.text or "")
     logs = [result.directory / partition / "collection/pytest.log" for partition in ("fast", "postgres")]
     assert all(log.is_file() for log in logs)
-    assert [error.get("message") for error in report.findall(".//error")] == [
+    assert [error.get("message") for error in report.findall(".//testsuite[@name='api-runner']//error")] == [
         f"Collection failed (exit 2): {log}" for log in logs
     ]
 
@@ -624,6 +644,53 @@ def test_detached_windows_worker_is_joined_after_partial_launch(
     worker.terminate.assert_called_once_with()
     worker.wait.assert_called_once()
     assert json.loads((first / "interrupted.json").read_text()) == {"forced_termination": True}
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signal integration; Windows uses CTRL_BREAK_EVENT")
+def test_timed_out_nested_pytest_can_finalize_owned_resource(suite: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    source(
+        suite,
+        "test_wait.py",
+        """import time
+from pathlib import Path
+import pytest
+@pytest.fixture
+def resource():
+    owned = Path("owned")
+    owned.touch()
+    yield
+    owned.unlink()
+    Path("cleaned").touch()
+def test_wait(resource):
+    Path("ready").touch()
+    time.sleep(30)
+""",
+    )
+    popen = subprocess.Popen
+
+    def wait_after_resource_creation(*args: object, **kwargs: object) -> subprocess.Popen[bytes]:
+        process = popen(*args, **kwargs)
+        wait = process.wait
+
+        def wait_with_timeout(timeout: float | None = None) -> int:
+            if timeout == 60:
+                deadline = time.monotonic() + 15
+                while not (suite / "ready").exists() and process.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                assert (suite / "ready").exists(), (suite / "pytest.log").read_text()
+                return wait(timeout=0)
+            return wait(timeout=timeout)
+
+        monkeypatch.setattr(process, "wait", wait_with_timeout)
+        return process
+
+    monkeypatch.setattr(runner.subprocess, "Popen", wait_after_resource_creation)
+    command = runner.pytest_command(suite, ["-q", "apps/api/tests"])
+    with pytest.raises(subprocess.TimeoutExpired):
+        runner.execute([runner.Invocation(command, suite)], suite, environment(), timeout=60, start_new_session=False)
+
+    assert (suite / "cleaned").exists() and not (suite / "owned").exists()
+    assert json.loads((suite / "interrupted.json").read_text()) == {"forced_termination": False}
 
 
 def test_interruption_during_report_validation_does_not_duplicate_completed_results(

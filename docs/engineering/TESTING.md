@@ -169,6 +169,9 @@ Configured ports must be between 1 and 65535. The configured database name
 must end in `_test` or `_tests`. pytest uses it to validate routing and
 assigns its own physical database names. Use a dedicated test server with a
 role that can create databases and connect to the `postgres` admin database.
+For migration tests, include the username, password and host in the URL
+authority so Alembic can initialize application settings. For example,
+`postgresql+psycopg://test_user:test_password@localhost:42500/portal_tests`.
 The performance target uses the standard tmpfs server. Explicit test
 servers may use other storage.
 
@@ -235,32 +238,42 @@ with `DROP ... FORCE`, connection termination or cleanup of another run's data.
 ### Reports, failures and interruption
 
 The runner prints its directory under `.harness/api-tests/`. Open the merged
-`junit.xml` and `result.json` for the outcome. Each partition retains collection
-logs and `expected.json` assignments. Each worker records its selected node IDs,
-pytest log, manifest and JUnit. With `--junitxml`, the CLI marks the requested
-path incomplete before setup, then writes the startup error or copies the
-finished report there.
+`junit.xml` and `result.json` for the outcome. Each partition retains its
+collection log and `collection/junit.xml` when available. After successful
+collection with selected tests, `expected.json` records the worker assignments.
+Each `worker-*/` directory contains the selected node IDs, pytest log, manifest
+and `junit.xml`. The merged JUnit includes collection-time skips and errors,
+with identical cases from both partitions reported once. With `--junitxml`,
+the CLI marks the requested path incomplete before setup, then writes the
+startup error or copies the finished report there.
 
-Collection failures, crashes, missing or inconsistent reports make the command
-fail. After a partial launch or handled cancellation, the runner merges the
-readable JUnit files that workers wrote. A worker killed before writing its
-report can leave completed tests out of the merged results.
+Collection failures, crashes and missing or inconsistent required reports make
+the command fail. After a partial launch or handled cancellation, the runner
+merges the readable JUnit files from collection and workers. A worker killed
+before writing its report can leave completed tests out of the merged results.
 
 GitHub Actions can stop the test step before the runner writes the merged JUnit.
-In that case, look for individual JUnit files already written by workers under
-`.harness/api-tests/`. The cancellation diagnostics step is configured to upload
-available files. Upload during an actual GitHub Actions cancellation is unverified.
+Use any individual collection and worker reports already written. The
+cancellation diagnostics step is configured to upload available files. Upload
+during an actual GitHub Actions cancellation is unverified.
 
 The runner checks JUnit against assigned node IDs and worker exit status, including
 skips and setup/teardown errors. With `--pytest-args -x`, each worker can stop
 after its first failure. Its manifest confirms the stop and its JUnit must cover
 every test through that failure. Other workers and partitions finish normally.
 
-On interruption the runner gives children 15 seconds for pytest cleanup, then
-allows another 5 seconds before forcing termination. It waits for the children
-and returns 130 on a handled interruption. Check `interrupted.json` in the
-active collection or worker directory for forced termination. Report leftovers
-in disposable storage and preserve resources owned by other runs.
+On interruption the runner sends a graceful interrupt and waits up to 15 seconds
+for pytest cleanup. It then terminates remaining children and waits up to 5 more
+seconds before killing any survivors. On Windows it terminates a child
+immediately if `Ctrl-Break` cannot be delivered. It waits for the children to
+exit and returns `130` on a handled interruption. Check `interrupted.json` in
+the active collection or worker directory for forced termination. Report
+leftovers in disposable storage and preserve resources owned by other runs.
+
+The PostgreSQL template lifecycle test applies the same bounded cleanup to its
+nested pytest processes when a child exceeds its 60-second deadline. The failure
+includes the child log, whether termination was forced and the database names
+recorded by the child when available.
 
 ## Test fixtures
 

@@ -186,7 +186,9 @@ def interrupt_on_termination() -> Iterator[None]:
         signal.signal(signal.SIGTERM, previous)
 
 
-def signal_process(process: subprocess.Popen[bytes], signum: int) -> bool:
+def signal_process(
+    process: subprocess.Popen[bytes], signum: int, *, start_new_session: bool
+) -> bool:
     if process.poll() is not None:
         return False
     try:
@@ -200,14 +202,18 @@ def signal_process(process: subprocess.Popen[bytes], signum: int) -> bool:
                         return True
             else:
                 process.terminate()
-        else:
+        elif start_new_session:
             os.killpg(process.pid, signum)
+        else:
+            process.send_signal(signum)
     except ProcessLookupError:
         pass
     return False
 
 
-def stop_processes(processes: Sequence[subprocess.Popen[bytes]]) -> bool:
+def stop_processes(
+    processes: Sequence[subprocess.Popen[bytes]], *, start_new_session: bool = True
+) -> bool:
     """Give pytest SIGINT time to tear down owned fixtures before escalating."""
     forced = False
     for signum, grace in (
@@ -215,7 +221,10 @@ def stop_processes(processes: Sequence[subprocess.Popen[bytes]]) -> bool:
         (signal.SIGTERM, TERMINATE_GRACE_SECONDS),
     ):
         for process in processes:
-            forced = signal_process(process, signum) or forced
+            forced = (
+                signal_process(process, signum, start_new_session=start_new_session)
+                or forced
+            )
         deadline = time.monotonic() + grace
         for process in processes:
             try:
@@ -229,14 +238,21 @@ def stop_processes(processes: Sequence[subprocess.Popen[bytes]]) -> bool:
             if os.name == "nt":
                 process.kill()
             else:
-                signal_process(process, signal.SIGKILL)
+                signal_process(
+                    process, signal.SIGKILL, start_new_session=start_new_session
+                )
     for process in processes:
         process.wait()
     return True
 
 
 def execute(
-    invocations: Sequence[Invocation], root: Path, environment: dict[str, str]
+    invocations: Sequence[Invocation],
+    root: Path,
+    environment: dict[str, str],
+    *,
+    timeout: float | None = None,
+    start_new_session: bool = True,
 ) -> list[int]:
     processes: list[subprocess.Popen[bytes]] = []
     with ExitStack() as stack:
@@ -253,13 +269,13 @@ def execute(
                             env=environment,
                             stdout=log,
                             stderr=subprocess.STDOUT,
-                            start_new_session=os.name != "nt",
+                            start_new_session=start_new_session and os.name != "nt",
                             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
                             if os.name == "nt"
                             else 0,
                         )
                     )
-            return [process.wait() for process in processes]
+            return [process.wait(timeout=timeout) for process in processes]
         except BaseException:
             # A second Ctrl-C must not interrupt resource cleanup/join.
             previous = {
@@ -267,7 +283,7 @@ def execute(
                 for sig in (signal.SIGINT, signal.SIGTERM)
             }
             try:
-                forced = stop_processes(processes)
+                forced = stop_processes(processes, start_new_session=start_new_session)
                 write_json(
                     invocations[0].directory / "interrupted.json",
                     {"forced_termination": forced},
@@ -361,11 +377,30 @@ def check_junit(
 
 
 def merge_junit(
-    roots: Sequence[ET.Element], destination: Path, errors: Sequence[str]
+    roots: Sequence[ET.Element],
+    destination: Path,
+    errors: Sequence[str],
+    *,
+    collection_cases: Sequence[ET.Element] = (),
 ) -> None:
     merged = ET.Element("testsuites")
     for root in roots:
         merged.extend([root] if root.tag == "testsuite" else list(root))
+    if collection_cases:
+        suite = ET.SubElement(
+            merged,
+            "testsuite",
+            name="pytest-collection",
+            tests=str(len(collection_cases)),
+            errors=str(
+                sum(case.find("error") is not None for case in collection_cases)
+            ),
+            skipped=str(
+                sum(case.find("skipped") is not None for case in collection_cases)
+            ),
+            failures="0",
+        )
+        suite.extend(collection_cases)
     if errors:
         suite = ET.SubElement(
             merged,
@@ -394,7 +429,9 @@ def merge_junit(
 
 
 def retain_worker_reports(
-    invocations: Sequence[Invocation], reports: dict[Path, ET.Element], errors: list[str]
+    invocations: Sequence[Invocation],
+    reports: dict[Path, ET.Element],
+    errors: list[str],
 ) -> None:
     # execute() has stopped and joined any children it started.
     for invocation in invocations:
@@ -404,6 +441,12 @@ def retain_worker_reports(
                 reports[report_path] = read_junit(report_path)
             except RunnerError as exc:
                 errors.append(str(exc))
+
+
+def retain_collection_cases(path: Path, cases: dict[bytes, ET.Element]) -> None:
+    for case in read_junit(path).findall(".//testcase"):
+        # Both marker partitions can collect the same skipped or broken file.
+        cases.setdefault(ET.tostring(case), case)
 
 
 def run_api_tests(
@@ -428,6 +471,8 @@ def run_api_tests(
     )
     errors: list[str] = []
     reports: dict[Path, ET.Element] = {}
+    collection_cases: dict[bytes, ET.Element] = {}
+    collection_report: Path | None = None
     returncodes: list[int] = []
     interrupted = False
     worker_failed = False
@@ -441,10 +486,14 @@ def run_api_tests(
                     part_dir.mkdir()
                     collection_dir = part_dir / "collection"
                     collection_dir.mkdir()
+                    collection_report = collection_dir / "junit.xml"
                     command = pytest_command(
                         collection_dir,
                         [
                             "--collect-only",
+                            f"--junitxml={collection_report}",
+                            "-o",
+                            "junit_family=xunit1",
                             "-q",
                             "-m",
                             partition,
@@ -456,6 +505,8 @@ def run_api_tests(
                         [Invocation(command, collection_dir)], root, environment
                     )[0]
                     returncodes.append(code)
+                    if code == 0 or collection_report.is_file():
+                        retain_collection_cases(collection_report, collection_cases)
                     manifest = read_manifest(collection_dir / "manifest.json", code)
                     expected = manifest["nodeids"]
                     if code != 0 and not (
@@ -534,9 +585,16 @@ def run_api_tests(
                     errors.append(str(exc))
                 except OSError as exc:
                     retain_worker_reports(invocations, reports, errors)
-                    errors.append(f"Cannot execute test process for {partition.name.lower()}: {exc}")
+                    errors.append(
+                        f"Cannot execute test process for {partition.name.lower()}: {exc}"
+                    )
     except KeyboardInterrupt:
         interrupted = True
+        if collection_report is not None and collection_report.is_file():
+            try:
+                retain_collection_cases(collection_report, collection_cases)
+            except RunnerError as exc:
+                errors.append(str(exc))
         retain_worker_reports(invocations, reports, errors)
         errors.append(
             "API test run interrupted; children stopped and joined. Inspect interrupted.json for forced termination."
@@ -544,7 +602,12 @@ def run_api_tests(
     roots = list(reports.values())
     if not roots and not errors:
         errors.append("No API tests selected")
-    merge_junit(roots, directory / "junit.xml", errors)
+    merge_junit(
+        roots,
+        directory / "junit.xml",
+        errors,
+        collection_cases=list(collection_cases.values()),
+    )
     code = 130 if interrupted else int(bool(errors) or worker_failed)
     write_json(
         directory / "result.json",
