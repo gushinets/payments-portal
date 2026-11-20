@@ -89,6 +89,13 @@ jobs:
       - name: Verify production API runtime
         run: security/trivy/verify-api-runtime.sh "$API_IMAGE"
 
+      - name: Collect production API component evidence
+        run: >-
+          docker run --rm --network none --entrypoint python
+          --mount "type=bind,src=$PWD/security/trivy/inspect-api-components.py,dst=/tmp/inspect-api-components.py,readonly"
+          "$API_IMAGE" /tmp/inspect-api-components.py
+          > "$TRIVY_REPORT_DIR/api-components.json"
+
       - name: Build production web image
         run: >-
           docker build --file apps/web/Dockerfile

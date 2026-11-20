@@ -75,3 +75,17 @@ Residual ownership remains **pending team assignment**; existing applicability/o
 - [x] Keep all101 current owners pending team assignment, with ownership acceptance criterion separately pending; no inferred owner or acceptance.
 
 Runtime/build/test source is unchanged. Reuse passing reviewed-head CI44736916316 and Security44736916516, and prior runtime verification. Validate documentation, ledger scope, unchanged non-target rows, severity/ownership invariants and all evidence checksums for this documentation-only correction. No image rebuild or repeated complete partitions needed.
+
+## Complete component-level investigation of all101 advisories
+
+Status: reopened technical investigation. Earlier completion statements covered updates/minimization and initial dispositions, not complete component-level applicability. Current user scope requires all101IDs assessed individually before technical completion is claimed again; no residual-risk discussion or approval is part of this work.
+
+Baseline: existing PR179 head8cda1229; fetched origin/main49ed895d. Preserve historical218/96→207/95 comparison and refreshed221/101 snapshot. Existing coverage includes60deployment contracts,17shell guard cases, actual-image offline/runtime verifier, CI readiness/Alembic/PostgreSQL. Gaps: vendor-to-binary/function mapping, final-image proof for all component-absence claims, and per-advisory prerequisites.
+
+- [ ] Research authoritative current Debian/upstream status and affected component for every101ID; separate required sibling library from vulnerable utility/feature.
+- [ ] Restore stopped Docker engine without clearing shared data, capture unchanged current final image/inventory/feature/owned-file/process/symbol evidence and supported package candidates.
+- [ ] Apply any justified supported update/removal to disposable candidates; prove actual remaining files/dependencies and startup/TLS/timezone/import/migration behavior.
+- [ ] Produce a101-row evidence-backed applicability ledger with explicit confidence, exposure prerequisites, remediation attempts and concrete unresolved technical questions; keep raw scanner counts/severity and pendingteamownership.
+- [ ] Build/scan actual final target with comparable scanner/database, run focused and canonical verification, independently review and update existing PR. Record blocked/unreached stages honestly.
+
+Parallel read-only research splits glibc/GCC35, native-library families30 and utilities/system services36. Root owns image/build changes and integration; no shared production-file edits by researchers. Docker initially stopped with a socket-forwarder handshake error; supported Desktop restart attempted, no reset/prune/removal of shared resources.
