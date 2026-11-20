@@ -49,6 +49,8 @@ COPY --from=production-dependencies /opt/api-venv /opt/api-venv
 
 # Create the runtime identity before removing build/account/mount tooling.
 # Keep essential/protected packages, dpkg metadata and native runtime libraries.
+# API runtime has no OS account-switching/PAM-login contract; retain commands
+# but track removal of unnecessary setid privileges through dpkg overrides.
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /app --no-create-home app \
     && install -d -o app -g app -m 0700 /run/payments-portal \
@@ -59,6 +61,9 @@ RUN groupadd --system app \
          }; \
        done \
     && dpkg --purge $runtime_build_packages \
+    && dpkg-statoverride --update --add root root 0755 /usr/bin/su \
+    && dpkg-statoverride --update --add root root 0755 /usr/bin/newgrp \
+    && dpkg-statoverride --update --add root shadow 0755 /usr/sbin/unix_chkpwd \
     && package_audit=$(dpkg --audit) \
     && test -z "$package_audit"
 

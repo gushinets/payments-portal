@@ -534,6 +534,7 @@ def run_production_package_removal(
 groupadd() { :; }
 useradd() { :; }
 install() { :; }
+dpkg-statoverride() { :; }
 dpkg-query() {
   for queried_package; do :; done
   if [ "$queried_package" = "$BLOCKED_PACKAGE" ]; then
@@ -590,7 +591,10 @@ def test_production_removal_requires_successful_clean_audit(tmp_path: Path, audi
     assert result.returncode != 0, result.stdout + result.stderr
 
 
-@pytest.mark.parametrize("mode", ["find-error", "ldd-error-first", "ldd-error-last", "missing", "clean"])
+@pytest.mark.parametrize(
+    "mode",
+    ["find-error", "ldd-error-first", "ldd-error-last", "missing", "privileged", "privilege-traversal-error", "clean"],
+)
 def test_runtime_native_inspection_requires_successful_complete_commands(tmp_path: Path, mode: str) -> None:
     script = (ROOT / "security/trivy/verify-api-runtime.sh").read_text(encoding="utf-8")
     container_check = script.split("-ec '", 1)[1].split("\n'", 1)[0]
@@ -604,6 +608,12 @@ dpkg-query() {
 }
 dpkg() { return 0; }
 find() {
+  case "$*" in
+    *-perm*)
+      if [ "$NATIVE_MODE" = "privilege-traversal-error" ]; then return 2; fi
+      if [ "$NATIVE_MODE" = "privileged" ]; then echo /usr/bin/su; fi
+      return 0 ;;
+  esac
   if [ "$NATIVE_MODE" = "find-error" ]; then
     echo "Permission denied" >&2; return 1
   fi

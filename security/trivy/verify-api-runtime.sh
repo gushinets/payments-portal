@@ -34,6 +34,11 @@ docker run --rm --network none --entrypoint sh "$image_ref" -ec '
     echo "Production package audit failed" >&2
     exit 1
   fi
+  privileged_files=$(find /usr /opt /app -type f -perm /6000)
+  if [ -n "$privileged_files" ]; then
+    echo "Unexpected setuid/setgid production file" >&2
+    exit 1
+  fi
   # Official python:slim already omits optional GUI Tk/Tcl dependencies.
   native_files=$(find /opt/api-venv /usr/local/lib/python3.12/lib-dynload -type f -name "*.so" ! -name "_tkinter*")
   while IFS= read -r library; do
