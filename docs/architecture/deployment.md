@@ -357,9 +357,12 @@ docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" \
   --reason "$REASON" --reference "$REFERENCE"
 ```
 
-To inspect, use the same Compose invocation with the `inspect` action,
-`--user-id` and `--purchase-id`. Omit the evidence mount. For a late case,
-add `--case-id` to `resolve-purchase`.
+For `inspect-operation`, `inspect` or `recover`, keep the deployment's Compose
+options and omit the evidence mount. Pass the action and its IDs to
+`app.cli.billing_purchases`. For customer diagnosis, use
+`api python -m app.cli.billing_customers diagnose --user-id "$USER_ID"` after the
+same `run` options. The terminal completion procedure governs sender shutdown.
+For a late case, pass `--case-id "$CASE_ID"` to `resolve-purchase`.
 
 ### Paired compatibility and synchronized cutover
 
