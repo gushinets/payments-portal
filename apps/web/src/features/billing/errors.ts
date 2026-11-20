@@ -27,14 +27,19 @@ function sessionRefusal(httpStatus: 401 | 403, requestId: string): BillingSessio
   return { httpStatus, message: httpStatus === 401 ? "errors.session" : "errors.verification", requestId, readRefused: true };
 }
 
-// A failed background read only invalidates the Widget for an explicit Portal auth refusal.
-export function reportBillingSessionRefusal(error: unknown, requestId: string, onRefused: OnBillingSessionRefused) {
+export function billingSessionRefusal(error: unknown, requestId: string): BillingSessionRefusal | undefined {
   if (!(error instanceof ApiError)) return;
   const code = apiErrorCode(error);
   if ((error.status === 401 && code === "billing_session_required")
     || (error.status === 403 && code === "billing_email_verification_required")) {
-    onRefused(sessionRefusal(error.status, requestId));
+    return sessionRefusal(error.status, requestId);
   }
+}
+
+// A failed background read only invalidates the Widget for an explicit Portal auth refusal.
+export function reportBillingSessionRefusal(error: unknown, requestId: string, onRefused: OnBillingSessionRefused) {
+  const refusal = billingSessionRefusal(error, requestId);
+  if (refusal) onRefused(refusal);
 }
 
 /** Only used for reads of the authenticated user's local purchase. */

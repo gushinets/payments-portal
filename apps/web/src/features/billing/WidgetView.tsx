@@ -15,10 +15,6 @@ export function WidgetView({ widget, onClose }: { widget: ReturnType<typeof useB
         {t(`errors.${state.message}`)}
         {state.requestId && <p>{t("requestId", { id: state.requestId })}</p>}
       </div>}
-      {mounted && state.target && <div className="notice">
-        <p>{t("paymentTarget", { agreement: state.target.agreement_reference, seller: state.target.seller_reference })}</p>
-        <p>{t("paymentTargetNote")}</p>
-      </div>}
     </div>
     <div ref={attachNode} hidden={!mounted} className={state.status === WidgetStatus.Rendering ? "billing-widget-rendering" : undefined} />
   </div>;

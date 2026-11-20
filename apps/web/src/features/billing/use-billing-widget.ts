@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import type { WidgetPaymentTarget } from "@/generated/api-contracts/types.gen";
 import { bootstrapWidget } from "@/shared/api/billing";
 import { subscribeToSessionChanges, useSessionOperation } from "@/shared/session/use-session-operation";
-import { billingErrorKey, newRequestId, safeRequestId, type BillingErrorKey } from "./errors";
+import { billingErrorKey, billingSessionRefusal, newRequestId, safeRequestId, type BillingErrorKey, type OnBillingSessionRefused } from "./errors";
 import { mountOfficialWidget } from "./official-widget-sdk";
 import { reportBillingWidgetFailure, type WidgetFailureReason } from "@/shared/observability/sentry";
 
@@ -26,7 +26,7 @@ type WidgetState =
 // A new presentation destroys the previous host, including an account-only JWT.
 const widgetOpeningEvent = "anytoolai_billing_widget_opening";
 
-export function useBillingWidget(userId: string, emailVerified: boolean) {
+export function useBillingWidget(userId: string, emailVerified: boolean, onSessionRefused?: OnBillingSessionRefused) {
   const t = useTranslations("Billing");
   const { begin, cancel } = useSessionOperation();
   const [state, setState] = useState<WidgetState>({ status: WidgetStatus.Closed });
@@ -111,10 +111,18 @@ export function useBillingWidget(userId: string, emailVerified: boolean) {
         sdkFailure();
       }
     } catch (error) {
+      const requestId = safeRequestId(error) || correlationId;
+      const refusal = billingSessionRefusal(error, requestId);
+      // A purchase change cancels the attempt, but the session can still be the same.
+      if (onSessionRefused && refusal?.httpStatus === 401 && operation.isCurrentSession()) {
+        close();
+        onSessionRefused(refusal);
+        return;
+      }
       if (operation.isLatest()) opening.current = false;
-      if (operation.isCurrent()) setState({ status: WidgetStatus.Error, message: billingErrorKey(error), requestId: safeRequestId(error) || correlationId });
+      if (operation.isCurrent()) setState({ status: WidgetStatus.Error, message: billingErrorKey(error), requestId });
     }
-  }, [begin, emailVerified, t]);
+  }, [begin, close, emailVerified, onSessionRefused, t]);
 
   const loading = state.status === WidgetStatus.Bootstrapping || state.status === WidgetStatus.Rendering;
   return { state, loading, attachNode, open, close };
