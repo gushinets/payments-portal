@@ -22,7 +22,7 @@ import urllib.request
 import uuid
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Callable, Iterable, get_type_hints
+from typing import Any, Callable, Iterable, get_type_hints
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -3122,16 +3122,258 @@ def cmd_validate_production_env(_: argparse.Namespace) -> None:
     print("Production deployment environment is valid.")
 
 
-def summarize_trivy_report(path: Path) -> TrivyGateSummary:
+TRIVY_PRODUCTION_SERVICES = ("postgres", "caddy")
+TRIVY_REPORT_TYPES = {
+    "filesystem.json": "filesystem",
+    "compose.json": "filesystem",
+    "api-image.json": "container_image",
+    "web-image.json": "container_image",
+    **{
+        f"{service}-image.json": "container_image"
+        for service in TRIVY_PRODUCTION_SERVICES
+    },
+}
+IMAGE_DIGEST = r"sha256:[0-9a-f]{64}"
+IMAGE_REFERENCE = (
+    r"(?:[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]+)?/)?"
+    r"(?:[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*/)*"
+    r"[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*"
+    r"(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?@" + IMAGE_DIGEST
+)
+TRIVY_FINDING_LISTS = ("Vulnerabilities", "Misconfigurations", "Secrets")
+
+
+@dataclass(frozen=True)
+class ProductionScanTarget:
+    requested_reference: str
+    platform: str
+
+
+def production_scan_target(compose: Path, service: str) -> ProductionScanTarget:
+    environment = dict(os.environ, COMPOSE_DISABLE_ENV_FILE="1")
+    environment.pop("COMPOSE_ENV_FILES", None)
+    command = [
+        tool("docker"),
+        "compose",
+        "-f",
+        str(compose),
+        "config",
+        "--no-interpolate",
+        "--no-env-resolution",
+        "--format",
+        "json",
+    ]
+    try:
+        model = json.loads(run(command, capture=True, env=environment).stdout)
+    except (subprocess.CalledProcessError, ValueError) as exc:
+        raise HarnessError(
+            f"Cannot read production Compose configuration for {service}"
+        ) from exc
+
+    services = model.get("services") if isinstance(model, dict) else None
+    definition = services.get(service) if isinstance(services, dict) else None
+    if not isinstance(definition, dict):
+        raise HarnessError(f"Production Compose is missing required service {service}")
+
+    reference = definition.get("image")
+    if not isinstance(reference, str) or not re.fullmatch(IMAGE_REFERENCE, reference):
+        raise HarnessError(
+            f"Production Compose service {service} needs a literal digest-pinned image"
+        )
+
+    platform = definition.get("platform", "linux/amd64")
+    if not isinstance(platform, str) or not re.fullmatch(
+        r"[a-z0-9]+/[a-z0-9]+(?:/[a-z0-9]+)?", platform
+    ):
+        raise HarnessError(
+            f"Production Compose service {service} has an invalid or unresolved platform"
+        )
+    return ProductionScanTarget(reference, platform)
+
+
+def production_manifest_digest(manifest: object, target: ProductionScanTarget) -> str:
+    if isinstance(manifest, dict) and manifest.get("schemaVersion") == 2:
+        if isinstance(manifest.get("config"), dict) and isinstance(
+            manifest.get("layers"), list
+        ):
+            return target.requested_reference.rsplit("@", 1)[1]
+
+        descriptors = manifest.get("manifests")
+        if isinstance(descriptors, list):
+            os_name, architecture, *variants = target.platform.split("/")
+            matches = []
+            for descriptor in descriptors:
+                platform = (
+                    descriptor.get("platform") if isinstance(descriptor, dict) else None
+                )
+                if (
+                    isinstance(platform, dict)
+                    and platform.get("os") == os_name
+                    and platform.get("architecture") == architecture
+                    and (not variants or platform.get("variant") == variants[0])
+                ):
+                    matches.append(descriptor.get("digest"))
+            if (
+                len(matches) == 1
+                and isinstance(matches[0], str)
+                and re.fullmatch(IMAGE_DIGEST, matches[0])
+            ):
+                return matches[0]
+    raise HarnessError(
+        f"Cannot select one {target.platform} image manifest from {target.requested_reference}"
+    )
+
+
+def scan_production_image(report_dir: Path, service: str) -> None:
+    target = production_scan_target(ROOT / "docker-compose.prod.yml", service)
+    requested = target.requested_reference
+    try:
+        manifest = json.loads(
+            run(
+                [tool("docker"), "buildx", "imagetools", "inspect", "--raw", requested],
+                capture=True,
+            ).stdout
+        )
+    except (subprocess.CalledProcessError, ValueError) as exc:
+        raise HarnessError(f"Cannot read registry manifest for {requested}") from exc
+
+    digest = production_manifest_digest(manifest, target)
+    scanned = f"{requested.rsplit('@', 1)[0]}@{digest}"
+    path = report_dir / f"{service}-image.json"
+    run(
+        [
+            tool("trivy"),
+            "image",
+            "--config",
+            "trivy.yaml",
+            "--ignorefile",
+            ".trivyignore.yaml",
+            "--image-src",
+            "remote",
+            "--platform",
+            target.platform,
+            "--scanners",
+            "vuln,secret",
+            "--format",
+            "json",
+            "--output",
+            str(path),
+            "--exit-code",
+            "0",
+            "--no-progress",
+            "--timeout",
+            "15m",
+            scanned,
+        ]
+    )
+    report = read_trivy_report(path)
+    metadata = report["Metadata"]
+    config = metadata.get("ImageConfig")
+    repo_digests = metadata.get("RepoDigests")
+    os_name, architecture, *variants = target.platform.split("/")
+    if (
+        report["ArtifactName"] != scanned
+        or not isinstance(repo_digests, list)
+        or not any(
+            isinstance(item, str) and item.endswith(f"@{digest}")
+            for item in repo_digests
+        )
+        or not isinstance(config, dict)
+        or config.get("os") != os_name
+        or config.get("architecture") != architecture
+        or (variants and config.get("variant") != variants[0])
+    ):
+        raise HarnessError(
+            f"Trivy report {path} does not identify the selected platform image"
+        )
+
+    revision = run([tool("git"), "rev-parse", "HEAD"], capture=True).stdout.strip()
+    provenance_dir = report_dir / "provenance"
+    provenance_dir.mkdir(exist_ok=True)
+    provenance = {
+        "source_revision": revision,
+        "compose_file": "docker-compose.prod.yml",
+        "service": service,
+        "report": path.name,
+        "requested_reference": requested,
+        "requested_digest_kind": "index"
+        if "manifests" in manifest
+        else "image_manifest",
+        "platform": target.platform,
+        "scanned_reference": scanned,
+        "platform_manifest_digest": digest,
+        "image_config_digest": metadata["ImageID"],
+    }
+    (provenance_dir / f"{service}.json").write_text(
+        json.dumps(provenance, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def read_trivy_report(path: Path) -> dict[str, Any]:
     try:
         report = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        raise HarnessError(f"Cannot read Trivy report {path}: {exc}") from exc
+    except (ValueError, OSError) as exc:
+        raise HarnessError(f"Cannot read Trivy report {path}") from exc
 
+    artifact_type = TRIVY_REPORT_TYPES.get(path.name)
+    if (
+        not isinstance(report, dict)
+        or report.get("SchemaVersion") != 2
+        or artifact_type is None
+        or report.get("ArtifactType") != artifact_type
+        or not isinstance(report.get("ArtifactName"), str)
+        or not report["ArtifactName"].strip()
+    ):
+        raise HarnessError(
+            f"Invalid Trivy report {path}: expected Trivy v2 {artifact_type} report"
+        )
+    if artifact_type == "container_image":
+        metadata = report.get("Metadata")
+        image_id = metadata.get("ImageID") if isinstance(metadata, dict) else None
+        if not isinstance(image_id, str) or not re.fullmatch(IMAGE_DIGEST, image_id):
+            raise HarnessError(
+                f"Invalid Trivy report {path}: missing or invalid image ID"
+            )
+
+    # Trivy omits Results when the scan has no result targets.
     results = report.get("Results", [])
     if not isinstance(results, list):
         raise HarnessError(f"Invalid Trivy report {path}: Results must be a list")
+    for result in results:
+        if (
+            not isinstance(result, dict)
+            or not isinstance(result.get("Target"), str)
+            or not result["Target"].strip()
+            or not isinstance(result.get("Class"), str)
+            or not result["Class"].strip()
+        ):
+            raise HarnessError(
+                f"Invalid Trivy report {path}: invalid result target or class"
+            )
+        for key in TRIVY_FINDING_LISTS:
+            if key not in result:
+                continue
+            findings = result[key]
+            if not isinstance(findings, list) or any(
+                not isinstance(finding, dict)
+                or not isinstance(finding.get("Severity"), str)
+                or not finding["Severity"].strip()
+                or (
+                    key == "Vulnerabilities"
+                    and "FixedVersion" in finding
+                    and not isinstance(finding["FixedVersion"], str)
+                )
+                for finding in findings
+            ):
+                raise HarnessError(
+                    f"Invalid Trivy report {path}: invalid {key} findings"
+                )
+    return report
 
+
+def summarize_trivy_report(path: Path) -> TrivyGateSummary:
+    results = read_trivy_report(path).get("Results", [])
     critical_vulnerabilities = 0
     fixable_high_vulnerabilities = 0
     high_or_critical_misconfigurations = 0
@@ -3163,27 +3405,27 @@ def summarize_trivy_report(path: Path) -> TrivyGateSummary:
 
 
 def redact_trivy_report(path: Path) -> int:
-    try:
-        report = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        raise HarnessError(f"Cannot read Trivy report {path}: {exc}") from exc
-
-    results = report.get("Results", [])
-    if not isinstance(results, list):
-        raise HarnessError(f"Invalid Trivy report {path}: Results must be a list")
-
+    report = read_trivy_report(path)
     redacted_secrets = 0
-    for result in results:
-        if not isinstance(result, dict):
-            raise HarnessError(f"Invalid Trivy report {path}: result must be an object")
-        for secret in result.get("Secrets") or []:
-            if not isinstance(secret, dict):
-                raise HarnessError(
-                    f"Invalid Trivy report {path}: secret must be an object"
-                )
+    for result in report.get("Results", []):
+        for secret in result.get("Secrets", []):
             secret.pop("Match", None)
             secret.pop("Code", None)
             redacted_secrets += 1
+        for finding in result.get("Misconfigurations", []):
+            cause = finding.get("CauseMetadata")
+            if isinstance(cause, dict):
+                cause.pop("Code", None)
+
+    metadata = report.get("Metadata")
+    if isinstance(metadata, dict):
+        # The image configuration and layer commands can contain embedded values.
+        metadata.pop("ImageConfig", None)
+        layers = metadata.get("Layers")
+        if isinstance(layers, list):
+            for layer in layers:
+                if isinstance(layer, dict):
+                    layer.pop("CreatedBy", None)
 
     path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return redacted_secrets
@@ -3191,6 +3433,12 @@ def redact_trivy_report(path: Path) -> int:
 
 def cmd_trivy(args: argparse.Namespace) -> None:
     report_dir = Path(args.report_dir)
+    if args.action == "scan-production-image":
+        if args.service is None:
+            raise HarnessError("scan-production-image requires --service")
+        scan_production_image(report_dir, args.service)
+        return
+
     if args.action == "verify-compose-fixture":
         try:
             report = json.loads(report_dir.read_text(encoding="utf-8"))
@@ -3256,19 +3504,17 @@ def cmd_trivy(args: argparse.Namespace) -> None:
         print(f"Redacted secret values from {len(reports)} report(s): {redacted}")
         return
 
-    expected_reports = (
-        "filesystem.json",
-        "compose.json",
-        "api-image.json",
-        "web-image.json",
-    )
-    missing = [name for name in expected_reports if not (report_dir / name).is_file()]
+    missing = [name for name in TRIVY_REPORT_TYPES if not (report_dir / name).is_file()]
     if missing:
         raise HarnessError("Missing Trivy reports: " + ", ".join(missing))
 
     summaries = [
-        summarize_trivy_report(report_dir / report) for report in expected_reports
+        summarize_trivy_report(report_dir / name) for name in TRIVY_REPORT_TYPES
     ]
+    if args.action == "verify-reports":
+        print(f"Verified {len(summaries)} required Trivy reports.")
+        return
+
     for summary in summaries:
         print(
             f"{summary.report}: blocking={summary.blocking_findings} "
@@ -3767,11 +4013,14 @@ def build_parser() -> argparse.ArgumentParser:
         choices=(
             "gate",
             "redact",
+            "scan-production-image",
+            "verify-reports",
             "verify-compose-fixture",
             "verify-iac-fixture",
         ),
     )
     trivy.add_argument("report_dir")
+    trivy.add_argument("--service", choices=TRIVY_PRODUCTION_SERVICES)
     trivy.set_defaults(func=cmd_trivy)
     observe = sub.add_parser("observe")
     observe.add_argument("signal", choices=("logs", "metrics", "traces"))
