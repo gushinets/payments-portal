@@ -193,16 +193,17 @@ async def collect_inventory(
             products_by_tariff.setdefault(selection.tariff_id, set()).add(selection.product_id)
 
         def implicated_products(row: Subscription) -> set[str]:
-            history = retired_index.owner(row)
-            retired_agreement = retired_index.agreements.get(str(row.agreement_id))
-            owners = (
-                bindings.get(str(row.subscription_id)),
-                agreements.get(str(row.agreement_id)),
-                history.purchase if history else None,
-                retired_agreement.purchase if retired_agreement else None,
-            )
+            subscription_id, agreement_id = str(row.subscription_id), str(row.agreement_id)
+            bound = bindings.get(subscription_id)
+            retired_subscription = retired_index.subscriptions.get(subscription_id)
+            retired_agreement = retired_index.agreements.get(agreement_id)
+            owners = [bound, agreements.get(agreement_id)]
+            owners.extend(history.purchase for history in (retired_subscription, retired_agreement) if history)
             owned = {owner.accepted.selection.product_id for owner in owners if owner is not None}
-            return (owned & candidates.keys()) if owned else products_by_tariff.get(row.tariff_id, set())
+            # A historical agreement alone cannot establish ownership of this subscription.
+            if not owned or (retired_agreement is not None and bound is None and retired_subscription is None):
+                owned.update(products_by_tariff.get(row.tariff_id, ()))
+            return owned & candidates.keys()
 
         relevant: dict[str, Subscription | None] = {
             str(row.subscription_id): row for row in rows if implicated_products(row) or retired_index.owner(row)
@@ -406,7 +407,6 @@ async def collect_inventory(
                         delegate=delegate,
                     )
                 except LbxResponseInvalid:
-                    # Keep the INCOMPLETE candidate scoped to its retained owner.
                     complete = False
                     continue
                 if late_observation.disposition == LateObjectDisposition.CLEAR:

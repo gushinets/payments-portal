@@ -28,6 +28,7 @@ from app.domains.purchases import financial, service
 from app.domains.purchases.contracts import FinancialOperation, Purchase, PurchaseRefused
 from app.domains.purchases.inventory_contracts import InventoryResult
 from app.infrastructure.preflight import PreflightBudget
+from app.integrations.lbx.errors import LbxResponseInvalid
 from app.integrations.lbx.financial import NewAgreement, Subscription
 from app.models import (
     BillingProductAccessScope,
@@ -766,6 +767,66 @@ async def test_stale_discovery_owner_cannot_displace_the_point_owner_at_first_pr
     assert late["late_object"]["external_object_id"] == point_id
     assert late["late_object"]["observed_agreement_id"] == str(point_agreement["agreement_id"])
     assert late["late_object"]["relationship_conflict"] is False
+
+
+async def test_unread_subscription_listed_on_released_agreement_blocks_same_tariff_primary(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport, sources, original = background_scenario
+    factory = postgres_session_factory
+    config = step1_settings(paid_access_clock_skew_seconds=10)
+    original = synthetic_prepare(factory, transport, original, uncertain=True)
+    sibling = historical_link(factory, original, transport, "brief_decoder", 1)
+    old_agreement = transport.agreements[0]
+    old_agreement["close_date"] = datetime.now(UTC).date().isoformat()
+    terminal.resolve_purchase(factory, config, request(factory, original, confirmed=True), PRINCIPAL)
+
+    old_point, sibling_point = transport.subscriptions
+    independent_agreement_id = 1456
+    independent_id = 1567
+    transport.agreements.append(
+        dict(old_agreement, agreement_id=independent_agreement_id, agreement_number="independent", close_date=None)
+    )
+    independent = dict(old_point, subscription_id=independent_id, agreement_id=independent_agreement_id)
+    transport.subscriptions[:] = [sibling_point, independent]
+    assert independent["tariff_id"] == sibling.accepted.selection.tariff_id
+
+    client = sources.require_lbx()
+    discover = client.discover_subscriptions
+    get_subscription = client.get_subscription
+
+    async def stale_discovery(
+        *, user_id: int, budget: PreflightBudget, agreement_id: int | None = None
+    ) -> tuple[Subscription, ...]:
+        rows = await discover(user_id=user_id, budget=budget, agreement_id=agreement_id)
+        return tuple(
+            row.model_copy(update={"agreement_id": old_agreement["agreement_id"]})
+            if row.subscription_id == independent_id
+            else row
+            for row in rows
+        )
+
+    async def read_subscription(*, subscription_id: int, budget: PreflightBudget) -> Subscription:
+        if subscription_id == independent_id:
+            raise LbxResponseInvalid()
+        return await get_subscription(subscription_id=subscription_id, budget=budget)
+
+    monkeypatch.setattr(client, "discover_subscriptions", stale_discovery)
+    monkeypatch.setattr(client, "get_subscription", read_subscription)
+    with factory() as db:
+        subscription_id = db.scalar(
+            select(ExternalSubscription.subscription_id).where(ExternalSubscription.purchase_intent_id == sibling.id)
+        )
+        assert subscription_id is not None
+    await run_inventory(Scenario(factory, config, transport, sources, subscription_id))
+    with factory() as db:
+        scope = db.scalar(
+            select(BillingProductAccessScope).where(BillingProductAccessScope.product_id == "brief_decoder")
+        )
+        assert scope is not None and scope.primary_subscription_id is None
+    assert not any(grant["product_id"] == "brief_decoder" for grant in effective(factory)[1]["grants"])
 
 
 @pytest.mark.parametrize("receipt", [568, None], ids=["different-receipt", "two-point-confirmed-ids"])
