@@ -20,7 +20,7 @@ export function usePurchaseStatusPoll(
   uncertainProductId: string | undefined,
   onStatus: (purchase: PurchaseIntentResponse, readStartedAt: number) => void,
   onRefused: (refusal: PurchaseReadRefusal) => void,
-  checkImmediately = false
+  initialDelayMs = 2_000
 ) {
   const accept = useEffectEvent(onStatus);
   const refuse = useEffectEvent(onRefused);
@@ -38,7 +38,7 @@ export function usePurchaseStatusPoll(
     const startedAt = Date.now();
     const fastUntil = startedAt + fastPollWindowMs;
     const stopAt = recovering ? startedAt + recoveryPollWindowMs : fastUntil;
-    let delay = checkImmediately ? 0 : 2_000;
+    let delay = initialDelayMs;
     let timer: number | undefined;
     let reading = false;
     let stopped = false;
@@ -88,12 +88,12 @@ export function usePurchaseStatusPoll(
       } finally {
         reading = false;
       }
-      delay = delay === 0 ? 2_000 : delay === 2_000 ? 5_000 : 10_000;
+      delay = delay < 2_000 ? 2_000 : delay < 5_000 ? 5_000 : 10_000;
       schedule();
     }
 
     return stop;
-  }, [begin, checkImmediately, key, purchaseId, recovering, uncertainProductId]);
+  }, [begin, initialDelayMs, key, purchaseId, recovering, uncertainProductId]);
 
   return { paused: key !== undefined && pausedKey === key, clearPause: () => setPausedKey(undefined) };
 }

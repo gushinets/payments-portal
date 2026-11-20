@@ -509,6 +509,34 @@ it.each([
   expect(screen.getByRole("button", { name: ru.Billing.open })).toBeDisabled();
 });
 
+it.each([
+  ["manual_review", "opening"], ["manual_review", "open"], ["not_found", "opening"], ["not_found", "open"]
+] as const)("closes payment for a confirmed %s purchase while the Widget is %s", async (result, phase) => {
+  const inventory = Promise.withResolvers<Response>();
+  const opening = Promise.withResolvers<Response>();
+  list.mockReturnValueOnce(inventory.promise);
+  bootstrap.mockReturnValueOnce(opening.promise);
+  status.mockResolvedValueOnce(json(savedPurchase)).mockResolvedValueOnce(result === "manual_review"
+    ? json({ ...savedPurchase, state: "manual_review" })
+    : json({ detail: { code: "purchase_not_found" } }, 404));
+  renderCabinet(first.purchase_intent_id);
+  fireEvent.click(await screen.findByRole("button", { name: ru.Billing.pay }));
+  await waitFor(() => expect(bootstrap).toHaveBeenCalledTimes(1));
+
+  if (phase === "open") {
+    await act(async () => opening.resolve(json(widgetResponse(true))));
+    expect(document.querySelector("iframe")).toBeVisible();
+  }
+  await act(async () => inventory.resolve(json({ purchases: [{ ...first, state: "manual_review" }], next_cursor: null })));
+  await screen.findByText(result === "manual_review" ? ru.Billing.preparationRequired : ru.Billing.selectionUnavailable, {
+    selector: "p", exact: false
+  });
+  if (phase === "opening") await act(async () => opening.resolve(json(widgetResponse(true))));
+
+  expect(document.querySelector("iframe")).toBeNull();
+  expect(mount).toHaveBeenCalledTimes(phase === "open" ? 1 : 0);
+});
+
 it("keeps an open payment Widget during a transient purchase status failure", async () => {
   const inventory = Promise.withResolvers<Response>();
   list.mockReturnValueOnce(inventory.promise);

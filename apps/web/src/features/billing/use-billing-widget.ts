@@ -18,8 +18,9 @@ export const WidgetStatus = {
 } as const;
 
 type WidgetState =
-  | { status: typeof WidgetStatus.Closed | typeof WidgetStatus.Bootstrapping }
-  | { status: typeof WidgetStatus.Rendering | typeof WidgetStatus.Open; target: WidgetPaymentTarget | null }
+  | { status: typeof WidgetStatus.Closed }
+  | { status: typeof WidgetStatus.Bootstrapping; purchaseId?: string }
+  | { status: typeof WidgetStatus.Rendering | typeof WidgetStatus.Open; target: WidgetPaymentTarget | null; purchaseId?: string }
   | { status: typeof WidgetStatus.Error; message: BillingErrorKey; requestId: string };
 
 // A new presentation destroys the previous host, including an account-only JWT.
@@ -67,7 +68,7 @@ export function useBillingWidget(userId: string, emailVerified: boolean) {
     dispose.current = undefined;
     const operation = begin();
     const correlationId = newRequestId();
-    setState({ status: WidgetStatus.Bootstrapping });
+    setState({ status: WidgetStatus.Bootstrapping, purchaseId });
     if (!operation.token) {
       opening.current = false;
       setState({ status: WidgetStatus.Error, message: "session", requestId: "" });
@@ -99,11 +100,11 @@ export function useBillingWidget(userId: string, emailVerified: boolean) {
         }
       };
       try {
-        setState({ status: WidgetStatus.Rendering, target });
+        setState({ status: WidgetStatus.Rendering, target, purchaseId });
         dispose.current = mountOfficialWidget(node.current, response, t("frameTitle"), operation.isCurrent, sdkFailure, () => {
           if (!operation.isCurrent() || failureReported) return;
           opening.current = false;
-          setState({ status: WidgetStatus.Open, target });
+          setState({ status: WidgetStatus.Open, target, purchaseId });
         });
       } catch {
         response.credential = "";
