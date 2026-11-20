@@ -235,6 +235,59 @@ it("offers payment from saved status before advance replies and ignores the olde
   expect(advance).toHaveBeenCalledTimes(1);
 });
 
+it("offers a new terms review when polling confirms release before advance replies", async () => {
+  vi.useFakeTimers();
+  const reply = Promise.withResolvers<Response>();
+  const original = { ...savedPurchase, state: "created" } satisfies PurchaseIntentResponse;
+  owned = original;
+  advance.mockReturnValueOnce(reply.promise);
+  await act(async () => { renderProduct(); });
+  const continueButton = screen.getByRole("button", { name: ru.Purchase.continue });
+  continueButton.focus();
+  await act(async () => { fireEvent.click(continueButton); });
+  expect(advance).toHaveBeenCalledTimes(1);
+
+  owned = { ...original, state: "failed_before_external_effect", scope_held: false, reason: "terms_changed" };
+  await act(async () => vi.advanceTimersByTimeAsync(5_000));
+
+  expect(screen.getByText(ru.Purchase.termsChanged)).toBeVisible();
+  expect(screen.queryByText(ru.Purchase.working)).not.toBeInTheDocument();
+  expect(review).not.toHaveBeenCalled();
+  const buyButton = screen.getByRole("button", { name: ru.Purchase.buy });
+  expect(buyButton).toHaveFocus();
+  owned = null;
+  await act(async () => { fireEvent.click(buyButton); });
+  expect(screen.getByRole("checkbox")).not.toBeChecked();
+
+  await act(async () => reply.resolve(json(original)));
+  expect(screen.getByRole("checkbox")).not.toBeChecked();
+  expect(review).toHaveBeenCalledTimes(1);
+  expect(confirm).not.toHaveBeenCalled();
+  expect(advance).toHaveBeenCalledTimes(1);
+});
+
+it("moves focus to the status check when polling confirms release without an available offer", async () => {
+  vi.useFakeTimers();
+  const reply = Promise.withResolvers<Response>();
+  const original = { ...savedPurchase, state: "created" } satisfies PurchaseIntentResponse;
+  owned = original;
+  advance.mockReturnValueOnce(reply.promise);
+  await act(async () => {
+    renderWithIntl(<ProductBilling productId="proposal_ai" offerAvailable={false} user={purchaseUser} />, { locale: "ru", messages });
+  });
+  const continueButton = screen.getByRole("button", { name: ru.Purchase.continue });
+  continueButton.focus();
+  await act(async () => { fireEvent.click(continueButton); });
+
+  owned = { ...original, state: "failed_before_external_effect", scope_held: false, reason: "terms_changed" };
+  await act(async () => vi.advanceTimersByTimeAsync(5_000));
+
+  const refreshButton = screen.getByRole("button", { name: ru.Purchase.refresh });
+  expect(refreshButton).toBeEnabled();
+  expect(refreshButton).toHaveFocus();
+  await act(async () => reply.resolve(json(original)));
+});
+
 it("observes a subscription recovered after the fast polling window using status reads only", async () => {
   vi.useFakeTimers();
   owned = { ...savedPurchase, state: "awaiting_external_result", reason: "purchase_pending" };

@@ -374,10 +374,13 @@ same provider ID that the original operation already bound, it uses the saved
 binding and proceeds through the usual subscription admission checks.
 Recovery requires the original saved command, possible-send history and fresh
 proof of ownership and effective terms. The recovery worker skips operations
-with a committed binding. When two point-proof attempts race to bind an
-operation, the losing attempt discards its proof and reads the saved binding.
-For a subscription, that attempt then reconciles through the existing lease
-with fresh proof. Subscription lifecycle updates use that same lease.
+with a committed binding. If another caller binds an operation during ordinary
+recovery, the losing attempt discards its proof and reads the saved binding.
+For a subscription, it then reconciles through the existing lease with fresh
+proof. Subscription lifecycle updates use that same lease. An audited
+[`resolve-review --resolution bind-original`](#privileged-purchase-operations)
+returns `billing_review_stale` if another caller binds the operation
+before the reviewed binding is applied.
 
 Original termination is recoverable history, including a closed agreement.
 First binding atomically retains the binding and normalized negative, with zero

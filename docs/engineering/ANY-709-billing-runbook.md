@@ -485,10 +485,13 @@ Use the session of the purchase owner with a verified email for these requests.
    Its local snapshot uses the existing bounded user-row lock shared by purchase
    transitions; provider HTTP runs after that transaction closes.
    The number of other held Portal purchases is not a separate admission quota.
-4. `GET /api/purchase-intents/current?product_id=<product>` and
-   `GET /api/purchase-intents/<id>` read owned local history without CREATE or
-   catalog calls. Authenticated `GET /api/purchase-intents` lists held purchases
-   with UUID cursor pagination (default 50, maximum 100).
+4. `GET /api/purchase-intents/current?product_id=<product>` returns the purchase
+   currently holding the product scope, or `purchase: null`. After a lost
+   confirmation reply, a null result leaves the outcome unknown.
+   `GET /api/purchase-intents/<id>` reads the owned purchase by ID, including
+   its saved outcome after release. Authenticated `GET /api/purchase-intents`
+   lists held purchases with UUID cursor pagination (default 50, maximum 100).
+   All three routes read saved Portal records.
 5. `POST /api/billing/widget-bootstrap` with `{"purchase_intent_id":"<id>"}`
    requires fresh original customer/agreement/seller and effective subscription
    proof. The payment response identifies the proven agreement and seller and
@@ -541,8 +544,9 @@ retained as `prepared-agreement:v1` product-scoped evidence; both advance and th
 financial claim reject a new subscription send for that historical closure.
 A legitimate waiting subscription needs no fictitious paid cycle dates to prove
 its original creation. Already bound financial recovery is a no-op, including
-bound operations placed in review; a concurrent first binder makes the losing
-candidate proof stale and its caller uses claimed subscription reconciliation.
+bound operations placed in review. See the
+[recovery guide](billing-background-operations.md#enrollment-cadence-and-recovery)
+for concurrent binding and audited resolution.
 
 Only completed typed `LbxCreateNotSent` evidence permits a later explicit advance
 of the same operation/request with a fresh fence. Its fixed active +2h deadline
@@ -581,8 +585,10 @@ account view, choose **View account without selecting a purchase** in the
 purchase selector, then open billing. The account view is also available when
 the user has no purchases.
 
-Refresh billing disposes the old host, rechecks the same purchase and opens a
-fresh Widget. The buyer may need to select the intended agreement again.
+Refresh billing disposes the old host and opens a fresh Widget in the current
+mode. For payment, it rechecks the same purchase and the buyer may need to
+select the intended agreement again. In account view, it opens an account-only
+Widget without selecting a purchase.
 Refreshing creates no subscription or payment. The Portal never reloads
 the Widget on a timer. The SDK has no supported payment-completed callback.
 
@@ -598,7 +604,8 @@ status read because the operation may already be durable. If advance is still
 waiting for its reply after five seconds, the product page checks saved status
 for the same purchase.
 A held, linked result makes the payment action available while that reply is
-pending.
+pending. A confirmed release shows the saved outcome and lets the buyer
+review the current terms if the product still has an available offer.
 
 After a lost advance reply, a saved `preparing` state keeps the unknown-outcome
 warning and its request ID visible. That state covers both a possible send and
