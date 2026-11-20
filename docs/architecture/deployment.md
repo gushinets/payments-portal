@@ -336,7 +336,10 @@ never repair failure by downgrading, stamping or rewriting purchase history.
 For [terminal purchase completion](../engineering/billing-background-operations.md#terminal-completion-any-821),
 keep PostgreSQL running and use a one-off container from the deployed API image.
 Use the deployment's project, protected environment file and Compose file order.
-For a shared VPS, insert `-f "$NETWORK_OVERLAY"` before the image override.
+The example uses the reviewed-image installation. For a source-built installation,
+omit `-f deploy/compose.images.yml` and use the project's already-built API image.
+For a shared VPS, place `-f "$NETWORK_OVERLAY"` after `docker-compose.prod.yml`
+and before the image override when that override is in use.
 `run --no-deps` runs the CLI while the API service and its senders stay stopped.
 
 Set `EVIDENCE_FILE` to the absolute path of the protected evidence file, readable
