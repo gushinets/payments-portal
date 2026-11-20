@@ -590,11 +590,13 @@ Live catalog/review/confirm/advance/bootstrap requests have a 130-second browser
 deadline covering body consumption. Identity and local purchase GETs use five
 seconds. A lost confirm/advance reply, a generic `internal_server_error`, or
 a 5xx response without an API error code triggers a local status read. The
-original confirmation key and accepted terms remain available for an explicit
-retry. An `advance` response with
-`preflight_deadline_exceeded` also triggers a saved status read because the
-operation may already be durable. If advance is still waiting for its reply
-after five seconds, the product page checks saved status for the same purchase.
+open review form keeps the original confirmation key and submitted terms in
+memory for an explicit retry. After a reload, the product page looks up the
+saved purchase by product and shows its recorded acceptance if found.
+An `advance` response with `preflight_deadline_exceeded` also triggers a saved
+status read because the operation may already be durable. If advance is still
+waiting for its reply after five seconds, the product page checks saved status
+for the same purchase.
 A held, linked result makes the payment action available while that reply is
 pending.
 

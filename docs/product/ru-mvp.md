@@ -150,10 +150,13 @@ documents remain drafts.
    The buyer reviews and accepts terms on the product page, which checks the
    saved status of a pending purchase for a bounded period. Once the purchase
    is prepared, the payment button opens the localized cabinet and starts the
-   Widget for that purchase. The cabinet displays the product and the verified
-   agreement and seller while the Widget loads. Accepted terms and purchase
-   history remain immutable in PostgreSQL. ANY-765 displays committed paid access
-   and purchased simulated limits through authenticated local `GET /api/paid-access`. Confirmed absence
+   account-wide billing Widget. The cabinet displays the product and the
+   verified agreement and seller for the selected purchase while the Widget
+   loads. The Widget can offer payment on other agreements in the same account.
+   The buyer checks the agreement number and selects the displayed agreement
+   before paying. Accepted terms and purchase history remain immutable in
+   PostgreSQL. ANY-765 displays committed paid access and purchased simulated
+   limits through authenticated local `GET /api/paid-access`. Confirmed absence
    and unavailable evidence remain distinct; actual usage/remaining quota is read
    independently from the saved backend owner through `/api/paid-usage`. Expired
    unprocessed deadlines refuse the read until the worker

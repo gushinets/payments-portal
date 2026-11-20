@@ -27,6 +27,8 @@ from app.domains.billing.work_contracts import WorkLane
 from app.domains.catalog.link_publication import publish_product_link
 from app.domains.purchases.contracts import Purchase, PurchaseMeaning, LegalSelection, PurchaseRefused
 from app.domains.purchases import financial, service
+from app.infrastructure.preflight import PreflightBudget
+from app.integrations.lbx.financial import NewAgreement
 from app.jobs.billing import BillingWorker
 from app.models import (
     BillingPurchaseScopeHold,
@@ -563,6 +565,50 @@ async def test_any709_step3_500_after_create_recovers_without_another_post(
         assert recovered.state == IntentState.LINKED
         assert recovered.accepted == purchase.accepted
         assert transport.creates(path) == 1
+
+
+@pytest.mark.parametrize("receipt_matches", [True, False])
+async def test_any709_step3_worker_binds_agreement_before_receipt(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    receipt_matches: bool,
+) -> None:
+    factory = postgres_session_factory
+    transport = setup_purchase(factory)
+    config = step1_settings()
+    async with source_resources(
+        config,
+        kernel_transport=httpx.MockTransport(transport.kernel),
+        lbx_transport=httpx.MockTransport(transport.respond),
+    ) as sources:
+        purchase = await accept(sources, factory)
+        client = sources.require_lbx()
+        create_agreement = client.create_agreement
+
+        async def deliver_after_worker(command: NewAgreement, *, budget: PreflightBudget) -> int:
+            provider_id = await create_agreement(command, budget=budget)
+            before = len(transport.requests)
+            worker = BillingWorker(config, factory, client)
+            try:
+                assert await worker.tick(WorkLane.URGENT)
+            finally:
+                await worker.aclose()
+            assert transport.requests[before:]
+            assert all(req.method == "GET" for req in transport.requests[before:])
+            saved = service.read_purchase(factory, purchase.user_id, purchase.id)
+            agreement = next(op for op in saved.operations if op.kind == Kind.AGREEMENT)
+            assert (agreement.state, agreement.bound_id) == (State.BOUND, str(provider_id))
+            return provider_id if receipt_matches else provider_id + 1
+
+        monkeypatch.setattr(client, "create_agreement", deliver_after_worker)
+        result = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+
+    assert result.held and result.accepted == purchase.accepted
+    assert [op.id for op in result.operations] == [op.id for op in purchase.operations]
+    assert result.state == (IntentState.LINKED if receipt_matches else IntentState.PREPARING)
+    assert transport.creates("/agreements") == 1
+    assert transport.creates("/subscriptions") == int(receipt_matches)
 
 
 async def test_any709_step3_restart_zero_discovery_deadline_and_get_only_operator_recovery(
