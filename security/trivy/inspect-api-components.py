@@ -398,7 +398,48 @@ def collect() -> dict[str, object]:
     }
 
 
+REMOVAL_CANDIDATES = (
+    "libacl1 libattr1 libbz2-1.0 libssl3t64 openssl openssl-provider-legacy "
+    "libsystemd0 libudev1 libstdc++6 libgcc-s1 gcc-14-base libsqlite3-0 "
+    "libncursesw6 libtinfo6 libpam-modules login.defs ncurses-bin perl-base "
+    "util-linux tar dpkg bash dash coreutils diffutils sysvinit-utils"
+).split()
+
+
+def collect_removal_options() -> dict[str, object]:
+    """Simulate only; never force dependency removal or change installed packages."""
+    control = command_result(
+        [
+            "dpkg-query",
+            "-W",
+            "-f=${binary:Package}\t${Version}\t${Essential}\t"
+            "${Protected}\t${Pre-Depends}\t${Depends}\n",
+        ]
+    )
+    simulations = {
+        package: command_result(["dpkg", "--simulate", "--purge", package])
+        for package in REMOVAL_CANDIDATES
+    }
+    complete = control.get("exit") == 0 and all(
+        "exit" in r for r in simulations.values()
+    )
+    return {
+        "schema_version": 1,
+        "uid": os.getuid(),
+        "package_control": control,
+        "simulations": simulations,
+        "complete": complete,
+        "scope": "Read-only --simulate in disposable diagnostic container; "
+        "no --force options, actual purge, or API runtime-user change. "
+        "Successful simulation does not prove native runtime dependencies are unnecessary.",
+    }
+
+
 if __name__ == "__main__":
-    evidence = collect()
+    evidence = (
+        collect_removal_options()
+        if sys.argv[1:] == ["--removal-options"]
+        else collect()
+    )
     print(json.dumps(evidence, indent=2, sort_keys=True))
     sys.exit(0 if evidence["complete"] else 1)

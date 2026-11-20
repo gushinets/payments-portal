@@ -98,3 +98,21 @@ def test_upgrade_probe_distinguishes_planned_changes_from_summary() -> None:
 
     assert updates.planned_upgrades("0 upgraded, 0 newly installed.\n") == []
     assert updates.planned_upgrades("Inst libc6 [old] (new Debian)\n1 upgraded\n") == ["Inst libc6 [old] (new Debian)"]
+
+
+def test_removal_evidence_only_simulates_and_never_forces(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+
+    def inspect(argv: list[str]) -> dict[str, object]:
+        calls.append(argv)
+        return {"exit": 0, "stdout": "", "stderr": ""}
+
+    monkeypatch.setattr(COMPONENTS, "command_result", inspect)
+    monkeypatch.setattr(COMPONENTS.os, "getuid", lambda: 0, raising=False)
+    evidence = COMPONENTS.collect_removal_options()
+
+    assert evidence["complete"] is True
+    removals = calls[1:]
+    assert len(removals) == len(COMPONENTS.REMOVAL_CANDIDATES)
+    assert all(argv[:3] == ["dpkg", "--simulate", "--purge"] and len(argv) == 4 for argv in removals)
+    assert all(not arg.startswith("--force") for argv in calls for arg in argv)

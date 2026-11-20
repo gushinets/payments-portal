@@ -96,6 +96,13 @@ jobs:
           "$API_IMAGE" /tmp/inspect-api-components.py
           > "$TRIVY_REPORT_DIR/api-components.json"
 
+      - name: Simulate API package removal options without changing packages
+        run: >-
+          docker run --rm --network none --user 0:0 --entrypoint python
+          --mount "type=bind,src=$PWD/security/trivy/inspect-api-components.py,dst=/tmp/inspect-api-components.py,readonly"
+          "$API_IMAGE" /tmp/inspect-api-components.py --removal-options
+          > "$TRIVY_REPORT_DIR/api-removal-options.json"
+
       - name: Check supported Debian candidates in disposable build base
         run: |
           docker build --target base --file apps/api/Dockerfile --tag "$API_IMAGE-base" .
