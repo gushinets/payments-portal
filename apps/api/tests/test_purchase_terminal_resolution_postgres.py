@@ -25,6 +25,7 @@ from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.operator_contracts import LateSubscriptionPoint
 from app.domains.billing.operator_diagnostics import inspect_evidence
 from app.domains.billing.operator_review import has_late_purchase_review_for_product
+from app.domains.billing.reconciliation_contracts import IdentityProof
 from app.domains.purchases import financial, service
 from app.domains.purchases.contracts import Purchase, PurchaseRefused, PurchaseInventoryIncomplete
 from app.infrastructure.queries.billing_operator import has_open_purchase_review
@@ -673,26 +674,39 @@ async def test_late_unbound_agreement_review_and_downgrade(
             alembic_command.downgrade(config, "20261031_0006")
 
 
-@pytest.mark.parametrize("later_state", ["active", "ended"])
-async def test_initial_completion_checks_newer_subscription_read(paid_source: Scenario, later_state: str) -> None:
+@pytest.mark.parametrize(
+    ("later_state", "complete"),
+    [
+        pytest.param("active", True, id="active"),
+        pytest.param("active", False, id="active-without-price"),
+        pytest.param("ended", True, id="ended"),
+    ],
+)
+async def test_initial_completion_checks_newer_subscription_read(
+    paid_source: Scenario, later_state: str, complete: bool
+) -> None:
     scenario = paid_source
     factory = scenario.factory
     with factory() as db:
         sub = db.get(ExternalSubscription, scenario.subscription_id)
         purchase = service.read_purchase(factory, sub.user_id, sub.purchase_intent_id)
+    await reconcile(scenario)
+    before = effective(factory)
+    assert before[1]["grants"]
     original = request(factory, purchase, confirmed=True)
     if later_state == "ended":
         scenario.transport.subscriptions[0]["state"] = 3
+    if not complete:
+        scenario.transport.subscriptions[0].pop("total_price")
     read = await reconcile(scenario)
-    assert read.proof.complete and read.proof.lifecycle == later_state
+    assert read.proof.identity == IdentityProof.MATCH
+    assert read.proof.lifecycle == later_state and read.proof.complete == complete
     assert read.proof.read_started_at > original.evidence.confirmed_at
     with pytest.raises(PurchaseRefused, match="purchase_resolution_stale"):
         terminal.resolve_purchase(factory, scenario.config, original, PRINCIPAL)
     refreshed = request(factory, purchase, confirmed=True)
     old_confirmation = refreshed.model_copy(update={"evidence": original.evidence})
     if later_state == "active":
-        before = effective(factory)
-        assert before[1]["grants"]
         with pytest.raises(PurchaseRefused, match="purchase_resolution_confirmation_required"):
             terminal.resolve_purchase(factory, scenario.config, old_confirmation, PRINCIPAL)
         assert service.read_purchase(factory, purchase.user_id, purchase.id).held

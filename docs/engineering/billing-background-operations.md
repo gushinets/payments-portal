@@ -624,9 +624,10 @@ For any possible send, record the actual shutdown in `senders_stopped_at` at
 or after the latest possible-send attempt. Set `confirmed_at` to the time LBX
 gave final confirmation after shutdown (at or before the current time). Use
 the LBX confirmation reference as `--reference`.
-If a later complete read still shows the original subscription as active or
-inactive, obtain a fresh confirmation before initial completion. A refreshed
-digest alone does not renew the earlier confirmation.
+If a later authoritative read confirms that the original subscription is active
+or inactive, obtain a fresh confirmation before initial completion, even when
+commercial details are incomplete. A refreshed digest alone does not renew the
+earlier confirmation.
 Keep provider payloads, secrets and personal data out of reason/reference.
 
 ```bash
