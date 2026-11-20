@@ -44,7 +44,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 ENV PORT=3000
 
-RUN rm -rf \
+RUN apk add --no-cache 'zlib>=1.4-r0' \
+    && rm -rf \
     /usr/local/bin/corepack \
     /usr/local/bin/npm \
     /usr/local/bin/npx \
