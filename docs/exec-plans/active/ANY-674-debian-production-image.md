@@ -1,4 +1,4 @@
-# ANY-674 вЂ” Debian production API image remediation
+# ANY-674 — Debian production API image remediation
 
 ## Objective and scope
 Apply available supported Debian security updates to the final Python 3.12 API production image and provide reproducible before/after evidence for https://linear.app/paveldik/issue/ANY-674.
@@ -57,7 +57,7 @@ Technical investigation and implementation complete at runtime source `f7728c18`
 
 Technical work is complete and handed off with supported-update/removal analysis, before/after scans, startup/readiness and migrations. The [handoff](../../engineering/ANY-674-technical-handoff.md) enumerates all 95 current residual IDs for development-team assignment, with per-ID applicability/options in the evidence ledgers and proposed 2026-12-02 review. Ownership is **pending team assignment**, does not block technical completion and is not assigned to the requester. The ticket ownership criterion stays unchecked. No risk approval, exception, merge, deployment or Done transition.
 
-## Review correction вЂ” fail-closed verification
+## Review correction — fail-closed verification
 
 Starting PR head `c0fc008f` already incorporates current main `dac00ead`; fast-forwarded the existing local branch without rewriting or dropping that merge. Reviewed two introduced verification defects: native traversal/ldd failures were masked by a grep pipeline, and Dockerfile audit exit status was discarded by command substitution inside test.
 

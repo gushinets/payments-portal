@@ -10,11 +10,11 @@ audit_mode = 'error'
         tmp_path: Path, audit_mode: str
     ) -> None:
         result, marker = run_production_package_removal(tmp_path, "", "no:no", audit_mode)
-    
+
         assert marker.exists(), "Fixture must reach the post-purge audit"
 >       assert result.returncode != 0, result.stdout + result.stderr
 E       AssertionError: Cannot read package database
-E         
+E
 E       assert 0 != 0
 E        +  where 0 = CompletedProcess(args=['D:\\Git\\bin\\bash.EXE', '--noprofile', '--norc', '-c', '\ngroupadd() { :; }\nuseradd() { :; }...me_build_packages     && test -z "$(dpkg --audit)"'], returncode=0, stdout='', stderr='Cannot read package database\n').returncode
 
@@ -66,14 +66,14 @@ mode = 'find-error'
             capture_output=True,
             check=False,
         )
-    
+
         if mode == "clean":
             assert result.returncode == 0, result.stdout + result.stderr
             assert marker.exists()
         else:
 >           assert result.returncode != 0, result.stdout + result.stderr
 E           AssertionError: Permission denied
-E             
+E
 E           assert 0 != 0
 E            +  where 0 = CompletedProcess(args=['D:\\Git\\bin\\bash.EXE', '--noprofile', '--norc', '-ec', '\nid() { echo 999; }\ncommand() { re...x >= 2.41.5-0+deb13u1, got: $installed" >&2\n    exit 1\n  fi'], returncode=0, stdout='', stderr='Permission denied\n').returncode
 
@@ -125,14 +125,14 @@ mode = 'ldd-error-first'
             capture_output=True,
             check=False,
         )
-    
+
         if mode == "clean":
             assert result.returncode == 0, result.stdout + result.stderr
             assert marker.exists()
         else:
 >           assert result.returncode != 0, result.stdout + result.stderr
 E           AssertionError: Cannot execute dependency inspector
-E             
+E
 E           assert 0 != 0
 E            +  where 0 = CompletedProcess(args=['D:\\Git\\bin\\bash.EXE', '--noprofile', '--norc', '-ec', '\nid() { echo 999; }\ncommand() { re...3u1, got: $installed" >&2\n    exit 1\n  fi'], returncode=0, stdout='', stderr='Cannot execute dependency inspector\n').returncode
 
@@ -184,14 +184,14 @@ mode = 'ldd-error-last'
             capture_output=True,
             check=False,
         )
-    
+
         if mode == "clean":
             assert result.returncode == 0, result.stdout + result.stderr
             assert marker.exists()
         else:
 >           assert result.returncode != 0, result.stdout + result.stderr
 E           AssertionError: Cannot execute dependency inspector
-E             
+E
 E           assert 0 != 0
 E            +  where 0 = CompletedProcess(args=['D:\\Git\\bin\\bash.EXE', '--noprofile', '--norc', '-ec', '\nid() { echo 999; }\ncommand() { re...3u1, got: $installed" >&2\n    exit 1\n  fi'], returncode=0, stdout='', stderr='Cannot execute dependency inspector\n').returncode
 
