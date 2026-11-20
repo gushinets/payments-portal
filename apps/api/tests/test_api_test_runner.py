@@ -951,13 +951,67 @@ repo.cmd_test(
     assert ET.parse(suite / "current.xml").findall(".//error")
 
 
-def test_junit_publication_failure_preserves_internal_results(suite: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("stage", ["merge", "publish"])
+def test_first_interrupt_during_finalization_publishes_cancelled_results(
+    suite: Path, monkeypatch: pytest.MonkeyPatch, stage: str
+) -> None:
+    source(suite, "test_pass.py", "def test_pass():\n    pass\n")
+    check_env = environment()
+    monkeypatch.setattr(repo, "ROOT", suite)
+    monkeypatch.setattr(repo, "HARNESS_DIR", suite / "reports")
+    sent = False
+
+    def interrupt_once(signum: signal.Signals) -> None:
+        nonlocal sent
+        if not sent:
+            sent = True
+            signal.raise_signal(signum)
+
+    if stage == "merge":
+        merge = runner.merge_junit
+
+        def interrupt_merge(roots: list[ET.Element], *args: object, **kwargs: object) -> None:
+            if roots:
+                interrupt_once(signal.SIGTERM)
+            merge(roots, *args, **kwargs)
+
+        monkeypatch.setattr(runner, "merge_junit", interrupt_merge)
+    else:
+        copyfile = runner.shutil.copyfile
+
+        def interrupt_copy(source: Path, destination: Path) -> None:
+            interrupt_once(signal.SIGINT)
+            copyfile(source, destination)
+
+        monkeypatch.setattr(runner.shutil, "copyfile", interrupt_copy)
+
+    requested_report = suite / "current.xml"
+    with pytest.raises((SystemExit, KeyboardInterrupt)) as caught:
+        repo.cmd_test(argparse.Namespace(target="api-fast", junitxml=str(requested_report)), environment=check_env)
+
+    assert sent
+    assert isinstance(caught.value, SystemExit) and caught.value.code == 130
+    result_path = next((suite / "reports/api-tests").glob("*/result.json"))
+    assert json.loads(result_path.read_text())["returncode"] == 130
+    merged_report = result_path.with_name("junit.xml")
+    assert report_nodes(merged_report) == ["apps/api/tests/test_pass.py::test_pass"]
+    assert requested_report.read_bytes() == merged_report.read_bytes()
+    [error] = ET.parse(requested_report).findall(".//error")
+    assert "interrupted" in error.attrib["message"]
+
+
+@pytest.mark.parametrize("partial_write", [False, True], ids=["before-open", "partial-write"])
+def test_junit_publication_failure_preserves_internal_results(
+    suite: Path, monkeypatch: pytest.MonkeyPatch, partial_write: bool
+) -> None:
     source(suite, "test_pass.py", "def test_pass():\n    pass\n")
     check_env = environment()
     monkeypatch.setattr(repo, "ROOT", suite)
     monkeypatch.setattr(repo, "HARNESS_DIR", suite / "reports")
 
-    def fail_publication(*args: object) -> None:
+    def fail_publication(source: Path, destination: Path) -> None:
+        if partial_write:
+            destination.write_bytes(source.read_bytes()[:64])
         raise PermissionError("controlled publication failure")
 
     monkeypatch.setattr(runner.shutil, "copyfile", fail_publication)
@@ -969,6 +1023,7 @@ def test_junit_publication_failure_preserves_internal_results(suite: Path, monke
     assert json.loads(result_path.read_text())["returncode"] == 0
     assert report_nodes(result_path.with_name("junit.xml")) == ["apps/api/tests/test_pass.py::test_pass"]
     assert_startup_error(requested_report, "API test run has not completed")
+    assert {path.name for path in suite.iterdir()} == {"apps", "pytest.ini", "reports", "current.xml"}
 
 
 @pytest.mark.parametrize("target,workers", [("api-fast", None), ("api-postgres", None), ("api", 1)])

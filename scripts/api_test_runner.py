@@ -13,10 +13,11 @@ import uuid
 import xml.etree.ElementTree as ET
 from collections import Counter
 from collections.abc import Iterator, Sequence
-from contextlib import contextmanager, ExitStack
+from contextlib import contextmanager, ExitStack, suppress
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import TypedDict
 
 from scripts.deferred_signals import defer_interrupts
@@ -492,9 +493,42 @@ def run_api_tests(
     collection_cases: dict[bytes, ET.Element] = {}
     collection_report: Path | None = None
     returncodes: list[int] = []
-    interrupted = False
     worker_failed = False
     invocations: list[Invocation] = []
+
+    def finalize_reports(*, interrupted: bool = False) -> RunnerResult:
+        roots = list(reports.values())
+        report_errors = errors if roots or errors else ["No API tests selected"]
+        merged_report = directory / "junit.xml"
+        merge_junit(
+            roots,
+            merged_report,
+            report_errors,
+            collection_cases=list(collection_cases.values()),
+        )
+        code = 130 if interrupted else int(bool(report_errors) or worker_failed)
+        write_json(
+            directory / "result.json",
+            {"returncode": code, "process_returncodes": returncodes, "errors": report_errors},
+        )
+        if junitxml is not None:
+            try:
+                with TemporaryDirectory(dir=junitxml.parent, prefix=".junit-") as temporary:
+                    staged_report = Path(temporary) / "report.xml"
+                    shutil.copyfile(merged_report, staged_report)
+                    with suppress(FileNotFoundError):
+                        shutil.copymode(junitxml, staged_report)
+                    staged_report.replace(junitxml)
+            except OSError as exc:
+                raise ReportPublicationError(f"Cannot publish API test JUnit to {junitxml}: {exc}") from exc
+        for error in report_errors:
+            print(error, file=sys.stderr)
+        print(
+            f"API tests: {len(roots)} worker report(s), exit {code}; JUnit: {merged_report}",
+            flush=True,
+        )
+        return RunnerResult(code, directory)
+
     with interrupt_once():
         try:
             for partition in partitions:
@@ -607,8 +641,8 @@ def run_api_tests(
                     errors.append(
                         f"Cannot execute test process for {partition.name.lower()}: {exc}"
                     )
+            return finalize_reports()
         except KeyboardInterrupt:
-            interrupted = True
             if collection_report is not None and collection_report.is_file():
                 try:
                     retain_collection_cases(collection_report, collection_cases)
@@ -616,32 +650,7 @@ def run_api_tests(
                     errors.append(str(exc))
             retain_worker_reports(invocations, reports, errors)
             errors.append(
-                "API test run interrupted; children stopped and joined. Inspect interrupted.json for forced termination."
+                "API test run interrupted; children stopped and joined. "
+                "Inspect interrupted.json, when present, for forced termination."
             )
-        roots = list(reports.values())
-        if not roots and not errors:
-            errors.append("No API tests selected")
-        merged_report = directory / "junit.xml"
-        merge_junit(
-            roots,
-            merged_report,
-            errors,
-            collection_cases=list(collection_cases.values()),
-        )
-        code = 130 if interrupted else int(bool(errors) or worker_failed)
-        write_json(
-            directory / "result.json",
-            {"returncode": code, "process_returncodes": returncodes, "errors": errors},
-        )
-        if junitxml is not None:
-            try:
-                shutil.copyfile(merged_report, junitxml)
-            except OSError as exc:
-                raise ReportPublicationError(f"Cannot publish API test JUnit to {junitxml}: {exc}") from exc
-        for error in errors:
-            print(error, file=sys.stderr)
-        print(
-            f"API tests: {len(roots)} worker report(s), exit {code}; JUnit: {merged_report}",
-            flush=True,
-        )
-        return RunnerResult(code, directory)
+            return finalize_reports(interrupted=True)

@@ -255,12 +255,15 @@ Each `worker-*/` directory contains the selected node IDs, pytest log, manifest
 and `junit.xml`. The merged JUnit includes collection-time skips and errors,
 with identical cases from both partitions reported once. With `--junitxml`,
 the CLI marks the requested path incomplete before setup, then writes the
-startup error or copies the finished report there.
+startup error or replaces it with the finished report. A failure while writing
+the replacement leaves the existing report readable and makes the command fail.
 
 Collection failures, crashes and missing or inconsistent required reports make
 the command fail. After a partial launch or handled cancellation, the runner
 merges the readable JUnit files from collection and workers. A worker killed
 before writing its report can leave completed tests out of the merged results.
+A first interrupt during finalization also records cancellation and publishes
+the available results.
 
 GitHub Actions can stop the test step before the runner writes the merged JUnit.
 Use any individual collection and worker reports already written. The
