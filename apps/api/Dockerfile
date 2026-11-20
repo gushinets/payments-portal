@@ -59,7 +59,8 @@ RUN groupadd --system app \
          }; \
        done \
     && dpkg --purge $runtime_build_packages \
-    && test -z "$(dpkg --audit)"
+    && package_audit=$(dpkg --audit) \
+    && test -z "$package_audit"
 
 COPY apps/api/alembic.ini ./apps/api/alembic.ini
 COPY apps/api/alembic ./apps/api/alembic

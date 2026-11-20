@@ -517,7 +517,7 @@ def test_web_receives_only_public_backend_callbacks(path: str) -> None:
 
 
 def run_production_package_removal(
-    tmp_path: Path, blocked_package: str, flags: str
+    tmp_path: Path, blocked_package: str, flags: str, audit_mode: str = "clean"
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     dockerfile = (ROOT / "apps/api/Dockerfile").read_text(encoding="utf-8")
     production = dockerfile.split("FROM base AS production", 1)[1]
@@ -528,6 +528,7 @@ def run_production_package_removal(
         "BLOCKED_PACKAGE": blocked_package,
         "BLOCKED_FLAGS": flags,
         "PURGE_MARKER": marker.as_posix(),
+        "AUDIT_MODE": audit_mode,
     }
     stubs = r"""
 groupadd() { :; }
@@ -543,6 +544,12 @@ dpkg-query() {
   fi
 }
 dpkg() {
+  if [ "$1" = "--audit" ]; then
+    case "$AUDIT_MODE" in
+      error) echo "Cannot read package database" >&2; return 2 ;;
+      dirty) echo "incomplete package"; return 0 ;;
+    esac
+  fi
   if [ "$1" = "--purge" ]; then printf '%s\n' "$@" > "$PURGE_MARKER"; fi
   return 0
 }
@@ -573,3 +580,58 @@ def test_production_removal_allows_verified_nonessential_packages(tmp_path: Path
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert marker.read_text(encoding="utf-8").splitlines()[0] == "--purge"
+
+
+@pytest.mark.parametrize("audit_mode", ["error", "dirty"])
+def test_production_removal_requires_successful_clean_audit(tmp_path: Path, audit_mode: str) -> None:
+    result, marker = run_production_package_removal(tmp_path, "", "no:no", audit_mode)
+
+    assert marker.exists(), "Fixture must reach the post-purge audit"
+    assert result.returncode != 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("mode", ["find-error", "ldd-error-first", "ldd-error-last", "missing", "clean"])
+def test_runtime_native_inspection_requires_successful_complete_commands(tmp_path: Path, mode: str) -> None:
+    script = (ROOT / "security/trivy/verify-api-runtime.sh").read_text(encoding="utf-8")
+    container_check = script.split("-ec '", 1)[1].split("\n'", 1)[0]
+    marker = tmp_path / "imports-reached.txt"
+    stubs = r"""
+id() { echo 999; }
+command() { return 1; }
+dpkg-query() {
+  if [ "$1" = "-s" ]; then return 1; fi
+  echo "util-linux 2.41.5-0+deb13u1"
+}
+dpkg() { return 0; }
+find() {
+  if [ "$NATIVE_MODE" = "find-error" ]; then
+    echo "Permission denied" >&2; return 1
+  fi
+  case "$*" in
+    *-exec*) ldd /fixture/first.so; ldd /fixture/last.so; return 0 ;;
+  esac
+  printf '%s\n' /fixture/first.so /fixture/last.so
+}
+ldd() {
+  case "$NATIVE_MODE:$1" in
+    ldd-error-first:/fixture/first.so|ldd-error-last:/fixture/last.so)
+      echo "Cannot execute dependency inspector" >&2; return 2 ;;
+  esac
+  if [ "$NATIVE_MODE" = "missing" ]; then echo "libexample.so => not found"; fi
+}
+python() { echo imports > "$IMPORT_MARKER"; }
+"""
+    result = subprocess.run(
+        [shutil.which("bash") or "bash", "--noprofile", "--norc", "-ec", stubs + container_check],
+        env={**os.environ, "NATIVE_MODE": mode, "IMPORT_MARKER": marker.as_posix()},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    if mode == "clean":
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert marker.exists()
+    else:
+        assert result.returncode != 0, result.stdout + result.stderr
+        assert not marker.exists(), "Imports ran after incomplete native inspection"

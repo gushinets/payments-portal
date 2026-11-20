@@ -35,11 +35,22 @@ docker run --rm --network none --entrypoint sh "$image_ref" -ec '
     exit 1
   fi
   # Official python:slim already omits optional GUI Tk/Tcl dependencies.
-  missing=$(find /opt/api-venv /usr/local/lib/python3.12/lib-dynload -type f -name "*.so" ! -name "_tkinter*" -exec ldd {} \; | grep "not found" || true)
-  if [ -n "$missing" ]; then
-    echo "Production native shared-library dependency missing" >&2
-    exit 1
-  fi
+  native_files=$(find /opt/api-venv /usr/local/lib/python3.12/lib-dynload -type f -name "*.so" ! -name "_tkinter*")
+  while IFS= read -r library; do
+    [ -n "$library" ] || continue
+    dependencies=$(ldd "$library") || {
+      echo "Production native dependency inspection failed: $library" >&2
+      exit 1
+    }
+    case "$dependencies" in
+      *"not found"*)
+        echo "Production native shared-library dependency missing: $library" >&2
+        exit 1
+        ;;
+    esac
+  done <<EOF
+$native_files
+EOF
   python -c "
 import bz2, ctypes, curses, greenlet, lzma, readline, sqlite3, ssl, uuid, zlib
 from zoneinfo import ZoneInfo
