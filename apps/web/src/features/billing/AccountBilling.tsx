@@ -119,12 +119,13 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
     }
   }, [canPay, checking, initialPurchaseId, openWidget, selectionId, selectionState]);
 
+  const statusTarget = canRead && !selectionBlocked ? selection : undefined;
   const poll = usePurchaseStatusPoll(
-    emailVerified && !selectionBlocked && selection && (checking || purchaseNeedsStatus(selection)) ? selection : undefined,
+    statusTarget,
     undefined,
     applyStatus,
     handleRefusal,
-    checking ? 0 : undefined
+    { enabled: statusTarget !== undefined && (checking || purchaseNeedsStatus(statusTarget)), initialDelayMs: checking ? 0 : undefined }
   );
   const paidOnlyProducts = [...new Set([
     ...(paid.state.status === PaidReadStatus.Ready ? [...paid.state.data.grants, ...paid.state.data.products].map((item) => item.product_id) : []),
