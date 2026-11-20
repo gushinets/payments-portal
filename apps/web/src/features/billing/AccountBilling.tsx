@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { purchaseStatus } from "@/shared/api/purchases";
 import { subscribeToSessionChanges, useSessionOperation } from "@/shared/session/use-session-operation";
-import { newRequestId, purchaseReadRefusal, safeRequestId, type PurchaseReadRefusal } from "./errors";
+import { newRequestId, purchaseReadRefusal, reportBillingSessionRefusal, safeRequestId, type PurchaseReadRefusal } from "./errors";
 import { claimPaymentOpening } from "./payment-opening";
 import { useAccountPurchases } from "./use-account-purchases";
 import { WidgetStatus, useBillingWidget } from "./use-billing-widget";
@@ -78,9 +78,16 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
       }
     }
     void load(initialPurchaseId).catch((error: unknown) => {
-      if (!operation.isCurrent()) return;
       const refusal = purchaseReadRefusal(error, requestId);
-      if (refusal) { handleRefusal(refusal); return; }
+      if (refusal) {
+        if (operation.isCurrent()) {
+          handleRefusal(refusal);
+        } else if (refusal.httpStatus === 401 && operation.isCurrentSession()) {
+          reportBillingSessionRefusal(error, refusal.requestId, handleRefusal);
+        }
+        return;
+      }
+      if (!operation.isCurrent()) return;
       consumeOpening?.();
       setSelectionState({ status: "error", requestId: safeRequestId(error) || requestId });
     });
@@ -125,7 +132,11 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
     undefined,
     applyStatus,
     handleRefusal,
-    { enabled: statusTarget !== undefined && (checking || purchaseNeedsStatus(statusTarget)), initialDelayMs: checking ? 0 : undefined }
+    {
+      enabled: statusTarget !== undefined && (checking || purchaseNeedsStatus(statusTarget)),
+      initialDelayMs: checking ? 0 : undefined,
+      acceptLateSessionRefusal: true
+    }
   );
   const paidOnlyProducts = [...new Set([
     ...(paid.state.status === PaidReadStatus.Ready ? [...paid.state.data.grants, ...paid.state.data.products].map((item) => item.product_id) : []),

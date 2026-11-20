@@ -4,12 +4,18 @@ import { useEffect, useEffectEvent, useLayoutEffect, useState } from "react";
 import type { PurchaseIntentResponse } from "@/generated/api-contracts/types.gen";
 import { currentPurchase, purchaseStatus } from "@/shared/api/purchases";
 import { subscribeToSessionChanges, useSessionOperation } from "@/shared/session/use-session-operation";
-import { newRequestId, purchaseReadRefusal, type PurchaseReadRefusal } from "./errors";
+import { newRequestId, purchaseReadRefusal, reportBillingSessionRefusal, type PurchaseReadRefusal } from "./errors";
 
 const fastPollWindowMs = 120_000;
 const recoveryPollIntervalMs = 60_000;
 // The worker can discover the original operation for two hours. Allow a final status read after that window.
 const recoveryPollWindowMs = 2 * 60 * 60_000 + 2 * recoveryPollIntervalMs;
+
+type PurchaseStatusPollOptions = {
+  enabled?: boolean;
+  initialDelayMs?: number;
+  acceptLateSessionRefusal?: boolean;
+};
 
 export function purchaseNeedsStatus(purchase: Pick<PurchaseIntentResponse, "state">): boolean {
   return purchase.state === "created" || purchase.state === "preparing" || purchase.state === "awaiting_external_result";
@@ -20,7 +26,7 @@ export function usePurchaseStatusPoll(
   uncertainProductId: string | undefined,
   onStatus: (purchase: PurchaseIntentResponse, readStartedAt: number) => void,
   onRefused: (refusal: PurchaseReadRefusal) => void,
-  { enabled = true, initialDelayMs = 2_000 }: { enabled?: boolean; initialDelayMs?: number } = {}
+  { enabled = true, initialDelayMs = 2_000, acceptLateSessionRefusal = false }: PurchaseStatusPollOptions = {}
 ) {
   const accept = useEffectEvent(onStatus);
   const refuse = useEffectEvent(onRefused);
@@ -36,7 +42,7 @@ export function usePurchaseStatusPoll(
 
   useEffect(() => {
     if (!key || !enabled) return;
-    const { token, isCurrent } = begin();
+    const { token, isCurrent, isCurrentSession } = begin();
     if (!token) return;
 
     const startedAt = Date.now();
@@ -85,7 +91,12 @@ export function usePurchaseStatusPoll(
       } catch (error) {
         const refusal = purchaseReadRefusal(error, requestId);
         if (refusal) {
-          if (isCurrent()) refuse(refusal);
+          if (isCurrent()) {
+            refuse(refusal);
+          } else if (acceptLateSessionRefusal && refusal.httpStatus === 401 && isCurrentSession()) {
+            // The purchase selection can change while its session is still current.
+            reportBillingSessionRefusal(error, refusal.requestId, (confirmed) => refuse(confirmed));
+          }
           stop();
           return;
         }
@@ -97,7 +108,7 @@ export function usePurchaseStatusPoll(
     }
 
     return stop;
-  }, [begin, enabled, initialDelayMs, key, purchaseId, recovering, uncertainProductId]);
+  }, [acceptLateSessionRefusal, begin, enabled, initialDelayMs, key, purchaseId, recovering, uncertainProductId]);
 
   return { paused: enabled && key !== undefined && pausedKey === key, clearPause: () => setPausedKey(undefined) };
 }
