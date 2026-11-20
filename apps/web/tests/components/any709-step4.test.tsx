@@ -184,6 +184,36 @@ it.each([ru.Purchase.recover, ru.Purchase.refresh])("announces recovery and move
   expect(screen.getByRole("link", { name: ru.Billing.pay })).toHaveFocus();
 });
 
+it("keeps accepted terms open and focused when polling makes payment available", async () => {
+  vi.useFakeTimers();
+  owned = { ...savedPurchase, state: "awaiting_external_result" };
+  await act(async () => { renderProduct(); });
+  const summary = screen.getByText(ru.Purchase.acceptedTerms);
+  const details = summary.closest("details")!;
+  details.open = true;
+  summary.focus();
+
+  owned = savedPurchase;
+  await act(async () => vi.advanceTimersByTimeAsync(2100));
+
+  expect(screen.getByRole("link", { name: ru.Billing.pay })).toBeVisible();
+  expect(screen.getByText(ru.Purchase.acceptedTerms)).toBe(summary);
+  expect(summary).toHaveFocus();
+  expect(details).toHaveAttribute("open");
+});
+
+it.each([ru.Purchase.recover, ru.Purchase.refresh])("moves focus from %s when its response makes payment available", async (action) => {
+  owned = { ...savedPurchase, state: "awaiting_external_result" };
+  renderProduct();
+  const trigger = await screen.findByRole("button", { name: action });
+  trigger.focus();
+
+  owned = savedPurchase;
+  fireEvent.click(trigger);
+
+  expect(await screen.findByRole("link", { name: ru.Billing.pay })).toHaveFocus();
+});
+
 it("offers payment from saved status before advance replies and ignores the older reply", async () => {
   vi.useFakeTimers();
   const reply = Promise.withResolvers<Response>();

@@ -114,6 +114,12 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     if (document.activeElement === document.body) link.focus();
   }, []);
 
+  function showPurchase(saved: PurchaseIntentResponse) {
+    const focused = document.activeElement;
+    focusPayment.current = saved.scope_held && saved.state === "linked" && (focused === refreshButton.current || focused === resumeButton.current);
+    setState({ kind: "purchase", purchase: saved });
+  }
+
   const poll = usePurchaseStatusPoll(
     canPoll && purchase?.scope_held && (advancing || purchaseNeedsStatus(purchase)) ? purchase : undefined,
     canPoll && !advancing && uncertainConfirmation ? productId : undefined,
@@ -126,9 +132,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
         cancel();
         finishWork();
       }
-      const focused = document.activeElement;
-      focusPayment.current = linked && (focused === refreshButton.current || focused === resumeButton.current);
-      setState({ kind: "purchase", purchase: saved });
+      showPurchase(saved);
       if (uncertainConfirmation || !advanceOutcomeUnknown(saved)) setFailure(null);
     },
     (refusal) => {
@@ -168,6 +172,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
   }, [begin, cancel, finishWork, productId, user.email_verified]);
 
   async function run(work: (token: string, requestId: string, current: () => boolean) => Promise<void>, visibleFailure: Failure | null = null) {
+    // The status and recovery buttons stay focusable while work is active.
     if (busy.current || !user.email_verified) return;
     busy.current = true;
     poll.clearPause();
@@ -200,7 +205,8 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
         // A lost confirmation may still be completing. Keep its frozen request/key
         // when no hold is visible yet; a local empty GET is not a release proof.
         if (!current()) return;
-        if (purchase || state.kind !== "review") setState(purchase ? { kind: "purchase", purchase } : { kind: "none" });
+        if (purchase) showPurchase(purchase);
+        else if (state.kind !== "review") setState({ kind: "none" });
         if (!advanceOutcomeUnknown(purchase)) setFailure(null);
       } catch (error) {
         const refusal = purchaseReadRefusal(error, id);
@@ -234,7 +240,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
       }
     }
     if (!current()) return;
-    if (saved) setState({ kind: "purchase", purchase: saved });
+    if (saved) showPurchase(saved);
     // A saved intent proves confirmation. Advance also needs evidence of preparation.
     const pending = purchaseId ? advanceOutcomeUnknown(saved) : !saved;
     setFailure(pending ? { message: "errors.financialPending", requestId: safeRequestId(commandError) || id } : null);
@@ -251,7 +257,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
       return;
     }
     if (!current()) return;
-    setState({ kind: "purchase", purchase: result });
+    showPurchase(result);
     if (!advanceOutcomeUnknown(result)) setFailure(null);
   }
 
@@ -308,14 +314,14 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
       <p className="card-copy">{t("accessInAccount")}</p>
       <Link ref={attachPayment} className="btn-primary" href={`/account?purchase=${encodeURIComponent(purchase.purchase_intent_id)}#billing`}
         onNavigate={() => requestPaymentOpening(purchase.purchase_intent_id, user.user_id)}>{b("pay")}</Link>
-      <details><summary>{t("acceptedTerms")}</summary><PurchaseTerms review={purchase.accepted} /></details>
     </> : !user.email_verified ? <>
       <p>{t("verification")}</p>
       <Link className="btn-secondary" href="/account">{t("verifyAction")}</Link>
     </> : <>
       <div className="purchase-actions">
         {(state.kind === "none" || released) && <button className="btn-primary" type="button" disabled={working || !offerAvailable} onClick={() => void review()}>{t("buy")}</button>}
-        {(state.kind === "unavailable" || state.kind === "review" || purchase) && <button ref={refreshButton} className="btn-secondary" type="button" disabled={working} onClick={() => void refresh()}>{t("refresh")}</button>}
+        {(state.kind === "unavailable" || state.kind === "review" || purchase) &&
+          <button ref={refreshButton} className="btn-secondary" type="button" aria-disabled={working} onClick={() => void refresh()}>{t("refresh")}</button>}
       </div>
       {state.kind === "loading" && <p role="status">{t("loading")}</p>}
       {working && <p role="status">{t("working")}</p>}
@@ -338,13 +344,21 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
         {state.submission !== ReviewSubmission.Draft && <p>{t("confirmationUncertain")}</p>}
         <button className="btn-primary" type="button" disabled={working || failure?.readRefused || !state.review.documents.length || state.selected.length !== state.review.documents.length} onClick={() => void confirm()}>{t(state.submission === ReviewSubmission.Draft ? "confirm" : "retryConfirm")}</button>
       </div>}
-      {purchase && <div className="purchase-status">
+    </>}
+    {purchase && (linked || user.email_verified) && <div key={purchase.purchase_intent_id} className={linked ? undefined : "purchase-status"}>
+      {!linked && <>
         {purchase.reason && <p>{t(purchase.reason === "terms_changed" ? "termsChanged" : purchase.reason === "purchase_pending" ? "pending" : "reviewRequired")}</p>}
         <p className="catalog-product-id">{t("reference", { id: purchase.purchase_intent_id })}</p>
-        <details><summary>{t("acceptedTerms")}</summary><PurchaseTerms review={purchase.accepted} /></details>
-        {resumable && !failure?.readRefused && <button ref={resumeButton} className="btn-primary" type="button" disabled={working} onClick={() => void run((token, id, current) => prepare(token, purchase, id, current), pendingAdvanceFailure)}>{t(needsRecovery ? "recover" : "continue")}</button>}
+      </>}
+      <details><summary>{t("acceptedTerms")}</summary><PurchaseTerms review={purchase.accepted} /></details>
+      {!linked && <>
+        {resumable && !failure?.readRefused &&
+          <button ref={resumeButton} className="btn-primary" type="button" aria-disabled={working}
+            onClick={() => void run((token, id, current) => prepare(token, purchase, id, current), pendingAdvanceFailure)}>{t(needsRecovery ? "recover" : "continue")}</button>}
         <p>{t("awaitingVerification")}</p>
-      </div>}
+      </>}
+    </div>}
+    {!linked && user.email_verified && <>
       {failure && <div className="notice error" role="alert">{b(failure.message)}{failure.requestId && <p>{b("requestId", { id: failure.requestId })}</p>}</div>}
       <p className="card-copy">{t("accessInAccount")}</p>
     </>}

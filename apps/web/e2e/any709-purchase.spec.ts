@@ -244,6 +244,26 @@ test("status polling observes durable preparation without another financial requ
   expect(state.bootstraps).toEqual([]);
 });
 
+test("keyboard recovery keeps focus until polling offers payment", async ({ page }) => {
+  const state = await syntheticBilling(page);
+  state.owned = { ...savedPurchase, state: "awaiting_external_result" };
+  state.advanceState = "awaiting_external_result";
+  state.advanceDelayMs = 12_000;
+  const panel = await openProduct(page);
+  const recover = panel.getByRole("button", { name: ru.Purchase.recover });
+  await recover.focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => state.advances).toBe(1);
+  await expect(recover).toBeDisabled();
+  await expect(recover).toBeFocused();
+  await page.keyboard.press("Enter");
+
+  state.owned = savedPurchase;
+  await expect(panel.getByRole("link", { name: ru.Billing.pay })).toBeFocused({ timeout: 9000 });
+  expect(state.advances).toBe(1);
+  expect(state.bootstraps).toEqual([]);
+});
+
 test("recovered agreement allows explicit continuation of the same purchase", async ({ page }, testInfo) => {
   const state = await syntheticBilling(page);
   state.advanceState = "awaiting_external_result";
