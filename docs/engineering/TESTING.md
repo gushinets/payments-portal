@@ -111,9 +111,11 @@ exact commands; local checks do not establish remote CI success.
 API pytest setup installs synthetic settings before application imports and
 does not consume the personal dotenv file. Canonical launches, workers and CLI
 test children use the shared environment helper in
-`apps/api/tests/support/settings.py`; scenario-specific overrides remain
-explicit and are restored after the test. Normal application dotenv semantics
-are unchanged. Do not configure tests by copying personal or production values.
+`apps/api/tests/support/settings.py`. Set scenario-specific overrides explicitly
+and restore them after the test. The helper sets `PYTHON_DOTENV_DISABLED=1`,
+which makes both the API settings loader and `scripts/repo.py` skip their
+default `.env` lookup. Do not configure tests by copying personal or production
+values.
 The API test environment clears inherited libpq routing variables, including
 `PGHOSTADDR` and `PGSERVICE`. Explicit test URLs and service-file locations
 remain available.
@@ -262,13 +264,12 @@ Collection failures, crashes and missing or inconsistent required reports make
 the command fail. After a partial launch or handled cancellation, the runner
 merges the readable JUnit files from collection and workers. A worker killed
 before writing its report can leave completed tests out of the merged results.
-A first interrupt during finalization also records cancellation and publishes
-the available results.
+A first interrupt during finalization also records cancellation in the merged
+JUnit and `result.json` and publishes the available results.
 
 GitHub Actions can stop the test step before the runner writes the merged JUnit.
 Use any individual collection and worker reports already written. The
-cancellation diagnostics step is configured to upload available files. Upload
-during an actual GitHub Actions cancellation is unverified.
+cancellation diagnostics step is configured to upload available files.
 
 The runner checks JUnit against assigned node IDs and worker exit status, including
 skips and setup/teardown errors. With `--pytest-args -x`, each worker can stop
@@ -280,9 +281,10 @@ On interruption the runner sends a graceful interrupt and waits up to 15 seconds
 for pytest cleanup. It then terminates remaining children and waits up to 5 more
 seconds before killing any survivors. On Windows it terminates a child
 immediately if `Ctrl-Break` cannot be delivered. It waits for the children to
-exit and returns `130` on a handled interruption. Check `interrupted.json` in
-the active collection or worker directory for forced termination. Report
-leftovers in disposable storage and preserve resources owned by other runs.
+exit and returns `130` on a handled interruption. When child execution was
+interrupted, look for `interrupted.json` in the collection or worker
+directories to see whether termination was forced. Report leftovers in
+disposable storage and preserve resources owned by other runs.
 
 The PostgreSQL template lifecycle test applies the same bounded cleanup to its
 nested pytest processes when a child exceeds its 60-second deadline. On POSIX

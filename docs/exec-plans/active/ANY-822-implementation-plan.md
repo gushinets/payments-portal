@@ -18,6 +18,8 @@ Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
 
 ## Implementation decisions
 
+- First isolate API test settings before application imports. Use synthetic
+  settings and a shared environment helper for pytest and CLI test children.
 - Use the worktree's disposable PostgreSQL 18.4 server with 2 GiB tmpfs and
   normal durability. Worktree-specific credentials protect port reuse. Test commands
   derive settings from the worktree, retaining its saved port offset when
@@ -38,7 +40,9 @@ Issue: [ANY-822](https://linear.app/paveldik/issue/ANY-822)
   fixture extraction, parallel check stages and build/environment caching
   until measurements justify the added maintenance.
 
-The [six original acceleration decisions](https://github.com/gushinets/payments-portal/blob/e7d12a24a8193c08ad872e8fcbbe040721b1e101/docs/exec-plans/active/ANY-822-implementation-plan.md#acceleration-candidate-decisions)
+See the [implementation sequence](https://github.com/gushinets/payments-portal/blob/e7d12a24a8193c08ad872e8fcbbe040721b1e101/docs/exec-plans/active/ANY-822-implementation-plan.md#3-completed-implementation)
+for the ordered steps and their scope. The
+[six original acceleration decisions](https://github.com/gushinets/payments-portal/blob/e7d12a24a8193c08ad872e8fcbbe040721b1e101/docs/exec-plans/active/ANY-822-implementation-plan.md#acceleration-candidate-decisions)
 record the measured costs and trade-offs. The paid-access entry below supersedes
 decision 4 on the bounded reader's fixture. See the
 [Testing Strategy](../../engineering/TESTING.md) for current commands, ownership,
