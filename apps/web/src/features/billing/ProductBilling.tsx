@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import type { PurchaseIntentResponse, PurchaseReviewResponse, SessionUserResponse } from "@/generated/api-contracts/types.gen";
 import { Link } from "@/i18n/navigation";
@@ -37,6 +37,11 @@ function commandOutcomeUncertain(error: unknown): boolean {
 function advanceOutcomeUnknown(purchase: PurchaseIntentResponse | null): boolean {
   // Preparing also covers an original CREATE that may still be in flight.
   return !purchase || (purchase.scope_held && purchaseNeedsStatus(purchase));
+}
+
+function purchaseReleased(purchase: PurchaseIntentResponse): boolean {
+  return !purchase.scope_held &&
+    (purchase.state === "resolved_no_external_effect" || purchase.state === "failed_before_external_effect");
 }
 
 export function ProductBilling({ productId, offerAvailable, user, headingLevel = 2 }: ProductBillingProps) {
@@ -93,11 +98,15 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
   const workFinishedAt = useRef(0);
   const refreshButton = useRef<HTMLButtonElement>(null);
   const resumeButton = useRef<HTMLButtonElement>(null);
-  const focusPayment = useRef(false);
+  const buyButton = useRef<HTMLButtonElement>(null);
+  const paymentLink = useRef<HTMLAnchorElement>(null);
+  const focusAfterStatus = useRef(false);
   const { begin, cancel } = useSessionOperation();
   const Heading = headingLevel === 2 ? "h2" : "h4";
   const ReviewHeading = headingLevel === 2 ? "h3" : "h5";
   const purchase = state.kind === "purchase" ? state.purchase : null;
+  const linked = purchase?.state === "linked";
+  const released = purchase !== null && purchaseReleased(purchase);
   const pendingAdvanceFailure = purchase && failure?.message === "errors.financialPending" ? failure : null;
   const uncertainConfirmation = state.kind === "review" && state.submission === ReviewSubmission.Uncertain;
   const working = work !== PurchaseWork.Idle;
@@ -108,15 +117,20 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     busy.current = false;
     setWork(PurchaseWork.Idle);
   }, []);
-  const attachPayment = useCallback((link: HTMLAnchorElement | null) => {
-    if (!link || !focusPayment.current) return;
-    focusPayment.current = false;
-    if (document.activeElement === document.body) link.focus();
-  }, []);
+
+  useLayoutEffect(() => {
+    if (!focusAfterStatus.current) return;
+    focusAfterStatus.current = false;
+    if (document.activeElement !== document.body) return;
+    if (linked) paymentLink.current?.focus();
+    else if (released) (offerAvailable ? buyButton.current : refreshButton.current)?.focus();
+  }, [linked, offerAvailable, released]);
 
   function showPurchase(saved: PurchaseIntentResponse) {
     const focused = document.activeElement;
-    focusPayment.current = saved.scope_held && saved.state === "linked" && (focused === refreshButton.current || focused === resumeButton.current);
+    const resumeFocused = focused === resumeButton.current;
+    focusAfterStatus.current = (resumeFocused && purchaseReleased(saved)) ||
+      (saved.scope_held && saved.state === "linked" && (resumeFocused || focused === refreshButton.current));
     setState({ kind: "purchase", purchase: saved });
   }
 
@@ -127,8 +141,8 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
       if (readStartedAt < workFinishedAt.current) return;
       const linked = saved.scope_held && saved.state === "linked";
       if (busy.current) {
-        if (!advancing || !linked) return;
-        // The saved binding can be used before the POST replies. Retire its UI update.
+        if (!advancing || !(linked || purchaseReleased(saved))) return;
+        // A saved binding or release supersedes the pending advance's UI update.
         cancel();
         finishWork();
       }
@@ -300,10 +314,8 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     });
   }
 
-  const linked = purchase?.state === "linked";
   const resumable = purchase && purchase.scope_held && !linked;
   const needsRecovery = purchase?.state === "awaiting_external_result" || purchase?.state === "manual_review";
-  const released = purchase && !purchase.scope_held && (purchase.state === "resolved_no_external_effect" || purchase.state === "failed_before_external_effect");
   return <section className={linked ? "purchase-panel purchase-complete" : "purchase-panel"} aria-label={t("title")}>
     {!linked && <Heading>{t("title")}</Heading>}
     <div role="status">
@@ -312,14 +324,14 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     {linked ? <>
       <p className="card-copy">{t("managedInAccount")}</p>
       <p className="card-copy">{t("accessInAccount")}</p>
-      <Link ref={attachPayment} className="btn-primary" href={`/account?purchase=${encodeURIComponent(purchase.purchase_intent_id)}#billing`}
+      <Link ref={paymentLink} className="btn-primary" href={`/account?purchase=${encodeURIComponent(purchase.purchase_intent_id)}#billing`}
         onNavigate={() => requestPaymentOpening(purchase.purchase_intent_id, user.user_id)}>{b("pay")}</Link>
     </> : !user.email_verified ? <>
       <p>{t("verification")}</p>
       <Link className="btn-secondary" href="/account">{t("verifyAction")}</Link>
     </> : <>
       <div className="purchase-actions">
-        {(state.kind === "none" || released) && <button className="btn-primary" type="button" disabled={working || !offerAvailable} onClick={() => void review()}>{t("buy")}</button>}
+        {(state.kind === "none" || released) && <button ref={buyButton} className="btn-primary" type="button" disabled={working || !offerAvailable} onClick={() => void review()}>{t("buy")}</button>}
         {(state.kind === "unavailable" || state.kind === "review" || purchase) &&
           <button ref={refreshButton} className="btn-secondary" type="button" aria-disabled={working} onClick={() => void refresh()}>{t("refresh")}</button>}
       </div>
