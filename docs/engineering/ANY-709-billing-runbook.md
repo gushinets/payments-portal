@@ -598,6 +598,11 @@ after five seconds, the product page checks saved status for the same purchase.
 A held, linked result makes the payment action available while that reply is
 pending.
 
+After a lost advance reply, a saved `preparing` state keeps the unknown-outcome
+warning and its request ID visible. That state covers both a possible send and
+a recovered agreement that is ready for explicit continuation. The buyer can
+check status or continue the same purchase while preparation is unresolved.
+
 With the tab visible, the product page polls a held purchase in `created`,
 `preparing` or `awaiting_external_result`. After an uncertain confirmation it
 can poll for the current purchase by product. The cabinet polls only the
