@@ -3,9 +3,9 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 
@@ -81,9 +81,12 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == 4 and sys.argv[1] == "--baseline-dockerfile":
-        Path(sys.argv[3]).write_text(
-            make_setid_control(Path(sys.argv[2]).read_text(encoding="utf-8")),
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--baseline-dockerfile", action="store_true")
+    args = parser.parse_args()
+    if args.baseline_dockerfile:
+        Path(".harness/any674-comparison/control.Dockerfile").write_text(
+            make_setid_control(Path("apps/api/Dockerfile").read_text(encoding="utf-8")),
             encoding="utf-8",
         )
     else:

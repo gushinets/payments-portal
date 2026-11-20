@@ -156,7 +156,7 @@ jobs:
       - name: Compare API privilege hardening with one vulnerability database
         run: |
           mkdir -p .harness/any674-comparison
-          python3 security/trivy/inspect-api-updates.py --baseline-dockerfile apps/api/Dockerfile .harness/any674-comparison/control.Dockerfile
+          python3 security/trivy/inspect-api-updates.py --baseline-dockerfile
           docker build --platform linux/amd64 --target production --file .harness/any674-comparison/control.Dockerfile --tag "$API_IMAGE-control" .
           docker run --rm --network none --entrypoint python --mount "type=bind,src=$PWD/security/trivy/inspect-api-components.py,dst=/tmp/probe.py,readonly" "$API_IMAGE-control" /tmp/probe.py > .harness/any674-comparison/control-components.json
           trivy image --cache-dir "$RUNNER_TEMP/any674-db" --download-db-only
