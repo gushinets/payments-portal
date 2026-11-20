@@ -32,12 +32,10 @@ class AuditedObjects:
     unrelated: set[str] = field(default_factory=set)
 
     def point_ids(self, operation: FinancialOperation) -> tuple[str, ...]:
-        original = self.confirmed | ({operation.bound_id} if operation.bound_id else set())
-        if original:
-            return tuple(sorted(original))
-        if operation.candidate_id and operation.candidate_id not in self.unrelated:
-            return (operation.candidate_id,)
-        return ()
+        ids = self.confirmed | ({operation.bound_id} if operation.bound_id else set())
+        if not ids and operation.candidate_id and operation.candidate_id not in self.unrelated:
+            ids.add(operation.candidate_id)
+        return tuple(sorted(ids))
 
 
 def retained_agreement_ids(bound_id: str | None, audit: AuditedObjects | None) -> frozenset[str]:

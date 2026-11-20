@@ -712,6 +712,9 @@ according to what happened to the original request.
 Closing the case preserves the purchase's terminal outcome. A live independent
 subscription still blocks a new purchase on the same tariff from sending a
 financial CREATE until the subscription ends or its agreement closes.
+A failed point read of a potential competitor on that tariff blocks first-primary
+selection for that inventory pass, even when the candidate is listed only under
+the historical agreement. The worker retries incomplete inventory.
 The agreement, tariff and permanent ownership evidence identify a repeated
 observation. Closing a case can dismiss a delayed point read for the same
 relationship if it completed by the confirmation time. A read that finishes
@@ -856,19 +859,23 @@ must use an isolated recording transport unless a real alert test is authorized.
 
 Operator procedure:
 
-1. Read the Sentry event and run its `inspect_command` (`inspect-operation`).
-   This local lookup returns the owner/purchase references and the actual
-   inspect/recover commands. Run its returned `inspect_command` to read current
-   evidence. If the original operation has already recovered, verify that its
-   specific review case is resolved and record that case as handled; do not
-   create another object. The Sentry issue groups multiple cases. Keep it open
-   while any case remains unresolved; recovery of one operation is not a reason
-   to close the grouped issue.
+Sentry and `inspect-operation` print commands for the local harness. On a
+deployed stack, take the action and IDs from those commands and use the
+[one-off operator CLI](../architecture/deployment.md#billing-operator-cli-while-the-api-is-stopped)
+with that stack's Compose project and protected environment file.
+
+1. Run `inspect-operation` with the operation ID from the Sentry event. It
+   returns the local owner and purchase references. Use the returned inspection
+   action and IDs to read current evidence. If the original operation has already
+   recovered, verify that its specific review case is resolved and record it as
+   handled. Continue using the recovered object's binding. The Sentry issue
+   groups multiple cases. Keep it open while any case remains unresolved.
 2. Check connection/authentication and LBX availability through normal setup.
    An empty discovery result still does not prove that creation never happened.
-3. For an agreement/subscription, run the local lookup's `recover_command`. It invokes
-   bounded GET-only original recovery. A unique proven original may bind and
-   resolve its deadline-only review. No new financial POST is sent.
+3. For an agreement/subscription, run `recover` with the user and purchase IDs
+   from the lookup. It invokes bounded GET-only original recovery. A unique
+   proven original may bind and resolve its deadline-only review. No new
+   financial POST is sent.
 4. For a customer, run `billing-customer diagnose --user-id <portal-user-uuid>`
    as provided by the local lookup, then have the user explicitly reopen their billing
    account after source recovery. Original paired point proof is still required;
