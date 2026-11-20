@@ -33,25 +33,30 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   const b = useTranslations("Billing");
   const p = useTranslations("Purchase");
   const a = useTranslations("Account.products.paid");
-  const widget = useBillingWidget(userId, emailVerified);
-  const openWidget = widget.open;
-  const closeWidget = widget.close;
   const { begin, cancel } = useSessionOperation();
   const visit = useRef(Symbol());
+  const billingSection = useRef<HTMLElement>(null);
+  const paymentNotice = useRef<HTMLDivElement>(null);
+  const automaticPaymentId = useRef<string | undefined>(undefined);
   // undefined permits a visible single-purchase default; null explicitly selects account viewing.
   const [selectedId, setSelectedId] = useState<string | null | undefined>(initialPurchaseId);
   const [selectionState, setSelectionState] = useState<SelectionState>({ status: initialPurchaseId && emailVerified ? "loading" : "ready" });
   const sessionRefused = selectionState.status === "error" && selectionState.sessionRefused === true;
   const canRead = emailVerified && !sessionRefused;
-  const handleRefusal = useCallback(({ httpStatus, message, requestId }: PurchaseReadRefusal) => {
+  const applyRefusal = useCallback(({ httpStatus, message, requestId }: PurchaseReadRefusal) => {
     cancel();
     if (initialPurchaseId) claimPaymentOpening(initialPurchaseId, userId, visit.current)?.();
     const sessionRefused = httpStatus === 401 || httpStatus === 403;
-    if (sessionRefused) closeWidget();
     // A concurrent selection failure cannot restore a refused cabinet session.
     setSelectionState((previous) => previous.status === "error" && previous.sessionRefused
       ? previous : { status: "error", message, requestId, sessionRefused });
-  }, [cancel, closeWidget, initialPurchaseId, userId]);
+  }, [cancel, initialPurchaseId, userId]);
+  const widget = useBillingWidget(userId, emailVerified, applyRefusal);
+  const { open: openWidget, close: closeWidget } = widget;
+  const handleRefusal = useCallback((refusal: PurchaseReadRefusal) => {
+    if (refusal.httpStatus === 401 || refusal.httpStatus === 403) closeWidget();
+    applyRefusal(refusal);
+  }, [applyRefusal, closeWidget]);
   const purchases = useAccountPurchases(canRead, handleRefusal);
   const { applyStatus } = purchases;
   const paid = usePaidAccess(canRead, handleRefusal);
@@ -110,7 +115,9 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   const selectionBlocked = selectionState.status !== "ready" || (!!selectedId && !selection);
   const checking = selection?.checking === true;
   const canPay = !selectionBlocked && selection?.state === "linked" && !checking;
-  const widgetOpen = widget.state.status === WidgetStatus.Open;
+  const widgetStatus = widget.state.status;
+  const widgetOpen = widgetStatus === WidgetStatus.Open;
+  const paymentTarget = "target" in widget.state ? widget.state.target : null;
   const paymentPurchaseId = "purchaseId" in widget.state ? widget.state.purchaseId : undefined;
   const paymentUnavailable = paymentPurchaseId !== undefined && (
     selectionState.status === "error" || selectionId !== paymentPurchaseId || (!checking && selection?.state !== "linked")
@@ -120,8 +127,23 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
     if (paymentUnavailable) closeWidget();
   }, [closeWidget, paymentUnavailable]);
 
+  useLayoutEffect(() => {
+    const purchaseId = automaticPaymentId.current;
+    if (!purchaseId || widgetStatus === WidgetStatus.Bootstrapping) return;
+    automaticPaymentId.current = undefined;
+    const notice = paymentNotice.current;
+    if (notice && !paymentUnavailable && paymentTarget?.purchase_intent_id === purchaseId) {
+      // The sticky navigation can wrap, so account for its live height.
+      const navigationBottom = document.querySelector(".top-nav")?.getBoundingClientRect().bottom ?? 0;
+      notice.style.scrollMarginTop = `${Math.max(0, navigationBottom)}px`;
+      notice.scrollIntoView({ behavior: "instant", block: "nearest" });
+    }
+  }, [paymentTarget, paymentUnavailable, widgetStatus]);
+
   useEffect(() => {
     if (!checking && selectionState.status === "ready" && selectionState.openPayment?.() && canPay && selectionId && selectionId === initialPurchaseId) {
+      billingSection.current?.scrollIntoView({ behavior: "instant", block: "start" });
+      automaticPaymentId.current = selectionId;
       void openWidget(selectionId);
     }
   }, [canPay, checking, initialPurchaseId, openWidget, selectionId, selectionState]);
@@ -149,6 +171,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   }
 
   function choose(id: string) {
+    automaticPaymentId.current = undefined;
     cancel();
     widget.close();
     poll.clearPause();
@@ -158,18 +181,19 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
 
   function manage(id: string) {
     choose(id);
-    document.getElementById("billing")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    billingSection.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     void widget.open(id);
   }
 
   function openSelected() {
+    automaticPaymentId.current = undefined;
     // Freeze explicit account viewing if inventory finishes after this click.
     setSelectedId(selection?.purchase_intent_id ?? null);
     void widget.open(selection?.purchase_intent_id);
   }
 
   return <>
-    <section id="billing" className="account-products-panel account-billing-panel" aria-label={b("title")}>
+    <section ref={billingSection} id="billing" className="account-products-panel account-billing-panel" aria-label={b("title")}>
       <h2>{b("title")}</h2>
       <p className="card-copy">{b("description")}</p>
       {!emailVerified && <p className="card-copy">{b("verificationRequired")}</p>}
@@ -193,6 +217,12 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
         {poll.paused && <p role="status">{p("statusPollingPaused")}</p>}
         {!selectionBlocked && selection && !canPay && <p>{!checking && b("preparationRequired")} <Link href={`/products/${encodeURIComponent(selection.product_id)}`}>{p("continue")}</Link></p>}
       </div>}
+      <div aria-live="polite">
+        {paymentTarget && <div ref={paymentNotice} className="notice">
+          <p>{b("paymentTarget", { agreement: paymentTarget.agreement_reference, seller: paymentTarget.seller_reference })}</p>
+          <p>{b("paymentTargetNote")}</p>
+        </div>}
+      </div>
       <button className="btn-primary" type="button" aria-describedby={widgetOpen ? "billing-refresh-hint" : undefined} disabled={!emailVerified || selectionBlocked || (!!selection && !canPay) || widget.loading} onClick={openSelected}>
         {widget.loading ? b("loading") : widgetOpen ? b("refresh") : canPay ? b("pay") : b("open")}
       </button>

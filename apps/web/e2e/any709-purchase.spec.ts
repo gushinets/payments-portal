@@ -123,6 +123,74 @@ test("guest sees read-only details and a sign-in prompt", async ({ page }) => {
   expect(state.bootstraps).toEqual([]);
 });
 
+for (const [label, viewport] of [
+  ["short viewport", { height: 550 }],
+  ["landscape", { width: 568, height: 320 }]
+] as const) {
+  test(`one-click payment brings the verified target into view before Widget READY (${label})`, async ({ page }) => {
+    await page.setViewportSize({ ...page.viewportSize()!, ...viewport });
+    const state = await syntheticBilling(page);
+    state.owned = savedPurchase;
+    state.readyFailure = true;
+    const panel = await openProduct(page);
+    const pay = panel.getByRole("link", { name: ru.Billing.pay });
+    await expect(pay).toBeVisible();
+
+    const sessionStarted = Promise.withResolvers<void>();
+    const sessionReply = Promise.withResolvers<void>();
+    await page.route("**/api/auth/session", async (route) => {
+      sessionStarted.resolve();
+      await sessionReply.promise;
+      return route.fulfill({ json: { authenticated: true, user: purchaseUser } });
+    });
+    const billing = page.getByRole("region", { name: ru.Billing.title });
+    try {
+      await pay.click();
+      await sessionStarted.promise;
+      await expect(billing).toHaveCount(0);
+    } finally {
+      sessionReply.resolve();
+    }
+
+    const paymentTarget = billing.getByText(/synthetic-agreement/);
+    await expect(paymentTarget).toContainText("synthetic-seller");
+    await expect(paymentTarget).toBeInViewport({ ratio: 1 });
+    await expect(billing.getByRole("button", { name: ru.Billing.loading })).toBeDisabled();
+    expect(state.bootstraps).toEqual([{ purchase_intent_id: savedPurchase.purchase_intent_id }]);
+  });
+}
+
+test("one-click payment keeps the verified target below the header after scrolling during bootstrap", async ({ page }) => {
+  await page.setViewportSize({ width: 568, height: 320 });
+  const state = await syntheticBilling(page);
+  state.owned = savedPurchase;
+  state.readyFailure = true;
+  const bootstrapReply = Promise.withResolvers<void>();
+  state.beforeBootstrap = () => bootstrapReply.promise;
+
+  const panel = await openProduct(page);
+  const billing = page.getByRole("region", { name: ru.Billing.title });
+  try {
+    await panel.getByRole("link", { name: ru.Billing.pay }).click();
+    await expect.poll(() => state.bootstraps.length).toBe(1);
+    await page.mouse.move(540, 275);
+    await page.mouse.wheel(0, 305);
+    await expect.poll(() => billing.evaluate((section) => section.getBoundingClientRect().top)).toBeLessThan(-100);
+  } finally {
+    bootstrapReply.resolve();
+  }
+
+  const paymentTarget = billing.getByText(/synthetic-agreement/);
+  await expect(paymentTarget).toContainText("synthetic-seller");
+  await expect(paymentTarget).toBeInViewport({ ratio: 1 });
+  await expect.poll(() => paymentTarget.evaluate((element) => {
+    const header = document.querySelector(".top-nav")!;
+    return element.getBoundingClientRect().top - header.getBoundingClientRect().bottom;
+  })).toBeGreaterThanOrEqual(0);
+  await expect(billing.getByRole("button", { name: ru.Billing.loading })).toBeDisabled();
+  expect(state.bootstraps).toEqual([{ purchase_intent_id: savedPurchase.purchase_intent_id }]);
+});
+
 test("purchase prepares once, then one wide cabinet Widget verifies the selected purchase", async ({ page }, testInfo) => {
   const state = await syntheticBilling(page);
   state.termsChanged = true;

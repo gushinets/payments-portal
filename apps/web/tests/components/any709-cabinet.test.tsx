@@ -109,6 +109,8 @@ it("loads a deep link outside the first page and requires an explicit action bef
 });
 
 it("consumes a verified payment click once and shows the target before Widget READY", async () => {
+  const scroll = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
+  scroll.mockClear();
   let ready!: () => void;
   mount.mockImplementationOnce((node: HTMLElement, _response, _title, _current, _failure, onReady: () => void) => {
     node.append(document.createElement("iframe"));
@@ -122,7 +124,12 @@ it("consumes a verified payment click once and shows the target before Widget RE
     </NextIntlClientProvider>,
     { reactStrictMode: true }
   );
-  expect(await screen.findByText(/synthetic-agreement/)).toBeVisible();
+  const paymentTarget = await screen.findByText(/synthetic-agreement/);
+  expect(paymentTarget).toBeVisible();
+  expect(scroll).toHaveBeenCalledTimes(2);
+  expect(scroll.mock.contexts[0]).toBe(screen.getByRole("region", { name: ru.Billing.title }));
+  expect(scroll.mock.contexts[1]).toContainElement(paymentTarget);
+  expect(scroll).toHaveBeenLastCalledWith({ behavior: "instant", block: "nearest" });
   expect(screen.getByRole("button", { name: ru.Billing.loading })).toBeDisabled();
   expect(payloads()).toEqual([{ purchase_intent_id: first.purchase_intent_id }]);
   act(() => ready());
@@ -131,6 +138,11 @@ it("consumes a verified payment click once and shows the target before Widget RE
   renderCabinet(first.purchase_intent_id);
   expect(await screen.findByRole("button", { name: ru.Billing.pay })).toBeEnabled();
   expect(bootstrap).toHaveBeenCalledTimes(1);
+  expect(scroll).toHaveBeenCalledTimes(2);
+  open();
+  await waitFor(() => expect(bootstrap).toHaveBeenCalledTimes(2));
+  expect(await screen.findByText(/synthetic-agreement/)).toBeVisible();
+  expect(scroll).toHaveBeenCalledTimes(2);
 });
 
 it("discards a pending payment click after session replacement", async () => {
@@ -743,4 +755,70 @@ it("closes checkout on a current-session refusal from the initial purchase read 
   expect(alert).toHaveTextContent(ru.Billing.errors.session);
   expect(alert).toHaveTextContent("initial-read-refusal");
   expect(payloads()).toEqual([{ purchase_intent_id: second.purchase_intent_id }]);
+});
+
+it.each(["open", "opening"])("closes an %s checkout on a late bootstrap refusal of the current session", async (checkout) => {
+  const previous = Promise.withResolvers<Response>();
+  const replacement = Promise.withResolvers<Response>();
+  bootstrap.mockReturnValueOnce(previous.promise).mockReturnValueOnce(replacement.promise);
+  list.mockResolvedValueOnce(json({ purchases: [first, second], next_cursor: null }));
+  requestPaymentOpening(first.purchase_intent_id, purchaseUser.user_id);
+  renderCabinet(first.purchase_intent_id);
+  await waitFor(() => expect(bootstrap).toHaveBeenCalledTimes(1));
+
+  fireEvent.change(selector(), { target: { value: second.purchase_intent_id } });
+  open();
+  const response = widgetResponse(true);
+  response.payment_target!.purchase_intent_id = second.purchase_intent_id;
+  if (checkout === "open") {
+    await act(async () => replacement.resolve(json(response)));
+    expect(document.querySelector("iframe")).toBeVisible();
+  } else {
+    expect(screen.getByRole("button", { name: ru.Billing.loading })).toBeDisabled();
+  }
+
+  await act(async () => previous.resolve(json({
+    detail: { code: "billing_session_required", request_id: "bootstrap-refusal" }
+  }, 401)));
+  if (checkout === "opening") await act(async () => replacement.resolve(json(response)));
+
+  expect(document.querySelector("iframe")).toBeNull();
+  expect(mount).toHaveBeenCalledTimes(checkout === "open" ? 1 : 0);
+  expect(screen.getByRole("alert")).toHaveTextContent(ru.Billing.errors.session);
+  expect(screen.getByRole("alert")).toHaveTextContent("bootstrap-refusal");
+  expect(screen.getByRole("button", { name: ru.Billing.open })).toBeDisabled();
+  expect(payloads()).toEqual([
+    { purchase_intent_id: first.purchase_intent_id }, { purchase_intent_id: second.purchase_intent_id }
+  ]);
+});
+
+it.each([
+  { scenario: "a transient failure", status: 503, code: "unavailable" },
+  { scenario: "an unclassified 401", status: 401, code: "unexpected_auth_error" },
+  { scenario: "a refusal of the replaced session", status: 401, code: "billing_session_required", replacesSession: true }
+])("keeps the next checkout open after $scenario from a previous bootstrap", async ({ status, code, replacesSession }) => {
+  const previous = Promise.withResolvers<Response>();
+  bootstrap.mockReturnValueOnce(previous.promise);
+  list.mockImplementation(async () => json({ purchases: [first, second], next_cursor: null }));
+  requestPaymentOpening(first.purchase_intent_id, purchaseUser.user_id);
+  const cabinet = renderCabinet(first.purchase_intent_id);
+  await waitFor(() => expect(bootstrap).toHaveBeenCalledTimes(1));
+
+  if (replacesSession) {
+    act(() => {
+      window.localStorage.setItem(sessionStorageKey, "replacement-session");
+      window.dispatchEvent(new Event(sessionChangedEvent));
+    });
+    cabinet.unmount();
+    renderCabinet();
+    await screen.findByRole("heading", { name: second.product_id });
+  }
+  fireEvent.change(selector(), { target: { value: second.purchase_intent_id } });
+  open();
+  await screen.findByRole("button", { name: ru.Billing.refresh });
+
+  await act(async () => previous.resolve(json({ detail: { code, request_id: "old-bootstrap" } }, status)));
+  expect(document.querySelector("iframe")).toBeVisible();
+  expect(selector()).toHaveValue(second.purchase_intent_id);
+  expect(screen.queryByText("old-bootstrap", { exact: false })).not.toBeInTheDocument();
 });
