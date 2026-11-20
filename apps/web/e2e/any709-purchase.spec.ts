@@ -54,9 +54,9 @@ async function syntheticBilling(page: Page, signedIn = true) {
     if (path.startsWith("/api/catalog/products")) return route.fulfill(state.catalogUnavailable
       ? { status: 503, json: { detail: { code: "catalog_unavailable" } } }
       : { json: path === "/api/catalog/products" ? { products: [simulatedProduct] } : simulatedProduct });
-    if (path === "/api/purchase-intents/current") return route.fulfill({ json: { purchase: state.owned } });
+    if (path === "/api/purchase-intents/current") return route.fulfill({ json: { purchase: state.owned?.scope_held ? state.owned : null } });
     if (path === "/api/purchases/review") return route.fulfill({ json: purchaseReview });
-    if (path === "/api/purchase-intents" && route.request().method() === "GET") return route.fulfill({ json: { purchases: state.owned ? [{ ...state.owned, created_at: "2026-10-27T12:00:00Z" }] : [], next_cursor: null } });
+    if (path === "/api/purchase-intents" && route.request().method() === "GET") return route.fulfill({ json: { purchases: state.owned?.scope_held ? [{ ...state.owned, created_at: "2026-10-27T12:00:00Z" }] : [], next_cursor: null } });
     if (path === "/api/purchase-intents") {
       state.confirmations.push({ key: route.request().headers()["idempotency-key"], body: route.request().postDataJSON() });
       if (state.termsChanged) {
@@ -121,7 +121,29 @@ test("guest sees read-only details and a sign-in prompt", async ({ page }) => {
   expect(state.bootstraps).toEqual([]);
 });
 
-test("terminal release hides existing payment while an omitted purchase is rechecked", async ({ page }) => {
+test("the saved status link survives operator completion and leads to a fresh review", async ({ page, context }) => {
+  const state = await syntheticBilling(page);
+  state.owned = { ...savedPurchase, state: "awaiting_external_result", reason: "purchase_pending" };
+  const panel = await openProduct(page);
+  const link = panel.getByRole("link", { name: ru.Purchase.statusLink });
+  await expect(link).toHaveAttribute("href", `/ru/account?purchase=${savedPurchase.purchase_intent_id}#billing`);
+  const statusUrl = await link.getAttribute("href");
+  await page.close();
+
+  const returned = await context.newPage();
+  const released = await syntheticBilling(returned);
+  released.owned = { ...savedPurchase, state: "resolved_no_external_effect", scope_held: false };
+  await returned.goto(statusUrl!);
+  const billing = returned.getByRole("region", { name: ru.Billing.title });
+  await expect(billing.getByText(ru.Purchase.states.resolved_no_external_effect)).toBeVisible();
+  await billing.getByRole("link", { name: ru.Purchase.buy }).click();
+  await returned.getByRole("button", { name: ru.Purchase.buy, exact: true }).click();
+  await expect(returned.getByRole("checkbox").first()).toBeVisible();
+  expect(released.confirmations).toEqual([]);
+  expect(released.advances).toBe(0);
+});
+
+test("terminal release hides existing payment through a failed status read and retry", async ({ page }) => {
   const state = await syntheticBilling(page);
   const purchaseId = savedPurchase.purchase_intent_id;
   let finishList!: () => void;
@@ -136,7 +158,10 @@ test("terminal release hides existing payment while an omitted purchase is reche
   await page.route(`**/api/purchase-intents/${purchaseId}`, async route => {
     reads += 1;
     if (reads === 1) return route.fulfill({ json: savedPurchase });
-    await statusReady;
+    if (reads === 2) {
+      await statusReady;
+      return route.fulfill({ status: 503, json: { detail: { code: "unavailable", request_id: "retry-purchase-status" } } });
+    }
     return route.fulfill({ json: { ...savedPurchase, state: "resolved_external_terminal", scope_held: false } });
   });
 
@@ -154,7 +179,13 @@ test("terminal release hides existing payment while an omitted purchase is reche
     await expect(frame).toBeHidden();
     await expect(billing.getByRole("button", { name: ru.Billing.refresh, exact: true })).toBeDisabled();
     finishStatus();
+    const alert = billing.getByRole("alert");
+    await expect(alert).toContainText("retry-purchase-status");
+    await expect(frame).toBeHidden();
+    expect((await new AxeBuilder({ page }).include("#billing").analyze()).violations).toEqual([]);
+    await alert.getByRole("button", { name: ru.Purchase.refresh, exact: true }).click();
     await expect(billing.getByText(ru.Purchase.states.resolved_external_terminal)).toBeVisible();
+    expect(reads).toBe(3);
     await expect(frame).toHaveCount(0);
     await expect(billing.getByRole("link", { name: ru.Purchase.buy })).toHaveAttribute("href", "/ru/products/proposal_ai");
     expect(state.bootstraps).toEqual([{ purchase_intent_id: purchaseId }]);

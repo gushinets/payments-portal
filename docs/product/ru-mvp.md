@@ -116,7 +116,9 @@ the mockup's remote CSS import.
   in a supporting rail. The primary workspace has one wide Widget, explicit
   purchase selection, and brief owned-purchase cards linking to product details.
   Product pages retain offer/review/consent/preparation; a prepared purchase shows
-  “Subscription prepared” and links to `/account?purchase=<id>#billing`. The cabinet
+  “Subscription prepared” and links to `/account?purchase=<id>#billing`. The same purchase-specific
+  status link is available from the moment the product page has a purchase ID,
+  including while preparation or manual review is pending. The cabinet
   verifies the selected purchase before payment and displays its product and
   proven agreement/seller. After operator completion, the same link shows the
   outcome and offers a return to the product for a new purchase. Payment for

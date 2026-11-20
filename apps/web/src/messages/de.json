@@ -489,6 +489,7 @@
     "confirmationUncertain": "Die Bestätigung könnte abgeschlossen sein. Prüfen Sie den gespeicherten Status oder senden Sie dieselbe Bestätigung erneut; die akzeptierten Bedingungen bleiben erhalten.",
     "continue": "Fortsetzen",
     "recover": "Wiederherstellung fortsetzen",
+    "statusLink": "Kaufstatus",
     "manage": "Abonnement verwalten",
     "termsChanged": "Die Bedingungen haben sich vor der Vorbereitung geändert. Prüfen Sie das aktuelle Angebot und stimmen Sie erneut zu.",
     "pending": "Die Vorbereitung ist ungeklärt. Setzen Sie diesen Kauf fort; es wird kein Ersatzkauf angelegt.",

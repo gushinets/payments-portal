@@ -489,6 +489,7 @@
     "confirmationUncertain": "La conferma potrebbe essere già completata. Controlla lo stato salvato o riprova la stessa conferma; le condizioni accettate non cambieranno.",
     "continue": "Continua",
     "recover": "Continua il recupero",
+    "statusLink": "Stato dell’acquisto",
     "manage": "Gestisci abbonamento",
     "termsChanged": "Le condizioni sono cambiate prima della preparazione. Verifica l’offerta attuale e rinnova i consensi.",
     "pending": "La preparazione non è risolta. Continua questo acquisto; non ne verrà creato uno sostitutivo.",

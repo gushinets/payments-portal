@@ -489,6 +489,7 @@
     "confirmationUncertain": "Confirmation may have completed. Check saved status or retry this same confirmation; its accepted terms will not change.",
     "continue": "Continue",
     "recover": "Continue recovery",
+    "statusLink": "Purchase status",
     "manage": "Manage subscription",
     "termsChanged": "Terms changed before preparation. Review the current offer and consent again.",
     "pending": "Preparation is unresolved. Continue with this purchase; no replacement will be created.",

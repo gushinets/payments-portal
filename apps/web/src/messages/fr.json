@@ -489,6 +489,7 @@
     "confirmationUncertain": "La confirmation a peut-être abouti. Consultez l’état enregistré ou renvoyez la même confirmation ; les conditions acceptées resteront identiques.",
     "continue": "Continuer",
     "recover": "Poursuivre la récupération",
+    "statusLink": "Statut de l’achat",
     "manage": "Gérer l’abonnement",
     "termsChanged": "Les conditions ont changé avant la préparation. Consultez l’offre actuelle et renouvelez votre consentement.",
     "pending": "La préparation reste incertaine. Poursuivez cet achat ; aucun remplacement ne sera créé.",

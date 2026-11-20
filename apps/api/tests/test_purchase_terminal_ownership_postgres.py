@@ -20,7 +20,7 @@ from app.composition.sources import SourceResources, source_resources
 from app.domains.billing import customers, terminal_resolution as terminal
 from app.domains.billing.operator_diagnostics import inspect_evidence
 from app.domains.billing.operator_contracts import LateSubscriptionPoint
-from app.domains.billing.operator_review import has_late_purchase_review_for_product
+from app.domains.billing.operator_review import digest, has_late_purchase_review_for_product
 from app.domains.purchases import financial, service
 from app.domains.purchases.contracts import Purchase, PurchaseRefused
 from app.infrastructure.queries import billing_operator
@@ -30,6 +30,7 @@ from app.models import (
     ExternalCreateOperation,
     ExternalCreateOperationKind as Kind,
     ExternalSubscription,
+    ManualReviewCase,
     PurchaseIntentState,
 )
 from apps.api.tests.factories.original_operation import original_proof
@@ -82,9 +83,9 @@ def _close_uncertain_subscription(
     return service.read_purchase(factory, old.user_id, old.id)
 
 
-def _attest_subscription_after_release(
-    factory: sessionmaker[Session], transport: PurchaseTransport, old: Purchase, *, second_agreement: bool
-) -> Purchase:
+def _unsent_subscription_case(
+    factory: sessionmaker[Session], transport: PurchaseTransport, old: Purchase
+) -> tuple[Purchase, UUID]:
     config = step1_settings()
     agreement, subscription = old.operations
     today = datetime.now(UTC).date()
@@ -113,11 +114,38 @@ def _attest_subscription_after_release(
     [late] = [
         case for case in inspect_evidence(factory, config, old.user_id, old.id)["reviews"] if case["state"] == "open"
     ]
+    return old, UUID(late["review_case_id"])
+
+
+def _legacy_audit_only_purchase(
+    factory: sessionmaker[Session], transport: PurchaseTransport, old: Purchase, *, second_agreement: bool
+) -> Purchase:
+    config = step1_settings()
+    old, case_id = _unsent_subscription_case(factory, transport, old)
+    agreement, subscription = old.operations
+    agreement_proof = terminal.OperationEvidence(
+        operation_id=agreement.id, outcome=terminal.TerminalEvidenceKind.EXTERNAL_TERMINAL, external_object_id="456"
+    )
     sub_proof = terminal.OperationEvidence(
         operation_id=subscription.id, outcome=terminal.TerminalEvidenceKind.EXTERNAL_TERMINAL, external_object_id="567"
     )
-    followup = _confirmation(factory, old, agreement_proof, sub_proof, case_id=UUID(late["review_case_id"]))
-    terminal.resolve_purchase(factory, config, followup, PRINCIPAL)
+    followup = _confirmation(factory, old, agreement_proof, sub_proof, case_id=case_id)
+    # Older v1 records could attest an unsent operation. They remain ownership
+    # evidence and their exact command must stay replayable after the rule change.
+    with factory() as db:
+        case = db.get(ManualReviewCase, case_id)
+        case.case_state = "resolved"
+        case.resolved_at = datetime.now(UTC)
+        case.resolved_by_principal = PRINCIPAL
+        case.resolution_schema_version = terminal.SCHEMA
+        case.resolution_document = terminal.TerminalAudit(
+            request=followup,
+            command_digest=digest({"request": followup.model_dump(mode="json"), "principal": PRINCIPAL}),
+            before_state=old.state,
+            after_state=old.state,
+        ).model_dump(mode="json")
+        db.commit()
+    assert terminal.resolve_purchase(factory, config, followup, PRINCIPAL).already_resolved
     if second_agreement:
         transport.agreements.append({**transport.agreements[0], "agreement_id": 457})
         observed = datetime.now(UTC)
@@ -138,6 +166,106 @@ def _attest_subscription_after_release(
     return old
 
 
+async def test_unsent_subscription_cannot_be_attested_after_release(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    transport, _, purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    old, case_id = _unsent_subscription_case(factory, transport, purchase)
+    agreement, subscription = old.operations
+    reviews = inspect_evidence(factory, config, old.user_id, old.id)["reviews"]
+    [release] = [review for review in reviews if review["reason"] == terminal.TERMINAL_REASON]
+    original, unsent = (terminal.OperationEvidence.model_validate(item) for item in release["original_operations"])
+    assert original.operation_id == agreement.id and original.external_object_id == "456"
+    assert unsent.operation_id == subscription.id and unsent.outcome == terminal.TerminalEvidenceKind.NOT_SENT
+    positive = terminal.OperationEvidence(
+        operation_id=subscription.id, outcome=terminal.TerminalEvidenceKind.EXTERNAL_TERMINAL, external_object_id="567"
+    )
+    with pytest.raises(PurchaseRefused, match="purchase_resolution_proof_incomplete"):
+        terminal.resolve_purchase(
+            factory, config, _confirmation(factory, old, original, positive, case_id=case_id), PRINCIPAL
+        )
+    disproof = terminal.OperationEvidence(
+        operation_id=subscription.id,
+        outcome=terminal.TerminalEvidenceKind.NO_EXTERNAL_EFFECT,
+        unrelated_object_ids=("567",),
+    )
+    resolution = _confirmation(factory, old, original, disproof, case_id=case_id)
+    terminal.resolve_purchase(factory, config, resolution, PRINCIPAL)
+    assert terminal.resolve_purchase(factory, config, resolution, PRINCIPAL).already_resolved
+    assert not terminal.released_operation_objects(factory, old.id)[subscription.id].confirmed
+
+
+async def test_agreement_case_cannot_attest_another_operation(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    transport, sources, purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    old = synthetic_prepare(factory, transport, purchase, uncertain=True)
+    agreement, subscription = old.operations
+    transport.agreements[0]["close_date"] = datetime.now(UTC).date().isoformat()
+    terminal.resolve_purchase(factory, config, request(factory, old, confirmed=True), PRINCIPAL)
+    transport.agreements[0]["close_date"] = None
+    await recover_financial(
+        sources, config, factory=factory, user_id=old.user_id, purchase_id=old.id, operation_id=agreement.id
+    )
+    [case] = [
+        item for item in inspect_evidence(factory, config, old.user_id, old.id)["reviews"] if item["state"] == "open"
+    ]
+    assert case["late_object"]["operation_id"] == str(agreement.id)
+    case_id = UUID(case["review_case_id"])
+    transport.agreements[0]["close_date"] = datetime.now(UTC).date().isoformat()
+    positive = terminal.OperationEvidence(
+        operation_id=subscription.id, outcome=terminal.TerminalEvidenceKind.EXTERNAL_TERMINAL, external_object_id="567"
+    )
+    with pytest.raises(PurchaseRefused, match="purchase_resolution_proof_incomplete"):
+        terminal.resolve_purchase(factory, config, _confirmation(factory, old, positive, case_id=case_id), PRINCIPAL)
+    resolution = _confirmation(factory, old, case_id=case_id)
+    terminal.resolve_purchase(factory, config, resolution, PRINCIPAL)
+    assert terminal.resolve_purchase(factory, config, resolution, PRINCIPAL).already_resolved
+    assert not terminal.released_operation_objects(factory, old.id)[subscription.id].confirmed
+
+
+async def test_disproved_live_subscription_still_blocks_same_tariff_until_ended(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    transport, sources, purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    old = synthetic_prepare(factory, transport, purchase, uncertain=True)
+    subscription = next(op for op in old.operations if op.kind == Kind.SUBSCRIPTION)
+    candidate = transport.subscriptions.pop()
+    transport.agreements[0]["close_date"] = datetime.now(UTC).date().isoformat()
+    terminal.resolve_purchase(factory, config, request(factory, old, confirmed=True), PRINCIPAL)
+    replacement = await accept(sources, factory, key="after-disproved-live-subscription")
+    transport.agreements[0]["close_date"] = None
+    candidate.update(subscription_id=1567, outer_id="independent-subscription")
+    transport.subscriptions.append(candidate)
+    await recover_financial(
+        sources, config, factory=factory, user_id=old.user_id, purchase_id=old.id, operation_id=subscription.id
+    )
+    [case] = [
+        item for item in inspect_evidence(factory, config, old.user_id, old.id)["reviews"] if item["state"] == "open"
+    ]
+    disproof = terminal.OperationEvidence(
+        operation_id=subscription.id,
+        outcome=terminal.TerminalEvidenceKind.NO_EXTERNAL_EFFECT,
+        unrelated_object_ids=("1567",),
+    )
+    terminal.resolve_purchase(
+        factory, config, _confirmation(factory, old, disproof, case_id=UUID(case["review_case_id"])), PRINCIPAL
+    )
+    with pytest.raises(PurchaseRefused, match="purchase_existing_subscription_review"):
+        await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=replacement.id)
+    assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
+    candidate["state"] = 3
+    linked = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=replacement.id)
+    assert linked.state == PurchaseIntentState.LINKED
+    assert transport.creates("/agreements") == transport.creates("/subscriptions") == 1
+
+
 @pytest.mark.parametrize("entrypoint", ["recover", "inventory"])
 async def test_agreement_attested_during_point_read_does_not_create_relationship_conflict(
     background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
@@ -147,7 +275,7 @@ async def test_agreement_attested_during_point_read_does_not_create_relationship
 ) -> None:
     transport, sources, purchase = background_scenario
     factory, config = postgres_session_factory, step1_settings()
-    old = _attest_subscription_after_release(factory, transport, purchase, second_agreement=False)
+    old = _legacy_audit_only_purchase(factory, transport, purchase, second_agreement=False)
     agreement, subscription = old.operations
     second_agreement = {**transport.agreements[0], "agreement_id": 457, "close_date": None}
     transport.agreements.append(second_agreement)
@@ -219,7 +347,7 @@ async def test_public_recover_reads_subscription_attested_after_the_initial_rele
 ) -> None:
     transport, sources, purchase = background_scenario
     factory = postgres_session_factory
-    old = _attest_subscription_after_release(factory, transport, purchase, second_agreement=second_agreement)
+    old = _legacy_audit_only_purchase(factory, transport, purchase, second_agreement=second_agreement)
     replacement = await accept(sources, factory, key="replacement-after-recover")
     transport.subscriptions.append({"subscription_id": 567, "agreement_id": 999, "tariff_id": 701})
     transport.hide.update({"/agreements", "/subscriptions"})
@@ -300,7 +428,7 @@ async def test_advance_retains_audited_subscription_conflict_after_listing_omiss
     transport, sources, purchase = background_scenario
     factory = postgres_session_factory
     config = step1_settings()
-    old = _attest_subscription_after_release(factory, transport, purchase, second_agreement=second_agreement)
+    old = _legacy_audit_only_purchase(factory, transport, purchase, second_agreement=second_agreement)
     assert all(op.bound_id is None for op in old.operations)
     replacement = await accept(sources, factory, key="replacement-after-audit")
     transport.subscriptions.append({"subscription_id": 567, "agreement_id": 999, "tariff_id": 701})
@@ -399,7 +527,7 @@ async def test_attested_subscription_under_either_closed_agreement_allows_replac
 ) -> None:
     transport, sources, purchase = background_scenario
     factory = postgres_session_factory
-    old = _attest_subscription_after_release(factory, transport, purchase, second_agreement=True)
+    old = _legacy_audit_only_purchase(factory, transport, purchase, second_agreement=True)
     transport.subscriptions.append({"subscription_id": 567, "agreement_id": observed_agreement, "tariff_id": 701})
     assert await _recover_from_cli(factory, old, transport, monkeypatch) == 0
     assert not any(

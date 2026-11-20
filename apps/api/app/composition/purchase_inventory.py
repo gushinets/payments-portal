@@ -409,18 +409,20 @@ async def collect_inventory(
                     # Keep the INCOMPLETE candidate scoped to its retained owner.
                     complete = False
                     continue
-                if late_observation.disposition != LateObjectDisposition.CLEAR:
+                if late_observation.disposition == LateObjectDisposition.CLEAR:
+                    if not listing_disagrees:
+                        for affected_product in affected:
+                            candidates[affected_product][-1] = candidates[affected_product][-1].model_copy(
+                                update={"conclusion": Conclusion.INELIGIBLE}
+                            )
+                    continue
+                if late_observation.disposition != LateObjectDisposition.UNRELATED:
                     complete = False
                     if late_observation.disposition == LateObjectDisposition.RELATIONSHIP_CONFLICT:
                         for product in products_by_tariff.get(point.tariff_id, ()):
                             product_complete[product] = False
                     continue
-                if not listing_disagrees:
-                    for affected_product in affected:
-                        candidates[affected_product][-1] = candidates[affected_product][-1].model_copy(
-                            update={"conclusion": Conclusion.INELIGIBLE}
-                        )
-                continue
+                # Disproof settles the historical case. Apply ordinary admission to the live object below.
             agreement = await _candidate_point(
                 lambda: client.get_agreement(agreement_id=point.agreement_id, budget=budget), budget
             )

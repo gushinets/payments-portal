@@ -356,8 +356,13 @@ allowance IDs and quantities remain unchanged. The old Kernel-only delegation
 API and snapshot V2 binaries are also excluded; there is no rolling mixed-wire
 mode for this cutover.
 
-Retained `resolved_external_terminal` rows require an ANY-821-compatible Portal
-reader. Migration `20261116_821` refuses downgrade while those rows remain.
+Migration `20261116_821` refuses downgrade while a purchase retains
+`resolved_external_terminal`, a `purchase_late_external_object` review is open,
+or a terminal resolution audit retains a confirmed external object ID.
+Even after a purchase was completed as `resolved_no_external_effect`, an open
+late-object review requires a compatible Portal reader to block new financial
+CREATEs for that customer. Confirming the object keeps the downgrade blocked.
+Ruling it out removes that review's restriction.
 The existing guards for retained V2 evidence, allowance activation and issuance
 budgets still apply.
 Keep the matching application and database backup together for recovery.

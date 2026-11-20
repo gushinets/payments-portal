@@ -573,8 +573,11 @@ Prepared product detail links to `/account?purchase=<id>#billing`. The deep link
 selects an owned purchase. A completed purchase shows its terminal outcome.
 The cabinet rereads a held purchase when its listed status differs from the
 detail or a complete list omits the purchase. It pauses payment for that
-selection and hides any open payment Widget while checking. Opening the Widget
-requires a user action.
+selection and hides any open payment Widget while checking. If the status read
+fails, the customer can retry it in the cabinet. If the purchase is still held
+and linked, the same Widget becomes visible again. If it was released, the
+cabinet closes the Widget and shows the terminal outcome and a link to buy
+again. A new Widget session requires a user action.
 One shared cabinet Widget serves account/payment views; multiple purchases need explicit
 selection. Owned inventory remains available independently of source catalog.
 Refresh billing disposes the old host, rechecks the same purchase and opens a

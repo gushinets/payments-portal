@@ -357,12 +357,13 @@ an identity bound to another purchase require review or more proof. Recovery pre
 operation, request/key/date, accepted history and hold. Known financial conflicts
 need audited resolution; a deadline-only escalation permits explicit user/CLI
 GET-only recovery after automatic discovery has paused.
-Advance, worker and operator use the same GET-only original-operation collector
-and transactional binder. The original saved command, actual possible-send
-history and fresh ownership/effective terms are required. A known binding never
-re-enters preparation: completed recovery is a no-op, while lifecycle updates
-require the existing subscription lease. A concurrent first binder discards the
-losing candidate proof and forces fresh claimed reconciliation.
+While the purchase holds its scope, advance, worker and operator recovery use
+the same GET-only collector and transactional binder. Binding requires the
+original saved command, possible-send history and fresh proof of ownership and
+effective terms. Recovery skips already bound operations. Subscription lifecycle
+updates use the existing reconciliation lease. If another process binds first,
+recovery discards the stale candidate proof and requires fresh reconciliation.
+After release, an operator can run `recover` to check retained objects for late evidence.
 
 Original termination is recoverable history, including a closed agreement.
 First binding atomically retains the binding and normalized negative, with zero
@@ -555,15 +556,15 @@ Only after shutdown obtain documented final LBX confirmation that the exact
 request had no effect and cannot still apply, or that its created objects are
 irreversibly terminal. An unpaid/inactive/blocked subscription is not terminal.
 For partial preparation, confirm both the created agreement and the uncertain
-subscription; the command does not close LBX objects itself. If confirmation is
-unavailable, retain the hold and restart normal operation; investigate again later.
+subscription; the command does not close LBX objects itself. If confirmation
+is unavailable, resume normal operation and investigate later. Keep the hold
+for an initial completion or leave the late case open for a released purchase.
 
 The UTF-8 evidence file (maximum 32 KiB) contains one entry per original operation.
 Use `inspect` for operation IDs, bindings, receipts and the current digest.
-For an original object identified only in an earlier terminal audit, use the
-request-specific LBX confirmation retained with that decision. Supply a fresh
-confirmation for the current action. Replace the example values below with
-these identities and actual timestamps.
+Keep the submitted file with the local operator record. If an earlier audit is
+the only source for an original object ID, use its request-specific LBX
+confirmation to identify the object for the current check.
 
 ```json
 {
@@ -585,12 +586,13 @@ confirmation must establish that the original request had no effect and can
 no longer apply. For `external_terminal`, identify the actual terminal object
 in `external_object_id`. Permanent bindings and previously confirmed original
 objects remain part of the audit and cannot be listed as unrelated.
-Omit both timestamps when all operations are proven unsent. For any possible
-send, record the actual shutdown in `senders_stopped_at` at or after the latest
-possible-send attempt. Record the final LBX confirmation in `confirmed_at`
-after shutdown and at or before the current time. Set `--reference` to the LBX
-support confirmation reference. Keep provider payloads, secrets and personal
-data out of reason/reference.
+For initial completion with two `not_sent` entries, omit both timestamps and
+use the local operator ticket documenting the no-send evidence as `--reference`.
+For any possible send, record the actual shutdown in `senders_stopped_at` at
+or after the latest possible-send attempt. Set `confirmed_at` to the time LBX
+gave final confirmation after shutdown (at or before the current time). Use
+the LBX confirmation reference as `--reference`.
+Keep provider payloads, secrets and personal data out of reason/reference.
 
 ```bash
 .venv/bin/python scripts/repo.py billing-purchase resolve-purchase --user-id <portal-user-uuid> --purchase-id <purchase-intent-uuid> --expected-digest <sha256:digest> --evidence-file <confirmation.json> --reason 'Customer requests restart; original outcome confirmed' --reference 'LBX support confirmation reference'
@@ -639,12 +641,30 @@ bind the held purchase's own subscription.
 Use `inspect` to match the case ID to its operation, external object ID, latest
 read time, observed agreement and tariff, and any conflict with a permanent
 binding. A subscription permanently bound to another operation cannot be
-attested as the original object of this purchase. Correct the source and follow
+attested as the original object of this purchase. Correct any source error and follow
 the same stop-and-confirm procedure, obtaining final confirmation after the
 completion of the case's latest read. Run `resolve-purchase` on the original
 purchase with `--case-id` set to the case's `review_case_id` and
 `--expected-digest` set to the current `inspect.expected_resolution_digest`.
-This closes the exact case and preserves the purchase's terminal outcome.
+Copy the other operation's entry unchanged from `original_operations` in the
+original terminal review. If `reviews_truncated` is true and that review is
+missing from `inspect`, copy the entry from the evidence file submitted for the
+original completion. Only the operation and object named by the late case can
+receive new evidence. An original `not_sent` rules out a new original object ID.
+
+If LBX confirms that the late subscription was created independently, put its
+ID in `unrelated_object_ids` on the subscription entry. Choose the outcome
+according to what happened to the original request.
+
+- If the original request had no effect and can no longer apply, use
+  `no_external_effect` and omit `external_object_id`.
+- If the original subscription was bound or previously confirmed, obtain final
+  confirmation that it has ended. Use `external_terminal` with that original
+  ID in `external_object_id`.
+
+Closing the case preserves the purchase's terminal outcome. A live independent
+subscription still blocks a new purchase on the same tariff from sending a
+financial CREATE until the subscription ends or its agreement closes.
 The agreement, tariff and permanent ownership evidence identify a repeated
 observation. Closing a case can dismiss a delayed point read for the same
 relationship if it completed by the confirmation time. A read that finishes

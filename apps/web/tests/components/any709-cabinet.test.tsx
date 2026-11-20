@@ -85,6 +85,41 @@ it.each([
   expect(screen.getByRole("button", { name: ru.Billing.open })).toBeDisabled();
 });
 
+it.each(["linked", "resolved_external_terminal"] as const)("retries a failed purchase recheck and uses the fresh %s status", async (latest) => {
+  let finishList!: (value: Response) => void;
+  let finishRetry!: (value: Response) => void;
+  list.mockImplementationOnce(() => new Promise<Response>(resolve => { finishList = resolve; }));
+  status.mockResolvedValueOnce(json(savedPurchase));
+  status.mockResolvedValueOnce(json({ detail: { code: "unavailable", request_id: "synthetic-retry" } }, 503));
+  status.mockImplementationOnce(() => new Promise<Response>(resolve => { finishRetry = resolve; }));
+  renderCabinet(first.purchase_intent_id);
+  await waitFor(() => expect(screen.getByRole("button", { name: ru.Billing.open })).toBeEnabled());
+  open();
+  await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
+  const paymentFrame = document.querySelector("iframe");
+  expect(paymentFrame).toBeVisible();
+  await act(async () => finishList(json({ purchases: [], next_cursor: null })));
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("synthetic-retry");
+  fireEvent.click(within(alert).getByRole("button", { name: ru.Purchase.refresh }));
+  await waitFor(() => expect(status).toHaveBeenCalledTimes(3));
+  expect(screen.getByRole("button", { name: ru.Billing.refresh })).toBeDisabled();
+  expect(paymentFrame).not.toBeVisible();
+  await act(async () => finishRetry(json({ ...savedPurchase, state: latest, scope_held: latest === "linked" })));
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  if (latest === "linked") {
+    expect(document.querySelector("iframe")).toBe(paymentFrame);
+    expect(paymentFrame).toBeVisible();
+    expect(screen.getByRole("button", { name: ru.Billing.refresh })).toBeEnabled();
+  } else {
+    expect(screen.getByText(ru.Purchase.states.resolved_external_terminal)).toBeVisible();
+    expect(screen.getByRole("link", { name: ru.Purchase.buy })).toBeVisible();
+    expect(document.querySelector("iframe")).toBeNull();
+  }
+  expect(status).toHaveBeenCalledTimes(3);
+  expect(bootstrap).toHaveBeenCalledTimes(1);
+});
+
 it("keeps the selected Widget when an incomplete list has not reached the held purchase", async () => {
   list.mockResolvedValueOnce(json({ purchases: [second], next_cursor: second.purchase_intent_id }));
   renderCabinet(first.purchase_intent_id);
