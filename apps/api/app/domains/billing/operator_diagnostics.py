@@ -8,6 +8,7 @@ from app.domains.billing.operator_contracts import (
     TERMINAL_REASON,
     TERMINAL_SCHEMA,
     LateObjectEvidence,
+    LateReviewRef,
     TerminalAudit,
 )
 from app.domains.billing.operator_review import case_digest, terminal_state_digest
@@ -82,7 +83,14 @@ def inspect_operation(factory: SessionFactory, configuration: Settings, operatio
     return result
 
 
-def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: UUID, purchase_id: UUID) -> dict:
+def inspect_evidence(
+    factory: SessionFactory,
+    configuration: Settings,
+    user_id: UUID,
+    purchase_id: UUID,
+    *,
+    include_blocking_late_reviews: bool = False,
+) -> dict:
     with factory() as db:
         if (
             diagnostic_user(
@@ -112,7 +120,7 @@ def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: 
             open_first=True,
         )
         now = as_utc(billing_reconciliation.database_now(db))
-        return {
+        report = {
             "purchase_intent_id": str(purchase.id),
             "state": purchase.state,
             "reason": purchase.reason,
@@ -190,6 +198,17 @@ def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: 
             "work_truncated": len(work) > 100,
             "reviews_truncated": len(reviews) > 100,
         }
+        if include_blocking_late_reviews:
+            limit = 100
+            blocking_reviews = queries.open_purchase_review_refs(
+                db, purchase.customer_id, reason=LATE_REASON, limit=limit + 1
+            )
+            report["blocking_late_reviews"] = [
+                LateReviewRef(purchase_intent_id=original_id, review_case_id=case_id).model_dump(mode="json")
+                for original_id, case_id in blocking_reviews[:limit]
+            ]
+            report["blocking_late_reviews_truncated"] = len(blocking_reviews) > limit
+        return report
 
 
 def purchase_subscription(factory: SessionFactory, configuration: Settings, user_id: UUID, purchase_id: UUID) -> UUID:

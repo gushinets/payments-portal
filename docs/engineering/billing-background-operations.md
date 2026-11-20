@@ -505,6 +505,10 @@ parser arguments exit 2.
   bound object IDs (`external_object_id`) and saved CREATE IDs (`receipt_candidate_id`),
   recent observation summaries, work and review IDs/digests. Work/review lists
   cap at 100 with truncation flags; observations contain the latest 20 records.
+  `blocking_late_reviews` lists up to 100 open late-object cases that block new
+  financial CREATEs for this customer. Each entry contains the original
+  `purchase_intent_id` and `review_case_id`. `blocking_late_reviews_truncated`
+  indicates additional blocking cases.
   No customer keys, raw requests, credentials or accepted amounts are exposed.
 - `inspect-operation --operation-id <local-operation-uuid>`: resolve the opaque
   operation reference from Sentry locally. It checks configured origin/account
@@ -685,9 +689,11 @@ or a verified contradiction with its own receipt, require review. Once the
 original late case closes and the listing is corrected, GET-only recovery can
 bind the held purchase's own subscription.
 
-Use `inspect` to match the case ID to its operation, external object ID, latest
-read time, observed agreement and tariff, and any conflict with a permanent
-binding. A subscription permanently bound to another operation cannot be
+If a new purchase is blocked, run `inspect` for that purchase and use
+`blocking_late_reviews` to find the original purchase and case IDs. Run `inspect`
+for the original purchase and match the case ID to its operation, external object
+ID, latest read time, observed agreement and tariff, and any conflict with a
+permanent binding. A subscription permanently bound to another operation cannot be
 attested as the original object of this purchase. Correct any source error and follow
 the same stop-and-confirm procedure, obtaining final confirmation after the
 completion of the case's latest read. Run `resolve-purchase` on the original
@@ -696,8 +702,9 @@ purchase with `--case-id` set to the case's `review_case_id` and
 Copy the other operation's entry unchanged from `original_operations` in the
 original terminal review. If `reviews_truncated` is true and that review is
 missing from `inspect`, copy the entry from the evidence file submitted for the
-original completion. Only the operation and object named by the late case can
-receive new evidence. An original `not_sent` rules out a new original object ID.
+original completion. Update evidence only for the operation named by the late
+case. A newly attested original object ID must match the ID recorded in that
+case. An original `not_sent` rules out a new original object ID.
 
 If LBX confirms that the late subscription was created independently, put its
 ID in `unrelated_object_ids` on the subscription entry. Choose the outcome
@@ -706,8 +713,8 @@ according to what happened to the original request.
 - If the original request had no effect and can no longer apply, use
   `no_external_effect` and omit `external_object_id`.
 - If the original subscription was bound or previously confirmed, obtain final
-  confirmation that it has ended. Use `external_terminal` with that original
-  ID in `external_object_id`.
+  confirmation that it has ended. Use `external_terminal` and keep the original
+  subscription's ID in `external_object_id`.
 
 Closing the case preserves the purchase's terminal outcome. A live independent
 subscription still blocks a new purchase on the same tariff from sending a

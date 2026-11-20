@@ -12,11 +12,13 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.cli import billing_purchases
 from app.composition import purchase_inventory, purchase_recovery
 from app.composition.billing_operator import resolve_review
 from app.composition.purchase_recovery import recover_financial
-from app.composition.purchases import advance_purchase
+from app.composition.purchases import advance_purchase, confirm_purchase
 from app.composition.sources import SourceResources, source_resources
+from app.core import database
 from app.core.settings import Settings
 from app.domains.billing import terminal_resolution as terminal
 from app.domains.billing.discovery import apply_inventory, persist_discoveries
@@ -42,6 +44,7 @@ from apps.api.tests.support.any709_step1 import link_document, link_selection, s
 from apps.api.tests.support.any709_step3 import PurchaseTransport
 from apps.api.tests.factories.billing_operator import resolution_request
 from apps.api.tests.factories.reconciliation import agreement_factory, subscription_factory
+from apps.api.tests.test_any709_step2_postgres import seed
 from apps.api.tests.test_any709_step3_postgres import accept, TOKEN
 from apps.api.tests.test_billing_background_recovery_postgres import (
     anyio_backend as anyio_backend,
@@ -58,12 +61,16 @@ pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
 
 
 async def test_open_late_review_survives_listing_omission(
-    background_scenario: tuple, postgres_session_factory: sessionmaker[Session]
+    background_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     transport, sources, purchase = background_scenario
     factory = postgres_session_factory
+    config = step1_settings()
     purchase = synthetic_prepare(factory, transport, purchase, uncertain=True)
-    terminal.resolve_purchase(factory, step1_settings(), request(factory, purchase, confirmed=True), PRINCIPAL)
+    terminal.resolve_purchase(factory, config, request(factory, purchase, confirmed=True), PRINCIPAL)
     replacement = await accept(sources, factory, key="review-replacement")
     with pytest.raises(PurchaseRefused):
         await advance_purchase(sources, step1_settings(), factory=factory, token=TOKEN, purchase_id=replacement.id)
@@ -83,8 +90,40 @@ async def test_open_late_review_survives_listing_omission(
     with factory() as db:
         case = db.scalar(select(ManualReviewCase).where(ManualReviewCase.reason_code == terminal.LATE_REASON))
         assert case is not None and case.case_state == "open"
+        case_id = case.review_case_id
     assert transport.creates("/agreements") == 0
     assert transport.creates("/subscriptions") == 0
+
+    monkeypatch.setattr(database, "SessionLocal", factory)
+    monkeypatch.setattr(billing_purchases, "Settings", step1_settings)
+    monkeypatch.setattr(billing_purchases, "resolve_operator_principal", lambda: PRINCIPAL)
+    assert (
+        await asyncio.to_thread(
+            billing_purchases.main,
+            ["inspect", "--user-id", str(replacement.user_id), "--purchase-id", str(replacement.id)],
+        )
+        == 0
+    )
+    inspection = json.loads(capsys.readouterr().out)
+    assert inspection["blocking_late_reviews"] == [
+        {"purchase_intent_id": str(purchase.id), "review_case_id": str(case_id)}
+    ]
+    assert inspection["blocking_late_reviews_truncated"] is False
+    assert all(item["review_case_id"] != str(case_id) for item in inspection["reviews"])
+    original = inspect_evidence(factory, config, purchase.user_id, purchase.id)
+    assert any(item["review_case_id"] == str(case_id) for item in original["reviews"])
+
+    wrong_purchase = request(factory, replacement, confirmed=True).model_copy(update={"case_id": case_id})
+    with pytest.raises(PurchaseRefused, match="billing_review_stale"):
+        terminal.resolve_purchase(factory, config, wrong_purchase, PRINCIPAL)
+
+    other_token = "unrelated-buyer"
+    seed(factory, token=other_token, email="unrelated-buyer@example.com")
+    other = await confirm_purchase(
+        sources, config, factory=factory, token=other_token, key="unrelated", meaning=replacement.accepted.meaning
+    )
+    unrelated = inspect_evidence(factory, config, other.user_id, other.id, include_blocking_late_reviews=True)
+    assert unrelated["blocking_late_reviews"] == []
 
 
 @pytest.mark.parametrize("include_inventory", [False, True])
@@ -270,6 +309,10 @@ async def test_last_review_closed_allows_original_replacement_to_continue(
     transport.subscriptions[0]["state"] = 3
     saved = service.read_purchase(factory, original.user_id, original.id)
     _confirm_late_subscription(factory, saved, case_id, "567")
+    inspection = inspect_evidence(
+        factory, step1_settings(), replacement.user_id, replacement.id, include_blocking_late_reviews=True
+    )
+    assert inspection["blocking_late_reviews"] == []
     transport.hide.add("/subscriptions")
     linked = await advance_purchase(sources, step1_settings(), factory=factory, token=TOKEN, purchase_id=replacement.id)
     assert linked.state == PurchaseIntentState.LINKED
@@ -975,7 +1018,11 @@ async def test_late_original_is_reviewed_when_list_points_to_a_held_purchase(
     saved_other = service.read_purchase(factory, other.user_id, other.id)
     operation = next(item for item in saved_other.operations if item.id == claim.id)
     assert saved_other.held and operation.bound_id is None
-    reviews = inspect_evidence(factory, config, other.user_id, other.id)["reviews"]
+    inspection = inspect_evidence(factory, config, other.user_id, other.id, include_blocking_late_reviews=True)
+    assert inspection["blocking_late_reviews"] == [
+        {"purchase_intent_id": str(old.id), "review_case_id": late["review_case_id"]}
+    ]
+    reviews = inspection["reviews"]
     if mode in {"same-create-receipt", "wrong-held-seller"}:
         assert saved_other.state == PurchaseIntentState.MANUAL_REVIEW
         assert [(item["reason"], item["scope_reference"]) for item in reviews if item["state"] == "open"] == [
