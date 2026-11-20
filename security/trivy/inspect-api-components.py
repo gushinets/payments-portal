@@ -27,7 +27,8 @@ COMMANDS = (
     "dpkg-source dpkg-deb dpkg tar rmt rmt-tar nscd iconv localedef locale openssl "
     "systemd-journald systemd-tmpfiles systemd-oomd systemd-homed journalctl homectl "
     "perl ptar pod2text login su chfn chsh mount umount nsenter unshare wall write "
-    "sulogin init pidof mesg lslogins logger bash dash sh cp mv install touch chown chgrp chmod rm"
+    "sulogin init pidof mesg lslogins logger newuidmap newgidmap sort uniq unexpand diff3 "
+    "bash dash sh cp mv install touch chown chgrp chmod rm"
 ).split()
 MODULE_PATHS = (
     "Archive/Tar.pm",
@@ -66,6 +67,15 @@ LIBRARIES = {
         "SSL_CTX_set_cipher_list",
     ],
     "crypto": ["PEM_read_bio_PrivateKey", "CMS_verify", "EVP_CIPHER_fetch"],
+    "sqlite3": [
+        "sqlite3session_create",
+        "sqlite3changeset_apply",
+        "sqlite3changeset_apply_v2",
+        "sqlite3changeset_apply_v3",
+        "sqlite3changeset_concat",
+        "sqlite3changegroup_add",
+        "sqlite3_zipfile_init",
+    ],
     "stdc++": ["_ZnwmSt11align_val_t", "_ZnamSt11align_val_t"],
 }
 
@@ -305,6 +315,39 @@ def collect() -> dict[str, object]:
         )
         for module in ("Archive::Tar", "File::Temp", "Pod::Text")
     }
+    bundled_crypto = []
+    try:
+        import psycopg  # noqa: F401 -- loads the locked wheel's native dependencies, no connection
+    except ImportError as exc:
+        errors.append(f"Required psycopg import failed: {type(exc).__name__}")
+    for item in elf_objects:
+        name = str(item["path"])
+        if "psycopg_binary.libs/" not in name or not Path(name).name.startswith(
+            ("libssl", "libcrypto")
+        ):
+            continue
+        result = {"path": name, "sha256": item["sha256"]}
+        try:
+            library = ctypes.CDLL(name)
+            version = library.OpenSSL_version
+            version.argtypes = [ctypes.c_int]
+            version.restype = ctypes.c_char_p
+            result["version"] = version(0).decode()
+        except (OSError, AttributeError) as exc:
+            result["inspection_error"] = type(exc).__name__
+            errors.append(f"Bundled OpenSSL version inspection failed: {name}")
+        bundled_crypto.append(result)
+    login_flags = {}
+    for line in Path("/etc/login.defs").read_text().splitlines():
+        fields = line.split()
+        if len(fields) >= 2 and fields[0] in (
+            "LOG_UNKFAIL_ENAB",
+            "SUB_UID_MIN",
+            "SUB_UID_MAX",
+            "SUB_GID_MIN",
+            "SUB_GID_MAX",
+        ):
+            login_flags[fields[0]] = fields[1]
     selected_files = [file_evidence(Path(p)) for p in selected]
     for item in selected_files + privileged:
         if "inspection_error" in item:
@@ -319,6 +362,11 @@ def collect() -> dict[str, object]:
         "python": platform.python_version(),
         "openssl_python": ssl.OPENSSL_VERSION,
         "sqlite_version": sqlite3.sqlite_version,
+        "sqlite_modules": [
+            r[0] for r in sqlite3.connect(":memory:").execute("PRAGMA module_list")
+        ],
+        "filesystem_encoding": sys.getfilesystemencoding(),
+        "bundled_openssl": bundled_crypto,
         "sqlite_compile_options": [
             r[0] for r in sqlite3.connect(":memory:").execute("PRAGMA compile_options")
         ],
@@ -336,8 +384,10 @@ def collect() -> dict[str, object]:
         "elf_objects": elf_objects,
         "perl_module_checks": perl,
         "pam_userdb_configurations": pam_lines,
+        "login_configuration_flags": login_flags,
         "openssl_features": command_result(["openssl", "list", "-disabled"]),
         "openssl_providers": command_result(["openssl", "list", "-providers"]),
+        "openssl_ciphers": command_result(["openssl", "list", "-cipher-algorithms"]),
         "distribution_versions": {
             d.metadata["Name"]: d.version for d in importlib.metadata.distributions()
         },
