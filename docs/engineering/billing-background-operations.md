@@ -872,14 +872,17 @@ Operator procedure:
    as provided by the local lookup, then have the user explicitly reopen their billing
    account after source recovery. Original paired point proof is still required;
    the paused worker does not send another customer CREATE.
-5. If multiple/foreign candidates, changed effective terms or unrelated cases
-   remain, inspect their exact case IDs/digests. Use only the supported audited
-   `resolve-review` actions above after establishing their required proof. These
-   actions cannot adopt an arbitrary ID or assert payment.
-6. If no original object can be proved, retain the hold and investigate with
-   LBX using the saved original-operation evidence. Use `resolve-purchase` only
-   through the stop-confirm-resolve procedure above. Do not delete work/operation
-   rows or force-release the hold to start a replacement.
+5. To continue the original purchase when conflicts remain, inspect the exact
+   case IDs and digests. Use the applicable
+   [audited `resolve-review` action](#existing-original-object-resolutions) after
+   establishing its required proof. These actions cannot adopt an arbitrary ID
+   or assert payment.
+6. To end the purchase, use `resolve-purchase` through the
+   [terminal completion procedure](#terminal-completion-any-821). Account for
+   both financial operations, including any original object already bound. If
+   evidence is insufficient, retain the hold and investigate with LBX using the
+   saved original-operation evidence. Do not delete work/operation rows or
+   force-release the hold to start a replacement.
 
 An explicit user's "Continue recovery" also remains available after the pause.
 It can prove the original through GET but cannot repeat an uncertain financial
