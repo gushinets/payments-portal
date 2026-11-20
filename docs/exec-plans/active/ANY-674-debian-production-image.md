@@ -67,3 +67,11 @@ Starting PR head `c0fc008f` already incorporates current main `dac00ead`; fast-f
 - [x] Record actual-image CI and canonical status for runtime correction `df09c29c` in the [review correction report](../../engineering/ANY-674-review-corrections.md): CI/Security/all analysis checks pass; local fast passed, full in progress at evidence publication with final outcome reported in PR handoff. Docker became available and the worktree test server was started.
 
 Residual ownership remains **pending team assignment**; existing applicability/options/review dates and historical before/after comparisons remain unchanged. No risk decision, exception, merge or deployment.
+
+## Vendor-status review follow-up
+
+- [x] Preserve reviewed `d85861c4` main merges; successful fetch confirms main `49ed895d`.
+- [x] Independently confirm CVE-2026-126765 on Debian source-package tracker and GNU libc advisory; update dated ledger/vendor evidence and checksums without changing captured UNKNOWN severity or package/remediation counts.
+- [x] Keep all101 current owners pending team assignment, with ownership acceptance criterion separately pending; no inferred owner or acceptance.
+
+Runtime/build/test source is unchanged. Reuse passing reviewed-head CI44736916316 and Security44736916516, and prior runtime verification. Validate documentation, ledger scope, unchanged non-target rows, severity/ownership invariants and all evidence checksums for this documentation-only correction. No image rebuild or repeated complete partitions needed.
