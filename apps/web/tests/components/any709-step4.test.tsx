@@ -663,18 +663,41 @@ it.each([
   vi.useFakeTimers();
   owned = { ...savedPurchase, state: "awaiting_external_result" };
   await act(async () => { renderProduct(); });
+  const recover = screen.getByRole("button", { name: ru.Purchase.recover });
+  const refresh = screen.getByRole("button", { name: ru.Purchase.refresh });
+  recover.focus();
+  expect(recover).toHaveFocus();
   fetcher.mockClear().mockResolvedValueOnce(json({ detail: { code, request_id: "read-refused" } }, status));
   await act(async () => vi.advanceTimersByTimeAsync(120_000));
   expect(fetcher).toHaveBeenCalledTimes(1);
   expect(screen.getByRole("alert")).toHaveTextContent(message);
   expect(screen.getByRole("alert")).toHaveTextContent("read-refused");
-  expect(screen.queryByRole("button", { name: ru.Purchase.recover })).not.toBeInTheDocument();
+  expect(recover).not.toBeInTheDocument();
+  expect(refresh).toHaveFocus();
 
   owned = { ...savedPurchase, state: "preparing" };
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.refresh })); });
+  await act(async () => { fireEvent.click(refresh); });
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: ru.Purchase.continue })).toBeEnabled();
   expect(advance).not.toHaveBeenCalled();
+});
+
+it("leaves focus on accepted terms when a pending status poll is refused", async () => {
+  vi.useFakeTimers();
+  owned = { ...savedPurchase, state: "preparing" };
+  await act(async () => { renderProduct(); });
+  screen.getByRole("button", { name: ru.Purchase.continue }).focus();
+  const response = Promise.withResolvers<Response>();
+  fetcher.mockClear().mockReturnValueOnce(response.promise);
+  await act(async () => vi.advanceTimersByTimeAsync(2_100));
+  expect(fetcher).toHaveBeenCalledTimes(1);
+
+  const terms = screen.getByText(ru.Purchase.acceptedTerms);
+  terms.focus();
+  await act(async () => response.resolve(json({ detail: { code: "billing_session_required" } }, 401)));
+
+  expect(screen.getByRole("alert")).toHaveTextContent(ru.Billing.errors.session);
+  expect(terms).toHaveFocus();
 });
 
 it.each(["first inspection", "later poll"])("keeps frozen confirmation disabled after refusal during %s", async (when) => {

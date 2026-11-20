@@ -111,7 +111,8 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
   const uncertainConfirmation = state.kind === "review" && state.submission === ReviewSubmission.Uncertain;
   const working = work !== PurchaseWork.Idle;
   const advancing = work === PurchaseWork.Advancing;
-  const canPoll = user.email_verified && work !== PurchaseWork.Working && !failure?.readRefused;
+  const readRefused = failure?.readRefused;
+  const canPoll = user.email_verified && work !== PurchaseWork.Working && !readRefused;
   const finishWork = useCallback(() => {
     workFinishedAt.current = performance.now();
     busy.current = false;
@@ -124,7 +125,8 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     if (document.activeElement !== document.body) return;
     if (linked) paymentLink.current?.focus();
     else if (released) (offerAvailable ? buyButton.current : refreshButton.current)?.focus();
-  }, [linked, offerAvailable, released]);
+    else if (readRefused) refreshButton.current?.focus();
+  }, [linked, offerAvailable, readRefused, released]);
 
   function showPurchase(saved: PurchaseIntentResponse) {
     const focused = document.activeElement;
@@ -132,6 +134,11 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     focusAfterStatus.current = (resumeFocused && purchaseReleased(saved)) ||
       (saved.scope_held && saved.state === "linked" && (resumeFocused || focused === refreshButton.current));
     setState({ kind: "purchase", purchase: saved });
+  }
+
+  function showReadRefusal(refusal: PurchaseReadRefusal) {
+    focusAfterStatus.current = document.activeElement === resumeButton.current;
+    setFailure(refusal);
   }
 
   const poll = usePurchaseStatusPoll(
@@ -155,7 +162,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
         cancel();
         finishWork();
       }
-      setFailure(refusal);
+      showReadRefusal(refusal);
     },
     { initialDelayMs: advancing ? 5_000 : undefined }
   );
@@ -198,7 +205,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
       if (!operation.token) throw new ApiError(401, { code: "billing_session_required" });
       await work(operation.token, requestId, operation.isCurrent);
     } catch (error) {
-      if (operation.isCurrent()) setFailure({ message: `errors.${billingErrorKey(error)}`, requestId: safeRequestId(error) || requestId, readRefused: failure?.readRefused });
+      if (operation.isCurrent()) setFailure({ message: `errors.${billingErrorKey(error)}`, requestId: safeRequestId(error) || requestId, readRefused });
     } finally {
       if (operation.isLatest()) {
         finishWork();
@@ -225,7 +232,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
       } catch (error) {
         const refusal = purchaseReadRefusal(error, id);
         if (!refusal && !pendingAdvanceFailure) throw error;
-        if (refusal && current()) setFailure(refusal);
+        if (refusal && current()) showReadRefusal(refusal);
       }
     }, pendingAdvanceFailure);
   }
@@ -249,7 +256,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     } catch (error) {
       const refusal = purchaseReadRefusal(error, id);
       if (refusal) {
-        if (current()) setFailure(refusal);
+        if (current()) showReadRefusal(refusal);
         return;
       }
     }
@@ -354,7 +361,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
           </div>)}
         </fieldset>
         {state.submission !== ReviewSubmission.Draft && <p>{t("confirmationUncertain")}</p>}
-        <button className="btn-primary" type="button" disabled={working || failure?.readRefused || !state.review.documents.length || state.selected.length !== state.review.documents.length} onClick={() => void confirm()}>{t(state.submission === ReviewSubmission.Draft ? "confirm" : "retryConfirm")}</button>
+        <button className="btn-primary" type="button" disabled={working || readRefused || !state.review.documents.length || state.selected.length !== state.review.documents.length} onClick={() => void confirm()}>{t(state.submission === ReviewSubmission.Draft ? "confirm" : "retryConfirm")}</button>
       </div>}
     </>}
     {purchase && (linked || user.email_verified) && <div key={purchase.purchase_intent_id} className={linked ? undefined : "purchase-status"}>
@@ -364,7 +371,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
       </>}
       <details><summary>{t("acceptedTerms")}</summary><PurchaseTerms review={purchase.accepted} /></details>
       {!linked && <>
-        {resumable && !failure?.readRefused &&
+        {resumable && !readRefused &&
           <button ref={resumeButton} className="btn-primary" type="button" aria-disabled={working}
             onClick={() => void run((token, id, current) => prepare(token, purchase, id, current), pendingAdvanceFailure)}>{t(needsRecovery ? "recover" : "continue")}</button>}
         <p>{t("awaitingVerification")}</p>
