@@ -116,3 +116,20 @@ def test_removal_evidence_only_simulates_and_never_forces(monkeypatch: pytest.Mo
     assert len(removals) == len(COMPONENTS.REMOVAL_CANDIDATES)
     assert all(argv[:3] == ["dpkg", "--simulate", "--purge"] and len(argv) == 4 for argv in removals)
     assert all(not arg.startswith("--force") for argv in calls for arg in argv)
+
+
+def test_control_recipe_only_removes_three_privilege_overrides() -> None:
+    import difflib
+
+    spec = importlib.util.spec_from_file_location("inspect_api_updates", ROOT / "security/trivy/inspect-api-updates.py")
+    assert spec is not None and spec.loader is not None
+    updates = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(updates)
+    original = (ROOT / "apps/api/Dockerfile").read_text(encoding="utf-8")
+    control = updates.make_setid_control(original)
+    changes = [line for line in difflib.ndiff(original.splitlines(), control.splitlines()) if line[:2] in ("- ", "+ ")]
+
+    assert len(changes) == 3
+    assert all(line.startswith("- ") and "dpkg-statoverride --update --add" in line for line in changes)
+    with pytest.raises(ValueError, match="exactly"):
+        updates.make_setid_control(control)

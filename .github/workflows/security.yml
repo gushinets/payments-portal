@@ -153,6 +153,30 @@ jobs:
           timeout: "15m"
           trivyignores: ".trivyignore.yaml"
 
+      - name: Compare API privilege hardening with one vulnerability database
+        run: |
+          mkdir -p .harness/any674-comparison
+          python3 security/trivy/inspect-api-updates.py --baseline-dockerfile apps/api/Dockerfile .harness/any674-comparison/control.Dockerfile
+          docker build --platform linux/amd64 --target production --file .harness/any674-comparison/control.Dockerfile --tag "$API_IMAGE-control" .
+          docker run --rm --network none --entrypoint python --mount "type=bind,src=$PWD/security/trivy/inspect-api-components.py,dst=/tmp/probe.py,readonly" "$API_IMAGE-control" /tmp/probe.py > .harness/any674-comparison/control-components.json
+          trivy image --cache-dir "$RUNNER_TEMP/any674-db" --download-db-only
+          for side in control final; do
+            target="$API_IMAGE"
+            if [ "$side" = control ]; then target="$API_IMAGE-control"; fi
+            trivy image --cache-dir "$RUNNER_TEMP/any674-db" --skip-db-update --skip-java-db-update --offline-scan --config trivy.yaml --ignorefile .trivyignore.yaml --scanners vuln,secret --format json --output ".harness/any674-comparison/$side-image.json" --timeout 15m "$target"
+          done
+          cp "$RUNNER_TEMP/any674-db/db/metadata.json" .harness/any674-comparison/database-metadata.json
+          sha256sum "$RUNNER_TEMP/any674-db/db/trivy.db" > .harness/any674-comparison/database.sha256
+          python3 scripts/repo.py trivy redact .harness/any674-comparison
+
+      - name: Retain sanitized API comparison evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: any674-image-comparison-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .harness/any674-comparison/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Redact secret values from reports
         id: redact
         if: always()

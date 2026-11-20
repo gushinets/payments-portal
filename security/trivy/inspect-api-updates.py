@@ -5,12 +5,31 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 
 def planned_upgrades(simulation: str) -> list[str]:
     """Identify actual simulated install/upgrade records, not success text alone."""
     return [line for line in simulation.splitlines() if line.startswith("Inst ")]
+
+
+def make_setid_control(source: str) -> str:
+    """Derive a control by removing exactly the three tracked privilege overrides."""
+    lines = source.splitlines(keepends=True)
+    removed = [
+        line
+        for line in lines
+        if line.strip().startswith("&& dpkg-statoverride --update --add ")
+    ]
+    expected = {"/usr/bin/su", "/usr/bin/newgrp", "/usr/sbin/unix_chkpwd"}
+    if (
+        len(removed) != 3
+        or {line.strip().removesuffix("\\").strip().split()[-1] for line in removed}
+        != expected
+    ):
+        raise ValueError("Control requires exactly the three known setid overrides")
+    return "".join(line for line in lines if line not in removed)
 
 
 def main() -> None:
@@ -62,4 +81,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) == 4 and sys.argv[1] == "--baseline-dockerfile":
+        Path(sys.argv[3]).write_text(
+            make_setid_control(Path(sys.argv[2]).read_text(encoding="utf-8")),
+            encoding="utf-8",
+        )
+    else:
+        main()
