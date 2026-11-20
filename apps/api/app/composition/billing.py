@@ -275,7 +275,8 @@ async def bootstrap_account(
         raise BillingAccountFailure("billing_not_configured")
     customer_ready = False
     try:
-        async with sources.billing.operation(bound_scope=purchase_id is None) as budget:
+        # Bound provider I/O and retry waits without cancelling an in-progress DB unit.
+        async with sources.billing.operation(bound_scope=False) as budget:
             try:
                 current = await run_in_threadpool(reserve_customer, factory, configuration, token)
             except BillingRefused as error:
@@ -317,7 +318,9 @@ async def bootstrap_account(
                     )
                     try:
                         ready = await client.client_user(token=credential, budget=budget)
-                    except AppError:
+                    except AppError as error:
+                        if purchase_id is None and isinstance(error, PreflightDeadlineExceeded):
+                            raise
                         raise BillingAccountFailure("billing_client_not_ready") from None
                     if str(ready.user_id) != current.provider_id or ready.outer_id not in {None, current.outer_key}:
                         await run_in_threadpool(apply_customer_read, factory, current, ambiguous=True)
@@ -353,6 +356,8 @@ async def bootstrap_account(
                         )
                     return AccountWidget(credential, configuration.lbx_provider_origin)
                 except AppError as error:
+                    if purchase_id is None and isinstance(error, PreflightDeadlineExceeded):
+                        raise
                     logger.warning(
                         "billing_account_failed",
                         extra={
