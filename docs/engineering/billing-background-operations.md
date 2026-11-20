@@ -369,11 +369,15 @@ uncertain. If recovery binds an open agreement while the purchase is
 `awaiting_external_result` and the subscription operation is PENDING or
 PROVEN_NOT_SENT, the purchase returns to `preparing`. The buyer can explicitly
 continue. That advance checks admission again before sending the subscription.
+If an in-flight advance receives a successful agreement CREATE reply for the
+same provider ID that the original operation already bound, it uses the saved
+binding and proceeds through the usual subscription admission checks.
 Recovery requires the original saved command, possible-send history and fresh
-proof of ownership and effective terms. A committed binding makes further
-recovery of that operation a no-op. Subscription lifecycle updates use the
-existing reconciliation lease. A concurrent first binder discards the losing
-candidate proof and forces fresh claimed reconciliation.
+proof of ownership and effective terms. The recovery worker skips operations
+with a committed binding. When two point-proof attempts race to bind an
+operation, the losing attempt discards its proof and reads the saved binding.
+For a subscription, that attempt then reconciles through the existing lease
+with fresh proof. Subscription lifecycle updates use that same lease.
 
 Original termination is recoverable history, including a closed agreement.
 First binding atomically retains the binding and normalized negative, with zero

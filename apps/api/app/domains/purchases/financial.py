@@ -188,12 +188,16 @@ def proven_not_sent(factory: SessionFactory, purchase: Purchase, expected: Finan
         db.commit()
 
 
-def record_receipt(factory: SessionFactory, purchase: Purchase, expected: FinancialOperation, provider_id: int) -> None:
+def record_receipt(factory: SessionFactory, purchase: Purchase, expected: FinancialOperation, provider_id: int) -> bool:
+    """Store the receipt candidate, or return False if that object is already bound."""
     if type(provider_id) is not int or not 0 < provider_id < 10**20:
         raise ValueError("invalid provider receipt")
+    candidate_id = str(provider_id)
     with factory() as db:
         _locked(db, purchase)
         op = next(op for op in queries.operations(db, purchase.id, lock=True) if op.create_operation_id == expected.id)
+        if expected.may_send and op.operation_state == State.BOUND and op.bound_external_object_id == candidate_id:
+            return False
         if (
             op.send_fence != expected.fence
             or not expected.may_send
@@ -201,10 +205,11 @@ def record_receipt(factory: SessionFactory, purchase: Purchase, expected: Financ
         ):
             raise PurchaseRefused("purchase_pending", 409)
         work = recovery_work(db, op.create_operation_id)
-        if work is None or work.payload_document.get("candidate_id") not in {None, str(provider_id)}:
+        if work is None or work.payload_document.get("candidate_id") not in {None, candidate_id}:
             raise PurchaseRefused("purchase_review_required", 409)
-        work.payload_document = {**work.payload_document, "candidate_id": str(provider_id)}
+        work.payload_document = {**work.payload_document, "candidate_id": candidate_id}
         db.commit()
+        return True
 
 
 def _review(db: Session, row: PurchaseIntent, operation: ExternalCreateOperation, reason: str) -> None:
