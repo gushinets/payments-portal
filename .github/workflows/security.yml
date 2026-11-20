@@ -100,7 +100,7 @@ jobs:
         run: |
           docker build --target base --file apps/api/Dockerfile --tag "$API_IMAGE-base" .
           docker run --rm --entrypoint python             --mount "type=bind,src=$PWD/security/trivy/inspect-api-updates.py,dst=/tmp/inspect-api-updates.py,readonly"             "$API_IMAGE-base" /tmp/inspect-api-updates.py > "$TRIVY_REPORT_DIR/api-debian-updates.json"
-          docker image inspect "$API_IMAGE" "$API_IMAGE-base" > "$TRIVY_REPORT_DIR/api-image-identities.json"
+          docker image inspect "$API_IMAGE" "$API_IMAGE-base" | python3 -c 'import json,sys; print(json.dumps({"images":[{"id":i["Id"],"repo_digests":i.get("RepoDigests",[]),"platform":i["Os"]+"/"+i["Architecture"],"user":i["Config"].get("User",""),"command":i["Config"].get("Cmd",[])} for i in json.load(sys.stdin)]}))' > "$TRIVY_REPORT_DIR/api-image-identities.json"
           trivy image --config trivy.yaml --ignorefile .trivyignore.yaml --scanners vuln,secret             --format json --output "$TRIVY_REPORT_DIR/api-build-base.json" --timeout 15m "$API_IMAGE-base"
 
       - name: Build production web image
