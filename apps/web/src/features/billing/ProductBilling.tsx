@@ -141,7 +141,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
       }
       setFailure(refusal);
     },
-    advancing ? 5_000 : undefined
+    { initialDelayMs: advancing ? 5_000 : undefined }
   );
 
   useEffect(() => {

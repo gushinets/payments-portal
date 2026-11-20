@@ -551,6 +551,43 @@ it("keeps an open payment Widget during a transient purchase status failure", as
   expect(dispose).not.toHaveBeenCalled();
 });
 
+it.each(["manual_review", "session_refused", "stale_conflict"] as const)(
+  "handles a pending status read returning %s after a list retry makes the same purchase payable",
+  async (result) => {
+    const pending = Promise.withResolvers<Response>();
+    const needsReview = { ...savedPurchase, state: "manual_review" };
+    list.mockResolvedValueOnce(json({ detail: { code: "unavailable" } }, 503));
+    status.mockResolvedValueOnce(json({ ...savedPurchase, state: "awaiting_external_result" }));
+    status.mockReturnValueOnce(pending.promise);
+    if (result === "manual_review") status.mockResolvedValueOnce(json(needsReview));
+
+    renderCabinet(first.purchase_intent_id);
+    const retry = await screen.findByRole("button", { name: ru.Purchase.retry });
+    await waitFor(() => expect(status).toHaveBeenCalledTimes(2), { timeout: 3500 });
+    fireEvent.click(retry);
+    fireEvent.click(await screen.findByRole("button", { name: ru.Billing.pay }));
+    await waitFor(() => expect(document.querySelector("iframe")).toBeVisible());
+
+    await act(async () => pending.resolve(result === "session_refused"
+      ? json({ detail: { code: "billing_session_required" } }, 401)
+      : json(needsReview)));
+
+    if (result === "session_refused") {
+      expect(screen.getByRole("alert")).toHaveTextContent(ru.Billing.errors.session);
+    } else {
+      // The pending point read overlapped the list retry. Confirm which state is current.
+      await waitFor(() => expect(status).toHaveBeenCalledTimes(3));
+    }
+    if (result === "stale_conflict") {
+      expect(screen.getByRole("button", { name: ru.Billing.refresh })).toBeEnabled();
+      expect(document.querySelector("iframe")).toBeVisible();
+    } else {
+      await waitFor(() => expect(document.querySelector("iframe")).toBeNull());
+    }
+    expect(bootstrap).toHaveBeenCalledTimes(1);
+  }
+);
+
 it("closes the Widget when retrying the purchase list reveals an expired session", async () => {
   list.mockResolvedValueOnce(json({}, 503));
   renderCabinet(first.purchase_intent_id);

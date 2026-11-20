@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useState } from "react";
 import type { PurchaseIntentResponse } from "@/generated/api-contracts/types.gen";
 import { currentPurchase, purchaseStatus } from "@/shared/api/purchases";
 import { subscribeToSessionChanges, useSessionOperation } from "@/shared/session/use-session-operation";
@@ -20,18 +20,22 @@ export function usePurchaseStatusPoll(
   uncertainProductId: string | undefined,
   onStatus: (purchase: PurchaseIntentResponse, readStartedAt: number) => void,
   onRefused: (refusal: PurchaseReadRefusal) => void,
-  initialDelayMs = 2_000
+  { enabled = true, initialDelayMs = 2_000 }: { enabled?: boolean; initialDelayMs?: number } = {}
 ) {
   const accept = useEffectEvent(onStatus);
   const refuse = useEffectEvent(onRefused);
-  const { begin } = useSessionOperation();
+  const { begin, cancel } = useSessionOperation();
   const [pausedKey, setPausedKey] = useState<string>();
   const purchaseId = purchase?.purchase_intent_id;
   const key = purchaseId ?? uncertainProductId;
   const recovering = purchase?.state === "awaiting_external_result";
 
+  // Invalidate a read when its target changes. A scheduling change alone may
+  // still leave the in-flight read relevant to the same purchase and session.
+  useLayoutEffect(() => cancel, [cancel, purchaseId, uncertainProductId]);
+
   useEffect(() => {
-    if (!key) return;
+    if (!key || !enabled) return;
     const { token, isCurrent } = begin();
     if (!token) return;
 
@@ -76,12 +80,12 @@ export function usePurchaseStatusPoll(
         const purchase = purchaseId
           ? await purchaseStatus(token, purchaseId, requestId)
           : (await currentPurchase(token, uncertainProductId!, requestId)).purchase;
-        if (stopped || !isCurrent()) { stop(); return; }
+        if (!isCurrent()) { stop(); return; }
         if (purchase) accept(purchase, readStartedAt);
       } catch (error) {
         const refusal = purchaseReadRefusal(error, requestId);
         if (refusal) {
-          if (!stopped && isCurrent()) refuse(refusal);
+          if (isCurrent()) refuse(refusal);
           stop();
           return;
         }
@@ -93,7 +97,7 @@ export function usePurchaseStatusPoll(
     }
 
     return stop;
-  }, [begin, initialDelayMs, key, purchaseId, recovering, uncertainProductId]);
+  }, [begin, enabled, initialDelayMs, key, purchaseId, recovering, uncertainProductId]);
 
-  return { paused: key !== undefined && pausedKey === key, clearPause: () => setPausedKey(undefined) };
+  return { paused: enabled && key !== undefined && pausedKey === key, clearPause: () => setPausedKey(undefined) };
 }
