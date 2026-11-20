@@ -618,8 +618,10 @@ collected by the purchase, Widget and recovery flows.
 A purchase status read returning 401, 403 or 404 stops polling and shows the
 corresponding sign-in, verification or purchase-unavailable message. The cabinet
 closes the Widget and discards any pending opening when the selected purchase
-returns 401 or 403. The same rule applies when the purchase list, paid access or
-usage read for the current session returns 401 `billing_session_required` or
+returns 401 or 403. An explicit `401 billing_session_required` for the current
+session also closes checkout when the read began before the buyer changed the
+selected purchase. The cabinet closes checkout when a purchase list, paid access
+or usage read for the current session returns 401 `billing_session_required` or
 403 `billing_email_verification_required`. When a purchase read confirms that
 the selected purchase is unavailable for payment, the cabinet closes its
 payment Widget or cancels its opening. Temporary read failures leave the open

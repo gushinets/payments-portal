@@ -671,7 +671,15 @@ it("ignores a paid read from the previous session after signing in again", async
   expect(screen.queryByText(ru.Billing.errors.session)).toBeNull();
 });
 
-it.each([200, 401])("keeps a different selected purchase when delayed conflict recheck returns %s", async (code) => {
+it.each([
+  { scenario: "an outdated purchase status", code: 200 },
+  { scenario: "a missing previous purchase", code: 404, reason: "purchase_not_found" },
+  { scenario: "a temporary failure", code: 503, reason: "unavailable" },
+  { scenario: "an unclassified 401", code: 401, reason: "unexpected_auth_error" },
+  { scenario: "a late verification refusal", code: 403, reason: "billing_email_verification_required" },
+  { scenario: "a refusal of the current session", code: 401, reason: "billing_session_required", closesCheckout: true },
+  { scenario: "a refusal of a replaced session", code: 401, reason: "billing_session_required", replacesSession: true },
+])("handles $scenario from a pending recheck after changing purchases", async ({ code, reason, closesCheckout, replacesSession }) => {
   let finishInitial!: (response: Response) => void;
   let finishRecheck!: (response: Response) => void;
   list.mockResolvedValueOnce(json({
@@ -681,18 +689,58 @@ it.each([200, 401])("keeps a different selected purchase when delayed conflict r
     .mockReturnValueOnce(new Promise<Response>((resolve) => { finishInitial = resolve; }))
     .mockReturnValueOnce(new Promise<Response>((resolve) => { finishRecheck = resolve; }));
   requestPaymentOpening(first.purchase_intent_id, purchaseUser.user_id);
-  renderCabinet(first.purchase_intent_id);
+  const cabinet = renderCabinet(first.purchase_intent_id);
   await screen.findByRole("heading", { name: second.product_id });
   await act(async () => finishInitial(json(savedPurchase)));
   await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
   expect(bootstrap).not.toHaveBeenCalled();
 
-  fireEvent.change(selector(), { target: { value: second.purchase_intent_id } });
-  open();
+  if (replacesSession) {
+    act(() => {
+      window.localStorage.setItem(sessionStorageKey, "replacement-session");
+      window.dispatchEvent(new Event(sessionChangedEvent));
+    });
+    cabinet.unmount();
+    list.mockResolvedValueOnce(json({ purchases: [second], next_cursor: null }));
+    renderCabinet();
+  } else {
+    fireEvent.change(selector(), { target: { value: second.purchase_intent_id } });
+  }
+  fireEvent.click(await screen.findByRole("button", { name: ru.Billing.pay }));
   await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
-  await act(async () => finishRecheck(code === 200 ? json(savedPurchase) : json({ detail: { code: "billing_session_required", request_id: "old-selection" } }, 401)));
-  expect(screen.queryByText("old-selection", { exact: false })).not.toBeInTheDocument();
-  expect(selector()).toHaveValue(second.purchase_intent_id);
   expect(document.querySelector("iframe")).toBeVisible();
+  await act(async () => finishRecheck(code === 200
+    ? json(savedPurchase)
+    : json({ detail: { code: reason, request_id: "old-selection" } }, code)));
+
+  if (closesCheckout) {
+    expect(document.querySelector("iframe")).toBeNull();
+    expect(screen.getByRole("alert")).toHaveTextContent(ru.Billing.errors.session);
+    expect(screen.getByRole("alert")).toHaveTextContent("old-selection");
+  } else {
+    expect(screen.queryByText("old-selection", { exact: false })).not.toBeInTheDocument();
+    expect(selector()).toHaveValue(second.purchase_intent_id);
+    expect(document.querySelector("iframe")).toBeVisible();
+  }
+  expect(payloads()).toEqual([{ purchase_intent_id: second.purchase_intent_id }]);
+});
+
+it("closes checkout on a current-session refusal from the initial purchase read after opening another purchase", async () => {
+  const point = Promise.withResolvers<Response>();
+  status.mockReturnValueOnce(point.promise);
+  list.mockResolvedValueOnce(json({ purchases: [first, second], next_cursor: null }));
+  renderCabinet(first.purchase_intent_id);
+  const otherProduct = await screen.findByRole("heading", { name: second.product_id });
+  expect(status).toHaveBeenCalledTimes(1);
+
+  fireEvent.click(within(otherProduct.closest("article")!).getByRole("button", { name: ru.Purchase.manage }));
+  await waitFor(() => expect(document.querySelector("iframe")).toBeVisible());
+
+  await act(async () => point.resolve(json({ detail: { code: "billing_session_required", request_id: "initial-read-refusal" } }, 401)));
+
+  expect(document.querySelector("iframe")).toBeNull();
+  const alert = screen.getByRole("alert");
+  expect(alert).toHaveTextContent(ru.Billing.errors.session);
+  expect(alert).toHaveTextContent("initial-read-refusal");
   expect(payloads()).toEqual([{ purchase_intent_id: second.purchase_intent_id }]);
 });
