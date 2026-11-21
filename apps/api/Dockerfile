@@ -67,6 +67,13 @@ RUN groupadd --system app \
     && package_audit=$(dpkg --audit) \
     && test -z "$package_audit"
 
+# The shared CPython base supplies pip. Runtime uses the uv-built environment
+# and has no installer or offline pip bootstrap requirement.
+RUN rm -f /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.12 \
+    && rm -rf /usr/local/lib/python3.12/site-packages/pip \
+        /usr/local/lib/python3.12/site-packages/pip-*.dist-info \
+        /usr/local/lib/python3.12/ensurepip
+
 COPY apps/api/alembic.ini ./apps/api/alembic.ini
 COPY apps/api/alembic ./apps/api/alembic
 COPY apps/api/app ./apps/api/app
