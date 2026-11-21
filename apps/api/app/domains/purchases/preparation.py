@@ -6,7 +6,7 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from app.domains.billing.operator_contracts import TERMINAL_AUDIT_REASONS, TERMINAL_SCHEMA, OriginalOperationProof
-from app.domains.billing.reconciliation_contracts import CommercialProof, IdentityProof
+from app.domains.billing.reconciliation_contracts import PREPARED_SUBSCRIPTION_SCHEMA, CommercialProof, IdentityProof
 from app.domains.billing.work import enroll_subscription
 from app.infrastructure.persistence.billing_connections import ConnectionScopeBusy
 from app.infrastructure.queries import billing_operator
@@ -117,7 +117,7 @@ def record_first_binding(
             access_scope_id=scope.access_scope_id if scope else None,
             purchase_intent_id=row.purchase_intent_id if scope else None,
             observed_at=proof.read_finished_at,
-            evidence_schema_version="prepared-subscription:v1" if sub else "prepared-agreement:v1",
+            evidence_schema_version=PREPARED_SUBSCRIPTION_SCHEMA if sub else "prepared-agreement:v1",
             evidence_document=document,
             completeness_classification="preparation_only",
             result_classification="source_negative"

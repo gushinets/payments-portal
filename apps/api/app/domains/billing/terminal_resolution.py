@@ -32,7 +32,11 @@ from app.domains.billing.operator_contracts import (
 )
 from app.domains.billing.operator_review import digest, terminal_state_digest
 from app.domains.billing.paid_access import reduce_paid_access
-from app.domains.billing.reconciliation_contracts import RECONCILIATION_READ_SCHEMAS, IdentityProof
+from app.domains.billing.reconciliation_contracts import (
+    PREPARED_SUBSCRIPTION_SCHEMA,
+    RECONCILIATION_READ_SCHEMAS,
+    IdentityProof,
+)
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
@@ -188,6 +192,7 @@ def resolve_purchase(
                     sub.subscription_id,
                     evidence.confirmed_at,
                     schemas=RECONCILIATION_READ_SCHEMAS,
+                    preparation_schema=PREPARED_SUBSCRIPTION_SCHEMA,
                     identity=IdentityProof.MATCH,
                 )
             ):

@@ -5,6 +5,7 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from app.domains.billing.customers import lock_customer
+from app.domains.billing.operator_cases import audited_subscription_candidates
 from app.domains.billing.customer_reviews import customer_admission_reviews
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases import service
@@ -48,6 +49,14 @@ def validate_inventory(db: Session, result: InventoryResult) -> None:
 
     rows = customer_purchases(db, customer.customer_id)
     if {row.purchase_intent_id for row in rows} != {item.id for item in result.purchases}:
+        raise InventoryStale()
+    # A late case can close after collection and replace its open-case fence
+    # with a competitor that this attempt never point-read.
+    if (
+        rows
+        and audited_subscription_candidates(db, customer.customer_id, customer.external_billing_account_id)
+        != result.audited_candidates
+    ):
         raise InventoryStale()
     for expected in result.purchases:
         row = service._locked(db, expected)

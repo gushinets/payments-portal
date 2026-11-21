@@ -26,6 +26,12 @@ TERMINAL_AUDIT_REASONS = (TERMINAL_REASON, LATE_REASON)
 ProviderId = Annotated[str, Field(pattern=r"^[1-9][0-9]{0,19}$")]
 
 
+@dataclass(frozen=True)
+class AuditedSubscriptionCandidate:
+    external_id: str
+    review_case_id: UUID
+
+
 @dataclass
 class AuditedObjects:
     confirmed: set[str] = field(default_factory=set)
