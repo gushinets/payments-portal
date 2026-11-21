@@ -38,7 +38,12 @@ for (const { changes } of installed.allowScripts) {
 }
 if (pending.size > 0) {
   console.error('Review dependency install hooks before continuing:');
-  for (const key of [...pending].sort()) console.error(`  ${key}`);
+  const sortedKeys = [...pending].sort((left, right) => {
+    if (left < right) return -1;
+    if (left > right) return 1;
+    return 0;
+  });
+  for (const key of sortedKeys) console.error(`  ${key}`);
   console.error('See docs/engineering/dependency-installation.md for the review procedure.');
   process.exitCode = 1;
 }
