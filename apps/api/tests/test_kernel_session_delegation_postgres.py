@@ -567,7 +567,10 @@ def test_forward_migration_refuses_to_adopt_foreign_historical_audience(
             assert (
                 db.execute(text("SELECT audience FROM kernel_session_delegations")).scalar_one() == "synthetic-summary"
             )
-            assert db.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "20261110_0008"
+            assert set(db.scalars(text("SELECT version_num FROM alembic_version"))) == {
+                "20261110_0008",
+                "20261116_821",
+            }
 
 
 @pytest.mark.parametrize("retained", ["policy", "foreign_delegation"])

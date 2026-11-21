@@ -13,6 +13,7 @@ from app.models import (
     ExternalCreateOperationKind as Kind,
     ExternalCreateOperationState as State,
     PurchaseIntent,
+    PurchaseIntentState,
     User,
 )
 
@@ -52,6 +53,10 @@ def missing_operations(db: Session, configuration: Settings, *, account: str) ->
                 or_(op.operation_kind == Kind.CUSTOMER, op.bound_external_object_id.is_(None)),
                 op.unknown_since.is_not(None),
                 op.unknown_recovery_deadline_at.is_not(None),
+                ~exists().where(
+                    PurchaseIntent.purchase_intent_id == op.purchase_intent_id,
+                    PurchaseIntent.state.in_(tuple(state for state in PurchaseIntentState if state.resolved)),
+                ),
                 or_(~recovery, ~deadline),
             )
             .order_by(op.create_operation_id)

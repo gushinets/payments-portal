@@ -24,6 +24,133 @@ const open = () => fireEvent.click(screen.getByRole("button", { name: ru.Billing
 const selector = () => screen.getByRole("combobox", { name: ru.Billing.selectedPurchase });
 const payloads = () => bootstrap.mock.calls.map(([init]) => JSON.parse(init.body));
 
+it.each(["resolved_no_external_effect", "resolved_external_terminal", "failed_before_external_effect"] as const)("shows a released %s purchase on its original deep link without opening payment", async (state) => {
+  status.mockResolvedValue(json({ ...savedPurchase, state, scope_held: false }));
+  renderCabinet(first.purchase_intent_id);
+  expect(await screen.findByText(ru.Purchase.states[state])).toBeVisible();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: ru.Billing.open })).toBeDisabled();
+  expect(bootstrap).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: ru.Purchase.manage })).not.toBeInTheDocument();
+});
+
+it.each([
+  ["created", "linked", "linked"],
+  ["linked", "created", "linked"],
+  ["preparing", "linked", "preparing"],
+  ["linked", "manual_review", "manual_review"],
+] as const)("rechecks differing held snapshots (list %s, detail %s, latest %s)", async (listed, detail, latest) => {
+  list.mockResolvedValueOnce(json({ purchases: [{ ...first, state: listed }], next_cursor: null }));
+  status.mockResolvedValueOnce(json({ ...savedPurchase, state: detail }));
+  let finish!: (value: Response) => void;
+  status.mockImplementationOnce(() => new Promise<Response>(resolve => { finish = resolve; }));
+  renderCabinet(first.purchase_intent_id);
+  await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
+  expect(screen.getByRole("button", { name: ru.Billing.open })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: ru.Purchase.manage })?.hasAttribute("disabled") ?? true).toBe(true);
+  await act(async () => finish(json({ ...savedPurchase, state: latest })));
+  if (latest === "linked") {
+    expect(screen.getByRole("button", { name: ru.Billing.open })).toBeEnabled();
+    expect(screen.getByRole("button", { name: ru.Purchase.manage })).toBeEnabled();
+  } else {
+    expect(screen.getByRole("button", { name: ru.Billing.open })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: ru.Purchase.manage })).not.toBeInTheDocument();
+  }
+  expect(selector()).toHaveValue(first.purchase_intent_id);
+});
+
+it.each([
+  ["lists a different state", [{ ...first, state: "manual_review" }]],
+  ["omits the held purchase", []],
+] satisfies [string, AccountPurchaseResponse[]][])("closes the selected Widget after the full list %s and a fresh read confirms release", async (_label, listed) => {
+  let finishList!: (value: Response) => void;
+  let finishStatus!: (value: Response) => void;
+  list.mockImplementationOnce(() => new Promise<Response>(resolve => { finishList = resolve; }));
+  status.mockResolvedValueOnce(json(savedPurchase));
+  status.mockImplementationOnce(() => new Promise<Response>(resolve => { finishStatus = resolve; }));
+  renderCabinet(first.purchase_intent_id);
+  await waitFor(() => expect(screen.getByRole("button", { name: ru.Billing.open })).toBeEnabled());
+  open();
+  await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
+  expect(document.querySelector("iframe")).toBeVisible();
+  await act(async () => finishList(json({ purchases: listed, next_cursor: null })));
+  await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
+  expect(document.querySelector("iframe")).not.toBeVisible();
+  expect(dispose).not.toHaveBeenCalled();
+  await act(async () => finishStatus(json({ ...savedPurchase, state: "resolved_external_terminal", scope_held: false })));
+  expect(await screen.findByText(ru.Purchase.states.resolved_external_terminal)).toBeVisible();
+  expect(screen.getByRole("link", { name: ru.Purchase.buy })).toHaveAttribute("href", "/ru/products/proposal_ai");
+  expect(dispose).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole("article")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: ru.Billing.open })).toBeDisabled();
+});
+
+it.each(["linked", "resolved_external_terminal"] as const)("retries a failed purchase recheck and uses the fresh %s status", async (latest) => {
+  let finishList!: (value: Response) => void;
+  let finishRetry!: (value: Response) => void;
+  list.mockImplementationOnce(() => new Promise<Response>(resolve => { finishList = resolve; }));
+  status.mockResolvedValueOnce(json(savedPurchase));
+  status.mockResolvedValueOnce(json({ detail: { code: "unavailable", request_id: "synthetic-retry" } }, 503));
+  status.mockImplementationOnce(() => new Promise<Response>(resolve => { finishRetry = resolve; }));
+  renderCabinet(first.purchase_intent_id);
+  await waitFor(() => expect(screen.getByRole("button", { name: ru.Billing.open })).toBeEnabled());
+  open();
+  await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
+  const paymentFrame = document.querySelector("iframe");
+  expect(paymentFrame).toBeVisible();
+  await act(async () => finishList(json({ purchases: [], next_cursor: null })));
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("synthetic-retry");
+  fireEvent.click(within(alert).getByRole("button", { name: ru.Purchase.refresh }));
+  await waitFor(() => expect(status).toHaveBeenCalledTimes(3));
+  expect(screen.getByRole("button", { name: ru.Billing.refresh })).toBeDisabled();
+  expect(paymentFrame).not.toBeVisible();
+  await act(async () => finishRetry(json({ ...savedPurchase, state: latest, scope_held: latest === "linked" })));
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  if (latest === "linked") {
+    expect(document.querySelector("iframe")).toBe(paymentFrame);
+    expect(paymentFrame).toBeVisible();
+    expect(screen.getByRole("button", { name: ru.Billing.refresh })).toBeEnabled();
+  } else {
+    expect(screen.getByText(ru.Purchase.states.resolved_external_terminal)).toBeVisible();
+    expect(screen.getByRole("link", { name: ru.Purchase.buy })).toBeVisible();
+    expect(document.querySelector("iframe")).toBeNull();
+  }
+  expect(status).toHaveBeenCalledTimes(3);
+  expect(bootstrap).toHaveBeenCalledTimes(1);
+});
+
+it("keeps the selected Widget when an incomplete list has not reached the held purchase", async () => {
+  list.mockResolvedValueOnce(json({ purchases: [second], next_cursor: second.purchase_intent_id }));
+  renderCabinet(first.purchase_intent_id);
+  await screen.findByRole("heading", { name: second.product_id });
+  await waitFor(() => expect(screen.getByRole("button", { name: ru.Billing.open })).toBeEnabled());
+  open();
+  await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
+  expect(status).toHaveBeenCalledTimes(1);
+  expect(document.querySelector("iframe")).toBeVisible();
+  expect(dispose).not.toHaveBeenCalled();
+});
+
+it("updates the original card after switching to account viewing during discovery", async () => {
+  let finishList!: (value: Response) => void;
+  list.mockImplementationOnce(() => new Promise<Response>(resolve => { finishList = resolve; }));
+  status.mockResolvedValueOnce(json(savedPurchase));
+  status.mockResolvedValueOnce(json({ ...savedPurchase, state: "manual_review" }));
+  renderCabinet(first.purchase_intent_id);
+  await waitFor(() => expect(selector()).toBeEnabled());
+  fireEvent.change(selector(), { target: { value: "" } });
+  open();
+  await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
+  await act(async () => finishList(json({ purchases: [{ ...first, state: "manual_review" }], next_cursor: null })));
+  const card = within(await screen.findByRole("article"));
+  await waitFor(() => expect(card.getByText(ru.Account.products.pending)).toBeVisible());
+  expect(card.queryByRole("button", { name: ru.Purchase.manage })).not.toBeInTheDocument();
+  expect(selector()).toHaveValue("");
+  expect(dispose).not.toHaveBeenCalled();
+  expect(payloads()).toEqual([{}]);
+});
+
 it("shows a neutral selected-purchase placeholder while its deep link is loading", async () => {
   list.mockImplementationOnce(() => new Promise<Response>(() => {}));
   status.mockImplementationOnce(() => new Promise<Response>(() => {}));
@@ -89,16 +216,18 @@ it("selects a single owned purchase and uses the same verified payment bootstrap
 });
 
 it("loads a deep link locally and requires an explicit action before opening payment", async () => {
-  list.mockResolvedValue(json({ purchases: [], next_cursor: null }));
+  list.mockImplementation(async () => json({ purchases: [], next_cursor: null }));
   const view = renderCabinet(first.purchase_intent_id);
-  await waitFor(() => expect(selector()).toHaveValue(first.purchase_intent_id));
-  expect(status).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(screen.getByRole("button", { name: ru.Billing.open })).toBeEnabled());
+  expect(selector()).toHaveValue(first.purchase_intent_id);
   expect(bootstrap).not.toHaveBeenCalled();
   open();
   await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
   view.unmount();
   renderCabinet(first.purchase_intent_id);
-  await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(status).toHaveBeenCalledTimes(4));
+  await waitFor(() => expect(screen.getByRole("button", { name: ru.Billing.open })).toBeEnabled());
   expect(bootstrap).toHaveBeenCalledTimes(1);
   expect(document.querySelectorAll("iframe")).toHaveLength(0);
 });
@@ -240,8 +369,8 @@ it("keeps explicit account viewing when a delayed inventory later finds one purc
   expect(payloads()).toEqual([{}]);
 });
 
-it("refuses released purchase deep links while retaining owned history separately", async () => {
-  status.mockResolvedValue(json({ ...savedPurchase, state: "failed_before_external_effect", scope_held: false }));
+it("refuses a nonterminal purchase with a missing hold", async () => {
+  status.mockResolvedValue(json({ ...savedPurchase, state: "linked", scope_held: false }));
   renderCabinet(first.purchase_intent_id);
   expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.selectionUnavailable);
   expect(screen.getByRole("button", { name: ru.Billing.open })).toBeDisabled();

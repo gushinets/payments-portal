@@ -46,6 +46,7 @@ from app.integrations.lbx.errors import (
     LbxNotConfigured,
     LbxResponseInvalid,
     LbxScopeMismatch,
+    LbxSubscriptionListingMismatch,
 )
 from app.integrations.lbx.privacy import private_http_diagnostics
 
@@ -305,7 +306,7 @@ class LbxServerClient:
         if len(ids) >= MAX_FINANCIAL_INVENTORY_ROWS or len(set(ids)) != len(ids):
             raise LbxResponseInvalid()
         if agreement_id is not None and any(row.agreement_id != agreement_id for row in rows):
-            raise LbxScopeMismatch()
+            raise LbxSubscriptionListingMismatch()
         return tuple(rows)
 
     async def client_user(self, *, token: SecretStr, budget: PreflightBudget) -> LbxUser:

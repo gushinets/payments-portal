@@ -7,6 +7,7 @@ import asyncio
 import json
 import sys
 from collections.abc import Mapping
+from pathlib import Path
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -19,9 +20,10 @@ from app.composition.purchases import recover_financial
 from app.composition.sources import source_resources
 from app.core.errors import AppError
 from app.core.settings import Settings
-from app.domains.billing.operator_contracts import ResolutionRequest
+from app.domains.billing.operator_contracts import LateReviewRef, ResolutionRequest
 from app.domains.billing.operator_diagnostics import inspect_evidence, inspect_operation
 from app.domains.billing.access_invalidation import inspect_delivery
+from app.domains.billing.terminal_resolution import TerminalEvidence, TerminalRequest, resolve_purchase
 from app.infrastructure.sentry import Operation, report_exception
 
 
@@ -34,10 +36,16 @@ def parser() -> argparse.ArgumentParser:
         action = commands.add_parser(command, help="Inspect/retry parked local backend invalidation delivery")
         action.add_argument("--user-id", required=True, type=UUID)
         action.add_argument("--recipient-id", required=True)
-    for command in ("inspect", "recover", "reconcile", "resolve-review"):
+    for command in ("inspect", "recover", "reconcile", "resolve-review", "resolve-purchase"):
         action = commands.add_parser(command)
         action.add_argument("--user-id", required=True, type=UUID)
         action.add_argument("--purchase-id", required=True, type=UUID)
+        if command == "resolve-purchase":
+            action.add_argument("--expected-digest", required=True)
+            action.add_argument("--evidence-file", required=True, type=Path)
+            action.add_argument("--case-id", type=UUID)
+            action.add_argument("--reason", required=True)
+            action.add_argument("--reference", required=True)
         if command == "resolve-review":
             action.add_argument(
                 "--resolution", required=True, choices=("restore-original", "bind-original", "select-primary")
@@ -57,7 +65,26 @@ def resolution_request(arguments: argparse.Namespace) -> ResolutionRequest:
     return ResolutionRequest.model_validate({key: value for key, value in vars(arguments).items() if key != "command"})
 
 
-async def _run(arguments: argparse.Namespace, configuration: Settings, principal: str) -> Mapping[str, object]:
+def terminal_request(arguments: argparse.Namespace) -> TerminalRequest:
+    try:
+        with arguments.evidence_file.open("rb") as stream:
+            content = stream.read(32769)
+        if len(content) > 32768:
+            raise AppError("purchase_resolution_arguments_invalid")
+        evidence = TerminalEvidence.model_validate_json(content)
+        return TerminalRequest.model_validate(
+            {
+                **{key: value for key, value in vars(arguments).items() if key not in {"command", "evidence_file"}},
+                "evidence": evidence,
+            }
+        )
+    except (OSError, ValidationError):
+        raise AppError("purchase_resolution_arguments_invalid") from None
+
+
+async def _run(
+    arguments: argparse.Namespace, configuration: Settings, principal: str, related_reviews: set[LateReviewRef]
+) -> Mapping[str, object]:
     # CLI serialization joins the typed delivery result and legacy command
     # documents; it does not consume or redefine those commands' nested shapes.
     from app.core.database import SessionLocal
@@ -71,11 +98,21 @@ async def _run(arguments: argparse.Namespace, configuration: Settings, principal
             recipient_id=arguments.recipient_id,
             retry=arguments.command == "retry-invalidation",
         )
+    if arguments.command == "resolve-purchase":
+        result = await run_in_threadpool(
+            resolve_purchase, SessionLocal, configuration, terminal_request(arguments), principal
+        )
+        return result.model_dump(mode="json")
     if arguments.command == "inspect-operation":
         return await run_in_threadpool(inspect_operation, SessionLocal, configuration, arguments.operation_id)
     if arguments.command == "inspect":
         return await run_in_threadpool(
-            inspect_evidence, SessionLocal, configuration, arguments.user_id, arguments.purchase_id
+            inspect_evidence,
+            SessionLocal,
+            configuration,
+            arguments.user_id,
+            arguments.purchase_id,
+            include_blocking_late_reviews=True,
         )
     request = resolution_request(arguments) if arguments.command == "resolve-review" else None
     async with source_resources(configuration) as sources:
@@ -90,6 +127,7 @@ async def _run(arguments: argparse.Namespace, configuration: Settings, principal
                 factory=SessionLocal,
                 user_id=arguments.user_id,
                 purchase_id=arguments.purchase_id,
+                report_related_review=related_reviews.add,
             )
         else:
             await reconcile_purchase(
@@ -106,6 +144,7 @@ async def _run(arguments: argparse.Namespace, configuration: Settings, principal
 
 def main(argv: list[str] | None = None) -> int:
     arguments = parser().parse_args(argv)
+    related_reviews: set[LateReviewRef] = set()
     try:
         if arguments.command == "resolve-review":
             try:
@@ -115,8 +154,8 @@ def main(argv: list[str] | None = None) -> int:
         principal = resolve_operator_principal()
         configuration = Settings()
         with asyncio.Runner() as runner:
-            result = runner.run(_run(arguments, configuration, principal))
-        print(json.dumps({**result, "operator_principal": principal}))
+            result = runner.run(_run(arguments, configuration, principal, related_reviews))
+        print(json.dumps({**result, "operator_principal": principal, **_related_review_output(related_reviews)}))
         return 0
     except ValidationError:
         code = "purchase_configuration_invalid"
@@ -127,8 +166,19 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as error:
         report_exception(error, operation=Operation.BILLING_OPERATOR)
         code = "purchase_internal_error"
-    print(json.dumps({"detail": {"code": code}}), file=sys.stderr)
+    print(json.dumps({"detail": {"code": code}, **_related_review_output(related_reviews)}), file=sys.stderr)
     return 1
+
+
+def _related_review_output(reviews: set[LateReviewRef]) -> dict[str, list[dict[str, str]]]:
+    if not reviews:
+        return {}
+    return {
+        "related_late_reviews": [
+            {"purchase_intent_id": str(review.purchase_intent_id), "review_case_id": str(review.review_case_id)}
+            for review in sorted(reviews, key=lambda review: (review.purchase_intent_id, review.review_case_id))
+        ]
+    }
 
 
 if __name__ == "__main__":

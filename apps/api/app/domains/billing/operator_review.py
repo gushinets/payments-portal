@@ -10,7 +10,10 @@ from app.core.settings import Settings
 from app.domains.billing.customers import lock_customer, lock_user
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.operator_contracts import (
+    LATE_REASON,
     RESOLUTION_SCHEMA,
+    TERMINAL_AUDIT_REASONS,
+    TERMINAL_SCHEMA,
     OriginalOperationProof,
     ResolutionRequest,
     ReviewResolution,
@@ -24,6 +27,7 @@ from app.domains.purchases.contracts import FinancialOperation, Purchase, Purcha
 from app.infrastructure.queries import billing_operator as queries, billing_reconciliation, purchases
 from app.infrastructure.queries.billing_customers import customer_operation, recovery_work
 from app.models import (
+    ExternalBillingCustomer,
     ExternalBillingCustomerBindingState as Binding,
     ExternalCreateOperation,
     ExternalCreateOperationKind as Kind,
@@ -83,6 +87,35 @@ def operation_digest(db: Session, operations: list[ExternalCreateOperation]) -> 
             }
             for op in operations
         ]
+    )
+
+
+def terminal_state_digest(db: Session, row: PurchaseIntent) -> str:
+    """Read-only diagnostic; the terminal writer repeats this under business locks."""
+    customer = db.get(ExternalBillingCustomer, row.customer_id)
+    hold = purchases.hold(db, row.user_id, row.product_id)
+    sub = queries.subscription(db, row.purchase_intent_id)
+    return digest(
+        {
+            "purchase": str(row.purchase_intent_id),
+            "state": row.state,
+            "accepted": row.accepted_snapshot,
+            "hold": str(hold.purchase_intent_id) if hold else None,
+            "customer": [customer.provider_origin, customer.provider_customer_id, customer.binding_state],
+            "operations": operation_digest(db, purchases.operations(db, row.purchase_intent_id)),
+            "subscription": [str(sub.latest_observation_id), sub.reconciliation_fencing_token] if sub else None,
+            "open_cases": sorted(
+                case_digest(case)
+                for case in queries.reviews(
+                    db,
+                    row.purchase_intent_id,
+                    row.customer_id,
+                    sub.subscription_id if sub else None,
+                    open_only=True,
+                    limit=None,
+                )
+            ),
+        }
     )
 
 
@@ -247,6 +280,20 @@ def authorize_original_binding(
     return authorize_resolution(db, resolution, row, operations, subscription, restoring=False)
 
 
+def has_late_purchase_review_for_product(
+    db: Session, customer_id: UUID, product_id: str, *, tariff_id: int | None = None
+) -> bool:
+    return queries.has_open_purchase_review_for_product(
+        db,
+        customer_id,
+        reason=LATE_REASON,
+        product_id=product_id,
+        tariff_id=tariff_id,
+        audit_schema=TERMINAL_SCHEMA,
+        audit_reasons=TERMINAL_AUDIT_REASONS,
+    )
+
+
 def authorize_resolution(
     db: Session,
     resolution: ReviewResolution,
@@ -266,6 +313,13 @@ def authorize_resolution(
     )
     validate_inventory(db, resolution.inventory)
     request = resolution.request
+    if request.resolution == "select-primary" and has_late_purchase_review_for_product(
+        db,
+        row.customer_id,
+        row.product_id,
+        tariff_id=resolution.purchase.accepted.selection.tariff_id,
+    ):
+        raise PurchaseRefused("purchase_existing_subscription_review", 409)
     now = as_utc(billing_reconciliation.database_now(db))
     if (
         now >= resolution.expires_at

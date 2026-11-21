@@ -60,6 +60,41 @@ def owned(db: Session, user_id: UUID, purchase_id: UUID, *, lock: bool = False) 
     return db.scalar(query.with_for_update() if lock else query)
 
 
+def owned_with_hold(db: Session, user_id: UUID, purchase_id: UUID) -> tuple[PurchaseIntent, bool] | None:
+    held = (
+        select(BillingPurchaseScopeHold.purchase_intent_id)
+        .where(
+            BillingPurchaseScopeHold.user_id == PurchaseIntent.user_id,
+            BillingPurchaseScopeHold.product_id == PurchaseIntent.product_id,
+            BillingPurchaseScopeHold.purchase_intent_id == PurchaseIntent.purchase_intent_id,
+        )
+        .exists()
+    )
+    return (
+        db.execute(
+            select(PurchaseIntent, held).where(
+                PurchaseIntent.user_id == user_id, PurchaseIntent.purchase_intent_id == purchase_id
+            )
+        )
+        .tuples()
+        .one_or_none()
+    )
+
+
+def current_held(db: Session, user_id: UUID, product_id: str) -> PurchaseIntent | None:
+    return db.scalar(
+        select(PurchaseIntent)
+        .join(
+            BillingPurchaseScopeHold, BillingPurchaseScopeHold.purchase_intent_id == PurchaseIntent.purchase_intent_id
+        )
+        .where(
+            BillingPurchaseScopeHold.user_id == user_id,
+            BillingPurchaseScopeHold.product_id == product_id,
+            PurchaseIntent.user_id == user_id,
+        )
+    )
+
+
 def operations(db: Session, purchase_id: UUID, *, lock: bool = False) -> list[ExternalCreateOperation]:
     query = (
         select(ExternalCreateOperation)

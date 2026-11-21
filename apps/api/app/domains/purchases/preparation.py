@@ -5,9 +5,11 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
-from app.domains.billing.operator_contracts import OriginalOperationProof
-from app.domains.billing.reconciliation_contracts import CommercialProof, IdentityProof
+from app.domains.billing.operator_contracts import TERMINAL_AUDIT_REASONS, TERMINAL_SCHEMA, OriginalOperationProof
+from app.domains.billing.reconciliation_contracts import PREPARED_SUBSCRIPTION_SCHEMA, CommercialProof, IdentityProof
 from app.domains.billing.work import enroll_subscription
+from app.infrastructure.persistence.billing_connections import ConnectionScopeBusy
+from app.infrastructure.queries import billing_operator
 from app.infrastructure.queries.billing_reconciliation import scope as access_scope
 from app.domains.purchases.contracts import PreparedSubscriptionObservation, PurchaseRefused
 from app.models import (
@@ -23,6 +25,21 @@ from app.models import (
     PurchaseIntent,
     PurchaseIntentState as IntentState,
 )
+
+
+class FinancialObjectConflict(Exception):
+    """Another operation already identifies this object as its original."""
+
+
+def verify_financial_owner(db: Session, operation: ExternalCreateOperation, external_id: str) -> None:
+    try:
+        other = billing_operator.lock_and_check_other_financial_owner(
+            db, operation, external_id, audit_schema=TERMINAL_SCHEMA, audit_reasons=TERMINAL_AUDIT_REASONS
+        )
+    except ConnectionScopeBusy:
+        raise PurchaseRefused("billing_busy", 503) from None
+    if other:
+        raise FinancialObjectConflict()
 
 
 def record_first_binding(
@@ -100,7 +117,7 @@ def record_first_binding(
             access_scope_id=scope.access_scope_id if scope else None,
             purchase_intent_id=row.purchase_intent_id if scope else None,
             observed_at=proof.read_finished_at,
-            evidence_schema_version="prepared-subscription:v1" if sub else "prepared-agreement:v1",
+            evidence_schema_version=PREPARED_SUBSCRIPTION_SCHEMA if sub else "prepared-agreement:v1",
             evidence_document=document,
             completeness_classification="preparation_only",
             result_classification="source_negative"

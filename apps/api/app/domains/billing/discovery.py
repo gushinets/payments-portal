@@ -14,6 +14,7 @@ from app.domains.billing import work
 from app.domains.billing.background_recovery import INVENTORY, INVENTORY_SECONDS
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.customers import lock_user
+from app.domains.billing.operator_review import has_late_purchase_review_for_product
 from app.domains.billing.paid_access import apply_paid_source, resolve_access_end
 from app.domains.billing.paid_policy import MeteringPolicy, CandidateConclusion, PrimaryCandidate, first_primary
 from app.domains.billing.reconciliation_contracts import RECONCILIATION_READ_SCHEMAS, ReconciliationResult
@@ -23,7 +24,12 @@ from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import financial, service
 from app.domains.purchases.contracts import Purchase
-from app.infrastructure.queries import billing_reconciliation, paid_access, purchases, billing_background as queries
+from app.infrastructure.queries import (
+    billing_reconciliation,
+    paid_access,
+    purchases,
+    billing_background as queries,
+)
 from app.models import (
     BillingProductAccessScope,
     BillingStateObservation,
@@ -183,7 +189,7 @@ def select_primaries(
         ):
             raise InventoryStale()
         scope = billing_reconciliation.scope(db, cause.user_id, product.product_id)
-        local = paid_access.subscriptions(db, cause.user_id, product.product_id)
+        local = paid_access.subscriptions_with_purchase_state(db, cause.user_id, product.product_id)
         if (scope.primary_subscription_id, scope.primary_retired_at) != (
             product.primary_subscription_id,
             product.primary_retired_at,
@@ -197,7 +203,12 @@ def select_primaries(
             if source.purchase.accepted.selection.product_id == product.product_id
         }
         candidates = {item.identity: PrimaryCandidate(item.identity, item.conclusion) for item in product.candidates}
-        for sub in local:
+        for sub, owner_state in local:
+            if owner_state is not None and owner_state.resolved:
+                candidates[sub.external_subscription_id] = PrimaryCandidate(
+                    sub.external_subscription_id, CandidateConclusion.INELIGIBLE
+                )
+                continue
             source = sources.get(sub.subscription_id)
             if source is not None:
                 candidate = next(
@@ -215,7 +226,7 @@ def select_primaries(
                 )
         eligible = [
             sub
-            for sub in local
+            for sub, _ in local
             if sub.subscription_id in sources
             and candidates.get(sub.external_subscription_id)
             == PrimaryCandidate(sub.external_subscription_id, CandidateConclusion.ELIGIBLE)
@@ -227,6 +238,13 @@ def select_primaries(
             continue
         for sub in eligible:
             purchase = sources[sub.subscription_id].purchase
+            if has_late_purchase_review_for_product(
+                db,
+                result.customer.customer_id,
+                product.product_id,
+                tariff_id=purchase.accepted.selection.tariff_id,
+            ):
+                continue
             if scope.primary_retired_at is not None and as_utc(purchase.created_at) <= as_utc(scope.primary_retired_at):
                 primary_review(db, sub)
                 continue

@@ -13,13 +13,14 @@ from sqlalchemy.engine import Engine, URL
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 
 from apps.api.tests.support.postgres import alembic_test_config, reset_public_schema
+from apps.api.tests.test_target_persistence_postgres import _seed_subscription_graph
 
 
 BASELINE_REVISION = "20260924_0001"
 EMAIL_VERIFICATION_REVISION = "20261001_0002"
 BILLING_PREPARATION_REVISION = "20261029_0003"
 WORKER_REVISION = "20261028_0005"
-HEAD_REVISION = "20261113_0013"
+HEAD_REVISION = "20261117_821_merge"
 
 SURVIVOR_TABLES = {
     "regions",
@@ -790,6 +791,35 @@ def _expected_legal_documents() -> list[dict[str, str]]:
     )
 
 
+@pytest.mark.parametrize("starting_head", ["20261116_821", "20261113_0013"])
+def test_terminal_backend_merge_preserves_history_from_either_published_head(
+    postgres_engine: Engine, database_test_url: URL, starting_head: str
+) -> None:
+    reset_public_schema(postgres_engine)
+    tables = ("users", "legal_acceptance_events", "purchase_intents", "external_subscriptions")
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, starting_head)
+        with postgres_engine.begin() as connection:
+            _seed_subscription_graph(connection)
+            if starting_head == "20261116_821":
+                connection.execute(
+                    text("UPDATE purchase_intents SET state = 'resolved_external_terminal', resolved_at = now()")
+                )
+            before = {
+                table: connection.scalars(text(f"SELECT to_jsonb(t) FROM {table} t ORDER BY to_jsonb(t)::text")).all()
+                for table in tables
+            }
+        command.upgrade(config, "head")
+    with postgres_engine.connect() as connection:
+        assert connection.scalars(text("SELECT version_num FROM alembic_version")).all() == [HEAD_REVISION]
+        for table in tables:
+            assert (
+                connection.scalars(text(f"SELECT to_jsonb(t) FROM {table} t ORDER BY to_jsonb(t)::text")).all()
+                == before[table]
+            )
+    assert _public_table_names(postgres_engine) == APPLICATION_TABLES | {"alembic_version"}
+
+
 def test_clean_first_install_has_expected_revisions_and_exact_application_schema(
     postgres_engine: Engine,
     database_test_url: URL,
@@ -803,12 +833,14 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         assert script.get_bases() == [BASELINE_REVISION]
         assert [item.revision for item in script.walk_revisions()] == [
             HEAD_REVISION,
+            "20261113_0013",
             "20261113_0012",
             "20261111_0011",
             "20261111_0010",
             "20261111_0009",
             "20261110_0008",
             "20261110_0007",
+            "20261116_821",
             "20261031_0006",
             WORKER_REVISION,
             BILLING_PREPARATION_REVISION,

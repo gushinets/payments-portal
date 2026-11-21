@@ -3,7 +3,15 @@
 from uuid import UUID
 
 from app.core.settings import Settings
-from app.domains.billing.operator_review import case_digest
+from app.domains.billing.operator_contracts import (
+    LATE_REASON,
+    TERMINAL_REASON,
+    TERMINAL_SCHEMA,
+    LateObjectEvidence,
+    LateReviewRef,
+    TerminalAudit,
+)
+from app.domains.billing.operator_review import case_digest, terminal_state_digest
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
@@ -12,6 +20,30 @@ from app.infrastructure.queries import billing_operator as queries, billing_reco
 from app.infrastructure.queries.billing_customers import diagnostic_user
 from app.infrastructure.queries.billing_background import operation_subject
 from app.domains.billing.customer_scope import connection_account
+from app.domains.billing.terminal_resolution import LATE_SCHEMA
+from app.models import ManualReviewCase
+
+
+def _review_evidence(case: ManualReviewCase) -> dict:
+    result = {
+        "review_case_id": str(case.review_case_id),
+        "reason": case.reason_code,
+        "scope_kind": case.scope_kind,
+        "scope_reference": case.scope_reference,
+        "state": case.case_state,
+        "expected_case_digest": case_digest(case),
+        "schema": case.evidence_schema_version,
+        "resolution_schema": case.resolution_schema_version,
+        "resolved_at": case.resolved_at.isoformat() if case.resolved_at else None,
+    }
+    if case.reason_code == LATE_REASON and case.evidence_schema_version == LATE_SCHEMA:
+        result["late_object"] = LateObjectEvidence.model_validate(case.evidence_document).model_dump(
+            mode="json", exclude={"purchase_intent_id"}
+        )
+    if case.reason_code == TERMINAL_REASON and case.resolution_schema_version == TERMINAL_SCHEMA:
+        audit = TerminalAudit.model_validate(case.resolution_document)
+        result["original_operations"] = [item.model_dump(mode="json") for item in audit.request.evidence.operations]
+    return result
 
 
 def inspect_operation(factory: SessionFactory, configuration: Settings, operation_id: UUID) -> dict:
@@ -51,7 +83,14 @@ def inspect_operation(factory: SessionFactory, configuration: Settings, operatio
     return result
 
 
-def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: UUID, purchase_id: UUID) -> dict:
+def inspect_evidence(
+    factory: SessionFactory,
+    configuration: Settings,
+    user_id: UUID,
+    purchase_id: UUID,
+    *,
+    include_blocking_late_reviews: bool = False,
+) -> dict:
     with factory() as db:
         if (
             diagnostic_user(
@@ -73,20 +112,29 @@ def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: 
         )
         work = queries.work(db, references)
         reviews = queries.reviews(
-            db, purchase.id, purchase.customer_id, sub.subscription_id if sub else None, include_paid_diagnostics=True
+            db,
+            purchase.id,
+            purchase.customer_id,
+            sub.subscription_id if sub else None,
+            include_paid_diagnostics=True,
+            open_first=True,
         )
         now = as_utc(billing_reconciliation.database_now(db))
-        return {
+        report = {
             "purchase_intent_id": str(purchase.id),
             "state": purchase.state,
             "reason": purchase.reason,
             "scope_held": purchase.held,
+            "expected_resolution_digest": terminal_state_digest(db, row),
             "operations": [
                 {
                     "create_operation_id": str(op.id),
                     "kind": op.kind,
                     "state": op.state,
                     "send_fence": str(op.fence) if op.fence else None,
+                    "request_correlation_key": op.key,
+                    "external_object_id": op.bound_id,
+                    "receipt_candidate_id": op.candidate_id,
                     "bound": op.bound_id is not None,
                     "receipt_saved": op.candidate_id is not None,
                     "deadline": op.deadline.isoformat() if op.deadline else None,
@@ -146,23 +194,21 @@ def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: 
                 }
                 for item in work[:100]
             ],
-            "reviews": [
-                {
-                    "review_case_id": str(case.review_case_id),
-                    "reason": case.reason_code,
-                    "scope_kind": case.scope_kind,
-                    "scope_reference": case.scope_reference,
-                    "state": case.case_state,
-                    "expected_case_digest": case_digest(case),
-                    "schema": case.evidence_schema_version,
-                    "resolution_schema": case.resolution_schema_version,
-                    "resolved_at": case.resolved_at.isoformat() if case.resolved_at else None,
-                }
-                for case in reviews[:100]
-            ],
+            "reviews": [_review_evidence(case) for case in reviews[:100]],
             "work_truncated": len(work) > 100,
             "reviews_truncated": len(reviews) > 100,
         }
+        if include_blocking_late_reviews:
+            limit = 100
+            blocking_reviews = queries.open_purchase_review_refs(
+                db, purchase.customer_id, reason=LATE_REASON, limit=limit + 1
+            )
+            report["blocking_late_reviews"] = [
+                LateReviewRef(purchase_intent_id=original_id, review_case_id=case_id).model_dump(mode="json")
+                for original_id, case_id in blocking_reviews[:limit]
+            ]
+            report["blocking_late_reviews_truncated"] = len(blocking_reviews) > limit
+        return report
 
 
 def purchase_subscription(factory: SessionFactory, configuration: Settings, user_id: UUID, purchase_id: UUID) -> UUID:

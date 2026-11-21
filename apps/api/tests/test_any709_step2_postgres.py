@@ -46,15 +46,17 @@ pytestmark = pytest.mark.postgres
 TOKEN = "isolated-portal-token"
 
 
-def seed(factory: sessionmaker[Session], *, verified: bool = True) -> None:
+def seed(
+    factory: sessionmaker[Session], *, verified: bool = True, token: str = TOKEN, email: str = "synthetic@example.com"
+) -> None:
     config = step1_settings()
     with factory() as db:
         user = User(
             id=uuid4(),
             tenant_id=config.instance_tenant_id,
             region=config.instance_region,
-            email="synthetic@example.com",
-            email_normalized="synthetic@example.com",
+            email=email,
+            email_normalized=email,
             email_verified_at=utc_now() if verified else None,
             first_name="Synthetic",
         )
@@ -65,7 +67,7 @@ def seed(factory: sessionmaker[Session], *, verified: bool = True) -> None:
                 user_id=user.id,
                 tenant_id=user.tenant_id,
                 region=user.region,
-                token_hash=hashlib.sha256(TOKEN.encode()).hexdigest(),
+                token_hash=hashlib.sha256(token.encode()).hexdigest(),
                 expires_at=utc_now() + timedelta(days=1),
             )
         )

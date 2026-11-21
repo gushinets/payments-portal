@@ -15,6 +15,7 @@ from app.models import (
 
 RECONCILIATION_SCHEMA = "subscription-reconciliation:v2"
 RECONCILIATION_READ_SCHEMAS = ("subscription-reconciliation:v1", RECONCILIATION_SCHEMA)
+PREPARED_SUBSCRIPTION_SCHEMA = "prepared-subscription:v1"
 
 
 class CommercialProof(StrEnum):

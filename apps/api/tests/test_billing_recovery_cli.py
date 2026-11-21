@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -12,10 +13,11 @@ import pytest
 
 from app.cli import billing_purchases as cli
 from app.domains.billing.contracts import BillingRefused
-from app.domains.billing.operator_contracts import ResolutionRequest
+from app.domains.billing.operator_contracts import LateReviewRef, ResolutionRequest
 from app.domains.catalog.mapping_evidence import MappingRefused
 from app.composition.mapping_operator import resolve_operator_principal
 from app.core.settings import Settings
+from app.integrations.lbx.errors import LbxScopeForbidden
 from apps.api.tests.factories.billing_operator import resolution_request
 from apps.api.tests.factories.reconciliation import subject_factory
 from apps.api.tests.support.any709_step1 import step1_settings
@@ -96,8 +98,9 @@ def test_billing_recovery_cli_dispatches_shared_use_cases(
 ) -> None:
     calls = []
 
-    def inspect(*args: object) -> dict:
+    def inspect(*args: object, include_blocking_late_reviews: bool = False) -> dict:
         calls.append("inspect")
+        assert include_blocking_late_reviews == (command == "inspect")
         return {"scope_held": True}
 
     async def recover(*args: object, **kwargs: object) -> None:
@@ -134,10 +137,32 @@ def test_billing_recovery_cli_inspect_opens_no_source_resources(
         raise AssertionError("inspect opened source resources")
 
     monkeypatch.setattr(cli, "source_resources", forbidden)
-    monkeypatch.setattr(cli, "inspect_evidence", lambda *args: {})
+    monkeypatch.setattr(cli, "inspect_evidence", lambda *args, **kwargs: {})
     monkeypatch.setattr(cli, "Settings", step1_settings)
     monkeypatch.setattr(cli, "resolve_operator_principal", lambda: "os-euid:1000")
     assert cli.main(["inspect", "--user-id", str(uuid4()), "--purchase-id", str(uuid4())]) == 0
+
+
+def test_recover_reports_committed_related_case_with_first_source_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    review = LateReviewRef(purchase_intent_id=uuid4(), review_case_id=uuid4())
+
+    async def recover(*args: object, report_related_review: Callable[[LateReviewRef], None], **kwargs: object) -> None:
+        report_related_review(review)
+        report_related_review(review)
+        raise LbxScopeForbidden()
+
+    monkeypatch.setattr(cli, "recover_financial", recover)
+    monkeypatch.setattr(cli, "Settings", step1_settings)
+    monkeypatch.setattr(cli, "resolve_operator_principal", lambda: "os-euid:1000")
+    assert cli.main(["recover", "--user-id", str(uuid4()), "--purchase-id", str(uuid4())]) == 1
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert json.loads(output.err) == {
+        "detail": {"code": "lbx_scope_forbidden"},
+        "related_late_reviews": [review.model_dump(mode="json")],
+    }
 
 
 def test_operation_lookup_requires_os_access_and_uses_no_source_resources(
@@ -219,8 +244,70 @@ def test_invalidation_harness_forwards_user_and_recipient(monkeypatch: pytest.Mo
     assert forwarded.recipient_id == "platform-kernel"
 
 
+@pytest.mark.parametrize("reexec", [False, True])
+@pytest.mark.parametrize("absolute", [False, True])
+def test_terminal_evidence_path_uses_callers_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, reexec: bool, absolute: bool
+) -> None:
+    operator = tmp_path / "operator"
+    checkout = tmp_path / "checkout"
+    operator.mkdir()
+    checkout.mkdir()
+    venv = checkout / ".venv"
+    python = venv / ("Scripts/python.exe" if repo.os.name == "nt" else "bin/python")
+    python.parent.mkdir(parents=True)
+    python.touch()
+    monkeypatch.chdir(operator)
+    monkeypatch.setattr(repo, "ROOT", checkout)
+    monkeypatch.setattr(repo, "REPOSITORY_VENV", venv)
+    monkeypatch.setattr(repo, "direct_api_environment", lambda: {})
+    monkeypatch.setattr(repo.sys, "prefix", str(tmp_path if reexec else venv))
+    evidence_path = operator / "evidence.json"
+    monkeypatch.setattr(
+        repo.sys,
+        "argv",
+        [
+            str(ROOT / "scripts/repo.py"),
+            "billing-purchase",
+            "resolve-purchase",
+            "--evidence-file",
+            str(evidence_path) if absolute else evidence_path.name,
+            "--user-id",
+            str(uuid4()),
+            "--purchase-id",
+            str(uuid4()),
+            "--expected-digest",
+            "sha256:" + "a" * 64,
+            "--reason",
+            "test",
+            "--reference",
+            "test",
+        ],
+    )
+    calls: list[Path] = []
+
+    def run(command: list[str], *, cwd: Path, **kwargs: object) -> SimpleNamespace:
+        with monkeypatch.context() as process:
+            process.chdir(cwd)
+            if command[1] != "-m":
+                process.setattr(repo.sys, "prefix", str(repo.REPOSITORY_VENV))
+                process.setattr(repo.sys, "argv", command[1:])
+                with pytest.raises(SystemExit) as finished:
+                    repo.main()
+                return SimpleNamespace(returncode=finished.value.code)
+            args = cli.parser().parse_args(command[3:])
+            calls.append(args.evidence_file.absolute())
+            return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(repo.subprocess, "run", run)
+    with pytest.raises(SystemExit) as finished:
+        repo.main()
+    assert finished.value.code == 0
+    assert calls == [evidence_path]
+
+
 def test_billing_recovery_cli_safe_error(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    def fail(*args: object) -> None:
+    def fail(*args: object, **kwargs: object) -> None:
         raise BillingRefused("billing_review_stale", 409)
 
     monkeypatch.setattr(cli, "inspect_evidence", fail)
@@ -261,7 +348,7 @@ def test_billing_recovery_cli_runbook_parser_and_settings_contract() -> None:
         "bind-original",
         "billing-operator-resolution:v1",
         "projection_valid_until",
-        "release-terminal",
+        "`related_late_reviews`",
         "Polling-only operation",
         "queue age",
         "per-process",
@@ -275,7 +362,7 @@ def test_billing_recovery_cli_unexpected_failure_is_reported_once_without_raw_te
 ) -> None:
     reports = []
 
-    def fail(*args: object) -> None:
+    def fail(*args: object, **kwargs: object) -> None:
         raise RuntimeError("PRIVATE token and payload")
 
     monkeypatch.setattr(cli, "inspect_evidence", fail)

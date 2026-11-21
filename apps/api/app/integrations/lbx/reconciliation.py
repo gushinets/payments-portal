@@ -1,6 +1,6 @@
 """One bounded point-read set; only this boundary interprets LBX lifecycle codes."""
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from collections.abc import Awaitable, Callable
 
@@ -118,6 +118,18 @@ def _calendar_complete(
     return True
 
 
+def _agreement_identity_pairs(
+    agreement: Agreement | None, subject: ReconciliationSubject | SubscriptionCandidateSubject
+) -> list[tuple[int | str | None, int | str]]:
+    if agreement is None:
+        return []
+    return [
+        (agreement.user_id, int(subject.customer.provider_id)),
+        (agreement.agreement_number, subject.agreement_key),
+        (agreement.organization_id, subject.purchase.accepted.seller_id),
+    ]
+
+
 def normalize_subscription(
     subject: ReconciliationSubject | SubscriptionCandidateSubject,
     configuration: Settings,
@@ -142,15 +154,7 @@ def normalize_subscription(
     # Authenticated point URLs select canonical resources. Retain original-key,
     # owner, seller and relationship proof; do not compare returned self-IDs.
     customer_pairs = [(user.outer_id, subject.customer.outer_key)] if user is not None else []
-    relationship_pairs: list[tuple[object, object]] = []
-    if agreement is not None:
-        relationship_pairs.extend(
-            (
-                (agreement.user_id, int(subject.customer.provider_id)),
-                (agreement.agreement_number, subject.agreement_key),
-                (agreement.organization_id, subject.purchase.accepted.seller_id),
-            )
-        )
+    relationship_pairs = _agreement_identity_pairs(agreement, subject)
     if subscription is not None:
         relationship_pairs.append((subscription.agreement_id, int(subject.agreement_id)))
     pairs = customer_pairs + relationship_pairs
@@ -339,6 +343,13 @@ async def _agreement_has_competitor(
     return False
 
 
+@dataclass(frozen=True)
+class SubscriptionSourceRead:
+    proof: SubscriptionProof
+    point: Subscription | None
+    agreement_conflict: bool
+
+
 async def read_subscription_proof(
     client: LbxServerClient,
     subject: ReconciliationSubject | SubscriptionCandidateSubject,
@@ -347,6 +358,21 @@ async def read_subscription_proof(
     budget: PreflightBudget,
     check_agreement_inventory: bool = False,
 ) -> SubscriptionProof:
+    return (
+        await read_subscription_source(
+            client, subject, configuration, budget=budget, check_agreement_inventory=check_agreement_inventory
+        )
+    ).proof
+
+
+async def read_subscription_source(
+    client: LbxServerClient,
+    subject: ReconciliationSubject | SubscriptionCandidateSubject,
+    configuration: Settings,
+    *,
+    budget: PreflightBudget,
+    check_agreement_inventory: bool = False,
+) -> SubscriptionSourceRead:
     started = utc_now()
     user, agreement, tariff, subscription = None, None, None, None
     reads: list[str] = []
@@ -365,7 +391,12 @@ async def read_subscription_proof(
             lambda: client.get_agreement(agreement_id=int(subject.agreement_id), budget=budget), budget
         )
         reads.append("agreement")
+        agreement_conflict = any(
+            actual is not None and actual != expected
+            for actual, expected in _agreement_identity_pairs(agreement, subject)
+        )
     except (LbxError, PreflightDeadlineExceeded) as error:
+        agreement_conflict = isinstance(error, LbxScopeMismatch)
         failures.append("agreement:" + error.code)
     try:
         subscription = await timely_point(
@@ -421,7 +452,7 @@ async def read_subscription_proof(
         budget.check()
     except PreflightDeadlineExceeded:
         failures.append("read_budget_exhausted")
-    return replace(
+    proof = replace(
         proof,
         read_started_at=started,
         read_finished_at=utc_now(),
@@ -429,3 +460,4 @@ async def read_subscription_proof(
         complete=proof.complete and not failures,
         reasons=proof.reasons + tuple(failures),
     )
+    return SubscriptionSourceRead(proof, subscription, agreement_conflict)

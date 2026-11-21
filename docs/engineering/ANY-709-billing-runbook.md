@@ -536,10 +536,13 @@ First binding records the immutable relationship and known negative in the same
 transaction, with no positive trust or payment admission. A closed agreement is
 retained as `prepared-agreement:v1` product-scoped evidence; both advance and the
 financial claim reject a new subscription send for that historical closure.
-A legitimate waiting subscription needs no fictitious paid cycle dates to prove
-its original creation. Already bound financial recovery is a no-op, including
-bound operations placed in review; a concurrent first binder makes the losing
-candidate proof stale and its caller uses claimed subscription reconciliation.
+A legitimate waiting subscription can prove its original creation without paid
+cycle dates. While the purchase holds its scope, `recover` skips operations that
+already have a binding, including those in review. A concurrent first binding
+makes the losing candidate's proof stale. A bound subscription uses claimed
+reconciliation. After release, use the
+[GET-only recovery procedure](billing-background-operations.md#privileged-purchase-operations)
+to check retained objects for late evidence.
 
 Only completed typed `LbxCreateNotSent` evidence permits a later explicit advance
 of the same operation/request with a fresh fence. Its fixed active +2h deadline
@@ -554,8 +557,9 @@ linked preparation for later fresh proof. Known owner/seller/term conflicts stay
 in review. Manage uses original accepted history, independently of current link/
 price. Linked unpaid purchases hold scope without TTL. Automatic release occurs
 only for changed accepted terms while **all** financial operations are provably
-unsent under send-claim locks. Other release needs trustworthy audited evidence;
-there is no force-release/grant command or absence inference from zero results.
+unsent under send-claim locks. Operators can complete a stuck purchase with
+request-specific proof for both operations using the
+[terminal completion procedure](billing-background-operations.md#terminal-completion-any-821).
 
 Final payment admission rechecks session, ownership, operation fences and the
 canonical subscription under the same locks. An ENDED fact committed after
@@ -566,8 +570,15 @@ independent of purchase lifecycle.
 ## Browser operation and diagnostics
 
 Prepared product detail links to `/account?purchase=<id>#billing`. The deep link
-selects an owned purchase but never opens payment automatically. One shared
-cabinet Widget serves account/payment views; multiple purchases need explicit
+selects an owned purchase. A completed purchase shows its terminal outcome.
+The cabinet rereads a held purchase when its listed status differs from the
+detail or a complete list omits the purchase. It pauses payment for that
+selection and hides any open payment Widget while checking. If the status read
+fails, the customer can retry it in the cabinet. If the purchase is still held
+and linked, the same Widget becomes visible again. If it was released, the
+cabinet closes the Widget and shows the terminal outcome and a link to buy
+again. A new Widget session requires a user action.
+One shared cabinet Widget serves account/payment views; multiple purchases need explicit
 selection. Owned inventory remains available independently of source catalog.
 Refresh billing disposes the old host, rechecks the same purchase and opens a
 fresh Widget. It creates no subscription/payment; the provider may require
@@ -577,8 +588,10 @@ SDK callback and no Portal refresh timer that interrupts checkout.
 Live catalog/review/confirm/advance/bootstrap requests have a 130-second browser
 deadline covering body consumption; identity/local purchase GETs use five
 seconds. A lost confirm/advance reply triggers one local inspection, retaining
-its original key/purchase; no POST repeats automatically. Pending/error UI keeps
-a safe request ID. Local status is not an LBX refresh or paid verification.
+its original key or purchase ID. An advance response with HTTP 409 and
+`purchase_scope_released` also triggers a status read of the original purchase.
+Repeating the POST requires a user action. Pending/error UI keeps a safe request
+ID. Local status reads use the Portal's saved state.
 ANY-715 now supplies persisted observation/reconciliation facts and operator
 diagnostics; it does not add a new public billing-status UI contract. See the
 [billing operations guide](billing-background-operations.md).

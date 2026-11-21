@@ -224,6 +224,7 @@ async def test_outage_backoff_and_permanent_parking_cli_retry(
             ),
             config,
             "test-operator",
+            related_reviews=set(),
         )
         assert inspected["delivered_revision"] == 0
         if permanent:
@@ -241,6 +242,7 @@ async def test_outage_backoff_and_permanent_parking_cli_retry(
                 ),
                 config,
                 "test-operator",
+                related_reviews=set(),
             )
             assert result["work_state"] == "pending"
         else:

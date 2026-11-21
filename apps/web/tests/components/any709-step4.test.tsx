@@ -26,6 +26,18 @@ function renderProduct(user = purchaseUser) {
   return renderWithIntl(<ProductBilling productId="proposal_ai" offerAvailable user={user} />, { locale: "ru", messages });
 }
 
+it("does not describe a resolved purchase as still awaiting payment verification", async () => {
+  owned = { ...savedPurchase, state: "awaiting_external_result" };
+  renderProduct();
+  const link = await screen.findByRole("link", { name: ru.Purchase.statusLink });
+  expect(link).toHaveAttribute("href", `/ru/account?purchase=${savedPurchase.purchase_intent_id}#billing`);
+  owned = { ...savedPurchase, state: "resolved_no_external_effect", scope_held: false };
+  fireEvent.click(screen.getByRole("button", { name: ru.Purchase.refresh }));
+  expect(await screen.findByText(ru.Purchase.states.resolved_no_external_effect)).toBeVisible();
+  expect(screen.queryByText(ru.Purchase.awaitingVerification)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: ru.Purchase.recover })).not.toBeInTheDocument();
+});
+
 it("keeps incomplete inventory retryable without a support conflict or another confirmation", async () => {
   advance.mockImplementationOnce(async () => {
     owned = { ...savedPurchase, state: "awaiting_external_result" };
@@ -142,7 +154,7 @@ beforeEach(() => {
     const path = new URL(String(input)).pathname;
     if (path === "/api/catalog/products/proposal_ai") return catalog();
     if (path === "/api/auth/session") return json({ authenticated: true, user: purchaseUser });
-    if (path === "/api/purchase-intents/current") return json({ purchase: owned });
+    if (path === "/api/purchase-intents/current") return json({ purchase: owned?.scope_held ? owned : null });
     if (path === "/api/purchases/review") return review(init);
     if (path === "/api/purchase-intents") return confirm(init);
     if (path.endsWith("/advance")) return advance(init);
@@ -265,6 +277,70 @@ describe("ANY-709 Step 4 purchase journey", () => {
     expect(bootstrap).not.toHaveBeenCalled(); // A local GET is not payment proof.
     expect(fetcher.mock.calls.some(([url]) => String(url).endsWith(`/${savedPurchase.purchase_intent_id}`))).toBe(true);
 
+  });
+
+  it.each(["resolved_no_external_effect", "resolved_external_terminal", "failed_before_external_effect"] as const)("clears the timeout warning when local status proves a released %s purchase", async (state) => {
+    advance.mockImplementationOnce(async () => {
+      owned = { ...savedPurchase, state, scope_held: false };
+      throw new DOMException("synthetic_timeout", "AbortError");
+    });
+    renderProduct();
+    await accept();
+    expect(await screen.findByText(ru.Purchase.states[state])).toBeVisible();
+    await waitFor(() => expect(screen.getByRole("button", { name: ru.Purchase.buy })).toBeEnabled());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: ru.Purchase.recover })).not.toBeInTheDocument();
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(advance).toHaveBeenCalledTimes(1);
+    expect(bootstrap).not.toHaveBeenCalled();
+    expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith(`/${savedPurchase.purchase_intent_id}`))).toHaveLength(1);
+  });
+
+  it.each(["awaiting_external_result", "manual_review", "resolved_external_terminal"] as const)("keeps the timeout warning when local status returns a held %s purchase", async (state) => {
+    advance.mockImplementationOnce(async () => {
+      owned = { ...savedPurchase, state, scope_held: true };
+      throw new DOMException("synthetic_timeout", "AbortError");
+    });
+    renderProduct();
+    await accept();
+    expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
+    expect(screen.getByText(ru.Purchase.states[state])).toBeVisible();
+    expect(screen.queryByRole("button", { name: ru.Purchase.buy })).not.toBeInTheDocument();
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(advance).toHaveBeenCalledTimes(1);
+    expect(bootstrap).not.toHaveBeenCalled();
+  });
+
+  it("shows the released purchase after an advance scope-released conflict", async () => {
+    advance.mockImplementationOnce(async () => {
+      owned = { ...savedPurchase, state: "resolved_no_external_effect", scope_held: false };
+      return json({ detail: { code: "purchase_scope_released", request_id: "released-conflict" } }, 409);
+    });
+    renderProduct();
+    await accept();
+    expect(await screen.findByText(ru.Purchase.states.resolved_no_external_effect)).toBeVisible();
+    await waitFor(() => expect(screen.getByRole("button", { name: ru.Purchase.buy })).toBeEnabled());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(advance).toHaveBeenCalledTimes(1);
+    expect(bootstrap).not.toHaveBeenCalled();
+    expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith(`/${savedPurchase.purchase_intent_id}`))).toHaveLength(1);
+  });
+
+  it.each(["held", "unavailable"])("preserves the advance error when the status lookup is %s", async (lookup) => {
+    advance.mockImplementationOnce(async () => {
+      if (lookup === "unavailable") {
+        fetcher.mockResolvedValueOnce(json({ detail: { code: "billing_busy", request_id: "lookup-failed" } }, 503));
+      }
+      return json({ detail: { code: "purchase_scope_released", request_id: "released-conflict" } }, 409);
+    });
+    renderProduct();
+    await accept();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(ru.Billing.errors.purchaseConflict);
+    expect(alert).toHaveTextContent("released-conflict");
+    expect(alert).not.toHaveTextContent("lookup-failed");
+    expect(advance).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith(`/${savedPurchase.purchase_intent_id}`))).toHaveLength(1);
   });
 
   it("keeps the held intent and shows recovery when timeout status inspection also fails", async () => {

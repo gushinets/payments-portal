@@ -102,17 +102,17 @@ no background CREATE or cross-product adoption is permitted. The ANY-715 MVP
 rebuild is polling-only: `/api/billing/lbx/webhook` has no route or enablement
 configuration. Existing inbox tables/history remain, but this build neither
 receives nor processes receipts. Shared scoped inventory uses permanent
-bindings and claimed reconciliation; operator exits reuse that same inventory.
+bindings and claimed reconciliation. The `resolve-review` actions reuse that
+inventory.
 See [billing operations](docs/engineering/billing-background-operations.md).
 
-The privileged purchase CLI supplies local inspection, GET-only
-recovery/reconciliation and audited restore-original, bind-original and
-select-primary resolutions.
-Fresh proof, expected review/evidence/fences and OS principal are rechecked in the
-shared writer; facts/binding, review audit and scheduling commit atomically.
-`select-primary` requires a bound, freshly proven eligible source; operators
-cannot supply arbitrary objects, access flags or quota. No terminal hold
-release or arbitrary rebind is implemented.
+The privileged purchase CLI supports local inspection, GET-only recovery and
+reconciliation. The audited `resolve-review` actions recheck fresh source proof,
+case evidence and expected fences at apply time. Facts or bindings, the review
+audit and scheduling commit atomically. `select-primary` requires a bound,
+freshly proven eligible source. The `resolve-purchase` transaction uses recorded
+terminal evidence for each financial operation to release the exact original
+hold and preserve accepted terms and financial history.
 
 The canonical target is defined, in precedence order, by
 [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md), the

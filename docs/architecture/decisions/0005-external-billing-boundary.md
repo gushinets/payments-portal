@@ -146,8 +146,10 @@ terms and unrelated reviews require the existing proof-based operator path.
 Expiry does not impose an operator-only first-binding rule on an otherwise
 proven original. Precise precedence: these rules narrow the September common
 UNKNOWN section's continued automatic discovery after escalation and clarify
-ANY-715's late-object acceptance condition. No arbitrary rebind, unknown-hold
-release, repeat financial POST or paid-access grant is authorized.
+ANY-715's late-object acceptance condition. Recovery uses GET-only proof to
+bind the original object and preserves the purchase hold. The
+[ANY-821 decision](#any-821-audited-terminal-completion) defines the audited
+terminal completion path.
 
 The owner also treats LBX `block_to_close_days` as informational lifecycle
 metadata. LBX owns how long a financially blocked subscription remains before
@@ -176,6 +178,18 @@ External Billing ownership stay unchanged. The
 Section 3.9 target and bounded migration inventory. Step 9 specifies it; runtime
 implementation is Steps 10–15. This is not evidence of a working generic API,
 third-party adoption or sales/deployment approval.
+
+### ANY-821 audited terminal completion
+
+The two-hour pause retains the original purchase hold. Under
+[ANY-821](https://linear.app/paveldik/issue/ANY-821/define-and-implement-terminal-resolution-for-purchases-stuck-in),
+an operator may release that hold through an audited command with
+request-specific evidence for both the agreement and subscription operations.
+For any possible send, the operator stops the sender processes and obtains final
+LBX confirmation of no effect or an irreversible terminal outcome. Completion
+preserves the original terms, operation identities and provider object history.
+A replacement purchase requires current terms and fresh consent. See the
+[operator procedure](../../engineering/billing-background-operations.md#terminal-completion-any-821).
 
 ## Implementation status
 

@@ -65,6 +65,7 @@ def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
         "awaiting_external_result",
         "linked",
         "resolved_no_external_effect",
+        "resolved_external_terminal",
         "failed_before_external_effect",
         "manual_review",
     }

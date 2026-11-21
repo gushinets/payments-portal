@@ -5,6 +5,7 @@ from uuid import UUID
 
 from app.domains.billing.contracts import CustomerOpen
 from app.domains.billing.discovery import ProductDiscovery
+from app.domains.billing.operator_contracts import AuditedSubscriptionCandidate
 from app.domains.billing.reconciliation_contracts import ReconciliationResult, SubscriptionProof
 from app.domains.purchases.contracts import Purchase, PurchaseInventoryIncomplete, PurchaseRefused
 
@@ -30,6 +31,7 @@ class InventoryResult:
     products: tuple[ProductDiscovery, ...] = ()
     sources: tuple[ReconciliationResult, ...] = ()
     discovery_ids: tuple[UUID, ...] = ()
+    audited_candidates: frozenset[AuditedSubscriptionCandidate] = frozenset()
 
     def require_clear(self, purchase: Purchase, *, original: bool = False, primary: bool = False) -> None:
         if purchase.id in self.conflicts:

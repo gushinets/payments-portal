@@ -183,7 +183,7 @@ current migration chain and table inventory. Do not create a separate
 bootstrap CLI. Before starting normal runtime on a fresh database, verify:
 
 - Alembic reports one head and the database is at that head;
-- the current head is `20261113_0013` and exactly 30 application tables exist;
+- the current head is `20261117_821_merge` and exactly 30 application tables exist;
 - every removed legacy catalog/order/payment/provider/subscription/
   entitlement/trial table is absent;
 - all seventeen billing/link/purchase tables are empty before explicit flows;
@@ -331,11 +331,48 @@ and verify separate application/database backups before updating retained data.
 Use the existing backup/recovery procedure and matching reader+database pair;
 never repair failure by downgrading, stamping or rewriting purchase history.
 
+### Billing operator CLI while the API is stopped
+
+For [terminal purchase completion](../engineering/billing-background-operations.md#terminal-completion-any-821),
+keep PostgreSQL running and use a one-off container from the deployed API image.
+Use the deployment's project, protected environment file and Compose file order.
+The example uses the reviewed-image installation. For a source-built installation,
+omit `-f deploy/compose.images.yml` and use the project's already-built API image.
+For a shared VPS, place `-f "$NETWORK_OVERLAY"` after `docker-compose.prod.yml`
+and before the image override when that override is in use.
+`run --no-deps` runs the CLI while the API service and its senders stay stopped.
+
+Set `EVIDENCE_FILE` to the absolute path of the protected evidence file, readable
+by the container user. Set the remaining arguments from the operator record.
+Use the same effective UID for the original command and any exact replay.
+
+```bash
+docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" \
+  -f docker-compose.prod.yml -f deploy/compose.images.yml \
+  run --rm -T --no-deps --pull never -e PYTHONPATH=apps/api \
+  --volume "$EVIDENCE_FILE:/run/purchase-evidence.json:ro" \
+  api python -m app.cli.billing_purchases resolve-purchase \
+  --user-id "$USER_ID" --purchase-id "$PURCHASE_ID" \
+  --expected-digest "$EXPECTED_DIGEST" --evidence-file /run/purchase-evidence.json \
+  --reason "$REASON" --reference "$REFERENCE"
+```
+
+For `inspect-operation`, `inspect` or `recover`, keep the deployment's Compose
+options and omit the evidence mount. Pass the action and its IDs to
+`app.cli.billing_purchases`. For customer diagnosis, use
+`api python -m app.cli.billing_customers diagnose --user-id "$USER_ID"` after the
+same `run` options. The terminal completion procedure governs sender shutdown.
+For a late case, pass `--case-id "$CASE_ID"` to `resolve-purchase`.
+
 ### Paired compatibility and synchronized cutover
 
-The current local ANY-766 source pair requires
-Portal migration head `20261113_0013`, Kernel head `0022`, consumer identity V2,
-AccessSnapshot V3, manifest/invalidation/usage/exhaustion V1. Source baselines are
+Deploy the ANY-821 Portal build with Alembic head `20261117_821_merge`. It joins
+the published ANY-766 head `20261113_0013` and terminal resolution revision
+`20261116_821`.
+
+The reviewed ANY-766 source pair used Portal head `20261113_0013` and Kernel head
+`0022`, with consumer identity V2, AccessSnapshot V3 and
+manifest/invalidation/usage/exhaustion V1. Its source baselines were
 Portal `2e328bb59af690ec3a4599da0ce4556f9bedce76` and Kernel
 `c153aaa200770ee156537e30fea1ebb3d085b434`, plus their review corrections.
 Earlier image rehearsals do not verify this corrected pair.
@@ -351,6 +388,20 @@ No image-only rollback to them is supported. Historical documents/digests,
 allowance IDs and quantities remain unchanged. The old Kernel-only delegation
 API and snapshot V2 binaries are also excluded; there is no rolling mixed-wire
 mode for this cutover.
+
+Migration `20261116_821` refuses downgrade while a purchase retains
+`resolved_external_terminal`, a `purchase_late_external_object` review is open,
+or a terminal resolution audit retains a confirmed external object ID.
+While any of these conditions holds, use a Portal image that can read and
+enforce ANY-821 history. This requirement also applies to image-only rollback
+against the retained database.
+Even after a purchase was completed as `resolved_no_external_effect`, an open
+late-object review requires a compatible Portal reader to block new financial
+CREATEs for that customer. Confirming the object keeps the downgrade blocked.
+Ruling it out removes that review's restriction.
+The existing guards for retained V2 evidence, allowance activation and issuance
+budgets still apply.
+Keep the matching application and database backup together for recovery.
 
 The earlier correction expanded the policy digest to include permissions and
 technical source without a DB migration or wire-version change. When crossing
@@ -371,7 +422,7 @@ replacement. Rebuild older unlabelled images; runtime variables cannot repair a
 missing or foreign build audience. Compatible frontend/backend source revisions
 may still differ.
 
-Before installing this pair over the Step 8 baseline:
+For a paired cutover from the Step 8 baseline:
 
 1. Close both ingress paths and stop Portal API/embedded workers and all extra
    producers. Use the running Kernel revision's `prod-quiesce` to stop admission,
@@ -382,17 +433,16 @@ Before installing this pair over the Step 8 baseline:
    Preserve the existing Kernel audience and identity; never transfer retained
    allowance ownership by changing configuration. Enable Kernel invalidation and
    usage receiver permissions before enabling Portal delivery.
-3. While both old application sets remain stopped, run Portal's selected
-   `migrate` image through head `20261113_0013`: 0009 binds retained delegations
-   and policy scope; 0010 partitions recipient/outbox/work keys and retires stale
-   claims; 0011 adds exhaustion deduplication; 0012 retains allowance activation
-   and introduces V2 internal evidence readers/writers; 0013 bounds new code
-   issuance while preserving expired-token recovery evidence. Downgrade refuses
-   retained V2/activation evidence or issuance budgets. Keep all old Portal
-   APIs/workers stopped and start only updated binaries. Configure consumers before first
-   API startup installs/verifies P/digest and recipient state. Do not run an old
-   worker against migrated delivery keys.
-4. Use the selected Kernel images and its existing runner through the head above:
+3. While both old application sets remain stopped, run the selected Portal
+   `migrate` image to apply `alembic upgrade head`. Verify
+   `20261117_821_merge` for the ANY-821 build. This head includes all ANY-766
+   revisions through `20261113_0013` and the terminal resolution revision. The
+   [schema reference](payment-portal-data-model.md#physical-baseline) lists
+   their effects. Keep the old Portal API and workers stopped. Configure
+   consumers before the updated API starts and verifies P/digest and recipient
+   state.
+4. Use the selected Kernel images and the Kernel runner through head `0022`
+   for this compatibility baseline.
    `0020` retains R floors and usage/reservations while clearing incompatible
    cache metadata and initializing consumer/P; `0021` adds durable exhaustion;
    `0022` binds retained history to one consumer without changing usage/replay keys.

@@ -1,5 +1,7 @@
 "use client";
 
+import { isResolvedPurchase } from "./purchase-state";
+
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import type { PurchaseIntentResponse, PurchaseReviewResponse, SessionUserResponse } from "@/generated/api-contracts/types.gen";
@@ -152,15 +154,17 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     try {
       result = await advancePurchase(token, purchase.purchase_intent_id, id);
     } catch (error) {
-      if (error instanceof ApiError) throw error;
-      // A browser timeout/disconnect does not cancel the server's financial work.
-      // Inspect once locally; never replay advance or authorize payment from this GET.
+      const apiError = error instanceof ApiError;
+      if (apiError && (error.status !== 409 || apiErrorCode(error) !== "purchase_scope_released")) throw error;
+      // Check for a concurrent release or a completed advance after a lost response.
       let saved: PurchaseIntentResponse | null = null;
       try { saved = await purchaseStatus(token, purchase.purchase_intent_id, id); }
       catch { /* Keep the original held intent visible if the status read also fails. */ }
+      const released = saved && !saved.scope_held && isResolvedPurchase(saved.state);
+      if (apiError && !released) throw error;
       if (current()) {
         if (saved) setState({ kind: "purchase", purchase: saved });
-        setFailure(saved?.state === "linked" ? null : { message: "financialPending", requestId: id });
+        setFailure(released || saved?.state === "linked" ? null : { message: "financialPending", requestId: id });
       }
       return;
     }
@@ -213,7 +217,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
 
   const purchase = state.kind === "purchase" ? state.purchase : null;
   const resumable = purchase && purchase.scope_held && purchase.state !== "linked";
-  const released = purchase && !purchase.scope_held && (purchase.state === "resolved_no_external_effect" || purchase.state === "failed_before_external_effect");
+  const released = purchase && !purchase.scope_held && isResolvedPurchase(purchase.state);
   if (purchase?.state === "linked") return <section className="purchase-panel purchase-complete" aria-label={t("title")}>
     <Heading>{t("states.linked")}</Heading>
     <p className="card-copy">{t("managedInAccount")}</p>
@@ -255,9 +259,10 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
         <p role="status">{t(`states.${purchase.state}`)}</p>
         {purchase.reason && <p>{t(purchase.reason === "terms_changed" ? "termsChanged" : purchase.reason === "purchase_pending" ? "pending" : "reviewRequired")}</p>}
         <p className="catalog-product-id">{t("reference", { id: purchase.purchase_intent_id })}</p>
+        <Link href={`/account?purchase=${encodeURIComponent(purchase.purchase_intent_id)}#billing`}>{t("statusLink")}</Link>
         <details><summary>{t("acceptedTerms")}</summary><PurchaseTerms review={purchase.accepted} /></details>
         {resumable && <button className="btn-primary" type="button" disabled={working} onClick={() => void run((token, id, current) => prepare(token, purchase, id, current))}>{t(purchase.state === "created" ? "continue" : "recover")}</button>}
-        <p>{t("awaitingVerification")}</p>
+        <p>{t(released ? "resolvedNext" : "awaitingVerification")}</p>
       </div>}
       {failure && <div className="notice error" role="alert">{b(`errors.${failure.message}`)}{failure.requestId && <p>{b("requestId", { id: failure.requestId })}</p>}</div>}
       <p className="card-copy">{t("accessInAccount")}</p>

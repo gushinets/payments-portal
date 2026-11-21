@@ -1,12 +1,28 @@
 """Exact review relationships accepted by the existing audited operator actions."""
 
 from uuid import UUID
+
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.domains.billing.operator_contracts import ResolutionRequest
+from app.domains.billing.operator_contracts import (
+    TERMINAL_AUDIT_REASONS,
+    TERMINAL_SCHEMA,
+    AuditedSubscriptionCandidate,
+    ResolutionRequest,
+    TerminalAudit,
+)
 from app.domains.catalog.commercial_offer import canonical_document, commercial_digest
-from app.domains.purchases.contracts import Purchase, PurchaseRefused
+from app.domains.purchases.contracts import (
+    FINANCIAL_REVIEW_SCHEMA,
+    FinancialOperation,
+    FinancialReviewEvidence,
+    Purchase,
+    PurchaseInventoryIncomplete,
+    PurchaseRefused,
+)
 from app.infrastructure.queries import billing_operator as queries
+from app.infrastructure.queries.billing_customers import open_customer_reviews
 from app.models import (
     ExternalCreateOperation,
     ExternalCreateOperationKind as Kind,
@@ -43,6 +59,30 @@ def case_digest(case: ManualReviewCase) -> str:
     )
 
 
+def audited_subscription_candidates(
+    db: Session, customer_id: UUID, account_id: str
+) -> frozenset[AuditedSubscriptionCandidate]:
+    disproved: set[tuple[UUID, AuditedSubscriptionCandidate]] = set()
+    originals: set[tuple[UUID, str]] = set()
+    for operation_id, case in queries.released_subscription_audits(
+        db, customer_id, account_id, audit_schema=TERMINAL_SCHEMA, audit_reasons=TERMINAL_AUDIT_REASONS
+    ):
+        try:
+            audit = TerminalAudit.model_validate(case.resolution_document)
+        except ValidationError as error:
+            raise PurchaseInventoryIncomplete() from error
+        proof = next(item for item in audit.request.evidence.operations if item.operation_id == operation_id)
+        if proof.external_object_id is not None:
+            originals.add((operation_id, proof.external_object_id))
+        disproved.update(
+            (operation_id, AuditedSubscriptionCandidate(identity, case.review_case_id))
+            for identity in proof.unrelated_object_ids
+        )
+    return frozenset(
+        candidate for operation_id, candidate in disproved if (operation_id, candidate.external_id) not in originals
+    )
+
+
 def possible_send_case(case: ManualReviewCase) -> bool:
     evidence = case.evidence_document
     if not isinstance(evidence, dict) or evidence.get("operation_state_at_conflict") not in {
@@ -59,7 +99,7 @@ def possible_send_case(case: ManualReviewCase) -> bool:
 def original_possible_send(case: ManualReviewCase, related: list[ManualReviewCase], purchase: Purchase) -> bool:
     evidence = case.evidence_document
     if (
-        case.evidence_schema_version != "financial-review:v1"
+        case.evidence_schema_version != FINANCIAL_REVIEW_SCHEMA
         or not isinstance(evidence, dict)
         or evidence.get("purchase_intent_id") != str(purchase.id)
         or evidence.get("create_operation_id") != case.scope_reference
@@ -77,6 +117,32 @@ def original_possible_send(case: ManualReviewCase, related: list[ManualReviewCas
     )
 
 
+def reviewed_unsent_operation(db: Session, operation: ExternalCreateOperation, snapshot: FinancialOperation) -> bool:
+    # An open financial review prevents a further send. Its evidence preserves
+    # the state before the review rotated the operation's fence.
+    for case in open_customer_reviews(db, operation.create_operation_id):
+        if case.evidence_schema_version != FINANCIAL_REVIEW_SCHEMA:
+            continue
+        try:
+            origin = FinancialReviewEvidence.model_validate(case.evidence_document)
+        except ValidationError:
+            continue
+        if (origin.purchase_intent_id, origin.create_operation_id) != (
+            operation.purchase_intent_id,
+            operation.create_operation_id,
+        ):
+            continue
+        if origin.operation_state_at_conflict == State.PROVEN_NOT_SENT and origin.send_fence_at_conflict is not None:
+            return True
+        if origin.operation_state_at_conflict == State.PENDING and (
+            operation.unknown_since is None
+            and snapshot.deadline is None
+            and operation.recovery_hint_schema_version is None
+        ):
+            return True
+    return False
+
+
 def inventory_case(case: ManualReviewCase, purchase: Purchase, operations: list[ExternalCreateOperation]) -> bool:
     evidence = case.evidence_document
     target = next((op for op in operations if op.operation_kind == Kind.SUBSCRIPTION), None)
@@ -84,7 +150,7 @@ def inventory_case(case: ManualReviewCase, purchase: Purchase, operations: list[
         target is not None
         and case.reason_code == "customer_inventory_conflict"
         and (case.scope_kind, case.scope_reference) == ("create_operation", str(target.create_operation_id))
-        and case.evidence_schema_version == "financial-review:v1"
+        and case.evidence_schema_version == FINANCIAL_REVIEW_SCHEMA
         and isinstance(evidence, dict)
         and evidence.get("purchase_intent_id") == str(purchase.id)
         and evidence.get("create_operation_id") == str(target.create_operation_id)
@@ -178,7 +244,7 @@ def validate_case(
             or target is None
             or (previous.scope_kind, previous.scope_reference) != (case.scope_kind, case.scope_reference)
             or previous.reason_code != "external_create_outcome_unknown:" + target.operation_kind.value
-            or previous.evidence_schema_version != "financial-review:v1"
+            or previous.evidence_schema_version != FINANCIAL_REVIEW_SCHEMA
             or not isinstance(evidence, dict)
             or evidence.get("purchase_intent_id") != str(purchase.id)
             or evidence.get("create_operation_id") != str(target.create_operation_id)
