@@ -451,18 +451,25 @@ Client readiness/Widget rendering is not verified by this command.
 
 ## Purchase API and financial recovery (Step 3)
 
-The normal UI reviews/accepts on product detail and opens payment in the cabinet.
-For API inspection use the authenticated verified owner's session:
+Use the session of the purchase owner with a verified email for these requests.
 
 1. `POST /api/purchases/review` with `{"product_id":"<enabled product>"}`
-   returns exact decimal terms, `revision_id`, `expected_fingerprint` and legal
-   document versions/text hashes. It creates no consent or provider object.
-2. `POST /api/purchase-intents` with a stable `Idempotency-Key`, reviewed
-   product/revision/fingerprint and `documents` (`document_version_id`,
-   `acceptance_text_hash`) rereads sources and atomically pins acceptance and
-   one user/product hold. Do not submit provider IDs, money or permission flags.
-   Same key/meaning returns the original purchase; another key cannot bypass its
-   hold. `terms_changed` requires fresh review and explicit consent.
+   returns the exact decimal terms, the values needed to confirm them, and
+   the legal document versions and text hashes. It creates no consent or provider object.
+2. Send `POST /api/purchase-intents` with a stable `Idempotency-Key`. Copy
+   `product_id`, `revision_id`, `expected_fingerprint` and
+   `expected_technical_terms_digest` from the review. If the technical digest
+   is null, send null or omit the field. A missing non-null digest returns
+   `409 terms_changed` when a new confirmation reaches the terms check.
+   After the buyer accepts all required documents, include each
+   `document_version_id` and `acceptance_text_hash` in `documents`.
+   The Portal rereads the sources and atomically records acceptance and one
+   user/product hold. Do not submit provider IDs, money or permission flags.
+   After a lost reply, retry with the same key and confirmation data. A matching
+   retry returns the original purchase. Changing the confirmation data for a key
+   that already has a purchase, including omitting its original digest, returns
+   `409 purchase_idempotency_conflict`. The existing hold still applies to a new
+   key. `terms_changed` requires fresh review and explicit consent.
 3. Explicit `POST /api/purchase-intents/<id>/advance` ensures the shared customer,
    dedicated non-offer agreement for the configured seller, and selected
    tariff/period/service/quantity. It requests balance-gated activation, omitting
@@ -482,16 +489,19 @@ For API inspection use the authenticated verified owner's session:
    Its local snapshot uses the existing bounded user-row lock shared by purchase
    transitions; provider HTTP runs after that transaction closes.
    The number of other held Portal purchases is not a separate admission quota.
-4. `GET /api/purchase-intents/current?product_id=<product>` and
-   `GET /api/purchase-intents/<id>` read owned local history without CREATE or
-   catalog calls. Authenticated `GET /api/purchase-intents` lists held purchases
-   with UUID cursor pagination (default 50, maximum 100).
+4. `GET /api/purchase-intents/current?product_id=<product>` returns the purchase
+   currently holding the product scope, or `purchase: null`. After a lost
+   confirmation reply, a null result leaves the outcome unknown.
+   `GET /api/purchase-intents/<id>` reads the owned purchase by ID, including
+   its saved outcome after release. Authenticated `GET /api/purchase-intents`
+   lists held purchases with UUID cursor pagination (default 50, maximum 100).
+   All three routes read saved Portal records.
 5. `POST /api/billing/widget-bootstrap` with `{"purchase_intent_id":"<id>"}`
    requires fresh original customer/agreement/seller and effective subscription
-   proof. The payment response identifies the proven target agreement/seller;
-   only payments are enabled among action flags. Empty-body account viewing
-   stays independent. The customer-wide SDK has no product/agreement ACL or
-   automatic selection: the user selects the displayed intended agreement.
+   proof. The payment response identifies the proven agreement and seller and
+   enables only the payment action. To open the account view, send the JSON
+   body `{}`. The Widget covers the whole customer account. The buyer selects
+   the agreement identified by the Portal.
 
 The backend owns Widget presentation, payment target and action flags. The
 frontend consumes that successful typed response without rechecking those
@@ -515,10 +525,15 @@ separately through shared authoritative reconciliation and complete inventory.
 .venv/bin/python scripts/repo.py billing-purchase recover --user-id <portal-user-uuid> --purchase-id <purchase-intent-uuid>
 ```
 
-`inspect` is local/read-only. `recover` performs provider GETs and persists only
-fenced point-proven bindings/review state; it is not a read-only SQL action.
-It never sends CREATE, mints JWT, releases scope or grants access. Use request
-IDs and safe stored HTTP/LBX facts; do not publish raw responses or credentials.
+`inspect` is local/read-only. `recover` reads LBX with GET requests and writes
+fenced, point-proven bindings and review state in Portal. It preserves the
+purchase hold.
+Financial CREATEs and Widget credentials require their respective explicit
+foreground actions. If another caller binds the subscription during recovery,
+the losing attempt uses ordinary subscription reconciliation. That path records
+observations and can update the paid-access projection under the standard
+source-proof and admission rules. Use request IDs and safe stored HTTP/LBX facts.
+Do not publish raw responses or credentials.
 
 Possible-send commits immutable request/key, fence, first `unknown_since + 2h`
 and coalesced work before financial POST. A timeout, 500/error, malformed success,
@@ -537,9 +552,10 @@ transaction, with no positive trust or payment admission. A closed agreement is
 retained as `prepared-agreement:v1` product-scoped evidence; both advance and the
 financial claim reject a new subscription send for that historical closure.
 A legitimate waiting subscription needs no fictitious paid cycle dates to prove
-its original creation. Already bound financial recovery is a no-op, including
-bound operations placed in review; a concurrent first binder makes the losing
-candidate proof stale and its caller uses claimed subscription reconciliation.
+its original creation. The recovery pass skips operations already bound when it
+reads them, including those placed in review. See the
+[recovery guide](billing-background-operations.md#enrollment-cadence-and-recovery)
+for concurrent binding and audited resolution.
 
 Only completed typed `LbxCreateNotSent` evidence permits a later explicit advance
 of the same operation/request with a fresh fence. Its fixed active +2h deadline
@@ -565,26 +581,82 @@ independent of purchase lifecycle.
 
 ## Browser operation and diagnostics
 
-Prepared product detail links to `/account?purchase=<id>#billing`. The deep link
-selects an owned purchase but never opens payment automatically. One shared
-cabinet Widget serves account/payment views; multiple purchases need explicit
-selection. Owned inventory remains available independently of source catalog.
-Refresh billing disposes the old host, rechecks the same purchase and opens a
-fresh Widget. It creates no subscription/payment; the provider may require
-selecting the intended agreement again. There is no supported payment-completed
-SDK callback and no Portal refresh timer that interrupts checkout.
+The payment button on a prepared product opens the localized cabinet (for
+example, `/ru/account?purchase=<id>#billing`). On that visit, the cabinet
+verifies the purchase, scrolls to billing and uses the click once to open its
+Widget. When the verified agreement and seller arrive, the cabinet brings
+them into view below the sticky navigation. The click expires after 30 seconds
+and is bound to the current session.
+Opening the URL directly, reloading or returning through browser history
+requires a fresh click to open the Widget. On reload, the cabinet reads
+`purchase` from the URL. A manual selection lasts only for the current visit.
+Without a purchase ID, the cabinet preselects the sole purchase in a complete
+list. With several purchases, the buyer chooses one for payment. To open the
+account view, choose **View account without selecting a purchase** in the
+purchase selector, then open billing. The account view is also available when
+the user has no purchases.
+
+Refresh billing disposes the old host and opens a fresh Widget in the current
+mode. For payment, it rechecks the same purchase and the buyer may need to
+select the intended agreement again. In account view, it opens an account-only
+Widget without selecting a purchase.
+Refreshing creates no subscription or payment. The Portal never reloads
+the Widget on a timer. The SDK has no supported payment-completed callback.
 
 Live catalog/review/confirm/advance/bootstrap requests have a 130-second browser
-deadline covering body consumption; identity/local purchase GETs use five
-seconds. A lost confirm/advance reply triggers one local inspection, retaining
-its original key/purchase; no POST repeats automatically. Pending/error UI keeps
-a safe request ID. Local status is not an LBX refresh or paid verification.
+deadline covering body consumption. Identity and local purchase GETs use five
+seconds. A lost confirm/advance reply, a generic `internal_server_error`, or
+a 5xx response without an API error code triggers a local status read. The
+open review form keeps the original confirmation key and submitted terms in
+memory for an explicit retry. After a reload, the product page looks up the
+saved purchase by product and shows its recorded acceptance if found.
+An `advance` response with `preflight_deadline_exceeded` also triggers a saved
+status read because the operation may already be durable. If advance is still
+waiting for its reply after five seconds, the product page checks saved status
+for the same purchase.
+A held, linked result makes the payment action available while that reply is
+pending. A confirmed release shows the saved outcome and lets the buyer
+review the current terms if the product still has an available offer.
+
+After a lost advance reply, a saved `preparing` state keeps the unknown-outcome
+warning and its request ID visible. That state covers both a possible send and
+a recovered agreement that is ready for explicit continuation. The buyer can
+check status or continue the same purchase while preparation is unresolved.
+
+With the tab visible, the product page polls a held purchase in `created`,
+`preparing` or `awaiting_external_result`. After an uncertain confirmation it
+can poll for the current purchase by product. The cabinet polls only the
+selected purchase in those states. If overlapping list and point reads disagree,
+the cabinet starts a fresh point read before offering payment. Routine polling
+starts after two seconds, then waits five and ten seconds between reads for up
+to two minutes. In `awaiting_external_result`, polling continues on a
+one-minute interval for up to two hours and two minutes from the start of that
+polling window. At the limit, the UI directs the buyer to the manual status check
+on the product page. Status reads use saved Portal records. Provider proof is
+collected by the purchase, Widget and recovery flows.
+
+A purchase status read returning 401, 403 or 404 stops polling and shows the
+corresponding sign-in, verification or purchase-unavailable message. The cabinet
+closes the Widget and discards any pending opening when the selected purchase
+returns 401 or 403. An explicit `401 billing_session_required` for the current
+session also closes checkout or cancels a pending opening when a purchase
+status read or Widget bootstrap began before the buyer changed the selected
+purchase. The cabinet closes checkout when a purchase list, paid access
+or usage read for the current session returns 401 `billing_session_required` or
+403 `billing_email_verification_required`. When a purchase read confirms that
+the selected purchase is unavailable for payment, the cabinet closes its
+payment Widget or cancels its opening. Temporary read failures leave the open
+Widget in place. After a session refusal, Retry reloads the cabinet and checks
+the session before offering billing again. A manual status check on the product
+page can restore continuation once the purchase is readable.
+
 ANY-715 now supplies persisted observation/reconciliation facts and operator
 diagnostics; it does not add a new public billing-status UI contract. See the
 [billing operations guide](billing-background-operations.md).
 
-SDK `render()` is not readiness. The isolated host waits up to 20 seconds for
-`lbx-widget` READY from the exact nested window at the configured provider origin.
+For payment, the Portal shows the proven agreement and seller while the
+isolated host waits up to 20 seconds for `lbx-widget` READY from the exact
+nested window at the configured provider origin.
 Failure removes the host and shows its safe request ID; successful READY stops
 the loading timer. Correlate `billing_widget_load_failed` with server bootstrap
 logs. Never weaken CSP/sandbox or infer payment/access from READY/browser return.

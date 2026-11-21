@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from threading import Event
 
 import httpx
 import pytest
@@ -11,10 +12,12 @@ from sqlalchemy import select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.composition import billing
 from app.composition.billing import bootstrap_account
 from app.composition.sources import source_resources
+from app.core.settings import Settings
+from app.domains.billing.contracts import BillingRefused, CustomerOpen
 from app.domains.billing.customers import reserve_customer
-from app.domains.billing.contracts import BillingRefused
 from app.models import BillingWorkItem, ExternalBillingCustomer, ExternalCreateOperation, ExternalCreateOperationState
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.test_any709_step2_postgres import TOKEN, seed
@@ -160,6 +163,63 @@ def test_customer_recovery_never_turns_failed_reads_or_terminal_evidence_into_cr
         with factory() as db:
             assert db.scalar(select(ExternalCreateOperation)).operation_state == ExternalCreateOperationState.PENDING
             assert db.scalar(select(BillingWorkItem)) is None
+
+
+def test_customer_discovery_timeout_waits_for_the_active_db_retry(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    factory = postgres_session_factory
+    seed(factory)
+    config = step1_settings(
+        preflight_total_timeout_seconds=2, preflight_cleanup_timeout_seconds=0.025, lbx_max_get_attempts=1
+    )
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        if request.url.path.endswith("/auth"):
+            return httpx.Response(200, json={"code": 200, "response": {"token": "synthetic", "expires_in": 600}})
+        return httpx.Response(503)
+
+    async def scenario() -> None:
+        loop = asyncio.get_running_loop()
+        entered = asyncio.Event()
+        completed = asyncio.Event()
+        release = Event()
+        reservations = 0
+
+        def delay_retry(session_factory: sessionmaker[Session], settings: Settings, token: str) -> CustomerOpen:
+            nonlocal reservations
+            reservations += 1
+            if reservations != 2:
+                return reserve_customer(session_factory, settings, token)
+            try:
+                # Model a retry that already owns a connection when the source deadline expires.
+                with session_factory() as db:
+                    db.connection()
+                    loop.call_soon_threadsafe(entered.set)
+                    assert release.wait(5)
+                return reserve_customer(session_factory, settings, token)
+            finally:
+                loop.call_soon_threadsafe(completed.set)
+
+        monkeypatch.setattr(billing, "reserve_customer", delay_retry)
+        async with source_resources(config, lbx_transport=httpx.MockTransport(respond)) as sources:
+            opening = asyncio.create_task(bootstrap_account(sources, config, factory=factory, token=TOKEN))
+            try:
+                await asyncio.wait_for(entered.wait(), timeout=5)
+                assert migrated_database.pool.checkedout() == 1
+                done, _ = await asyncio.wait({opening}, timeout=config.preflight_total_timeout_seconds)
+            finally:
+                release.set()
+            with pytest.raises(BillingRefused, match="billing_customer_pending"):
+                await asyncio.wait_for(opening, timeout=5)
+            await asyncio.wait_for(completed.wait(), timeout=5)
+            assert not done, "bootstrap returned while the retry still held a connection"
+            assert migrated_database.pool.checkedout() == 0
+
+    asyncio.run(scenario())
 
 
 def test_customer_caller_cancellation_retains_the_send_lease(

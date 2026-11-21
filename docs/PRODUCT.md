@@ -1,7 +1,7 @@
 # Product Scope
 
 Status: authoritative
-Last updated: 2026-11-11
+Last updated: 2026-11-19
 
 AnyToolAI Portal combines public product discovery, direct account entry, and
 identity/legal-consent flows for AnyToolAI products, deployed as one contour
@@ -89,17 +89,16 @@ only their source-read/admission strategy.
   only: a not-ready state, localized metadata and safe home/products links,
   without commercial facts, purchase controls or API calls.
 - `/[locale]/account` as the direct sign-in/registration entry and authenticated
-  cabinet. Only owned held accepted purchases appear as compact cards; unfinished
-  purchases remain resumable. No published-but-unpurchased product is listed.
-  A full-catalog link is always available. A product management link selects its
-  purchase in the cabinet; every payment action uses fresh original-purchase
-  verification before opening the one wide Widget. Account-only viewing remains
-  available without a purchase or healthy source catalog.
+  cabinet. Cards link to product details and let users resume unfinished held
+  purchases. A separate link opens the full catalog. Every payment action
+  verifies the selected purchase before opening the shared Widget. Users can
+  also open the account view without a purchase or a working source catalog.
 - Local committed product grants, fixed purchased allowances and semantic access
   revisions from authoritative subscription facts. The authenticated cabinet
-  distinguishes confirmed access, fresh absence and unavailable evidence;
-  paid products remain visible when purchase listing is unavailable. Development
-  quantities are explicitly SIMULATED and excluded from production usage reads.
+  distinguishes confirmed access, fresh absence and unavailable evidence.
+  The cabinet also shows cards for products returned by the user's paid-access
+  or usage reads, even if the purchase list is empty or temporarily unavailable.
+  Development quantities are explicitly SIMULATED and excluded from production usage reads.
   Configured-source usage shows actual counters/read time independently of access.
 - The approved RU mockup's product/visual direction encoded by evolved Bundle 3
   and applied across the active Portal: navy/amber, flat dark panels, thin

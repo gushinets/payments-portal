@@ -1,7 +1,7 @@
 # AnyToolAI Portal Architecture
 
 Status: authoritative current-state map
-Last updated: 2026-11-11
+Last updated: 2026-11-19
 
 ## System boundary
 
@@ -253,7 +253,7 @@ PostgreSQL preserves immutable links and accepted purchase history. The former s
 presentation and are not the current catalog identity source. Brief owned cards
 link to product details; incomplete accepted purchases remain resumable. Product
 details own review, consent and preparation. Prepared purchases link to
-`/account?purchase=<id>#billing`; the cabinet owns one wide disposable Widget.
+`/[locale]/account?purchase=<id>#billing`. The cabinet owns one wide disposable Widget.
 Every payment entry uses the same original-purchase bootstrap and fresh proof.
 ANY-715 reconciles subscription facts and recovers uncertain operations in the
 background. ANY-765 presents the separately committed paid projection, including

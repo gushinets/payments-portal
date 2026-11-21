@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProductBilling } from "@/features/billing";
 import { ProductDetailContent } from "@/features/catalog/ProductDetailContent";
@@ -38,7 +38,7 @@ it("keeps incomplete inventory retryable without a support conflict or another c
   expect(alert).toHaveTextContent("inventory-pending");
   expect(alert).not.toHaveTextContent(ru.Billing.errors.purchaseConflict);
   fireEvent.click(await screen.findByRole("button", { name: ru.Purchase.continue }));
-  expect(await screen.findByRole("link", { name: ru.Purchase.manage })).toBeVisible();
+  expect(await screen.findByRole("link", { name: ru.Billing.pay })).toBeVisible();
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   expect(confirm).toHaveBeenCalledTimes(1);
   expect(advance).toHaveBeenCalledTimes(2);
@@ -112,7 +112,7 @@ it.each(["created", "linked"] as const)("keeps existing %s purchase usable when 
   catalog.mockResolvedValueOnce(json({ detail: { code: "catalog_unavailable" } }, 503));
   renderWithIntl(<ProductDetailContent productId="proposal_ai">{null}</ProductDetailContent>, { locale: "ru", messages });
   const action = state === "linked"
-    ? await screen.findByRole("link", { name: ru.Purchase.manage })
+    ? await screen.findByRole("link", { name: ru.Billing.pay })
     : await screen.findByRole("button", { name: ru.Purchase.continue });
   expect(action).toBeVisible();
   expect(action).not.toBeDisabled();
@@ -152,7 +152,173 @@ beforeEach(() => {
   });
   vi.stubGlobal("fetch", fetcher);
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+it("shows Continue when status polling learns the agreement has been recovered", async () => {
+  owned = { ...savedPurchase, state: "awaiting_external_result", reason: "purchase_pending" };
+  renderProduct();
+  expect(await screen.findByRole("button", { name: ru.Purchase.recover })).toBeEnabled();
+
+  owned = { ...owned, state: "preparing" };
+
+  expect(await screen.findByRole("button", { name: ru.Purchase.continue }, { timeout: 4000 })).toBeEnabled();
+  expect(screen.queryByText(ru.Purchase.states.awaiting_external_result)).not.toBeInTheDocument();
+  expect(advance).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: ru.Purchase.continue }));
+  expect(await screen.findByRole("link", { name: ru.Billing.pay })).toBeVisible();
+  expect(advance).toHaveBeenCalledTimes(1);
+});
+
+it.each([ru.Purchase.recover, ru.Purchase.refresh])("announces recovery and moves focus from %s to payment", async (action) => {
+  vi.useFakeTimers();
+  owned = { ...savedPurchase, state: "awaiting_external_result" };
+  await act(async () => { renderProduct(); });
+  const status = screen.getByText(ru.Purchase.states.awaiting_external_result).closest('[role="status"]');
+  expect(status).toBeInTheDocument();
+  screen.getByRole("button", { name: action }).focus();
+
+  owned = savedPurchase;
+  await act(async () => vi.advanceTimersByTimeAsync(2100));
+
+  expect(status).toHaveTextContent(ru.Purchase.states.linked);
+  expect(screen.getByRole("link", { name: ru.Billing.pay })).toHaveFocus();
+});
+
+it("keeps accepted terms open and focused when polling makes payment available", async () => {
+  vi.useFakeTimers();
+  owned = { ...savedPurchase, state: "awaiting_external_result" };
+  await act(async () => { renderProduct(); });
+  const summary = screen.getByText(ru.Purchase.acceptedTerms);
+  const details = summary.closest("details")!;
+  details.open = true;
+  summary.focus();
+
+  owned = savedPurchase;
+  await act(async () => vi.advanceTimersByTimeAsync(2100));
+
+  expect(screen.getByRole("link", { name: ru.Billing.pay })).toBeVisible();
+  expect(screen.getByText(ru.Purchase.acceptedTerms)).toBe(summary);
+  expect(summary).toHaveFocus();
+  expect(details).toHaveAttribute("open");
+});
+
+it.each([ru.Purchase.recover, ru.Purchase.refresh])("moves focus from %s when its response makes payment available", async (action) => {
+  owned = { ...savedPurchase, state: "awaiting_external_result" };
+  renderProduct();
+  const trigger = await screen.findByRole("button", { name: action });
+  trigger.focus();
+
+  owned = savedPurchase;
+  fireEvent.click(trigger);
+
+  expect(await screen.findByRole("link", { name: ru.Billing.pay })).toHaveFocus();
+});
+
+it("offers payment from saved status before advance replies and ignores the older reply", async () => {
+  vi.useFakeTimers();
+  const reply = Promise.withResolvers<Response>();
+  advance.mockReturnValueOnce(reply.promise);
+  await act(async () => { renderProduct(); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.buy })); });
+  fireEvent.click(screen.getByRole("checkbox"));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.confirm })); });
+  expect(advance).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole("link", { name: ru.Billing.pay })).not.toBeInTheDocument();
+
+  owned = savedPurchase;
+  await act(async () => vi.advanceTimersByTimeAsync(10_000));
+
+  expect(screen.getByRole("link", { name: ru.Billing.pay })).toBeVisible();
+  await act(async () => reply.resolve(json({ ...savedPurchase, state: "awaiting_external_result" })));
+  expect(screen.getByRole("link", { name: ru.Billing.pay })).toBeVisible();
+  expect(confirm).toHaveBeenCalledTimes(1);
+  expect(advance).toHaveBeenCalledTimes(1);
+});
+
+it("offers a new terms review when polling confirms release before advance replies", async () => {
+  vi.useFakeTimers();
+  const reply = Promise.withResolvers<Response>();
+  const original = { ...savedPurchase, state: "created" } satisfies PurchaseIntentResponse;
+  owned = original;
+  advance.mockReturnValueOnce(reply.promise);
+  await act(async () => { renderProduct(); });
+  const continueButton = screen.getByRole("button", { name: ru.Purchase.continue });
+  continueButton.focus();
+  await act(async () => { fireEvent.click(continueButton); });
+  expect(advance).toHaveBeenCalledTimes(1);
+
+  owned = { ...original, state: "failed_before_external_effect", scope_held: false, reason: "terms_changed" };
+  await act(async () => vi.advanceTimersByTimeAsync(5_000));
+
+  expect(screen.getByText(ru.Purchase.termsChanged)).toBeVisible();
+  expect(screen.queryByText(ru.Purchase.working)).not.toBeInTheDocument();
+  expect(review).not.toHaveBeenCalled();
+  const buyButton = screen.getByRole("button", { name: ru.Purchase.buy });
+  expect(buyButton).toHaveFocus();
+  owned = null;
+  await act(async () => { fireEvent.click(buyButton); });
+  expect(screen.getByRole("checkbox")).not.toBeChecked();
+
+  await act(async () => reply.resolve(json(original)));
+  expect(screen.getByRole("checkbox")).not.toBeChecked();
+  expect(review).toHaveBeenCalledTimes(1);
+  expect(confirm).not.toHaveBeenCalled();
+  expect(advance).toHaveBeenCalledTimes(1);
+});
+
+it("moves focus to the status check when polling confirms release without an available offer", async () => {
+  vi.useFakeTimers();
+  const reply = Promise.withResolvers<Response>();
+  const original = { ...savedPurchase, state: "created" } satisfies PurchaseIntentResponse;
+  owned = original;
+  advance.mockReturnValueOnce(reply.promise);
+  await act(async () => {
+    renderWithIntl(<ProductBilling productId="proposal_ai" offerAvailable={false} user={purchaseUser} />, { locale: "ru", messages });
+  });
+  const continueButton = screen.getByRole("button", { name: ru.Purchase.continue });
+  continueButton.focus();
+  await act(async () => { fireEvent.click(continueButton); });
+
+  owned = { ...original, state: "failed_before_external_effect", scope_held: false, reason: "terms_changed" };
+  await act(async () => vi.advanceTimersByTimeAsync(5_000));
+
+  const refreshButton = screen.getByRole("button", { name: ru.Purchase.refresh });
+  expect(refreshButton).toBeEnabled();
+  expect(refreshButton).toHaveFocus();
+  await act(async () => reply.resolve(json(original)));
+});
+
+it("observes a subscription recovered after the fast polling window using status reads only", async () => {
+  vi.useFakeTimers();
+  owned = { ...savedPurchase, state: "awaiting_external_result", reason: "purchase_pending" };
+  await act(async () => { renderProduct(); });
+  expect(screen.getByRole("button", { name: ru.Purchase.recover })).toBeEnabled();
+
+  await act(async () => { await vi.advanceTimersByTimeAsync(155_000); });
+  owned = savedPurchase;
+  await act(async () => { await vi.advanceTimersByTimeAsync(65_000); });
+
+  expect(screen.getByRole("link", { name: ru.Billing.pay })).toBeVisible();
+  expect(advance).not.toHaveBeenCalled();
+  expect(confirm).not.toHaveBeenCalled();
+});
+
+it("announces that polling has stopped and keeps the manual status check available", async () => {
+  vi.useFakeTimers();
+  owned = { ...savedPurchase, state: "awaiting_external_result", reason: "purchase_pending" };
+  await act(async () => { renderProduct(); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(123 * 60_000); });
+  expect(screen.getByText(ru.Purchase.statusPollingPaused)).toBeVisible();
+
+  fetcher.mockClear();
+  owned = savedPurchase;
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+  expect(fetcher).not.toHaveBeenCalled();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.refresh })); });
+  expect(screen.getByRole("link", { name: ru.Billing.pay })).toBeVisible();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(advance).not.toHaveBeenCalled();
+});
 
 describe("ANY-709 Step 4 purchase journey", () => {
   it("keeps guests read-only and verifies email before personal requests", async () => {
@@ -182,7 +348,7 @@ describe("ANY-709 Step 4 purchase journey", () => {
     fireEvent.click(checkbox);
     const button = screen.getByRole("button", { name: ru.Purchase.confirm });
     fireEvent.click(button); fireEvent.click(button);
-    expect(await screen.findByRole("link", { name: ru.Purchase.manage })).toHaveAttribute("href", `/ru/account?purchase=${savedPurchase.purchase_intent_id}#billing`);
+    expect(await screen.findByRole("link", { name: ru.Billing.pay })).toHaveAttribute("href", `/ru/account?purchase=${savedPurchase.purchase_intent_id}#billing`);
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(advance).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(confirm.mock.calls[0][0].body))).toEqual({
@@ -210,7 +376,7 @@ describe("ANY-709 Step 4 purchase journey", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: ru.Purchase.retryConfirm })).toBeEnabled());
     expect(screen.getByRole("checkbox")).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: ru.Purchase.retryConfirm }));
-    expect(await screen.findByRole("link", { name: ru.Purchase.manage })).toHaveAttribute("href", `/ru/account?purchase=${savedPurchase.purchase_intent_id}#billing`);
+    expect(await screen.findByRole("link", { name: ru.Billing.pay })).toHaveAttribute("href", `/ru/account?purchase=${savedPurchase.purchase_intent_id}#billing`);
     expect(confirm).toHaveBeenCalledTimes(2);
     expect(confirm.mock.calls[0][0].headers["Idempotency-Key"]).toBe(confirm.mock.calls[1][0].headers["Idempotency-Key"]);
     expect(confirm.mock.calls[0][0].body).toBe(confirm.mock.calls[1][0].body);
@@ -228,7 +394,7 @@ describe("ANY-709 Step 4 purchase journey", () => {
     expect(advance).not.toHaveBeenCalled();
     expect(screen.getByRole("checkbox")).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: ru.Purchase.retryConfirm }));
-    expect(await screen.findByRole("link", { name: ru.Purchase.manage })).toBeVisible();
+    expect(await screen.findByRole("link", { name: ru.Billing.pay })).toBeVisible();
     expect(confirm).toHaveBeenCalledTimes(2);
     expect(confirm.mock.calls[1][0].headers["Idempotency-Key"]).toBe(confirm.mock.calls[0][0].headers["Idempotency-Key"]);
     expect(confirm.mock.calls[1][0].body).toBe(confirm.mock.calls[0][0].body);
@@ -244,10 +410,42 @@ describe("ANY-709 Step 4 purchase journey", () => {
     renderProduct();
     await accept();
     fireEvent.click(await screen.findByRole("button", { name: ru.Purchase.continue }));
-    expect(await screen.findByRole("link", { name: ru.Purchase.manage })).toHaveAttribute("href", `/ru/account?purchase=${savedPurchase.purchase_intent_id}#billing`);
+    expect(await screen.findByRole("link", { name: ru.Billing.pay })).toHaveAttribute("href", `/ru/account?purchase=${savedPurchase.purchase_intent_id}#billing`);
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(advance).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: ru.Purchase.buy })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { state: "created", role: "button", name: ru.Purchase.continue, focus: "retry" },
+    { state: "awaiting_external_result", role: "button", name: ru.Purchase.recover, focus: "retry" },
+    { state: "linked", role: "link", name: ru.Billing.pay, focus: "retry" },
+    { state: "created", role: "button", name: ru.Purchase.continue, focus: "status check" },
+  ] as const)("finds a late committed confirmation in $state with focus on $focus", async ({ state, role, name, focus }) => {
+    vi.useFakeTimers();
+    confirm.mockRejectedValueOnce(new TypeError("synthetic_lost_reply"));
+    await act(async () => { renderProduct(); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.buy })); });
+    fireEvent.click(screen.getByRole("checkbox"));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.confirm })); });
+    expect(screen.getByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
+    const retry = screen.getByRole("button", { name: ru.Purchase.retryConfirm });
+    const statusCheck = screen.getByRole("button", { name: ru.Purchase.refresh });
+    const previous = focus === "retry" ? retry : statusCheck;
+    previous.focus();
+    expect(previous).toHaveFocus();
+
+    owned = { ...savedPurchase, state };
+    await act(async () => vi.advanceTimersByTimeAsync(2_100));
+
+    const action = screen.getByRole(role, { name });
+    expect(action).toBeEnabled();
+    expect(retry).not.toBeInTheDocument();
+    expect(focus === "retry" ? action : statusCheck).toHaveFocus();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(advance).not.toHaveBeenCalled();
+    expect(bootstrap).not.toHaveBeenCalled();
   });
 
   it("recovers a successful preparation after a browser timeout using only local status", async () => {
@@ -257,7 +455,7 @@ describe("ANY-709 Step 4 purchase journey", () => {
     });
     renderProduct();
     await accept();
-    expect(await screen.findByRole("link", { name: ru.Purchase.manage })).toBeVisible();
+    expect(await screen.findByRole("link", { name: ru.Billing.pay })).toBeVisible();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: ru.Purchase.buy })).not.toBeInTheDocument();
     expect(advance).toHaveBeenCalledTimes(1);
@@ -300,7 +498,7 @@ describe("ANY-709 Step 4 purchase journey", () => {
     owned = { ...savedPurchase, state, reason: state === "manual_review" ? "purchase_outcome_unknown" : "purchase_pending" };
     advance.mockImplementation(async () => json(owned));
     renderProduct();
-    const action = await screen.findByRole("button", { name: state === "created" ? ru.Purchase.continue : ru.Purchase.recover });
+    const action = await screen.findByRole("button", { name: state === "created" || state === "preparing" ? ru.Purchase.continue : ru.Purchase.recover });
     expect(screen.queryByRole("button", { name: ru.Purchase.buy })).not.toBeInTheDocument();
     fireEvent.click(action);
     await waitFor(() => expect(advance).toHaveBeenCalledTimes(1));
@@ -312,7 +510,7 @@ describe("ANY-709 Step 4 purchase journey", () => {
   it("restores the compact prepared state without current catalog or billing reads", async () => {
     owned = savedPurchase;
     renderProduct();
-    expect(await screen.findByRole("link", { name: ru.Purchase.manage })).toHaveAttribute("href", `/ru/account?purchase=${savedPurchase.purchase_intent_id}#billing`);
+    expect(await screen.findByRole("link", { name: ru.Billing.pay })).toHaveAttribute("href", `/ru/account?purchase=${savedPurchase.purchase_intent_id}#billing`);
     expect(screen.queryByRole("button", { name: ru.Purchase.buy })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: ru.Billing.open })).not.toBeInTheDocument();
     expect(review).not.toHaveBeenCalled(); expect(advance).not.toHaveBeenCalled();
@@ -357,11 +555,201 @@ it("official SDK accepts the server payment presentation and keeps all unsupport
   vi.stubGlobal("MessageChannel", class { port1 = port(); port2 = port(); });
   const node = document.createElement("div");
   const response = widgetResponse(true);
-  const destroy = actual.mountOfficialWidget(node, response, "Synthetic billing", () => true, vi.fn());
+  const destroy = actual.mountOfficialWidget(node, response, "Synthetic billing", () => true, vi.fn(), vi.fn());
   expect(node.querySelector("iframe")).not.toBeNull();
   expect(node.querySelector("iframe")).toHaveAttribute("sandbox", expect.stringContaining("allow-forms allow-popups"));
   expect(response.credential).toBe("");
   expect(node.innerHTML).not.toContain("synthetic-widget-token");
   destroy();
   expect(node.childElementCount).toBe(0);
+});
+
+it("continues checking a lost confirmation after an empty manual status check", async () => {
+  confirm.mockRejectedValueOnce(new TypeError("synthetic_lost_reply"));
+  renderProduct();
+  await accept();
+  expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: ru.Purchase.refresh }));
+  });
+  expect(screen.getByRole("button", { name: ru.Purchase.retryConfirm })).toBeEnabled();
+
+  owned = { ...savedPurchase, state: "created" };
+  expect(await screen.findByRole("button", { name: ru.Purchase.continue }, { timeout: 3000 })).toBeEnabled();
+  expect(confirm).toHaveBeenCalledTimes(1);
+  expect(advance).not.toHaveBeenCalled();
+});
+
+it("keeps the unknown-outcome warning through preparation and clears it once the purchase is linked", async () => {
+  advance.mockImplementationOnce(async () => {
+    owned = { ...savedPurchase, state: "awaiting_external_result", reason: "purchase_pending" };
+    throw new TypeError("synthetic_lost_advance_reply");
+  });
+  renderProduct();
+  await accept();
+  expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
+  expect(screen.getByRole("button", { name: ru.Purchase.recover })).toBeEnabled();
+
+  owned = { ...savedPurchase, state: "preparing", reason: "purchase_pending" };
+  expect(await screen.findByRole("button", { name: ru.Purchase.continue }, { timeout: 3000 })).toBeEnabled();
+  expect(screen.getByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
+  expect(advance).toHaveBeenCalledTimes(1);
+
+  owned = savedPurchase;
+  expect(await screen.findByRole("link", { name: ru.Billing.pay }, { timeout: 3000 })).toBeVisible();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(advance).toHaveBeenCalledTimes(1);
+});
+
+it.each(["immediate status", "subsequent poll"] as const)("keeps an unknown-outcome warning when preparing first arrives via %s", async (firstRead) => {
+  advance.mockImplementationOnce(async () => {
+    owned = { ...savedPurchase, state: "preparing", reason: "purchase_pending" };
+    if (firstRead === "subsequent poll") fetcher.mockResolvedValueOnce(json({ detail: { code: "unavailable" } }, 503));
+    throw new TypeError("synthetic_lost_advance_reply");
+  });
+  renderProduct();
+  await accept();
+
+  if (firstRead === "subsequent poll") {
+    expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
+  }
+  await screen.findByText(ru.Purchase.states.preparing, {}, { timeout: 4000 });
+  expect(screen.getByRole("button", { name: ru.Purchase.continue })).toBeEnabled();
+  expect(screen.getByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
+  expect(advance).toHaveBeenCalledTimes(1);
+  expect(bootstrap).not.toHaveBeenCalled();
+});
+
+it("keeps the expired advance request ID when an explicit status check still shows preparation", async () => {
+  const requestId = "expired-advance-check";
+  advance.mockImplementationOnce(async () => {
+    owned = { ...savedPurchase, state: "awaiting_external_result", reason: "purchase_pending" };
+    return json({ detail: { code: "preflight_deadline_exceeded", request_id: requestId } }, 503);
+  });
+  renderProduct();
+  await accept();
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(requestId);
+
+  owned = { ...savedPurchase, state: "preparing", reason: "purchase_pending" };
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.refresh })); });
+  expect(screen.getByText(ru.Purchase.states.preparing)).toBeVisible();
+  expect(screen.getByRole("button", { name: ru.Purchase.continue })).toBeEnabled();
+  expect(screen.getByRole("alert")).toHaveTextContent(requestId);
+
+  fetcher.mockResolvedValueOnce(json({ detail: { code: "unavailable" } }, 503));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.refresh })); });
+  expect(screen.getByRole("alert")).toHaveTextContent(requestId);
+
+  advance.mockResolvedValueOnce(json(owned));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.continue })); });
+  expect(screen.getByRole("alert")).toHaveTextContent(requestId);
+  expect(advance).toHaveBeenCalledTimes(2);
+  expect(bootstrap).not.toHaveBeenCalled();
+});
+
+it("finds a late committed confirmation after a gateway failure", async () => {
+  confirm.mockResolvedValueOnce(new Response("Bad Gateway", { status: 502 }));
+  renderProduct();
+  await accept();
+  expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
+  owned = { ...savedPurchase, state: "created" };
+  expect(await screen.findByRole("button", { name: ru.Purchase.continue }, { timeout: 4000 })).toBeEnabled();
+  expect(confirm).toHaveBeenCalledTimes(1);
+  expect(advance).not.toHaveBeenCalled();
+});
+
+it("inspects the original purchase after a gateway timeout on advance", async () => {
+  advance.mockImplementationOnce(async () => {
+    owned = { ...savedPurchase, state: "preparing" };
+    return new Response("Gateway Timeout", { status: 504 });
+  });
+  renderProduct();
+  await accept();
+  expect(await screen.findByText(ru.Purchase.states.preparing)).toBeVisible();
+  expect(screen.getByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
+  expect(advance).toHaveBeenCalledTimes(1);
+  expect(bootstrap).not.toHaveBeenCalled();
+});
+
+it.each([
+  [401, "billing_session_required", ru.Billing.errors.session],
+  [403, "billing_email_verification_required", ru.Billing.errors.verification],
+  [404, "purchase_not_found", ru.Billing.selectionUnavailable],
+] as const)("ends product status polling on HTTP %s and allows manual inspection", async (status, code, message) => {
+  vi.useFakeTimers();
+  owned = { ...savedPurchase, state: "awaiting_external_result" };
+  await act(async () => { renderProduct(); });
+  const recover = screen.getByRole("button", { name: ru.Purchase.recover });
+  const refresh = screen.getByRole("button", { name: ru.Purchase.refresh });
+  recover.focus();
+  expect(recover).toHaveFocus();
+  fetcher.mockClear().mockResolvedValueOnce(json({ detail: { code, request_id: "read-refused" } }, status));
+  await act(async () => vi.advanceTimersByTimeAsync(120_000));
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("alert")).toHaveTextContent(message);
+  expect(screen.getByRole("alert")).toHaveTextContent("read-refused");
+  expect(recover).not.toBeInTheDocument();
+  expect(refresh).toHaveFocus();
+
+  owned = { ...savedPurchase, state: "preparing" };
+  await act(async () => { fireEvent.click(refresh); });
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: ru.Purchase.continue })).toBeEnabled();
+  expect(advance).not.toHaveBeenCalled();
+});
+
+it("leaves focus on accepted terms when a pending status poll is refused", async () => {
+  vi.useFakeTimers();
+  owned = { ...savedPurchase, state: "preparing" };
+  await act(async () => { renderProduct(); });
+  screen.getByRole("button", { name: ru.Purchase.continue }).focus();
+  const response = Promise.withResolvers<Response>();
+  fetcher.mockClear().mockReturnValueOnce(response.promise);
+  await act(async () => vi.advanceTimersByTimeAsync(2_100));
+  expect(fetcher).toHaveBeenCalledTimes(1);
+
+  const terms = screen.getByText(ru.Purchase.acceptedTerms);
+  terms.focus();
+  await act(async () => response.resolve(json({ detail: { code: "billing_session_required" } }, 401)));
+
+  expect(screen.getByRole("alert")).toHaveTextContent(ru.Billing.errors.session);
+  expect(terms).toHaveFocus();
+});
+
+it.each(["first inspection", "later poll"])("keeps frozen confirmation disabled after refusal during %s", async (when) => {
+  confirm.mockImplementationOnce(async () => {
+    if (when === "later poll") fetcher.mockResolvedValueOnce(json({ purchase: null }));
+    fetcher.mockResolvedValueOnce(json({ detail: { code: "billing_session_required", request_id: "confirm-read" } }, 401));
+    return json({ detail: { code: "internal_server_error" } }, 500);
+  });
+  renderProduct();
+  await accept();
+  await screen.findByText(ru.Billing.errors.session, {}, { timeout: 4000 });
+  expect(screen.getByRole("alert")).toHaveTextContent("confirm-read");
+  expect(screen.getByRole("button", { name: ru.Purchase.retryConfirm })).toBeDisabled();
+
+  fetcher.mockResolvedValueOnce(new Response("Service Unavailable", { status: 503 }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.refresh })); });
+  expect(screen.getByRole("button", { name: ru.Purchase.retryConfirm })).toBeDisabled();
+
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.refresh })); });
+  fireEvent.click(screen.getByRole("button", { name: ru.Purchase.retryConfirm }));
+  expect(await screen.findByRole("link", { name: ru.Billing.pay })).toBeVisible();
+  expect(confirm).toHaveBeenCalledTimes(2);
+  expect(confirm.mock.calls[1][0].headers["Idempotency-Key"]).toBe(confirm.mock.calls[0][0].headers["Idempotency-Key"]);
+});
+
+it("keeps a typed advance refusal visible while local status still says preparing", async () => {
+  advance.mockImplementationOnce(async () => {
+    owned = { ...savedPurchase, state: "preparing" };
+    return json({ detail: { code: "purchase_billing_not_configured", request_id: "advance-config" } }, 503);
+  });
+  renderProduct();
+  await accept();
+  expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.errors.configuration);
+  expect(await screen.findByText(ru.Purchase.states.preparing, {}, { timeout: 4000 })).toBeVisible();
+  expect(screen.getByRole("alert")).toHaveTextContent("advance-config");
+  expect(advance).toHaveBeenCalledTimes(1);
 });
