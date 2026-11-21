@@ -16,7 +16,13 @@ function npm(args, capture = false) {
   return result.stdout;
 }
 
-npm(['ci', '--ignore-scripts']);
+// Review the unpacked root and workspace dependencies, including the
+// selected platform's optional packages and development and peer dependencies.
+npm([
+  'ci', '--ignore-scripts', '--dry-run=false', '--package-lock-only=false',
+  '--workspaces', '--include-workspace-root',
+  '--include=dev', '--include=optional', '--include=peer',
+]);
 
 // Check all marked lock entries, including optional packages for other platforms.
 // npm also examines the actual tree below for implicit hooks missing from the lock.

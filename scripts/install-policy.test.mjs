@@ -52,7 +52,8 @@ test('locked npm install skips hooks and reports pending explicit and implicit h
   const workspace = join(project, 'workspace');
   mkdirSync(workspace);
   pack('explicit');
-  pack('implicit', { implicit: true });
+  const implicitPackages = ['implicit-dev', 'implicit-optional', 'implicit-peer'];
+  for (const name of implicitPackages) pack(name, { implicit: true });
   pack('inapplicable', { os: [process.platform === 'win32' ? 'linux' : 'win32'] });
   const server = createServer((request, response) => {
     const [, name, segment] = request.url.split('/');
@@ -98,7 +99,10 @@ test('locked npm install skips hooks and reports pending explicit and implicit h
   };
   const workspaceManifest = {
     name: 'policy-workspace', version: '1.0.0',
-    dependencies: { explicit: '1.0.0', implicit: '1.0.0' },
+    dependencies: { explicit: '1.0.0' },
+    devDependencies: { 'implicit-dev': '1.0.0' },
+    optionalDependencies: { 'implicit-optional': '1.0.0' },
+    peerDependencies: { 'implicit-peer': '1.0.0' },
     scripts: { proof: 'node -e "console.log(123)"' },
   };
   writeManifest(project, manifest);
@@ -107,17 +111,38 @@ test('locked npm install skips hooks and reports pending explicit and implicit h
   passed(await fixtureNpm(project, 'install', '--package-lock-only', '--ignore-scripts'));
 
   env.npm_config_dangerously_allow_all_scripts = 'true';
-  const pending = await fixtureNpm(project, 'run', 'deps:install');
+  const pendingBindings = implicitPackages.map((name) => ({
+    name, path: join(project, 'node_modules', name, 'binding.gyp'),
+  }));
+  const installSettings = [
+    ['npm_config_dry_run', 'true'],
+    ['npm_config_package_lock_only', 'true'],
+    ['npm_config_workspaces', 'false'],
+    ['npm_config_omit', 'dev'],
+    ['npm_config_omit', 'optional'],
+    ['npm_config_omit', 'peer'],
+  ];
+  for (const [setting, value] of installSettings) {
+    for (const { path } of pendingBindings) rmSync(path, { force: true });
+    env[setting] = value;
+    const pending = await fixtureNpm(project, 'run', 'deps:install');
+    delete env[setting];
+    assert.equal(existsSync(marker), false, pending.output);
+    assert.notEqual(pending.status, 0, pending.output);
+    assert.match(pending.output, /Review dependency install hooks/);
+    assert.match(pending.output, /explicit@1\.0\.0/);
+    for (const { name, path } of pendingBindings) {
+      assert.ok(pending.output.includes(`${name}@1.0.0`), pending.output);
+      assert.ok(existsSync(path), pending.output);
+    }
+    assert.doesNotMatch(pending.output, /inapplicable@1\.0\.0/);
+    assert.equal(existsSync(join(project, 'node_modules/inapplicable')), false);
+  }
   delete env.npm_config_dangerously_allow_all_scripts;
-  assert.equal(existsSync(marker), false, pending.output);
-  assert.notEqual(pending.status, 0, pending.output);
-  assert.match(pending.output, /Review dependency install hooks/);
-  assert.match(pending.output, /explicit@1\.0\.0/);
-  assert.match(pending.output, /implicit@1\.0\.0/);
-  assert.doesNotMatch(pending.output, /inapplicable@1\.0\.0/);
-  assert.equal(existsSync(join(project, 'node_modules/inapplicable')), false);
 
-  Object.assign(manifest.allowScripts, { 'explicit@1.0.0': false, 'implicit@1.0.0': false });
+  for (const name of ['explicit', ...implicitPackages]) {
+    manifest.allowScripts[`${name}@1.0.0`] = false;
+  }
   writeManifest(project, manifest);
   passed(await fixtureNpm(project, 'run', 'deps:install'));
   passed(await fixtureNpm(workspace, 'ci'));

@@ -11,8 +11,10 @@ install and `npm run sync:api` to repeat just the API sync.
 
 The root workspace policy applies to CI, the web dependency image layer and
 the local harness. `npm run deps:install` runs `npm ci --ignore-scripts` with
-the checked-in lock. The root `.npmrc` also defaults direct npm install and
-rebuild commands to script-free mode. The installer checks both the lock and
+the checked-in lock. It unpacks root and workspace dependencies, including
+development, peer and applicable optional packages. It overrides inherited
+settings that would skip unpacking or omit those packages. The root `.npmrc` defaults
+direct npm install and rebuild commands to script-free mode. The installer checks both the lock and
 npm's installed-tree report. Any pending hook stops setup and identifies the
 package to review. The lock check includes marked packages for inactive
 platforms. The installed-tree check includes implicit `node-gyp rebuild`
@@ -74,8 +76,10 @@ CI, the API Docker dependency stages and `npm run sync:api` use
 `--no-install-project` in the image. The API declares `package = false`, so
 the local project is not built by the canonical sync. uv can reuse wheels
 already in its cache. For wheel availability evidence, run against an empty
-cache and environment. The control applies to source-distribution builds
-during these installs. First-party build and editable workflows have their own
+cache and environment. The Windows CI harness uses a fresh uv cache and
+exercises the canonical API sync plus a synthetic wheel/source regression.
+The control applies to source-distribution builds during these installs.
+First-party build and editable workflows have their own
 execution paths. The README also uses pip's wheel-only option to bootstrap uv.
 
 If a platform lacks a wheel, identify the package, version and platform.
