@@ -18,6 +18,7 @@ concurrency:
 env:
   API_IMAGE: payment-portal-api:trivy-${{ github.sha }}
   APP_PUBLIC_BASE_URL: https://payments.example.test
+  TRIVY_CACHE_DIR: ${{ github.workspace }}/.cache/trivy
   TRIVY_REPORT_DIR: .harness/trivy
   WEB_IMAGE: payment-portal-web:trivy-${{ github.sha }}
 
@@ -132,19 +133,42 @@ jobs:
           timeout: "15m"
           trivyignores: ".trivyignore.yaml"
 
+      - name: Scan production PostgreSQL image
+        run: python3 scripts/repo.py trivy scan-production-image "$TRIVY_REPORT_DIR" --service postgres
+
+      - name: Scan production Caddy image
+        run: python3 scripts/repo.py trivy scan-production-image "$TRIVY_REPORT_DIR" --service caddy
+
       - name: Redact secret values from reports
         id: redact
         if: always()
         run: python3 scripts/repo.py trivy redact "$TRIVY_REPORT_DIR"
+
+      - name: Record scanner and report provenance
+        if: ${{ always() && steps.redact.outcome == 'success' }}
+        working-directory: .harness/trivy
+        run: |
+          mkdir -p provenance
+          trivy --version --format json > "$RUNNER_TEMP/trivy-version.json"
+          mv "$RUNNER_TEMP/trivy-version.json" provenance/trivy-version.json
+          if compgen -G '*.json' >/dev/null; then
+            sha256sum -- *.json > provenance/report-sha256.txt
+          fi
 
       - name: Upload Trivy reports
         if: ${{ always() && steps.redact.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: trivy-reports-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .harness/trivy/*.json
+          path: |
+            .harness/trivy/*.json
+            .harness/trivy/provenance/*
           if-no-files-found: error
           retention-days: 14
+
+      - name: Verify required Trivy reports
+        if: ${{ always() && steps.redact.outcome == 'success' }}
+        run: python3 scripts/repo.py trivy verify-reports "$TRIVY_REPORT_DIR"
 
       - name: Record report-only policy
         if: ${{ vars.TRIVY_ENFORCE != 'true' }}
