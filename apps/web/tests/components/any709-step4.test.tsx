@@ -416,18 +416,36 @@ describe("ANY-709 Step 4 purchase journey", () => {
     expect(screen.queryByRole("button", { name: ru.Purchase.buy })).not.toBeInTheDocument();
   });
 
-  it("finds a late committed confirmation through local status polling", async () => {
+  it.each([
+    { state: "created", role: "button", name: ru.Purchase.continue, focus: "retry" },
+    { state: "awaiting_external_result", role: "button", name: ru.Purchase.recover, focus: "retry" },
+    { state: "linked", role: "link", name: ru.Billing.pay, focus: "retry" },
+    { state: "created", role: "button", name: ru.Purchase.continue, focus: "status check" },
+  ] as const)("finds a late committed confirmation in $state with focus on $focus", async ({ state, role, name, focus }) => {
+    vi.useFakeTimers();
     confirm.mockRejectedValueOnce(new TypeError("synthetic_lost_reply"));
-    renderProduct();
-    await accept();
-    expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
+    await act(async () => { renderProduct(); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.buy })); });
+    fireEvent.click(screen.getByRole("checkbox"));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.confirm })); });
+    expect(screen.getByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
+    const retry = screen.getByRole("button", { name: ru.Purchase.retryConfirm });
+    const statusCheck = screen.getByRole("button", { name: ru.Purchase.refresh });
+    const previous = focus === "retry" ? retry : statusCheck;
+    previous.focus();
+    expect(previous).toHaveFocus();
 
-    owned = { ...savedPurchase, state: "created" };
+    owned = { ...savedPurchase, state };
+    await act(async () => vi.advanceTimersByTimeAsync(2_100));
 
-    expect(await screen.findByRole("button", { name: ru.Purchase.continue }, { timeout: 4000 })).toBeEnabled();
+    const action = screen.getByRole(role, { name });
+    expect(action).toBeEnabled();
+    expect(retry).not.toBeInTheDocument();
+    expect(focus === "retry" ? action : statusCheck).toHaveFocus();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(advance).not.toHaveBeenCalled();
+    expect(bootstrap).not.toHaveBeenCalled();
   });
 
   it("recovers a successful preparation after a browser timeout using only local status", async () => {

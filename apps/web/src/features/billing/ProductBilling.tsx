@@ -96,6 +96,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
   const [work, setWork] = useState<PurchaseWork>(PurchaseWork.Idle);
   const busy = useRef(false);
   const workFinishedAt = useRef(0);
+  const reviewPanel = useRef<HTMLDivElement>(null);
   const refreshButton = useRef<HTMLButtonElement>(null);
   const resumeButton = useRef<HTMLButtonElement>(null);
   const buyButton = useRef<HTMLButtonElement>(null);
@@ -126,12 +127,14 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     if (linked) paymentLink.current?.focus();
     else if (released) (offerAvailable ? buyButton.current : refreshButton.current)?.focus();
     else if (readRefused) refreshButton.current?.focus();
-  }, [linked, offerAvailable, readRefused, released]);
+    else if (state.kind === "purchase") (resumeButton.current ?? refreshButton.current)?.focus();
+  }, [linked, offerAvailable, readRefused, released, state.kind]);
 
   function showPurchase(saved: PurchaseIntentResponse) {
     const focused = document.activeElement;
     const resumeFocused = focused === resumeButton.current;
-    focusAfterStatus.current = (resumeFocused && purchaseReleased(saved)) ||
+    focusAfterStatus.current = reviewPanel.current?.contains(focused) ||
+      (resumeFocused && purchaseReleased(saved)) ||
       (saved.scope_held && saved.state === "linked" && (resumeFocused || focused === refreshButton.current));
     setState({ kind: "purchase", purchase: saved });
   }
@@ -346,7 +349,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
       {working && <p role="status">{t("working")}</p>}
       {poll.paused && <p role="status">{t("statusPollingPaused")}</p>}
       {state.kind === "unavailable" && <p>{t("unknown")}</p>}
-      {state.kind === "review" && <div className="purchase-review">
+      {state.kind === "review" && <div ref={reviewPanel} className="purchase-review">
         <ReviewHeading>{t("reviewTitle")}</ReviewHeading>
         <PurchaseTerms review={state.review} />
         <p>{t("draftLegal")}</p>
