@@ -1,0 +1,46 @@
+{
+  "packages_before_after": 71,
+  "identical_package_versions": true,
+  "identical_application_distributions": true,
+  "removed_elf_paths": [
+    "/usr/bin/infocmp",
+    "/usr/bin/nsenter"
+  ],
+  "retained_elf_count": 726,
+  "retained_elf_records_identical": true,
+  "removed_hash_not_present_elsewhere": true,
+  "dpkg_verify_added_lines": [
+    "missing     /usr/bin/infocmp",
+    "missing     /usr/bin/nsenter"
+  ],
+  "assessment_counts": {
+    "component_present_conditional": 50,
+    "trigger_disabled_in_shipped_configuration": 2,
+    "affected_component_absent": 13,
+    "affected_component_removed_by_supported_path_filter": 2,
+    "known_API_trigger_not_used": 20,
+    "fixed_by_supported_package_update": 14
+  },
+  "checks": {
+    "focused_boundaries": {
+      "source": "ba32f4d07fa172836f44e351e44865f532ab33cd",
+      "passed": 10
+    },
+    "affected_producer_suites": {
+      "passed": 220,
+      "existing_skips": 2
+    },
+    "local_canonical": {
+      "source": "ba32f4d07fa172836f44e351e44865f532ab33cd",
+      "check_fast_exit": 1,
+      "check_exit": 1,
+      "cause": "Host memory exhaustion in Vitest / Next; downstream full stages unreached"
+    },
+    "hosted_ci": {
+      "source": "ba32f4d07fa172836f44e351e44865f532ab33cd",
+      "CI": 44915352941,
+      "Security": 44915353123,
+      "conclusion": "success"
+    }
+  }
+}

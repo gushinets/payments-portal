@@ -1,0 +1,13 @@
+{
+  "image_id": "sha256:17274802beeb70e0521d2511f9a272efb9eceb048920b07888063e3ad8f2107d",
+  "uid": 999,
+  "default_cmd": true,
+  "app_env": "production",
+  "capabilities": "effective/permitted zero; original bounding set retained",
+  "no_new_privileges": true,
+  "liveness": "passed",
+  "readiness": "passed",
+  "postgresql": "18.4",
+  "migration_cycle": "upgrade head / downgrade base / upgrade head: passed",
+  "runtime_network": "internal Docker network; no external downloads"
+}

@@ -116,8 +116,26 @@ Baseline3d7c7fb2 built fresh locally; remote ANY-742 d1ff9c34 was fast-forwarded
 
 Coverage assessment: existing71 focused deployment/collector guards, settings compatibility tests currently accept SQLite in production, offline image verifier and exact-image PostgreSQL cycle. Gaps: asserted absence of unused infocmp/nsenter code, production-only PostgreSQL enforcement, explicit API/migration capability boundary and actual kernel/cgroup posture evidence.
 
-- [ ] Verify supported dpkg exact-path exclusions for infocmp/nsenter in disposable image, retain Essential packages/native libraries/metadata; explain dpkg verify missing-file output and reject any unlisted exclusion.
-- [ ] Establish failing production-database and Compose capability regressions, then enforce PostgreSQL only for APP_ENV=production and cap_drop ALL for API/migration. Preserve test/development SQLite.
-- [ ] Build final target and compare actual files/ELF dependencies/package versions/scans with retained before image using one frozen Trivy DB. Keep ANY-742 pip effects separate.
-- [ ] Verify image itself: required imports/TLS/compression/timezone, process privilege/cgroup boundaries, default startup/readiness and migration cycle with disposable PostgreSQL. No exploit on production.
-- [ ] Run focused and canonical checks; produce all11 High blocker/change/approval matrix plus family-level remaining-ID mapping, update report/PR and private diary. No risk approval, policy exception, merge/deploy or Linear transition.
+- [x] Verify supported dpkg exact-path exclusions for infocmp/nsenter in disposable image, retain Essential packages/native libraries/metadata; explain dpkg verify missing-file output and reject any unlisted exclusion.
+- [x] Establish failing production-database and Compose capability regressions, then enforce PostgreSQL only for APP_ENV=production and cap_drop ALL for API/migration. Preserve test/development SQLite.
+- [x] Build final target and compare actual files/ELF dependencies/package versions/scans with retained before image using one frozen Trivy DB. Keep ANY-742 pip effects separate.
+- [x] Verify image itself: required imports/TLS/compression/timezone, process privilege/cgroup boundaries, default startup/readiness and migration cycle with disposable PostgreSQL. No exploit on production.
+- [x] Run focused and canonical checks; produce all12 current High blocker/change/approval matrix plus individual101-ID mapping. Local canonical attempts failed from host memory exhaustion; hosted canonical/PostgreSQL/Security passed. No risk approval, policy exception, merge/deploy or Linear transition.
+
+November21 follow-up: [current report](../../engineering/ANY-674-high-remediation-followup.md)
+and [hashed evidence](../../engineering/evidence/ANY-674-high-followup-2026-11-21/SHA256SUMS).
+New supported updates affect six binary packages; Debian-confirmed glibc patch
+eliminates14 IDs/28 records (221/101→193/87 on one frozen database). Before/after
+hardening retain identical71 package versions and193/87 findings, with exactly
+two executable ELF paths removed. No scanner disappearance is attributed to those
+file exclusions. Newly High OpenSSL ID was already Medium, explaining11→12 High
+IDs without a new advisory. All remaining owners pending team assignment.
+
+Five new pre-fix production-boundary cases failed; final boundary suite10 passes.
+Initial e5df91f4 CI found invalid production SQLite test producers; ba32f4d0 fixes
+the producers without rewriting explicit invalid overrides, removing assertions
+or adding skips. Affected suites220 passed/2 existing skips. CI44915352941 and
+Security44915353123 passed. Local full/fast attempts are recorded as failed from
+Vitest/Next host allocation exhaustion, not passing or source regressions.
+Independent review caught stale retained-tool wording in the new current ledger;
+CSV/JSON corrected together while historical evidence remains preserved.

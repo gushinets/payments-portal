@@ -1,5 +1,9 @@
 # ANY-674 — Complete final-image applicability investigation
 
+**Historical snapshot:** the subsequent [High remediation follow-up](ANY-674-high-remediation-followup.md)
+records supported glibc fixes (101→87 current IDs), executable removal and fresh
+verification. This report and its original raw evidence retain their historical scope.
+
 Ticket: https://linear.app/paveldik/issue/ANY-674 · [existing PR179](https://github.com/gushinets/payments-portal/pull/179)
 
 ## Result
