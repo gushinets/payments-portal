@@ -31,7 +31,12 @@ def settings_for(database_url: str, app_env: str) -> Settings:
 
 @pytest.mark.parametrize(
     "database_url",
-    ["sqlite+pysqlite:///:memory:", "sqlite:////tmp/untrusted.db", "mysql+pymysql://user:private-value@db/payments"],
+    [
+        "sqlite+pysqlite:///:memory:",
+        "sqlite:////tmp/untrusted.db",
+        "mysql+pymysql://user:private-value@db/payments",
+        "postgresql://user:private-value@db:private-value/payments",
+    ],
 )
 def test_production_rejects_non_postgresql_database(database_url: str) -> None:
     with pytest.raises(ValidationError, match="Production DATABASE_URL must use PostgreSQL") as error:
