@@ -3146,7 +3146,7 @@ OCI_IMAGE_MANIFEST_TYPES = (
     "application/vnd.oci.image.manifest.v1+json",
     "application/vnd.docker.distribution.manifest.v2+json",
 )
-TRIVY_PLATFORM = r"[a-z0-9]+/[a-z0-9]+(?:/[a-z0-9]+)?"
+TRIVY_PLATFORM = r"[a-z0-9]+/[a-z0-9]+(?:[-_][a-z0-9]+)*(?:/[a-z0-9]+(?:\.[a-z0-9]+)*)?"
 TRIVY_FINDING_LISTS = ("Vulnerabilities", "Misconfigurations", "Secrets")
 
 
@@ -3226,6 +3226,48 @@ def oci_platform(config: object) -> str | None:
     return None
 
 
+def normalize_trivy_platform(platform: str) -> str:
+    # Match containerd architecture aliases and default variants within the supported
+    # OS/architecture[/variant] syntax. Preserve descriptor spelling in evidence.
+    os_name, arch, *variants = platform.split("/")
+    variant = variants[0] if variants else ""
+    if os_name == "macos":
+        os_name = "darwin"
+    if arch in {"i386", "armhf", "armel"}:
+        arch, variant = {
+            "i386": ("386", ""),
+            "armhf": ("arm", "v7"),
+            "armel": ("arm", "v6"),
+        }[arch]
+    elif arch in {"amd64", "x86_64", "x86-64"}:
+        arch, variant = "amd64", "" if variant == "v1" else variant
+    elif arch in {"arm64", "aarch64"}:
+        arch = "arm64"
+        variant = {
+            "8": "",
+            "v8": "",
+            "v8.0": "",
+            "9": "v9",
+            "9.0": "v9",
+            "v9.0": "v9",
+        }.get(variant, variant)
+    elif arch == "arm":
+        variant = {"": "v7", "5": "v5", "6": "v6", "7": "v7", "8": "v8"}.get(
+            variant, variant
+        )
+    return f"{os_name}/{arch}/{variant}" if variant else f"{os_name}/{arch}"
+
+
+def trivy_image_platform_matches(descriptor: str, configuration: str) -> bool:
+    expected = normalize_trivy_platform(descriptor)
+    actual = normalize_trivy_platform(configuration)
+    # OCI image configs may omit the variant present on the pinned descriptor.
+    return actual == expected or (
+        configuration.count("/") == 1
+        and actual.split("/")[:2] == expected.split("/")[:2]
+    )
+
+
 def production_image_manifests(
     manifest: object, target: ProductionScanTarget
 ) -> tuple[ProductionImageManifest, ...]:
@@ -3248,6 +3290,7 @@ def production_image_manifests(
             f"Invalid registry image index for {target.requested_reference}"
         )
 
+    configured = normalize_trivy_platform(target.platform) if target.platform else None
     matches: dict[str, str] = {}
     for descriptor in descriptors:
         if not isinstance(descriptor, dict):
@@ -3269,9 +3312,7 @@ def production_image_manifests(
             raise HarnessError(
                 f"Invalid runtime descriptor in {target.requested_reference}"
             )
-        if target.platform and not (
-            platform == target.platform or platform.startswith(target.platform + "/")
-        ):
+        if configured and normalize_trivy_platform(platform) != configured:
             continue
         if platform in matches:
             raise HarnessError(
@@ -3330,7 +3371,6 @@ def scan_image_manifest(
     metadata = report["Metadata"]
     actual_platform = oci_platform(metadata.get("ImageConfig"))
     repo_digests = metadata.get("RepoDigests")
-    # OCI image configs may omit the variant carried by the pinned index descriptor.
     if (
         report["ArtifactName"] != scanned
         or not isinstance(repo_digests, list)
@@ -3342,11 +3382,7 @@ def scan_image_manifest(
         or "unknown" in actual_platform.split("/")
         or (
             manifest.platform
-            and not (
-                actual_platform == manifest.platform
-                or actual_platform.startswith(manifest.platform + "/")
-                or manifest.platform.startswith(actual_platform + "/")
-            )
+            and not trivy_image_platform_matches(manifest.platform, actual_platform)
         )
     ):
         raise HarnessError(

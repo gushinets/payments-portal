@@ -452,7 +452,7 @@ def test_manifest_resolution_selects_the_platform_digest() -> None:
             production_image_manifests({"schemaVersion": 2, "manifests": descriptors}, target)
 
 
-@pytest.mark.parametrize("platform", [None, "linux/arm64"])
+@pytest.mark.parametrize("platform", [None, "linux/arm64", "linux/amd64/v1"])
 def test_scan_production_image_covers_every_selected_manifest(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -516,7 +516,8 @@ def test_scan_production_image_covers_every_selected_manifest(
     monkeypatch.setattr(repo, "run", run_scan)
     repo.scan_production_image(tmp_path, "postgres")
 
-    assert set(scanned_digests) == ({amd64, arm64} if platform is None else {arm64})
+    expected = {None: {amd64, arm64}, "linux/arm64": {arm64}, "linux/amd64/v1": {amd64}}
+    assert set(scanned_digests) == expected[platform]
 
 
 @pytest.mark.parametrize("action", ["verify-reports", "gate"])
@@ -590,3 +591,43 @@ def test_workflow_rejects_wrong_report_artifact_type(
 
     with pytest.raises(HarnessError, match="unexpected Trivy v2 report type or header"):
         cmd_trivy(Namespace(action=action, report_dir=str(tmp_path)))
+
+
+@pytest.mark.parametrize(
+    ("configured", "arch", "variant"),
+    [
+        ("linux/amd64/v1", "amd64", None),
+        ("linux/amd64", "amd64", "v1"),
+        ("linux/x86_64", "amd64", None),
+        ("linux/arm64/v8", "arm64", None),
+        ("linux/arm64", "arm64", "v8"),
+        ("linux/armhf", "arm", "v7"),
+    ],
+)
+def test_explicit_platform_matches_normalized_manifest(
+    configured: str,
+    arch: str,
+    variant: str | None,
+) -> None:
+    selected = "sha256:" + "b" * 64
+    platform = {"os": "linux", "architecture": arch}
+    if variant is not None:
+        platform["variant"] = variant
+    descriptors = [
+        {"mediaType": _OCI_MANIFEST, "digest": selected, "platform": platform},
+        {
+            "mediaType": _OCI_MANIFEST,
+            "digest": "sha256:" + "c" * 64,
+            "platform": {
+                "os": "linux",
+                "architecture": arch,
+                "variant": {"amd64": "v2", "arm64": "v9", "arm": "v6"}[arch],
+            },
+        },
+    ]
+    target = ProductionScanTarget("example/image@sha256:" + "a" * 64, configured)
+
+    assert production_image_manifests(
+        {"schemaVersion": 2, "manifests": descriptors},
+        target,
+    ) == (ProductionImageManifest(selected, "/".join(platform.values())),)
