@@ -242,7 +242,11 @@ def port_is_free(port: int) -> bool:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             sock.bind(("127.0.0.1", port))
-        except OSError:
+        except OSError as exc:
+            print(
+                f"Port {port} bind failed: errno={exc.errno} ({exc.strerror})",
+                file=sys.stderr,
+            )
             return False
     return True
 

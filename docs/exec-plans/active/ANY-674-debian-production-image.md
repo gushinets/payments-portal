@@ -158,3 +158,29 @@ their owner fields are explicitly historical. No assessment or scan result chang
 Documentation/hash/scope checks suffice for this administrative-only change;
 reuse c8890a1a runtime, migration and canonical CI evidence. Notify both ownership
 review threads; leave final acceptance and thread resolution to the reviewer.
+
+### Browser CI port-collision repair
+
+Exact-head4b77673f browser job failed before Compose startup: OTLP HTTP port38400
+was unavailable immediately after4 passing React-runtime cases. The same harness
+reproduces this for a closed outgoing connection in TIME_WAIT with no listener.
+The historical runner did not retain socket ownership/errno, so that mechanism
+is demonstrated rather than falsely asserted as the historical PID's cause.
+
+Coverage assessment: harness smoke checks unique worktree ports, but does not
+reserve them against Linux ephemeral allocation or retain socket diagnostics.
+Production/API checks passed; the fix must remain scoped to the disposable Linux
+browser runner and retain ordinary collision checks.
+
+- [x] Establish failing regression for early browser port reservation and failure diagnostics.
+- [x] Reserve the exact harness ports in Linux ip_local_reserved_ports before dependency/network/browser traffic; preserve existing reservations, verify readback and bound any wait for preexisting sockets.
+- [x] Capture bind errno, TCP socket state/process identity and reservation/range metadata without environment/credential dumps; upload diagnostics on failure.
+- [ ] Run focused and supported canonical checks, push existing PR, repeat browser CI and report actual outcome. No merge/deploy or CVE-policy change.
+
+Regression evidence: initial8 cases fail without the helper/workflow integration;
+an additional live-listener case reproduces the previously missing original errno
+in harness stderr. Final focused port suite13 passes; initial port/deployment
+selection74 passes before the last diagnostic case. Lint/docs/architecture checks
+pass. An isolated Linux network namespace with ephemeral range38400–38401 and
+38400 reserved actually allocates38401 to an outgoing connection. No host port,
+production sysctl, process termination or deployment is involved.
