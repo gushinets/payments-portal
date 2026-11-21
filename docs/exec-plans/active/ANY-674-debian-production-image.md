@@ -107,3 +107,17 @@ Final runtime evidence: Security44838297198 at1b33a906 passed the same scanned i
 ### Wheel-only build follow-up
 
 Sonar reported two source-build hook warnings in the archived control recipe. The actual canonical Dockerfile now uses supported uv `--no-build` for production and development dependency synchronization (7ed98b8a); package locks/versions are unchanged. No artifact rename, scanner ignore, risk approval or enforcement change was adopted. The fresh Security44839563431 image pair passed with the same71 Debian versions and all application distribution versions as1b33a906. Actual final image startup/readiness and PostgreSQL migration round trip passed. The checked-in current control recipe is the actual newly tested recipe; historical1b33 results, raw hashes and immutable Git/CI links are preserved in historical-pair-1b33.json. Both production and development dependency stages build on linux/amd64; future missing compatible wheels deliberately fail rather than execute source build hooks. CI44839563588 covers canonical fast/coverage, production/PostgreSQL and the development/browser path; final status is recorded at handoff.
+
+## High-first remaining-remediation follow-up
+
+Current user scope: implement feasible fixes/mitigations within the existing architecture, then list exact blockers, required changes and approvals for every remaining High. Ownership stays pending team assignment and does not block technical work. Preserve all previous zero-patch and controlled comparisons.
+
+Baseline3d7c7fb2 built fresh locally; remote ANY-742 d1ff9c34 was fast-forwarded without a new merge commit and remains separately attributable. No active Docker containers were present. Docker is now available; no shared reset/prune/service termination.
+
+Coverage assessment: existing71 focused deployment/collector guards, settings compatibility tests currently accept SQLite in production, offline image verifier and exact-image PostgreSQL cycle. Gaps: asserted absence of unused infocmp/nsenter code, production-only PostgreSQL enforcement, explicit API/migration capability boundary and actual kernel/cgroup posture evidence.
+
+- [ ] Verify supported dpkg exact-path exclusions for infocmp/nsenter in disposable image, retain Essential packages/native libraries/metadata; explain dpkg verify missing-file output and reject any unlisted exclusion.
+- [ ] Establish failing production-database and Compose capability regressions, then enforce PostgreSQL only for APP_ENV=production and cap_drop ALL for API/migration. Preserve test/development SQLite.
+- [ ] Build final target and compare actual files/ELF dependencies/package versions/scans with retained before image using one frozen Trivy DB. Keep ANY-742 pip effects separate.
+- [ ] Verify image itself: required imports/TLS/compression/timezone, process privilege/cgroup boundaries, default startup/readiness and migration cycle with disposable PostgreSQL. No exploit on production.
+- [ ] Run focused and canonical checks; produce all11 High blocker/change/approval matrix plus family-level remaining-ID mapping, update report/PR and private diary. No risk approval, policy exception, merge/deploy or Linear transition.

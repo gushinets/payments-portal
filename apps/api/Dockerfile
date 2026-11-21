@@ -47,6 +47,8 @@ FROM base AS production
 
 COPY --from=production-dependencies /opt/api-venv /opt/api-venv
 
+# Production excludes two unused optional executables through supported dpkg filters.
+# Essential packages, ownership records, checksums and required libraries stay.
 # Create the runtime identity before removing build/account/mount tooling.
 # Keep essential/protected packages, dpkg metadata and native runtime libraries.
 # API runtime has no OS account-switching/PAM-login contract; retain commands
@@ -54,6 +56,13 @@ COPY --from=production-dependencies /opt/api-venv /opt/api-venv
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /app --no-create-home app \
     && install -d -o app -g app -m 0700 /run/payments-portal \
+    && printf '%s\n' 'path-exclude=/usr/bin/infocmp' 'path-exclude=/usr/bin/nsenter' > /etc/dpkg/dpkg.cfg.d/99-api-runtime-exclusions \
+    && apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends --reinstall \
+         "ncurses-bin=$(dpkg-query -W -f='${Version}' ncurses-bin)" \
+         "util-linux=$(dpkg-query -W -f='${Version}' util-linux)" \
+    && test ! -e /usr/bin/infocmp && test ! -e /usr/bin/nsenter \
+    && rm -rf /var/lib/apt/lists/* \
     && runtime_build_packages="apt libapt-pkg7.0 sqv debian-archive-keyring adduser passwd mount libbsd0 libhogweed6t64 libnettle8t64 liblz4-1 libxxhash0 libseccomp2 libsemanage2 libsemanage-common libsepol2" \
     && for package in $runtime_build_packages; do \
          test "$(dpkg-query -W -f='${Essential}:${Protected}' "$package")" = "no:no" || { \

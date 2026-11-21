@@ -86,6 +86,8 @@ services:
   migrate:
     build: *api-build
     restart: "no"
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
     logging: *default-logging
@@ -108,6 +110,8 @@ services:
     build: *api-build
     restart: unless-stopped
     stop_grace_period: ${PORTAL_API_STOP_GRACE_PERIOD:-75s}
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
     logging: *default-logging

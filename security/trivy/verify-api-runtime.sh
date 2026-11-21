@@ -17,7 +17,7 @@ docker run --rm --network none --entrypoint sh "$image_ref" -ec '
   fi
 
   # Build/account/mount tools are removed only from the production target.
-  for tool in apt apt-get adduser useradd groupadd passwd mount umount; do
+  for tool in apt apt-get adduser useradd groupadd passwd mount umount infocmp nsenter; do
     if command -v "$tool" >/dev/null 2>&1; then
       echo "Unexpected production runtime tool: $tool" >&2
       exit 1

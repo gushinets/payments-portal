@@ -521,7 +521,9 @@ def run_production_package_removal(
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     dockerfile = (ROOT / "apps/api/Dockerfile").read_text(encoding="utf-8")
     production = dockerfile.split("FROM base AS production", 1)[1]
-    command = production.split("RUN ", 1)[1].split("\n\n", 1)[0].replace("\\\n", "")
+    command = "runtime_build_packages=" + production.split("runtime_build_packages=", 1)[1].split("\n\n", 1)[0].replace(
+        "\\\n", ""
+    )
     marker = tmp_path / "purged.txt"
     environment = {
         **os.environ,

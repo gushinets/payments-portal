@@ -101,6 +101,12 @@ jobs:
           "$API_IMAGE" /tmp/inspect-api-components.py
           > "$TRIVY_REPORT_DIR/api-components.json"
 
+      - name: Verify API deployment privilege and excluded-tool boundaries
+        run: |
+          docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges:true --entrypoint python --mount "type=bind,src=$PWD/security/trivy/inspect-api-isolation.py,dst=/probe.py,readonly" "$API_IMAGE" /probe.py > "$RUNNER_TEMP/api-isolation.json"
+          python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); assert p["isolation_boundary_passed"]; assert not any(p["excluded_paths_present"].values()); assert set(p["runtime_file_filters"])=={"path-exclude=/usr/bin/infocmp","path-exclude=/usr/bin/nsenter"}' "$RUNNER_TEMP/api-isolation.json"
+          mv "$RUNNER_TEMP/api-isolation.json" "$TRIVY_REPORT_DIR/api-isolation.json"
+
       - name: Simulate API package removal options without changing packages
         run: >-
           docker run --rm --network none --user 0:0 --entrypoint python

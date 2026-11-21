@@ -24,13 +24,13 @@ until docker exec "$postgres_id" pg_isready -U anytoolai -d any674_runtime >/dev
   sleep 1
 done
 # These values are disposable test configuration; no production credentials are read.
-set -- --network "$network_id" \
-  --env APP_ENV=test --env APP_PUBLIC_BASE_URL=http://localhost:3000 \
+set -- --network "$network_id" --cap-drop ALL --security-opt no-new-privileges:true \
+  --env APP_ENV=production --env APP_PUBLIC_BASE_URL=https://payments.example.test \
   --env INSTANCE_TENANT_ID=anytoolai --env INSTANCE_REGION=ru \
   --env "DATABASE_URL=postgresql+psycopg://anytoolai:$database_password@any674-postgres:5432/any674_runtime" \
   --env POSTGRES_DB=any674_runtime --env POSTGRES_USER=anytoolai \
   --env "POSTGRES_PASSWORD=$database_password" --env POSTGRES_HOST=any674-postgres --env POSTGRES_PORT=5432 \
-  --env CORS_ALLOW_ORIGINS=http://localhost:3000 --env SKIP_LEGAL_SEED=true \
+  --env CORS_ALLOW_ORIGINS=https://payments.example.test --env SKIP_LEGAL_SEED=true \
   --env BILLING_WORKER_ENABLED=false --env OTEL_SDK_DISABLED=true
 for migration in 'upgrade head' 'downgrade base' 'upgrade head'; do
   # Deliberate split of this fixed list into Alembic's action and revision.
@@ -41,6 +41,7 @@ done
 api_id=$(docker run --detach "$@" "$image_ref")
 uid=$(docker exec "$api_id" id -u)
 if [ "$uid" -eq 0 ]; then echo "API unexpectedly started as root" >&2; exit 1; fi
+docker exec "$api_id" python -c 'from pathlib import Path; s=dict(line.split(":",1) for line in Path("/proc/1/status").read_text().splitlines() if ":" in line); assert all(int(s[k].strip(),16)==0 for k in ("CapEff","CapPrm","CapBnd")); assert s["NoNewPrivs"].strip()=="1"'
 attempt=0
 until docker exec "$api_id" python -c 'import json,urllib.request; assert json.load(urllib.request.urlopen("http://127.0.0.1:8000/api/health/ready",timeout=2))["status"] == "ready"' >/dev/null 2>&1; do
   attempt=$((attempt + 1))
@@ -51,4 +52,4 @@ until docker exec "$api_id" python -c 'import json,urllib.request; assert json.l
 done
 docker exec "$api_id" python -c 'import json,urllib.request; assert json.load(urllib.request.urlopen("http://127.0.0.1:8000/api/health/live",timeout=2))["status"] == "alive"'
 immutable_id=$(docker image inspect --format '{{.Id}}' "$image_ref")
-python3 -c 'import json,sys; print(json.dumps({"image_id":sys.argv[1],"uid":int(sys.argv[2]),"default_cmd":True,"liveness":"passed","readiness":"passed","postgresql":"18.4","migration_cycle":"upgrade head / downgrade base / upgrade head: passed","runtime_network":"internal Docker network; no external downloads"},indent=2))' "$immutable_id" "$uid"
+python3 -c 'import json,sys; print(json.dumps({"image_id":sys.argv[1],"uid":int(sys.argv[2]),"default_cmd":True,"app_env":"production","capabilities":"all dropped; PID1 verified","no_new_privileges":True,"liveness":"passed","readiness":"passed","postgresql":"18.4","migration_cycle":"upgrade head / downgrade base / upgrade head: passed","runtime_network":"internal Docker network; no external downloads"},indent=2))' "$immutable_id" "$uid"
