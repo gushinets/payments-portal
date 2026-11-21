@@ -75,8 +75,8 @@ CI, the API Docker dependency stages and `npm run sync:api` use
 the local project is not built by the canonical sync. uv can reuse wheels
 already in its cache. For wheel availability evidence, run against an empty
 cache and environment. The control applies to source-distribution builds
-during these installs and makes no claim about other first-party build or
-editable workflows.
+during these installs. First-party build and editable workflows have their own
+execution paths. The README also uses pip's wheel-only option to bootstrap uv.
 
 If a platform lacks a wheel, identify the package, version and platform.
 Keep the wheel-only default and resolve availability or review a narrowly

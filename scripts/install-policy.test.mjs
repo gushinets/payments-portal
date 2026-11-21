@@ -106,7 +106,9 @@ test('locked npm install skips hooks and reports pending explicit and implicit h
   copyFileSync(join(root, '.npmrc'), join(project, '.npmrc'));
   passed(await fixtureNpm(project, 'install', '--package-lock-only', '--ignore-scripts'));
 
+  env.npm_config_dangerously_allow_all_scripts = 'true';
   const pending = await fixtureNpm(project, 'run', 'deps:install');
+  delete env.npm_config_dangerously_allow_all_scripts;
   assert.equal(existsSync(marker), false, pending.output);
   assert.notEqual(pending.status, 0, pending.output);
   assert.match(pending.output, /Review dependency install hooks/);

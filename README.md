@@ -113,7 +113,7 @@ The API uses uv `0.12.7`. The dependency source of truth is
 Install and verify the required uv version:
 
 ```bash
-python -m pip install "uv==0.12.7"
+python -m pip install --only-binary=:all: "uv==0.12.7"
 uv --version
 ```
 

@@ -30,7 +30,9 @@ for (const [location, entry] of Object.entries(packages)) {
   if (!Object.hasOwn(allowScripts, key)) pending.add(key);
 }
 
-const installed = JSON.parse(npm(['install-scripts', 'ls', '--json'], true));
+const installed = JSON.parse(npm([
+  'install-scripts', 'ls', '--json', '--dangerously-allow-all-scripts=false',
+], true));
 for (const { changes } of installed.allowScripts) {
   for (const { key } of changes) pending.add(key);
 }
