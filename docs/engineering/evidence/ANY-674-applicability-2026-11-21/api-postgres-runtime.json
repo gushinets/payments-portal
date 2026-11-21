@@ -1,5 +1,5 @@
 {
-  "image_id": "sha256:3c3d70a3a9095d042169ed5b079ce44cef3c20eb804b0ea275e85ac7b87614c0",
+  "image_id": "sha256:1a61e9210326aec9cb92bcce8ce4b3d32f8bf8d77d790ecbf898608384d50328",
   "uid": 999,
   "default_cmd": true,
   "liveness": "passed",

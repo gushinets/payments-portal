@@ -1,6 +1,6 @@
 {
-  "image_source": "1b33a906e2884fa28f20a7e9b684678f821bb77e",
-  "image_id": "sha256:3c3d70a3a9095d042169ed5b079ce44cef3c20eb804b0ea275e85ac7b87614c0",
+  "image_source": "7ed98b8a8f17f5e32f48cb1db18bffeb914bd380",
+  "image_id": "sha256:1a61e9210326aec9cb92bcce8ce4b3d32f8bf8d77d790ecbf898608384d50328",
   "review_date": "2026-11-20",
   "scope": "All101 scanner advisory IDs including TEMP entries. Assessment is not scanner suppression or risk acceptance.",
   "advisories": [

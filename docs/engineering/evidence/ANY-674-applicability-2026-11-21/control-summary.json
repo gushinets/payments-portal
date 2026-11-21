@@ -1,6 +1,6 @@
 {
-  "image_id": "sha256:7bea11dbbfc91e886109fa93c80a5302409669f762237a41529099550aa8df6e",
-  "scan_time": "2026-11-20T23:41:05.604951706Z",
+  "image_id": "sha256:a6afedb696033512bc8aa03ea1cd3be374ede1c88df1f29aea0a95f218a5fdbb",
+  "scan_time": "2026-11-20T23:51:38.268266626Z",
   "trivy": {
     "Version": "0.72.0"
   },

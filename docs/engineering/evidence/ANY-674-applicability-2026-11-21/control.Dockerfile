@@ -26,11 +26,11 @@ COPY apps/api/pyproject.toml apps/api/uv.lock ./apps/api/
 
 FROM dependency-builder AS production-dependencies
 
-RUN uv sync --directory apps/api --locked --no-dev --no-install-project
+RUN uv sync --directory apps/api --locked --no-dev --no-install-project --no-build
 
 FROM production-dependencies AS development-dependencies
 
-RUN uv sync --directory apps/api --locked --dev --no-install-project
+RUN uv sync --directory apps/api --locked --dev --no-install-project --no-build
 
 FROM base AS development
 
