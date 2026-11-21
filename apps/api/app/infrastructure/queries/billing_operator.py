@@ -238,6 +238,47 @@ def released_object_owners(
     )
 
 
+def released_subscription_audits(
+    db: Session,
+    customer_id: UUID,
+    account_id: str,
+    *,
+    audit_schema: str,
+    audit_reasons: tuple[str, ...],
+) -> list[tuple[UUID, ManualReviewCase]]:
+    operation = ExternalCreateOperation
+    case = ManualReviewCase
+    proofs = case.resolution_document["request"]["evidence"]["operations"]
+    proofs_with_ids = [
+        and_(
+            proof["operation_id"].as_string() == cast(operation.create_operation_id, Text),
+            or_(
+                proof["unrelated_object_ids"].as_string().is_not(None),
+                proof["external_object_id"].as_string().is_not(None),
+            ),
+        )
+        for proof in (proofs[0], proofs[1])
+    ]
+    query = (
+        select(operation.create_operation_id, case)
+        .select_from(PurchaseIntent)
+        .join(operation, operation.purchase_intent_id == PurchaseIntent.purchase_intent_id)
+        .join(case, case.scope_reference == cast(PurchaseIntent.purchase_intent_id, Text))
+        .where(
+            PurchaseIntent.customer_id == customer_id,
+            PurchaseIntent.external_billing_account_id == account_id,
+            PurchaseIntent.state.in_(tuple(state for state in PurchaseIntentState if state.resolved)),
+            operation.operation_kind == ExternalCreateOperationKind.SUBSCRIPTION,
+            case.scope_kind == "purchase_intent",
+            case.case_state == "resolved",
+            case.reason_code.in_(audit_reasons),
+            case.resolution_schema_version == audit_schema,
+            or_(*proofs_with_ids),
+        )
+    )
+    return list(db.execute(query).tuples())
+
+
 def observations(db: Session, subscription_id: UUID) -> list[BillingStateObservation]:
     return list(
         db.scalars(
@@ -250,16 +291,34 @@ def observations(db: Session, subscription_id: UUID) -> list[BillingStateObserva
 
 
 def has_newer_live_subscription_read(
-    db: Session, subscription_id: UUID, confirmed_at: datetime, *, schemas: tuple[str, ...], identity: str
+    db: Session,
+    subscription_id: UUID,
+    confirmed_at: datetime,
+    *,
+    schemas: tuple[str, ...],
+    preparation_schema: str,
+    identity: str,
 ) -> bool:
     observation = BillingStateObservation
+    evidence = observation.evidence_document
+    first_binding = evidence["original_proof"]["subscription"]
+    live = (Lifecycle.ACTIVE, Lifecycle.INACTIVE)
     live_read = exists().where(
         observation.subscription_id == subscription_id,
         observation.observation_kind == BillingStateObservationKind.AUTHORITATIVE_SUBSCRIPTION_READ,
-        observation.evidence_schema_version.in_(schemas),
         observation.observed_at > confirmed_at,
-        observation.evidence_document["identity"].as_string() == identity,
-        observation.evidence_document["lifecycle"].as_string().in_((Lifecycle.ACTIVE, Lifecycle.INACTIVE)),
+        or_(
+            and_(
+                observation.evidence_schema_version.in_(schemas),
+                evidence["identity"].as_string() == identity,
+                evidence["lifecycle"].as_string().in_(live),
+            ),
+            and_(
+                observation.evidence_schema_version == preparation_schema,
+                first_binding["identity"].as_string() == identity,
+                first_binding["lifecycle"].as_string().in_(live),
+            ),
+        ),
     )
     return bool(db.scalar(select(live_read)))
 

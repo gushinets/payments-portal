@@ -5,13 +5,20 @@ from uuid import UUID
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.domains.billing.operator_contracts import ResolutionRequest
+from app.domains.billing.operator_contracts import (
+    TERMINAL_AUDIT_REASONS,
+    TERMINAL_SCHEMA,
+    AuditedSubscriptionCandidate,
+    ResolutionRequest,
+    TerminalAudit,
+)
 from app.domains.catalog.commercial_offer import canonical_document, commercial_digest
 from app.domains.purchases.contracts import (
     FINANCIAL_REVIEW_SCHEMA,
     FinancialOperation,
     FinancialReviewEvidence,
     Purchase,
+    PurchaseInventoryIncomplete,
     PurchaseRefused,
 )
 from app.infrastructure.queries import billing_operator as queries
@@ -49,6 +56,30 @@ def case_digest(case: ManualReviewCase) -> str:
             "schema": case.evidence_schema_version,
             "evidence": case.evidence_document,
         }
+    )
+
+
+def audited_subscription_candidates(
+    db: Session, customer_id: UUID, account_id: str
+) -> frozenset[AuditedSubscriptionCandidate]:
+    disproved: set[tuple[UUID, AuditedSubscriptionCandidate]] = set()
+    originals: set[tuple[UUID, str]] = set()
+    for operation_id, case in queries.released_subscription_audits(
+        db, customer_id, account_id, audit_schema=TERMINAL_SCHEMA, audit_reasons=TERMINAL_AUDIT_REASONS
+    ):
+        try:
+            audit = TerminalAudit.model_validate(case.resolution_document)
+        except ValidationError as error:
+            raise PurchaseInventoryIncomplete() from error
+        proof = next(item for item in audit.request.evidence.operations if item.operation_id == operation_id)
+        if proof.external_object_id is not None:
+            originals.add((operation_id, proof.external_object_id))
+        disproved.update(
+            (operation_id, AuditedSubscriptionCandidate(identity, case.review_case_id))
+            for identity in proof.unrelated_object_ids
+        )
+    return frozenset(
+        candidate for operation_id, candidate in disproved if (operation_id, candidate.external_id) not in originals
     )
 
 

@@ -630,8 +630,8 @@ gave final confirmation after shutdown (at or before the current time). Use
 the LBX confirmation reference as `--reference`.
 If a later authoritative read confirms that the original subscription is active
 or inactive, obtain a fresh confirmation before initial completion, even when
-commercial details are incomplete. A refreshed digest alone does not renew the
-earlier confirmation.
+commercial details are incomplete. This includes a first binding through
+`recover`. A refreshed digest alone does not renew the earlier confirmation.
 Keep provider payloads, secrets and personal data out of reason/reference.
 
 ```bash
@@ -719,6 +719,9 @@ according to what happened to the original request.
 Closing the case preserves the purchase's terminal outcome. A live independent
 subscription still blocks a new purchase on the same tariff from sending a
 financial CREATE until the subscription ends or its agreement closes.
+Inventory point-reads audited unrelated subscriptions even when discovery
+omits them. If the audited candidate set changes before the inventory is
+applied, admission and first-primary selection require a fresh inventory.
 A failed point read of a potential competitor on that tariff blocks first-primary
 selection for that inventory pass, even when the candidate is listed only under
 the historical agreement. The worker retries incomplete inventory.

@@ -1,4 +1,4 @@
-"""Interpret released-purchase history during live subscription inventory."""
+"""Point reads and released-purchase history for subscription inventory."""
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
@@ -6,12 +6,26 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from app.domains.billing.operator_contracts import LateObjectDisposition, LateObjectResult, LateSubscriptionPoint
+from app.domains.billing.operator_cases import audited_subscription_candidates
+from app.domains.billing.operator_contracts import (
+    AuditedSubscriptionCandidate,
+    LateObjectDisposition,
+    LateObjectResult,
+    LateSubscriptionPoint,
+)
 from app.domains.billing.reconciliation import read_source_time
 from app.domains.billing.terminal_resolution import ReleasedPurchase, record_late_object, released_object_owners
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases.contracts import Purchase
-from app.integrations.lbx.errors import LbxResponseInvalid
+from app.infrastructure.preflight import PreflightBudget
+from app.integrations.lbx.errors import (
+    LbxAttemptsExhausted,
+    LbxProviderRejected,
+    LbxRateLimited,
+    LbxResponseInvalid,
+    LbxTimeout,
+    LbxUnavailable,
+)
 from app.integrations.lbx.financial import (
     Agreement,
     Subscription,
@@ -19,7 +33,31 @@ from app.integrations.lbx.financial import (
     prove_agreement,
     subscription_lifecycle,
 )
+from app.integrations.lbx.reconciliation import timely_point
 from app.models import ExternalCreateOperationKind as Kind, ExternalSubscriptionLifecycleStatus as Lifecycle
+
+
+async def read_inventory_candidate[T](read: Callable[[], Awaitable[T]], budget: PreflightBudget) -> T | None:
+    """A timely object-local failure preserves its INCOMPLETE candidates only.
+
+    Authentication/scope errors, stale ownership and shared budget/cleanup
+    failures retain the outer customer-wide failure boundary.
+    """
+    try:
+        return await timely_point(read, budget)
+    except (LbxResponseInvalid, LbxUnavailable, LbxTimeout, LbxRateLimited, LbxAttemptsExhausted, LbxProviderRejected):
+        return None
+
+
+def subscription_listing_identities(rows: tuple[Subscription, ...]) -> list[tuple[int, int, int]]:
+    return sorted((row.subscription_id, row.agreement_id, row.tariff_id) for row in rows)
+
+
+def load_audited_subscription_candidates(
+    factory: SessionFactory, purchase: Purchase
+) -> frozenset[AuditedSubscriptionCandidate]:
+    with factory() as db:
+        return audited_subscription_candidates(db, purchase.customer_id, purchase.account_id)
 
 
 @dataclass
@@ -117,7 +155,7 @@ async def observe_released_subscription(
     # Confirmation of a possible original requires a provider read. The writer
     # rechecks the permanent binding after that read.
     agreement = await read_agreement()
-    if agreement is None:
+    if agreement is None or agreement.agreement_id != point.agreement_id:
         raise LbxResponseInvalid()
     original = next(op for op in purchase.operations if op.kind == Kind.AGREEMENT)
     prove_agreement(agreement, user_id=user_id, seller_id=purchase.accepted.seller_id, number=original.key)

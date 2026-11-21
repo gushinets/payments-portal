@@ -40,6 +40,8 @@ from app.models import (
     PaidAccessState,
     PurchasedAllowance,
     BillingProductAccessScope,
+    BillingStateObservation,
+    BillingWorkItem,
     AccessInvalidationOutbox,
 )
 from app.composition.purchase_recovery import recover_financial
@@ -717,6 +719,56 @@ async def test_initial_completion_checks_newer_subscription_read(
         PurchaseIntentState.RESOLVED_EXTERNAL_TERMINAL
     )
     assert terminal.resolve_purchase(factory, scenario.config, refreshed, PRINCIPAL).already_resolved
+
+
+@pytest.mark.parametrize("state", [2, -2, 3], ids=["active", "inactive", "ended"])
+async def test_initial_completion_checks_newer_first_binding(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    state: int,
+) -> None:
+    transport, _, purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    original = synthetic_prepare(factory, transport, purchase, uncertain=True, subscription_receipt=567)
+    agreement, subscription = original.operations
+    assert subscription.candidate_id == "567" and subscription.bound_id is None
+    command = request(factory, original, confirmed=True)
+    assert command.evidence.operations[0].operation_id == agreement.id
+    proof = terminal.OperationEvidence(
+        operation_id=subscription.id, outcome=terminal.TerminalEvidenceKind.EXTERNAL_TERMINAL, external_object_id="567"
+    )
+    first_confirmation = command.evidence.model_copy(update={"operations": (command.evidence.operations[0], proof)})
+
+    transport.subscriptions[0]["state"] = state
+    transport.hide.add("/subscriptions")
+    assert await _recover_from_cli(factory, original, transport, monkeypatch) == 0
+    linked = service.read_purchase(factory, original.user_id, original.id)
+    assert linked.held and linked.operations[1].bound_id == "567"
+    with factory() as db:
+        sub = db.scalar(select(ExternalSubscription).where(ExternalSubscription.purchase_intent_id == original.id))
+        [observation] = db.scalars(
+            select(BillingStateObservation).where(BillingStateObservation.subscription_id == sub.subscription_id)
+        ).all()
+        assert observation.evidence_schema_version == "prepared-subscription:v1"
+        assert observation.observed_at > first_confirmation.confirmed_at
+        work = db.scalar(select(BillingWorkItem).where(BillingWorkItem.scope_reference == str(sub.subscription_id)))
+        assert work is not None and work.work_state == "pending"
+        work_id = work.work_item_id
+    refreshed = request(factory, linked, confirmed=True)
+    with_old_confirmation = refreshed.model_copy(update={"evidence": first_confirmation})
+    if state != 3:
+        with pytest.raises(PurchaseRefused, match="purchase_resolution_confirmation_required"):
+            terminal.resolve_purchase(factory, config, with_old_confirmation, PRINCIPAL)
+        assert service.read_purchase(factory, original.user_id, original.id).held
+        with factory() as db:
+            assert db.get(BillingWorkItem, work_id).work_state == "pending"
+    else:
+        refreshed = with_old_confirmation
+    assert terminal.resolve_purchase(factory, config, refreshed, PRINCIPAL).state == (
+        PurchaseIntentState.RESOLVED_EXTERNAL_TERMINAL
+    )
+    assert terminal.resolve_purchase(factory, config, refreshed, PRINCIPAL).already_resolved
 
 
 @pytest.mark.parametrize("prior_state", [OperationState.PENDING, OperationState.PROVEN_NOT_SENT])

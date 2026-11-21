@@ -7,7 +7,7 @@ from functools import partial
 from threading import Event
 from uuid import UUID
 from concurrent.futures import Future
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -18,15 +18,19 @@ from app.composition.purchase_recovery import recover_financial
 from app.composition.purchases import advance_purchase, confirm_purchase
 from app.composition.sources import SourceResources, source_resources
 from app.domains.billing import customers, terminal_resolution as terminal
+from app.domains.billing.discovery import apply_inventory, persist_discoveries
 from app.domains.billing.operator_diagnostics import inspect_evidence
 from app.domains.billing.operator_contracts import LateSubscriptionPoint
 from app.domains.billing.operator_review import digest, has_late_purchase_review_for_product
 from app.domains.purchases import financial, service
-from app.domains.purchases.contracts import Purchase, PurchaseRefused
+from app.domains.purchases.contracts import Purchase, PurchaseRefused, PurchaseInventoryIncomplete
+from app.domains.purchases.inventory_contracts import InventoryStale
 from app.infrastructure.queries import billing_operator
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.financial import NewAgreement, Subscription
+from app.integrations.lbx.errors import LbxTimeout
 from app.models import (
+    BillingProductAccessScope,
     ExternalCreateOperation,
     ExternalCreateOperationKind as Kind,
     ExternalSubscription,
@@ -46,6 +50,8 @@ from apps.api.tests.test_billing_background_recovery_postgres import (
     synthetic_prepare,
 )
 from apps.api.tests.test_billing_scoped_inventory_postgres import inventory
+from apps.api.tests.test_paid_access_rebase_postgres import claim_inventory, collect, run_inventory
+from apps.api.tests.test_paid_access_reconciliation_postgres import Scenario
 from apps.api.tests.test_purchase_terminal_resolution_postgres import PRINCIPAL, _recover_from_cli, request
 
 pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
@@ -228,20 +234,32 @@ async def test_agreement_case_cannot_attest_another_operation(
     assert not terminal.released_operation_objects(factory, old.id)[subscription.id].confirmed
 
 
-async def test_disproved_live_subscription_still_blocks_same_tariff_until_ended(
+async def _independent_late_subscription(
     background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
-    postgres_session_factory: sessionmaker[Session],
-) -> None:
+    factory: sessionmaker[Session],
+    *,
+    link_replacement: bool = False,
+) -> tuple[Purchase, Purchase, terminal.TerminalRequest]:
     transport, sources, purchase = background_scenario
-    factory, config = postgres_session_factory, step1_settings()
+    config = step1_settings()
     old = synthetic_prepare(factory, transport, purchase, uncertain=True)
     subscription = next(op for op in old.operations if op.kind == Kind.SUBSCRIPTION)
     candidate = transport.subscriptions.pop()
     transport.agreements[0]["close_date"] = datetime.now(UTC).date().isoformat()
     terminal.resolve_purchase(factory, config, request(factory, old, confirmed=True), PRINCIPAL)
     replacement = await accept(sources, factory, key="after-disproved-live-subscription")
+    if link_replacement:
+        replacement = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=replacement.id)
+        today = datetime.now(UTC).date()
+        transport.subscriptions[-1].update(
+            state=2,
+            subscription_start_date=today.isoformat(),
+            subscription_instance_start_date=today.isoformat(),
+            last_tariffication_period_start=today.isoformat(),
+            last_tariffication_period_end=(today + timedelta(days=30)).isoformat(),
+        )
     transport.agreements[0]["close_date"] = None
-    candidate.update(subscription_id=1567, outer_id="independent-subscription")
+    candidate.update(subscription_id=1567, outer_id="independent-subscription", state=2)
     transport.subscriptions.append(candidate)
     await recover_financial(
         sources, config, factory=factory, user_id=old.user_id, purchase_id=old.id, operation_id=subscription.id
@@ -254,16 +272,161 @@ async def test_disproved_live_subscription_still_blocks_same_tariff_until_ended(
         outcome=terminal.TerminalEvidenceKind.NO_EXTERNAL_EFFECT,
         unrelated_object_ids=("1567",),
     )
-    terminal.resolve_purchase(
-        factory, config, _confirmation(factory, old, disproof, case_id=UUID(case["review_case_id"])), PRINCIPAL
-    )
+    return old, replacement, _confirmation(factory, old, disproof, case_id=UUID(case["review_case_id"]))
+
+
+@pytest.mark.parametrize("omitted", [False, True], ids=["listed", "omitted"])
+async def test_disproved_live_subscription_still_blocks_same_tariff_until_ended(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+    omitted: bool,
+) -> None:
+    transport, sources, _ = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    _, replacement, command = await _independent_late_subscription(background_scenario, factory)
+    terminal.resolve_purchase(factory, config, command, PRINCIPAL)
+    if omitted:
+        transport.hide.add("/subscriptions")
+    start = len(transport.requests)
     with pytest.raises(PurchaseRefused, match="purchase_existing_subscription_review"):
         await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=replacement.id)
+    assert any(item.url.path.endswith("/subscriptions/1567") for item in transport.requests[start:])
     assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
-    candidate["state"] = 3
+    transport.subscriptions[0]["state"] = 3
     linked = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=replacement.id)
     assert linked.state == PurchaseIntentState.LINKED
     assert transport.creates("/agreements") == transport.creates("/subscriptions") == 1
+
+
+async def test_disproved_receipt_from_initial_resolution_remains_an_admission_candidate(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    transport, sources, purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    old = synthetic_prepare(factory, transport, purchase, uncertain=True, subscription_receipt=567)
+    independent_agreement = dict(transport.agreements[0], agreement_id=1456, agreement_number="independent")
+    transport.agreements.append(independent_agreement)
+    transport.agreements[0]["close_date"] = datetime.now(UTC).date().isoformat()
+    transport.subscriptions[0].update(agreement_id=1456, state=2, outer_id="independent-subscription")
+    proof = terminal.OperationEvidence(
+        operation_id=old.operations[1].id,
+        outcome=terminal.TerminalEvidenceKind.NO_EXTERNAL_EFFECT,
+        unrelated_object_ids=("567",),
+    )
+    terminal.resolve_purchase(factory, config, _confirmation(factory, old, proof), PRINCIPAL)
+    transport.hide.add("/subscriptions")
+    replacement = await accept(sources, factory, key="after-disproved-receipt")
+    with pytest.raises(PurchaseRefused, match="purchase_existing_subscription_review"):
+        await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=replacement.id)
+    assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
+
+    independent_agreement["close_date"] = datetime.now(UTC).date().isoformat()
+    linked = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=replacement.id)
+    assert linked.state == PurchaseIntentState.LINKED
+    assert transport.creates("/agreements") == transport.creates("/subscriptions") == 1
+
+
+async def test_omitted_disproved_subscription_must_be_point_read_before_create(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport, sources, _ = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    _, replacement, command = await _independent_late_subscription(background_scenario, factory)
+    terminal.resolve_purchase(factory, config, command, PRINCIPAL)
+    transport.hide.add("/subscriptions")
+    client = sources.require_lbx()
+    original_read = client.get_subscription
+
+    async def read_subscription(*, subscription_id: int, budget: PreflightBudget) -> Subscription:
+        if subscription_id == 1567:
+            raise LbxTimeout()
+        return await original_read(subscription_id=subscription_id, budget=budget)
+
+    monkeypatch.setattr(client, "get_subscription", read_subscription)
+    with pytest.raises(PurchaseInventoryIncomplete):
+        await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=replacement.id)
+    assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
+
+
+async def test_closing_unrelated_case_invalidates_inventory_before_financial_claim(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    transport, sources, _ = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    _, replacement, resolution = await _independent_late_subscription(background_scenario, factory)
+    transport.hide.add("/subscriptions")
+    collected = await inventory(sources, factory, replacement)
+    collected.require_clear(replacement)
+    terminal.resolve_purchase(factory, config, resolution, PRINCIPAL)
+    op = next(op for op in replacement.operations if op.kind == Kind.AGREEMENT)
+    command = NewAgreement(
+        user_id=345, organization_id=21, agreement_number=op.key, create_date=datetime.now(UTC).date()
+    )
+    with pytest.raises(InventoryStale):
+        financial.claim_financial(
+            factory, replacement, op, command.request_document(), configuration=config, token=TOKEN, inventory=collected
+        )
+    assert service.read_purchase(factory, replacement.user_id, replacement.id).operations == replacement.operations
+    assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
+
+
+@pytest.mark.parametrize("mode", ["active", "ended", "unavailable", "closure-race"])
+async def test_omitted_disproved_subscription_fences_first_primary(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+) -> None:
+    transport, sources, _ = background_scenario
+    factory, config = postgres_session_factory, step1_settings(paid_access_clock_skew_seconds=10)
+    _, replacement, resolution = await _independent_late_subscription(
+        background_scenario, factory, link_replacement=True
+    )
+    with factory() as db:
+        subscription_id = db.scalar(
+            select(ExternalSubscription.subscription_id).where(
+                ExternalSubscription.purchase_intent_id == replacement.id
+            )
+        )
+    scenario = Scenario(factory, config, transport, sources, subscription_id)
+    client = sources.require_lbx()
+    discover = client.discover_subscriptions
+    original_read = client.get_subscription
+
+    async def omitted(
+        *, user_id: int, budget: PreflightBudget, agreement_id: int | None = None
+    ) -> tuple[Subscription, ...]:
+        rows = await discover(user_id=user_id, budget=budget, agreement_id=agreement_id)
+        return tuple(row for row in rows if row.subscription_id != 1567)
+
+    monkeypatch.setattr(client, "discover_subscriptions", omitted)
+    if mode == "unavailable":
+
+        async def read_subscription(*, subscription_id: int, budget: PreflightBudget) -> Subscription:
+            if subscription_id == 1567:
+                raise LbxTimeout()
+            return await original_read(subscription_id=subscription_id, budget=budget)
+
+        monkeypatch.setattr(client, "get_subscription", read_subscription)
+    if mode == "ended":
+        transport.subscriptions[-1]["state"] = 3
+    if mode == "closure-race":
+        claim = claim_inventory(scenario)
+        result = persist_discoveries(factory, claim, await collect(scenario, claim))
+        assert all(product.complete for product in result.products)
+        terminal.resolve_purchase(factory, config, resolution, PRINCIPAL)
+        with pytest.raises(InventoryStale):
+            apply_inventory(factory, claim, result, None, clock_skew_seconds=10)
+    else:
+        terminal.resolve_purchase(factory, config, resolution, PRINCIPAL)
+        await run_inventory(scenario)
+    with factory() as db:
+        expected = subscription_id if mode == "ended" else None
+        assert db.scalar(select(BillingProductAccessScope.primary_subscription_id)) == expected
 
 
 @pytest.mark.parametrize("entrypoint", ["recover", "inventory"])
@@ -566,6 +729,13 @@ async def test_released_recover_obeys_audited_subscription_ownership(
     replacement = await accept(sources, factory, key="after-audited-subscription")
     if unrelated:
         assert not cases
+        independent_agreement = dict(transport.agreements[0], agreement_id=999, agreement_number="independent")
+        transport.agreements.append(independent_agreement)
+        independent_agreement["close_date"] = None
+        with pytest.raises(PurchaseRefused, match="purchase_existing_subscription_review"):
+            await advance_purchase(sources, step1_settings(), factory=factory, token=TOKEN, purchase_id=replacement.id)
+        assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
+        independent_agreement["close_date"] = datetime.now(UTC).date().isoformat()
         saved = await advance_purchase(
             sources, step1_settings(), factory=factory, token=TOKEN, purchase_id=replacement.id
         )
