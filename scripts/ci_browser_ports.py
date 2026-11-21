@@ -56,11 +56,20 @@ def parse_reservations(value: str) -> set[int]:
 
 
 def merge_reservations(value: str, required: tuple[int, ...]) -> str:
-    missing = sorted(set(required) - parse_reservations(value))
-    # Preserve existing compact ranges rather than expanding the sysctl argument.
-    return ",".join(
-        part for part in [value.strip(), ",".join(map(str, missing))] if part
-    )
+    ports = sorted(parse_reservations(value) | set(required))
+    ranges: list[str] = []
+    if not ports:
+        return ""
+    first = previous = ports[0]
+    for port in ports[1:]:
+        if port == previous + 1:
+            previous = port
+            continue
+        ranges.append(str(first) if first == previous else f"{first}-{previous}")
+        first = previous = port
+    ranges.append(str(first) if first == previous else f"{first}-{previous}")
+    # Only integer-derived tokens enter argv; raw file text is never forwarded.
+    return ",".join(ranges)
 
 
 def probe_ports(ports: tuple[int, ...] | list[int]) -> list[PortProbe]:

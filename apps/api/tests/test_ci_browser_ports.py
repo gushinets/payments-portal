@@ -38,7 +38,13 @@ def test_reservation_preserves_existing_ranges_and_all_runtime_ports() -> None:
     assert actual == {1000, 1001, 1002, 65000, *ports}
 
 
-@pytest.mark.parametrize("value", ["bad", "10-1", "65536", "1-2-3"])
+def test_sysctl_argument_is_serialized_from_validated_integers() -> None:
+    from scripts import ci_browser_ports
+
+    assert ci_browser_ports.merge_reservations(" +01000-01002, 65000 ", (38400,)) == ("1000-1002,38400,65000")
+
+
+@pytest.mark.parametrize("value", ["bad", "10-1", "65536", "1-2-3", "1000 --help"])
 def test_reservation_rejects_invalid_kernel_values(value: str) -> None:
     from scripts import ci_browser_ports
 

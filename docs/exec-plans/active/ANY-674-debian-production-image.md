@@ -184,3 +184,15 @@ selection74 passes before the last diagnostic case. Lint/docs/architecture check
 pass. An isolated Linux network namespace with ephemeral range38400–38401 and
 38400 reserved actually allocates38401 to an outgoing connection. No host port,
 production sysctl, process termination or deployment is involved.
+
+At e08719ee, all5 CI jobs passed, including4 React-runtime and246 full browser
+cases; Security passed. The runner's actual reservation readback includes38400,
+with ephemeral range32768–60999. Sonar S6350 flagged raw reservation-file text
+flowing into the sysctl argument despite numeric validation. A failing canonical-
+serialization regression establishes the correction: rebuild compact ranges only
+from parsed integers, never forward the original text. Final focused suite15
+passes, including invalid argument rejection and kernel readback failure. No
+scanner exception or downgrade. Restart local canonical checks after this source
+change; the earlier local fast attempt was interrupted during API tests and its
+full stage was unreached. Final-head CI/browser and canonical outcomes are recorded
+in the PR handoff to avoid presenting the earlier head as final verification.
