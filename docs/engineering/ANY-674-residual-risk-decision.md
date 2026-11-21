@@ -2,6 +2,11 @@
 
 Status: **HISTORICAL pending request; technical follow-up completed; no risk approved**
 
+Current technical ownership is assigned to Iosif for all87 current IDs;
+see the [assignment addendum](ANY-674-high-remediation-followup.md#current-technical-ownership--november21-assignment).
+The96-ID owner/decision table below remains historical, not an active blanket
+acceptance request or a statement that technical ownership is still unassigned.
+
 The owner directed additional High-first package removal, minimization and supported-update investigation before any residual acceptance proposal. The 96-ID scope below describes the original unminimized image. It is retained as history, not an active blanket acceptance request for the follow-up image. Current outcomes and the separately pending team ownership criterion are recorded in the [technical handoff](ANY-674-technical-handoff.md). The current 95-ID scope supersedes this historical 96-ID request. Ownership is pending team assignment; it does not block technical handoff. No requester ownership or risk acceptance is recorded.
 
 This record covers exactly the 96 unresolved Debian advisory IDs enumerated below. The two historical zlib IDs absent from the fresh baseline are excluded. Per-ID installed package identity, vendor status, conditions, runtime relevance and existing mitigations remain in [the disposition ledger](evidence/ANY-674/advisory-dispositions.csv).

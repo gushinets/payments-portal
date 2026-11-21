@@ -16,7 +16,13 @@ Existing Dockerfile already refreshes indexes and upgrades packages. Existing de
 - [x] Verify normal non-root startup/readiness with disposable PostgreSQL, offline imports, runtime libraries and Alembic entrypoints; run focused image/deployment/migration contracts.
 - [x] Run npm run check:fast and broadest supported npm run check, attributing limitations to revisions.
 - [x] Review diff and current origin/main overlap; publish focused PR with immutable evidence.
-- [ ] Development team: assign residual remediation/review owners and record applicable scoped decisions; ownership is pending team assignment. This ticket acceptance criterion remains pending separately from completed technical handoff; no risk acceptance is inferred.
+- [x] Record the requester's explicit assignment of Iosif as technical CVE review/remediation owner for all87 residual IDs, including12 High; enumerate scope and retain the2026-12-02 proposed review checkpoint.
+- [ ] Record applicable scoped follow-up decisions and authorized human approvals wherever continued residual risk is accepted. Technical owner assignment does not approve residual risk or settle additional maintenance/architecture work.
+
+Current ownership authority: [assignment addendum](../../engineering/ANY-674-high-remediation-followup.md#current-technical-ownership--november21-assignment).
+The chronological progress sections below preserve earlier pending-owner states;
+the November21 explicit assignment supersedes those administrative statements,
+without rewriting historical evidence or claiming residual-risk approval.
 
 ## Evidence and decisions
 Evidence is retained under .harness/any-674 during execution. Checked-in remediation report will include commands, identities, hashes, package/advisory comparison and dated residual review requests. Missing owner assignments remain explicit human decisions.
@@ -129,7 +135,8 @@ eliminates14 IDs/28 records (221/101→193/87 on one frozen database). Before/af
 hardening retain identical71 package versions and193/87 findings, with exactly
 two executable ELF paths removed. No scanner disappearance is attributed to those
 file exclusions. Newly High OpenSSL ID was already Medium, explaining11→12 High
-IDs without a new advisory. All remaining owners pending team assignment.
+IDs without a new advisory. Owners were pending at evidence capture; the later
+explicit assignment below records current technical ownership.
 
 Five new pre-fix production-boundary cases failed; final boundary suite10 passes.
 Initial e5df91f4 CI found invalid production SQLite test producers; ba32f4d0 fixes
@@ -139,3 +146,15 @@ Security44915353123 passed. Local full/fast attempts are recorded as failed from
 Vitest/Next host allocation exhaustion, not passing or source regressions.
 Independent review caught stale retained-tool wording in the new current ledger;
 CSV/JSON corrected together while historical evidence remains preserved.
+
+### Technical ownership propagation
+
+The requester subsequently assigned Iosif, Linear user
+bb236781-3bbe-4406-a1fc-1b0c2391b133, as technical CVE owner for the project and
+all87 current residual IDs. Current report and an87-row ownership record link the
+explicit instruction, Linear assignment, existing per-ID applicability/action and
+proposed review date. Frozen evidence/ledgers retain their original bytes/hashes;
+their owner fields are explicitly historical. No assessment or scan result changed.
+Documentation/hash/scope checks suffice for this administrative-only change;
+reuse c8890a1a runtime, migration and canonical CI evidence. Notify both ownership
+review threads; leave final acceptance and thread resolution to the reviewer.

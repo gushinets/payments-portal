@@ -2,6 +2,33 @@
 
 Ticket: https://linear.app/paveldik/issue/ANY-674 · [PR179](https://github.com/gushinets/payments-portal/pull/179)
 
+## Current technical ownership — November21 assignment
+
+**Iosif**, Linear user `bb236781-3bbe-4406-a1fc-1b0c2391b133`, is the
+explicitly assigned technical CVE review/remediation owner for Payment portal,
+including **all87 currently reported IDs and all12 High IDs**. The
+[87-ID ownership record](evidence/ANY-674-ownership-2026-11-21/technical-owners.csv)
+enumerates the exact scope and links each row to its existing applicability and
+next-action assessment. Assignment authority is the requester's explicit
+instruction, transcribed in [ANY-674's ownership addendum](https://linear.app/paveldik/issue/ANY-674)
+and Linear issue comment `7b036154-99bd-4f4a-b925-50939756af1c`; project comment
+`78f56c9a-7595-4ae9-889b-5bd5585ebb20` records the project-wide role.
+
+The role covers Wednesday dependency/image checks, immediate critical-finding
+triage, applicability assessment, reports to Mikhail and tracking remediation
+tasks. The proposed current-finding review checkpoint is **2026-12-02**, earlier
+on a maintained fix or exposure change. This is a review date, not an approved
+exception expiry. Package/backport maintenance commitments, substantial changes
+and resources still require their separate decisions. No residual risk is
+accepted, no exception is approved and no merge/deployment is authorized by this
+assignment.
+
+The hashed scan/applicability ledgers below are frozen **pre-assignment** evidence.
+Their `owner: pending team assignment` fields describe capture-time state, not
+current ownership. This section and the separately enumerated assignment record
+supersede those fields administratively without modifying historical scans,
+applicability classifications, package facts or their checksums.
+
 ## Outcome
 
 The November21 fresh supported Debian rebuild now contains real package fixes:
@@ -143,7 +170,8 @@ failed attempts; serial retries succeeded. No unrelated web repair is included.
 The [reproduction commands](evidence/ANY-674-high-followup-2026-11-21/commands.md)
 and hashed raw evidence substantiate the selected image. Repository scanner
 enforcement/ignore policy is unchanged. Remaining87 IDs are individually assessed,
-not accepted or suppressed. Technical review owner remains **pending team
-assignment**, proposed review checkpoint **2026-12-02**. Ownership acceptance
-criterion remains pending separately from delivered technical work. No merge,
-deployment, Linear completion or residual-risk approval is performed.
+not accepted or suppressed. Technical review ownership is now assigned to
+**Iosif** for every remaining ID as recorded above. Scoped follow-up
+decisions and any applicable authorized risk approvals remain separate from this
+assignment; they are not satisfied by naming an owner. No merge, deployment,
+Linear completion or residual-risk approval is performed.

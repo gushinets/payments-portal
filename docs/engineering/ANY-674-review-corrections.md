@@ -1,6 +1,10 @@
 # ANY-674 — Review corrections and refreshed CI evidence
 
-Current all101 component-level investigation: [complete applicability report](ANY-674-complete-applicability.md). Earlier snapshots and completion statements below are historical; the latest ledger retains pending team ownership.
+Historical101-ID investigation: [complete applicability report](ANY-674-complete-applicability.md).
+Current87-ID results and named technical ownership are in the
+[High remediation follow-up](ANY-674-high-remediation-followup.md). Earlier
+pending-owner statements below are superseded administratively by the explicit
+November21 assignment to Iosif; no residual-risk approval is inferred.
 
 ## Scope and reproduced defects
 

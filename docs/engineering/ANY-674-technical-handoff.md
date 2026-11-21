@@ -1,8 +1,14 @@
-# ANY-674 — Technical handoff and pending team ownership
+# ANY-674 — Historical technical handoff
 
-Current all101 component-level investigation: [complete applicability report](ANY-674-complete-applicability.md). Earlier snapshots and completion statements below are historical; the latest ledger retains pending team ownership.
+Current results and ownership: [High remediation follow-up and assignment](ANY-674-high-remediation-followup.md).
+Iosif is now the technical CVE owner for all87 current residual IDs.
+Earlier pending-owner statements and101/95-ID scopes below are historical;
+the explicit November21 assignment supersedes their administrative owner state.
 
-Latest verification: [review corrections and refreshed CI](ANY-674-review-corrections.md) reports101 current advisory IDs on identical71 package versions. All current ownership is pending team assignment. The95-ID enumeration below preserves the earlier18November scope; the refreshed current ledger adds6glibc/OpenSSL IDs.
+Historical verification: [review corrections and refreshed CI](ANY-674-review-corrections.md)
+reported101 advisory IDs on identical71 package versions. The95-ID enumeration
+below preserves the earlier18November scope; the subsequent101-ID snapshot added
+six glibc/OpenSSL IDs. The latest supported update fixes14 IDs, leaving87.
 
 ## Technical completion
 

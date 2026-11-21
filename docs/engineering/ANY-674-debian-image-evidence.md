@@ -4,6 +4,11 @@ Follow-up: [verified runtime minimization](ANY-674-runtime-minimization.md) adds
 
 Issue: https://linear.app/paveldik/issue/ANY-674
 
+**Historical evidence:** current results and technical ownership are recorded in
+the [High remediation follow-up](ANY-674-high-remediation-followup.md). Its87-ID
+assignment record names Iosif; earlier pending-owner statements below
+describe pre-assignment state. Historical scans and hashes remain unchanged.
+
 ## Outcome
 
 The production target builds successfully with all currently available supported Debian updates. Refresh the digest-pinned base to `python:3.12-slim-trixie`, retaining Debian 13.7 and Python 3.12 (3.12.14 → 3.12.16). No application lock, uv version, repository suite, runtime user, startup/migration contract, scanner policy or ignore is changed. No packages are removed.

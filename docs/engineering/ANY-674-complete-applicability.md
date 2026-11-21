@@ -4,6 +4,10 @@
 records supported glibc fixes (101→87 current IDs), executable removal and fresh
 verification. This report and its original raw evidence retain their historical scope.
 
+Current ownership is recorded in the [November21 assignment addendum](ANY-674-high-remediation-followup.md#current-technical-ownership--november21-assignment).
+The pending-owner statements in this historical snapshot are superseded for the
+current87 residual IDs; no historical scan or checksum was rewritten.
+
 Ticket: https://linear.app/paveldik/issue/ANY-674 · [existing PR179](https://github.com/gushinets/payments-portal/pull/179)
 
 ## Result
