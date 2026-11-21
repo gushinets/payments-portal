@@ -70,7 +70,7 @@ design system, using navy/amber, flat dark panels and compact styling.
 2. Read [ARCHITECTURE.md](ARCHITECTURE.md) for the explicit current/retained and
    target system boundaries. Billing work then follows the ADR 0005 and accepted
    design chain linked there.
-3. Run the environment diagnostic:
+3. Install the tools listed in the [dependency installation policy](docs/engineering/dependency-installation.md), then run the environment diagnostic:
 
    ```bash
    npm run repo:doctor
@@ -153,7 +153,7 @@ configuration precedence, focused selectors and reports.
 
 ## Runtime baseline
 
-- Node.js: `24.x` LTS for local development, CI, and the production web image.
+- Node.js: `24.22.1` LTS with npm `11.19.1` for local development, CI, and the web image's dependency stage.
   The production Docker image is pinned to `node:24.22.1-alpine3.24` plus its
   multi-architecture digest.
   The production web image uses Next.js standalone output and starts the traced

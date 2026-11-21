@@ -2,10 +2,12 @@ FROM node:24.22.1-alpine3.24@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
+COPY .npmrc package.json package-lock.json ./
 COPY apps/web/package.json ./apps/web/package.json
 
-RUN npm ci
+COPY scripts/install-npm-dependencies.mjs ./scripts/
+
+RUN npm --version && npm run deps:install
 
 # sharp is optional to npm, but required by the production image optimizer.
 RUN node -e "require('sharp')"
