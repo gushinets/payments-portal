@@ -19,10 +19,10 @@
     "sync:api": "python scripts/repo.py sync-api",
     "lock:api": "python scripts/repo.py lock-api",
     "lock:check:api": "python scripts/repo.py check-api-lock",
-    "test:e2e": "npm exec playwright test -- --config playwright.config.ts",
-    "test:e2e:joint": "npm exec playwright test -- --config playwright.joint.config.ts",
-    "test:e2e:react-runtime": "npm exec playwright test -- --config playwright.react-runtime.config.ts",
-    "playwright:install": "npm exec playwright install chromium",
+    "test:e2e": "node node_modules/@playwright/test/cli.js test --config playwright.config.ts",
+    "test:e2e:joint": "node node_modules/@playwright/test/cli.js test --config playwright.joint.config.ts",
+    "test:e2e:react-runtime": "node node_modules/@playwright/test/cli.js test --config playwright.react-runtime.config.ts",
+    "playwright:install": "node node_modules/@playwright/test/cli.js install chromium",
     "dev:web": "npm --workspace @anytoolai/web run dev",
     "start:web": "npm --workspace @anytoolai/web run start",
     "build:web": "npm --workspace @anytoolai/web run build",
@@ -34,11 +34,13 @@
     "test:api:fast": "python scripts/repo.py test api-fast",
     "test:api:postgres": "python scripts/repo.py test api-postgres",
     "test:api": "python scripts/repo.py test api",
-    "build:api": "docker compose build api"
+    "build:api": "docker compose build api",
+    "test:install-policy": "node --test scripts/install-policy.test.mjs",
+    "deps:install": "node scripts/install-npm-dependencies.mjs"
   },
   "engines": {
     "node": ">=24.0.0 <25",
-    "npm": ">=11.0.0"
+    "npm": "11.19.1"
   },
   "overrides": {
     "brace-expansion@>=1.0.0 <1.1.21": "1.1.21",
@@ -47,5 +49,21 @@
   },
   "devDependencies": {
     "@hey-api/openapi-ts": "0.99.0"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "npm",
+      "version": "11.19.1",
+      "onFail": "error"
+    }
+  },
+  "allowScripts": {
+    "@parcel/watcher@2.6.0": false,
+    "@swc/core@1.16.2": false,
+    "esbuild@0.28.2": false,
+    "fsevents@2.3.2": false,
+    "fsevents@2.3.3": false,
+    "msw@2.15.0": false,
+    "unrs-resolver@1.12.2": false
   }
 }
