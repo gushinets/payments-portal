@@ -552,3 +552,41 @@ def test_secondary_platform_report_is_sanitized_and_gated(tmp_path: Path) -> Non
     cmd_trivy(Namespace(action="verify-reports", report_dir=str(tmp_path)))
     with pytest.raises(HarnessError, match="policy rejected 1 finding"):
         cmd_trivy(Namespace(action="gate", report_dir=str(tmp_path)))
+
+
+def test_redact_accepts_custom_image_report_filenames(tmp_path: Path) -> None:
+    payload = report_payload(
+        tmp_path / "web-image.json",
+        {
+            "Secrets": [
+                {"Severity": "HIGH", "Match": "synthetic-secret", "Code": {"Lines": [{"Content": "synthetic-secret"}]}}
+            ],
+        },
+    )
+    paths = [tmp_path / "before.json", tmp_path / "after.json"]
+    for path in paths:
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+    cmd_trivy(Namespace(action="redact", report_dir=str(tmp_path)))
+
+    for path in paths:
+        redacted = json.loads(path.read_text(encoding="utf-8"))
+        assert redacted["Results"][0]["Secrets"] == [{"Severity": "HIGH"}]
+        assert redacted["ArtifactName"] == payload["ArtifactName"]
+
+
+@pytest.mark.parametrize("action", ["verify-reports", "gate"])
+@pytest.mark.parametrize("report", ["web-image.json", "caddy-image-linux-arm64-v8.json"])
+def test_workflow_rejects_wrong_report_artifact_type(
+    tmp_path: Path,
+    action: str,
+    report: str,
+) -> None:
+    complete_reports(tmp_path)
+    write_provenance(tmp_path, "caddy", arm64=True)
+    write_report(tmp_path / "caddy-image-linux-arm64-v8.json")
+    wrong_type = report_payload(tmp_path / "filesystem.json", None)
+    (tmp_path / report).write_text(json.dumps(wrong_type), encoding="utf-8")
+
+    with pytest.raises(HarnessError, match="unexpected Trivy v2 report type or header"):
+        cmd_trivy(Namespace(action=action, report_dir=str(tmp_path)))

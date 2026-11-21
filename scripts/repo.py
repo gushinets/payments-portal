@@ -3123,14 +3123,15 @@ def cmd_validate_production_env(_: argparse.Namespace) -> None:
 
 
 TRIVY_PRODUCTION_SERVICES = ("postgres", "caddy")
+TRIVY_IMAGE_REPORT_TYPES = ("container_image",)
 TRIVY_REPORT_TYPES = {
     # Trivy classifies a filesystem target with Git metadata as a repository.
     "filesystem.json": ("filesystem", "repository"),
     "compose.json": ("filesystem", "repository"),
-    "api-image.json": ("container_image",),
-    "web-image.json": ("container_image",),
+    "api-image.json": TRIVY_IMAGE_REPORT_TYPES,
+    "web-image.json": TRIVY_IMAGE_REPORT_TYPES,
     **{
-        f"{service}-image.json": ("container_image",)
+        f"{service}-image.json": TRIVY_IMAGE_REPORT_TYPES
         for service in TRIVY_PRODUCTION_SERVICES
     },
 }
@@ -3146,10 +3147,6 @@ OCI_IMAGE_MANIFEST_TYPES = (
     "application/vnd.docker.distribution.manifest.v2+json",
 )
 TRIVY_PLATFORM = r"[a-z0-9]+/[a-z0-9]+(?:/[a-z0-9]+)?"
-TRIVY_PLATFORM_REPORT = (
-    rf"(?:{'|'.join(TRIVY_PRODUCTION_SERVICES)})-image-"
-    r"[a-z0-9]+-[a-z0-9]+(?:-[a-z0-9]+)?\.json"
-)
 TRIVY_FINDING_LISTS = ("Vulnerabilities", "Misconfigurations", "Secrets")
 
 
@@ -3329,7 +3326,7 @@ def scan_image_manifest(
             scanned,
         ]
     )
-    report = read_trivy_report(path)
+    report = read_trivy_report(path, expected_types=TRIVY_IMAGE_REPORT_TYPES)
     metadata = report["Metadata"]
     actual_platform = oci_platform(metadata.get("ImageConfig"))
     repo_digests = metadata.get("RepoDigests")
@@ -3450,26 +3447,28 @@ def expected_production_image_scans(report_dir: Path) -> dict[str, ProductionIma
     return expected
 
 
-def read_trivy_report(path: Path) -> dict[str, Any]:
+def read_trivy_report(
+    path: Path, *, expected_types: tuple[str, ...] | None = None
+) -> dict[str, Any]:
     try:
         report = json.loads(path.read_text(encoding="utf-8"))
     except (ValueError, OSError) as exc:
         raise HarnessError(f"Cannot read Trivy report {path}") from exc
 
-    artifact_types = TRIVY_REPORT_TYPES.get(path.name, ())
-    if re.fullmatch(TRIVY_PLATFORM_REPORT, path.name):
-        artifact_types = ("container_image",)
+    artifact_type = report.get("ArtifactType") if isinstance(report, dict) else None
     if (
         not isinstance(report, dict)
         or report.get("SchemaVersion") != 2
-        or report.get("ArtifactType") not in artifact_types
+        or not isinstance(artifact_type, str)
+        or not artifact_type.strip()
+        or (expected_types is not None and artifact_type not in expected_types)
         or not isinstance(report.get("ArtifactName"), str)
         or not report["ArtifactName"].strip()
     ):
         raise HarnessError(
             f"Invalid Trivy report {path}: unexpected Trivy v2 report type or header"
         )
-    if "container_image" in artifact_types:
+    if artifact_type in TRIVY_IMAGE_REPORT_TYPES:
         metadata = report.get("Metadata")
         image_id = metadata.get("ImageID") if isinstance(metadata, dict) else None
         if not isinstance(image_id, str) or not re.fullmatch(IMAGE_DIGEST, image_id):
@@ -3514,9 +3513,12 @@ def read_trivy_report(path: Path) -> dict[str, Any]:
 
 
 def summarize_trivy_report(
-    path: Path, *, image_scan: ProductionImageScan | None = None
+    path: Path,
+    *,
+    expected_types: tuple[str, ...] | None = None,
+    image_scan: ProductionImageScan | None = None,
 ) -> TrivyGateSummary:
-    report = read_trivy_report(path)
+    report = read_trivy_report(path, expected_types=expected_types)
     if image_scan and (
         report["ArtifactName"] != image_scan.scanned_reference
         or report["Metadata"]["ImageID"] != image_scan.image_config_digest
@@ -3665,7 +3667,11 @@ def cmd_trivy(args: argparse.Namespace) -> None:
     if missing:
         raise HarnessError("Missing Trivy reports: " + ", ".join(missing))
     summaries = [
-        summarize_trivy_report(report_dir / name, image_scan=production_scans.get(name))
+        summarize_trivy_report(
+            report_dir / name,
+            expected_types=TRIVY_REPORT_TYPES.get(name, TRIVY_IMAGE_REPORT_TYPES),
+            image_scan=production_scans.get(name),
+        )
         for name in report_names
     ]
     if args.action == "verify-reports":
