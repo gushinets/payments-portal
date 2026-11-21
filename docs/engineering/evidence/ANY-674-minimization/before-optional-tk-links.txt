@@ -1,0 +1,2 @@
+	libtk8.6.so => not found
+	libtcl8.6.so => not found

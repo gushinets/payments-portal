@@ -1,0 +1,30 @@
+{
+  "source_sha": "7ed98b8a8f17f5e32f48cb1db18bffeb914bd380",
+  "origin_main_sha": "49ed895d3925e097ef7e46908c87a6cb75f0fb26",
+  "security_run": 44839563431,
+  "ci_run": 44839563588,
+  "comparison_artifact": {
+    "id": 14679599100,
+    "zip_sha256": "10db3815a7681d6e28a16218cc6c686a2473a151d9b842ebbc25fe08e3661378"
+  },
+  "final_evidence_artifact": {
+    "id": 14680311416,
+    "zip_sha256": "90fadb7a42b1966d5efa47c216ef5e07a1081936ac0bcc9947a6e8a26abc3352"
+  },
+  "comparison": "Same DB file and offline/no-update scanner settings for both final targets; exact 71 package versions and all finding projections equal. Three setid modes removed; no Debian patch or advisory elimination in this follow-up.",
+  "retention_limit": "Full image archives were not published; CI daemon images are ephemeral. Checked-in scans/component inventories and their immutable image IDs persist. Historical local archives are retained separately.",
+  "source_review_date": "2026-11-20; final comparison verified 2026-11-21",
+  "source_tree": "5e7f7bfce7b260eb320fb3b2cdb80b28079cbaf2",
+  "actions_merge_checkout": "a37d2a9842178ba493024463fd5ed886f18d98bb",
+  "source_tree_note": "Fetched Actions merge tree equals PR7ed98b8a tree. Later evidence-only updates do not change this runtime source.",
+  "previous_pair": "historical-pair-1b33.json",
+  "build_hardening": "uv sync --no-build in both dependency targets; exact installed application and Debian distribution versions equal previous image; no source build hooks permitted.",
+  "inputs_sha256": {
+    "apps/api/Dockerfile": "f77b16d32346baed117ad82ba88e90249ad7d6acb71981da6c78ad18f19b0650",
+    "apps/api/uv.lock": "5cfbd8f2965a61cbb3e11be0be2dd2f36e09b1414c6516bccc30c4cc7e815516",
+    "trivy.yaml": "e039e2b33bf0bc3dfb8c1a350393133aae5df8955fd476333d538c9f5d8d3d06",
+    ".trivyignore.yaml": "2ee19eb82f7aeaed4201c6e572a774e8fab67b37fd4c5ff85625f30960b0ef78",
+    "security/trivy/verify-api-runtime.sh": "4242e1f9d5a8450d8c558addd83bdd105cc1b99aa8d1f2964f9f27d8acc1a28b",
+    "security/trivy/verify-api-postgres.sh": "92e4626f280ab3b254b0411e2eecdfe5a10f6850636246a5eab3399c90ca1cb1"
+  }
+}

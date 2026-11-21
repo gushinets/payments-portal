@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.settings import Settings
-from apps.api.tests.support.settings import DEFAULT_API_TEST_ENV
+from apps.api.tests.support.settings import DEFAULT_API_TEST_ENV, PRODUCTION_SETTINGS_DATABASE_URL
 
 
 CONTRACT = Path(__file__).resolve().parents[4] / "docs/contracts/kernel-capability-manifest/v1"
@@ -52,5 +52,7 @@ def kernel_settings(**overrides: Any) -> Settings:
         lbx_widget_signing_secret="",
         lbx_seller_organization_id="",
     )
+    if overrides.get("app_env") == "production":
+        values["database_url"] = PRODUCTION_SETTINGS_DATABASE_URL
     values.update(overrides)
     return Settings(_env_file=None, **values)

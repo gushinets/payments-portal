@@ -12,6 +12,8 @@ from urllib.parse import quote, urlsplit
 from dotenv import load_dotenv
 from pydantic import Field, SecretStr, StringConstraints, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 from app.core.backend_consumers import BackendConsumer
 from app.core.url_validation import (
@@ -228,9 +230,16 @@ class Settings(BaseSettings):
 
     @field_validator("database_url")
     @classmethod
-    def require_database_url(cls, value: str) -> str:
+    def require_database_url(cls, value: str, info: ValidationInfo) -> str:
         if not value.strip():
             raise ValueError("DATABASE_URL is required")
+        if info.data.get("app_env") == AppEnv.PRODUCTION:
+            try:
+                backend = make_url(value).get_backend_name()
+            except (ArgumentError, ValueError):
+                raise ValueError("Production DATABASE_URL must use PostgreSQL") from None
+            if backend != "postgresql":
+                raise ValueError("Production DATABASE_URL must use PostgreSQL")
         return value
 
     @field_validator("cors_allow_origins")

@@ -1,7 +1,20 @@
 # Security Requirements
 
 Status: authoritative
-Last verified: 2026-09-24
+Last verified: 2026-11-21 (production API Debian boundary)
+
+## Production API Debian runtime boundary
+
+Production settings require PostgreSQL; SQLite remains available in development
+and tests. API and migration Compose services drop all capabilities and retain
+no-new-privileges. The final image excludes exactly `/usr/bin/infocmp` and
+`/usr/bin/nsenter` through supported dpkg path filters and package reinstall;
+required Essential packages, libraries and package metadata remain. Dpkg verify
+therefore intentionally reports these two missing files. Restoring either utility
+requires a maintained fixed package and runtime verification. These controls do
+not patch retained libraries or erase vulnerable code from base/build/lower layers.
+See the [ANY-674 follow-up](engineering/ANY-674-high-remediation-followup.md)
+for individual applicability, remaining High blockers and verified image evidence.
 
 ## Sensitive data
 

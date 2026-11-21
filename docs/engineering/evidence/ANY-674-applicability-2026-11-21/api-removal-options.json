@@ -1,0 +1,304 @@
+{
+  "complete": true,
+  "package_control": {
+    "argv": [
+      "dpkg-query",
+      "-W",
+      "-f=${binary:Package}\t${Version}\t${Essential}\t${Protected}\t${Pre-Depends}\t${Depends}\n"
+    ],
+    "exit": 0,
+    "stderr": "",
+    "stdout": "base-files\t13.8+deb13u7\tyes\tno\tawk\t\nbase-passwd\t3.6.7\tyes\tno\t\tlibc6 (>= 2.34), libdebconfclient0 (>= 0.145), libselinux1 (>= 3.1~)\nbash\t5.2.37-2+b10\tyes\tno\tlibc6 (>= 2.38), libtinfo6 (>= 6)\tbase-files (>= 2.1.12), debianutils (>= 5.6-0.1)\nbsdutils\t1:2.41.5-0+deb13u1\tyes\tno\tlibc6 (>= 2.38), libsystemd0 (>= 254)\t\nca-certificates\t20250419+deb13u1\tno\tno\t\topenssl (>= 1.1.1), debconf (>= 0.5) | debconf-2.0\ncoreutils\t9.7-3\tyes\tno\tlibacl1 (>= 2.2.23), libattr1 (>= 1:2.4.48), libc6 (>= 2.38), libcap2 (>= 1:2.10), libgmp10 (>= 2:6.3.0+dfsg), libselinux1 (>= 3.1~), libssl3t64 (>= 3.0.0), libsystemd0 (>= 254)\t\ndash\t0.5.12-12\tyes\tno\tlibc6 (>= 2.38)\tdebianutils (>= 5.6-0.1)\ndebconf\t1.5.91\tno\tno\t\t\ndebianutils\t5.23.2\tyes\tno\tlibc6 (>= 2.38)\t\ndiffutils\t1:3.10-4\tyes\tno\tlibc6 (>= 2.38)\t\ndpkg\t1.22.22\tyes\tno\tlibbz2-1.0, libc6 (>= 2.38), liblzma5 (>= 5.4.0), libmd0 (>= 0.0.0), libselinux1 (>= 3.1~), libzstd1 (>= 1.5.5), zlib1g (>= 1:1.1.4)\ttar (>= 1.28-1)\nfindutils\t4.10.0-3\tyes\tno\tlibc6 (>= 2.38), libselinux1 (>= 3.1~)\t\ngcc-14-base:amd64\t14.2.0-19\tno\tno\t\t\ngrep\t3.11-4\tyes\tno\tlibc6 (>= 2.34), libpcre2-8-0 (>= 10.32)\t\ngzip\t1.13-1+deb13u1\tyes\tno\tlibc6 (>= 2.38)\t\nhostname\t3.25\tyes\tno\tlibc6 (>= 2.34)\t\ninit-system-helpers\t1.69~deb13u1\tyes\tno\t\t\nlibacl1:amd64\t2.3.2-2+b1\tno\tno\t\tlibc6 (>= 2.38)\nlibattr1:amd64\t1:2.5.2-3\tno\tno\t\tlibc6 (>= 2.4)\nlibaudit-common\t1:4.0.2-2+deb13u1\tno\tno\t\t\nlibaudit1:amd64\t1:4.0.2-2+deb13u1\tno\tno\t\tlibaudit-common (>= 1:4.0.2-2+deb13u1), libc6 (>= 2.38), libcap-ng0 (>= 0.7.9)\nlibblkid1:amd64\t2.41.5-0+deb13u1\tno\tno\t\tlibc6 (>= 2.38)\nlibbz2-1.0:amd64\t1.0.8-6\tno\tno\t\tlibc6 (>= 2.4)\nlibc-bin\t2.41-12+deb13u4\tyes\tno\t\tlibc6 (>> 2.41), libc6 (<< 2.42)\nlibc6:amd64\t2.41-12+deb13u4\tno\tno\t\tlibgcc-s1\nlibcap-ng0:amd64\t0.8.5-4+b1\tno\tno\t\tlibc6 (>= 2.38)\nlibcap2:amd64\t1:2.75-10+deb13u1+b3\tno\tno\t\tlibc6 (>= 2.38)\nlibcrypt1:amd64\t1:4.4.38-1\tno\tno\t\tlibc6 (>= 2.38)\nlibdb5.3t64:amd64\t5.3.28+dfsg2-9\tno\tno\t\tlibc6 (>= 2.38)\nlibdebconfclient0:amd64\t0.280\tno\tno\t\tlibc6 (>= 2.38)\nlibffi8:amd64\t3.4.8-2\tno\tno\t\tlibc6 (>= 2.34)\nlibgcc-s1:amd64\t14.2.0-19\tno\tyes\t\tgcc-14-base (= 14.2.0-19), libc6 (>= 2.35)\nlibgdbm6t64:amd64\t1.24-2\tno\tno\t\tlibc6 (>= 2.34)\nlibgmp10:amd64\t2:6.3.0+dfsg-3\tno\tno\t\tlibc6 (>= 2.38)\nliblastlog2-2:amd64\t2.41.5-0+deb13u1\tno\tno\t\tlibc6 (>= 2.38), libsqlite3-0 (>= 3.5.9)\nliblzma5:amd64\t5.8.1-1+deb13u2\tno\tno\t\tlibc6 (>= 2.34)\nlibmd0:amd64\t1.1.0-2+b1\tno\tno\t\tlibc6 (>= 2.33)\nlibmount1:amd64\t2.41.5-0+deb13u1\tno\tno\t\tlibblkid1 (= 2.41.5-0+deb13u1), libc6 (>= 2.38), libselinux1 (>= 3.1~)\nlibncursesw6:amd64\t6.5+20250216-2\tno\tno\t\tlibtinfo6 (= 6.5+20250216-2), libc6 (>= 2.34)\nlibpam-modules:amd64\t1.7.0-5\tno\tno\tlibaudit1 (>= 1:2.2.1), libc6 (>= 2.38), libcrypt1 (>= 1:4.3.0), libdb5.3t64, libpam0g (>= 1.4.1), libselinux1 (>= 3.1~), libsystemd0 (>= 254), debconf (>= 0.5) | debconf-2.0, libpam-modules-bin (= 1.7.0-5)\t\nlibpam-modules-bin\t1.7.0-5\tno\tno\t\tlibaudit1 (>= 1:2.2.1), libc6 (>= 2.38), libcrypt1 (>= 1:4.3.0), libpam0g (>= 0.99.7.1), libselinux1 (>= 3.1~), libsystemd0 (>= 254)\nlibpam-runtime\t1.7.0-5\tno\tno\t\tdebconf (>= 0.5) | debconf-2.0, debconf (>= 1.5.19) | cdebconf, libpam-modules (>= 1.0.1-6)\nlibpam0g:amd64\t1.7.0-5\tno\tno\t\tlibaudit1 (>= 1:2.2.1), libc6 (>= 2.34), debconf (>= 0.5) | debconf-2.0\nlibpcre2-8-0:amd64\t10.46-1~deb13u3\tno\tno\t\tlibc6 (>= 2.34)\nlibreadline8t64:amd64\t8.2-6\tno\tno\t\treadline-common, libc6 (>= 2.38), libtinfo6 (>= 6)\nlibselinux1:amd64\t3.8.1-1\tno\tno\t\tlibc6 (>= 2.38), libpcre2-8-0 (>= 10.22)\nlibsmartcols1:amd64\t2.41.5-0+deb13u1\tno\tno\t\tlibc6 (>= 2.38)\nlibsqlite3-0:amd64\t3.46.1-7+deb13u2\tno\tno\t\tlibc6 (>= 2.38)\nlibssl3t64:amd64\t3.5.7-1~deb13u3\tno\tno\t\tlibc6 (>= 2.38), libzstd1 (>= 1.5.5), zlib1g (>= 1:1.1.4), openssl-provider-legacy\nlibstdc++6:amd64\t14.2.0-19\tno\tno\t\tgcc-14-base (= 14.2.0-19), libc6 (>= 2.38), libgcc-s1 (>= 4.3)\nlibsystemd0:amd64\t257.13-1~deb13u1\tno\tno\t\tlibc6 (>= 2.39), libcap2 (>= 1:2.10)\nlibtinfo6:amd64\t6.5+20250216-2\tno\tno\t\tlibc6 (>= 2.34)\nlibudev1:amd64\t257.13-1~deb13u1\tno\tno\t\tlibc6 (>= 2.38), libcap2 (>= 1:2.10)\nlibuuid1:amd64\t2.41.5-0+deb13u1\tno\tno\t\tlibc6 (>= 2.38)\nlibzstd1:amd64\t1.5.7+dfsg-1\tno\tno\t\tlibc6 (>= 2.34)\nlogin\t1:4.16.0-2+really2.41.5-0+deb13u1\tno\tyes\tlogin.defs (>= 1:4.16.0-1~)\tlibpam-modules, libpam-runtime, libaudit1 (>= 1:2.2.1), libc6 (>= 2.38), libcrypt1 (>= 1:4.1.0), libpam0g (>= 0.99.7.1)\nlogin.defs\t1:4.17.4-2\tno\tno\t\t\nmawk\t1.3.4.20250131-1\tno\tno\t\tlibc6 (>= 2.38)\nncurses-base\t6.5+20250216-2\tyes\tno\t\t\nncurses-bin\t6.5+20250216-2\tyes\tno\tlibc6 (>= 2.34), libtinfo6 (>= 6.4+20230603)\t\nnetbase\t6.5\tno\tno\t\t\nopenssl\t3.5.7-1~deb13u3\tno\tno\t\tlibc6 (>= 2.34), libssl3t64 (>= 3.5.0)\nopenssl-provider-legacy\t3.5.7-1~deb13u3\tno\tno\t\tlibc6 (>= 2.14), libssl3t64 (>= 3.0.3)\nperl-base\t5.40.1-6+deb13u1\tyes\tno\tlibc6 (>= 2.38), libcrypt1 (>= 1:4.1.0)\t\nreadline-common\t8.2-6\tno\tno\t\t\nsed\t4.9-2+deb13u1\tyes\tno\tlibacl1 (>= 2.2.23), libc6 (>= 2.38), libselinux1 (>= 3.1~)\t\nsysvinit-utils\t3.14-4\tyes\tno\t\tlibc6 (>= 2.38)\ntar\t1.35+dfsg-3.1\tyes\tno\tlibacl1 (>= 2.2.23), libc6 (>= 2.38), libselinux1 (>= 3.1~)\t\ntzdata\t2026f-0+deb13u1\tno\tno\t\tdebconf (>= 0.5) | debconf-2.0\nutil-linux\t2.41.5-0+deb13u1\tyes\tno\tlibpam-modules, libpam-runtime, libblkid1 (= 2.41.5-0+deb13u1), libc6 (>= 2.41), libcap-ng0 (>= 0.7.9), libcrypt1 (>= 1:4.1.0), liblastlog2-2 (= 2.41.5-0+deb13u1), libmount1 (= 2.41.5-0+deb13u1), libpam0g (>= 0.99.7.1), libselinux1 (>= 3.1~), libsmartcols1 (= 2.41.5-0+deb13u1), libsystemd0, libtinfo6 (>= 6), libudev1 (>= 183), libuuid1 (= 2.41.5-0+deb13u1)\t\nzlib1g:amd64\t1:1.3.dfsg+really1.3.1-1+deb13u1\tno\tno\t\tlibc6 (>= 2.14)\n"
+  },
+  "schema_version": 1,
+  "scope": "Read-only --simulate in disposable diagnostic container; no --force options, actual purge, or API runtime-user change. Successful simulation does not prove native runtime dependencies are unnecessary.",
+  "simulations": {
+    "bash": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "bash"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: error processing package bash (--purge):\n this is an essential package; it should not be removed\nErrors were encountered while processing:\n bash\n",
+      "stdout": ""
+    },
+    "coreutils": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "coreutils"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: error processing package coreutils (--purge):\n this is an essential package; it should not be removed\nErrors were encountered while processing:\n coreutils\n",
+      "stdout": ""
+    },
+    "dash": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "dash"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: error processing package dash (--purge):\n this is an essential package; it should not be removed\nErrors were encountered while processing:\n dash\n",
+      "stdout": ""
+    },
+    "diffutils": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "diffutils"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: error processing package diffutils (--purge):\n this is an essential package; it should not be removed\nErrors were encountered while processing:\n diffutils\n",
+      "stdout": ""
+    },
+    "dpkg": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "dpkg"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: error processing package dpkg (--purge):\n this is an essential package; it should not be removed\nErrors were encountered while processing:\n dpkg\n",
+      "stdout": ""
+    },
+    "gcc-14-base": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "gcc-14-base"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: dependency problems prevent removal of gcc-14-base:amd64:\n libstdc++6:amd64 depends on gcc-14-base (= 14.2.0-19).\n libgcc-s1:amd64 depends on gcc-14-base (= 14.2.0-19).\n\ndpkg: error processing package gcc-14-base:amd64 (--purge):\n dependency problems - not removing\nErrors were encountered while processing:\n gcc-14-base:amd64\n",
+      "stdout": ""
+    },
+    "libacl1": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "libacl1"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: dependency problems prevent removal of libacl1:amd64:\n tar depends on libacl1 (>= 2.2.23).\n sed depends on libacl1 (>= 2.2.23).\n coreutils depends on libacl1 (>= 2.2.23).\n\ndpkg: error processing package libacl1:amd64 (--purge):\n dependency problems - not removing\nErrors were encountered while processing:\n libacl1:amd64\n",
+      "stdout": ""
+    },
+    "libattr1": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "libattr1"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: dependency problems prevent removal of libattr1:amd64:\n coreutils depends on libattr1 (>= 1:2.4.48).\n\ndpkg: error processing package libattr1:amd64 (--purge):\n dependency problems - not removing\nErrors were encountered while processing:\n libattr1:amd64\n",
+      "stdout": ""
+    },
+    "libbz2-1.0": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "libbz2-1.0"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: dependency problems prevent removal of libbz2-1.0:amd64:\n dpkg depends on libbz2-1.0.\n\ndpkg: error processing package libbz2-1.0:amd64 (--purge):\n dependency problems - not removing\nErrors were encountered while processing:\n libbz2-1.0:amd64\n",
+      "stdout": ""
+    },
+    "libgcc-s1": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "libgcc-s1"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: error processing package libgcc-s1:amd64 (--purge):\n this is a protected package; it should not be removed\nErrors were encountered while processing:\n libgcc-s1:amd64\n",
+      "stdout": ""
+    },
+    "libncursesw6": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "libncursesw6"
+      ],
+      "exit": 0,
+      "stderr": "",
+      "stdout": "(Reading database ... 4762 files and directories currently installed.)\nWould remove or purge libncursesw6:amd64 (6.5+20250216-2) ...\n"
+    },
+    "libpam-modules": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "libpam-modules"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: dependency problems prevent removal of libpam-modules:amd64:\n util-linux depends on libpam-modules.\n login depends on libpam-modules.\n libpam-runtime depends on libpam-modules (>= 1.0.1-6).\n\ndpkg: error processing package libpam-modules:amd64 (--purge):\n dependency problems - not removing\nErrors were encountered while processing:\n libpam-modules:amd64\n",
+      "stdout": ""
+    },
+    "libsqlite3-0": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "libsqlite3-0"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: dependency problems prevent removal of libsqlite3-0:amd64:\n liblastlog2-2:amd64 depends on libsqlite3-0 (>= 3.5.9).\n\ndpkg: error processing package libsqlite3-0:amd64 (--purge):\n dependency problems - not removing\nErrors were encountered while processing:\n libsqlite3-0:amd64\n",
+      "stdout": ""
+    },
+    "libssl3t64": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "libssl3t64"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: dependency problems prevent removal of libssl3t64:amd64:\n openssl-provider-legacy depends on libssl3t64 (>= 3.0.3).\n openssl depends on libssl3t64 (>= 3.5.0).\n coreutils depends on libssl3t64 (>= 3.0.0).\n\ndpkg: error processing package libssl3t64:amd64 (--purge):\n dependency problems - not removing\nErrors were encountered while processing:\n libssl3t64:amd64\n",
+      "stdout": ""
+    },
+    "libstdc++6": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "libstdc++6"
+      ],
+      "exit": 0,
+      "stderr": "",
+      "stdout": "(Reading database ... 4762 files and directories currently installed.)\nWould remove or purge libstdc++6:amd64 (14.2.0-19) ...\n"
+    },
+    "libsystemd0": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "libsystemd0"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: dependency problems prevent removal of libsystemd0:amd64:\n util-linux depends on libsystemd0.\n libpam-modules-bin depends on libsystemd0 (>= 254).\n libpam-modules:amd64 depends on libsystemd0 (>= 254).\n coreutils depends on libsystemd0 (>= 254).\n bsdutils depends on libsystemd0 (>= 254).\n\ndpkg: error processing package libsystemd0:amd64 (--purge):\n dependency problems - not removing\nErrors were encountered while processing:\n libsystemd0:amd64\n",
+      "stdout": ""
+    },
+    "libtinfo6": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "libtinfo6"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: dependency problems prevent removal of libtinfo6:amd64:\n util-linux depends on libtinfo6 (>= 6).\n ncurses-bin depends on libtinfo6 (>= 6.4+20230603).\n libreadline8t64:amd64 depends on libtinfo6 (>= 6).\n libncursesw6:amd64 depends on libtinfo6 (= 6.5+20250216-2).\n bash depends on libtinfo6 (>= 6).\n\ndpkg: error processing package libtinfo6:amd64 (--purge):\n dependency problems - not removing\nErrors were encountered while processing:\n libtinfo6:amd64\n",
+      "stdout": ""
+    },
+    "libudev1": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "libudev1"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: dependency problems prevent removal of libudev1:amd64:\n util-linux depends on libudev1 (>= 183).\n\ndpkg: error processing package libudev1:amd64 (--purge):\n dependency problems - not removing\nErrors were encountered while processing:\n libudev1:amd64\n",
+      "stdout": ""
+    },
+    "login.defs": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "login.defs"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: dependency problems prevent removal of login.defs:\n login depends on login.defs (>= 1:4.16.0-1~).\n\ndpkg: error processing package login.defs (--purge):\n dependency problems - not removing\nErrors were encountered while processing:\n login.defs\n",
+      "stdout": ""
+    },
+    "ncurses-bin": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "ncurses-bin"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: error processing package ncurses-bin (--purge):\n this is an essential package; it should not be removed\nErrors were encountered while processing:\n ncurses-bin\n",
+      "stdout": ""
+    },
+    "openssl": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "openssl"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: dependency problems prevent removal of openssl:\n ca-certificates depends on openssl (>= 1.1.1).\n\ndpkg: error processing package openssl (--purge):\n dependency problems - not removing\nErrors were encountered while processing:\n openssl\n",
+      "stdout": ""
+    },
+    "openssl-provider-legacy": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "openssl-provider-legacy"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: dependency problems prevent removal of openssl-provider-legacy:\n libssl3t64:amd64 depends on openssl-provider-legacy.\n\ndpkg: error processing package openssl-provider-legacy (--purge):\n dependency problems - not removing\nErrors were encountered while processing:\n openssl-provider-legacy\n",
+      "stdout": ""
+    },
+    "perl-base": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "perl-base"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: error processing package perl-base (--purge):\n this is an essential package; it should not be removed\nErrors were encountered while processing:\n perl-base\n",
+      "stdout": ""
+    },
+    "sysvinit-utils": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "sysvinit-utils"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: error processing package sysvinit-utils (--purge):\n this is an essential package; it should not be removed\nErrors were encountered while processing:\n sysvinit-utils\n",
+      "stdout": ""
+    },
+    "tar": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "tar"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: error processing package tar (--purge):\n this is an essential package; it should not be removed\nErrors were encountered while processing:\n tar\n",
+      "stdout": ""
+    },
+    "util-linux": {
+      "argv": [
+        "dpkg",
+        "--simulate",
+        "--purge",
+        "util-linux"
+      ],
+      "exit": 1,
+      "stderr": "dpkg: error processing package util-linux (--purge):\n this is an essential package; it should not be removed\nErrors were encountered while processing:\n util-linux\n",
+      "stdout": ""
+    }
+  },
+  "uid": 0
+}

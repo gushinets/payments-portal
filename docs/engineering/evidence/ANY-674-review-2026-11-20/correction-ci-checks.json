@@ -1,0 +1,83 @@
+{
+  "source": "df09c29c7db035f82b595989b9b00795aa88a3e2",
+  "checks": [
+    {
+      "name": "SonarCloud Code Analysis",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/gushinets/payments-portal/runs/136268787710"
+    },
+    {
+      "name": "harness-smoke (ubuntu-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/gushinets/payments-portal/actions/runs/44730453843/job/136268767146"
+    },
+    {
+      "name": "harness-smoke (windows-latest)",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/gushinets/payments-portal/actions/runs/44730453843/job/136268767121"
+    },
+    {
+      "name": "Production gate",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/gushinets/payments-portal/actions/runs/44730453843/job/136268766936"
+    },
+    {
+      "name": "Code quality",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/gushinets/payments-portal/actions/runs/44730453843/job/136268766922"
+    },
+    {
+      "name": "browser",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/gushinets/payments-portal/actions/runs/44730453843/job/136268766558"
+    },
+    {
+      "name": "CodeQL",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/gushinets/payments-portal/runs/136268711173"
+    },
+    {
+      "name": "CodeRabbit",
+      "status": "completed",
+      "conclusion": "skipped",
+      "html_url": "https://github.com/gushinets/payments-portal/runs/136268577547"
+    },
+    {
+      "name": "validate",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/gushinets/payments-portal/actions/runs/44730453758/job/136268553208"
+    },
+    {
+      "name": "Trivy security scan",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/gushinets/payments-portal/actions/runs/44730453759/job/136268553050"
+    },
+    {
+      "name": "Analyze (javascript-typescript)",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/gushinets/payments-portal/actions/runs/44730448612/job/136268542495"
+    },
+    {
+      "name": "Analyze (python)",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/gushinets/payments-portal/actions/runs/44730448612/job/136268542367"
+    },
+    {
+      "name": "Analyze (actions)",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/gushinets/payments-portal/actions/runs/44730448612/job/136268542041"
+    }
+  ]
+}

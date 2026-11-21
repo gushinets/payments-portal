@@ -1,0 +1,1 @@
+Fast canonical run intentionally interrupted during API tests at26percent to fix reviewer-discovered removal-precondition guard. Full command was not reached. No success claimed; corrected source will run both commands.

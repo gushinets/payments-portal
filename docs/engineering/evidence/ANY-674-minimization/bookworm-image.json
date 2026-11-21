@@ -1,0 +1,72 @@
+[
+    {
+        "Id": "sha256:64905c7adcf06f0aab881edc59732b17b7e6409b9018c9b532d4cc71acaf1bdc",
+        "RepoTags": [
+            "payment-portal-api:any-674-min-bookworm"
+        ],
+        "RepoDigests": [
+            "payment-portal-api@sha256:64905c7adcf06f0aab881edc59732b17b7e6409b9018c9b532d4cc71acaf1bdc"
+        ],
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2026-11-18T16:18:23.967126902Z",
+        "Config": {
+            "User": "app",
+            "ExposedPorts": {
+                "8000/tcp": {}
+            },
+            "Env": [
+                "PATH=/opt/api-venv/bin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "LANG=C.UTF-8",
+                "GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305",
+                "PYTHON_VERSION=3.12.16",
+                "PYTHON_SHA256=b5796915dc45ff745cfb4e990a7e7c93d6f546328a102ce31448d69ebc37575c",
+                "PYTHONDONTWRITEBYTECODE=1",
+                "PYTHONUNBUFFERED=1",
+                "VIRTUAL_ENV=/opt/api-venv"
+            ],
+            "Cmd": [
+                "sh",
+                "-c",
+                "PYTHONPATH=apps/api python -c 'from app.core.settings import settings' && exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS:-*}\" --no-access-log --app-dir apps/api"
+            ],
+            "WorkingDir": "/app",
+            "ArgsEscaped": true
+        },
+        "Architecture": "amd64",
+        "Os": "linux",
+        "Size": 299206495,
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:1d7b9dd8778ebc4d9bf2f64436dd358640718cb349f5640b33bebaea4ffd62c2",
+                "sha256:a3cfe73133965fb536427fde3fe66b2949ea6178f568733760bf45f5c8b5c405",
+                "sha256:5e63f01f0cee6291b52c44ffeee48c9eb7b94cdb19478259bcfce37db9eb680e",
+                "sha256:311a92d269bd002ca4ff3d801c6320df734027d3b425ff1ec860368f12b07a26",
+                "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+                "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+                "sha256:6fbed4390cbd4061a8cd615bfa72edaf5d5f13fe2664fd686e2358b6eb765bb7",
+                "sha256:c29aafb43a360c969acc96eedb130cbfc45505f19cc8f3abd4212a9f0056165f",
+                "sha256:bfea7559b6c1a76334b4dfe469a8d54f5f9edbcf2895cc845a0dda3bb1091fbb",
+                "sha256:847282d9cc0faeb49b293ca28e3128c54a7006eb6bbd904fede6a69b66c5fd88",
+                "sha256:58c506a3c4141f6df4975666889a401748ed9fc174ab83eaca31f3994d64ee6f",
+                "sha256:80382a3202b29e3264adb740e04254fa691b59a08e6a2f2bceadae38a6db96f2"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2026-11-18T16:18:29.02080893Z"
+        },
+        "Descriptor": {
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "digest": "sha256:64905c7adcf06f0aab881edc59732b17b7e6409b9018c9b532d4cc71acaf1bdc",
+            "size": 856
+        },
+        "Identity": {
+            "Build": [
+                {
+                    "Ref": "bpdskc0j9o5xkp71jw7wno6ki",
+                    "CreatedAt": "2026-11-18T16:18:30.431993308Z"
+                }
+            ]
+        }
+    }
+]

@@ -1,0 +1,275 @@
+{
+  "runtime_source": "f7728c18be8ebcb2f6cba4e647e532af61261c8b",
+  "baseline_source": "6dc518432a2bad5c8a48e6c646b7113e196f26b0",
+  "database": {
+    "Version": 2,
+    "NextUpdate": "2026-11-19T07:15:21.579241907Z",
+    "UpdatedAt": "2026-11-18T07:15:21.579242117Z",
+    "DownloadedAt": "2026-11-18T11:27:33.461222143Z"
+  },
+  "database_sha256": "b4b9f44be196aac7bf3c359abdcacfaa97a7ccaf56297d04745b7dae554eae86",
+  "scanner": "aquasec/trivy@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f",
+  "images": {
+    "before": {
+      "image_id": "sha256:99bb2325e4360a4d5720b4a4c3ea6120c92cac5b8004df46af36d2fcd61eabef",
+      "os": {
+        "Family": "debian",
+        "Name": "13.7"
+      },
+      "platform": "linux/amd64",
+      "packages": 87,
+      "records": 218,
+      "unique_advisories": 96,
+      "severity_records": {
+        "LOW": 65,
+        "HIGH": 47,
+        "MEDIUM": 92,
+        "UNKNOWN": 14
+      },
+      "scan_time": "2026-11-18T16:13:34.844841348Z",
+      "raw_sanitized_sha256": "d5f070ea868831cdf8e40296f1fba34bcdc321f4eab1323860a8896bf2d8e156",
+      "normalized_full_report_sha256": "cd2f3d82be81b865b5e174cd78cec644ffa81f51a5a94b374e1582cb12a959e7",
+      "local_report": ".harness\\any-674-minimize\\before-raw.json",
+      "total_vulnerability_records": 225,
+      "secret_records": 0,
+      "image_descriptor_digest": "sha256:99bb2325e4360a4d5720b4a4c3ea6120c92cac5b8004df46af36d2fcd61eabef",
+      "config_digest": "sha256:ffd683a59a223c2ca73dcf0c0f1140c196bf485de7771a0c0c9487a32ebe6f86"
+    },
+    "candidate": {
+      "image_id": "sha256:a3d6c7efea6758ffaa3d84dc7171722fe563ab95d01a1b79b115042cf1909931",
+      "os": {
+        "Family": "debian",
+        "Name": "13.7"
+      },
+      "platform": "linux/amd64",
+      "packages": 71,
+      "records": 207,
+      "unique_advisories": 95,
+      "severity_records": {
+        "LOW": 59,
+        "HIGH": 43,
+        "MEDIUM": 91,
+        "UNKNOWN": 14
+      },
+      "scan_time": "2026-11-18T16:14:55.899618102Z",
+      "raw_sanitized_sha256": "7ebe31a83b14a50c1db31dc670770a8e663e992ff81bee6a7d0ada6458f704e4",
+      "normalized_full_report_sha256": "ee7c59714ed3656d95715c704ac1b50851c52043a5ce567e2681d143c6c83a62",
+      "local_report": ".harness\\any-674-minimize\\candidate-raw.json",
+      "total_vulnerability_records": 214,
+      "secret_records": 0,
+      "image_descriptor_digest": "sha256:a3d6c7efea6758ffaa3d84dc7171722fe563ab95d01a1b79b115042cf1909931",
+      "config_digest": "sha256:902a1608634e83ca1a97d8133f775adf3ad151a64881405af42e8beee43e7920"
+    },
+    "final": {
+      "image_id": "sha256:3c894f500266e88c0fd16111c7d1d41decc7667aa0e4970fcfe7beceeb480c9f",
+      "os": {
+        "Family": "debian",
+        "Name": "13.7"
+      },
+      "platform": "linux/amd64",
+      "packages": 71,
+      "records": 207,
+      "unique_advisories": 95,
+      "severity_records": {
+        "LOW": 59,
+        "HIGH": 43,
+        "MEDIUM": 91,
+        "UNKNOWN": 14
+      },
+      "scan_time": "2026-11-18T16:36:07.940590713Z",
+      "raw_sanitized_sha256": "8a8d0aa522f38da3e344c3250c3f23944b2dabb1e6ee2d1c84117755704a7493",
+      "normalized_full_report_sha256": "ae77897857674b8ce603c7f8b597ef8e9b0910b8f12d2164c0b2641a54022369",
+      "local_report": ".harness\\any-674-minimize\\final-raw.json",
+      "total_vulnerability_records": 214,
+      "secret_records": 0,
+      "image_descriptor_digest": "sha256:3c894f500266e88c0fd16111c7d1d41decc7667aa0e4970fcfe7beceeb480c9f",
+      "config_digest": "sha256:c5c7d71efe6973f1e16cd3d613cc641bc491bce007973094d239a5a0beed3ca7"
+    },
+    "buildstage": {
+      "image_id": "sha256:6f3cb3a514b90ffbc93bc0e517f47290320b6cd316dce8a262e5b2c7dbf3999b",
+      "os": {
+        "Family": "debian",
+        "Name": "13.7"
+      },
+      "platform": "linux/amd64",
+      "packages": 87,
+      "records": 218,
+      "unique_advisories": 96,
+      "severity_records": {
+        "LOW": 65,
+        "HIGH": 47,
+        "MEDIUM": 92,
+        "UNKNOWN": 14
+      },
+      "scan_time": "2026-11-18T16:16:10.188742292Z",
+      "raw_sanitized_sha256": "eaef5c0fff801289becdd2e297ed1a054cdc613f304726c33889dc24e8cd64c8",
+      "normalized_full_report_sha256": "1e0f288e3d00bc412711bc66f84b6f30ad5c0366f42529d8c5f9395f549c7f03",
+      "local_report": ".harness\\any-674-minimize\\buildstage-raw.json",
+      "total_vulnerability_records": 235,
+      "secret_records": 0,
+      "image_descriptor_digest": "sha256:6f3cb3a514b90ffbc93bc0e517f47290320b6cd316dce8a262e5b2c7dbf3999b",
+      "config_digest": "sha256:4ad83208480e0d8e33b2b08a8ea328ae696b26f60c04917b5182098c9087941a"
+    },
+    "bookworm": {
+      "image_id": "sha256:64905c7adcf06f0aab881edc59732b17b7e6409b9018c9b532d4cc71acaf1bdc",
+      "os": {
+        "Family": "debian",
+        "Name": "12.15"
+      },
+      "platform": "linux/amd64",
+      "packages": 98,
+      "records": 344,
+      "unique_advisories": 151,
+      "severity_records": {
+        "LOW": 98,
+        "HIGH": 96,
+        "MEDIUM": 137,
+        "UNKNOWN": 11,
+        "CRITICAL": 2
+      },
+      "scan_time": "2026-11-18T16:21:40.065682141Z",
+      "raw_sanitized_sha256": "7ff65382ef2c7f5956a46ebe2c20596fd49cc769050696706a66652929422d0b",
+      "normalized_full_report_sha256": "d3ac45c2e884092f013492cb5dead263ce95ae03215789a1081d97cd5360fa17",
+      "local_report": ".harness\\any-674-minimize\\bookworm-raw.json",
+      "total_vulnerability_records": 351,
+      "secret_records": 0,
+      "image_descriptor_digest": "sha256:64905c7adcf06f0aab881edc59732b17b7e6409b9018c9b532d4cc71acaf1bdc",
+      "config_digest": "sha256:99481d3c1186529e0f4abe7b6096217a2dfa1bf69a4b3d394f4b46dba1acdc35"
+    },
+    "alpine": {
+      "image_id": "sha256:dce0155e24ff98677750c086f6dd11dfa203d5118c21e7856240e553a26b2557",
+      "os": {
+        "Family": "alpine",
+        "Name": "3.24.4"
+      },
+      "platform": "linux/amd64",
+      "packages": 40,
+      "records": 0,
+      "unique_advisories": 0,
+      "severity_records": {},
+      "scan_time": "2026-11-18T16:50:10.273865678Z",
+      "raw_sanitized_sha256": "988b405b108a4a22179d5db8c2076ba38661107be91f3f0a7a4275a0e6d5d357",
+      "normalized_full_report_sha256": "140160e27afbbdc9b23d0a2ec36392e028fc0807b44bba34607ff2eba7e8fa6b",
+      "local_report": ".harness\\any-674-minimize\\alpine-raw.json",
+      "total_vulnerability_records": 7,
+      "secret_records": 0,
+      "note": "Zero reported OS findings is not proof of fixes: SQLite3.53.4 still falls in three upstream High affected ranges; FTS5/session enabled; no matching vendor fix entries.",
+      "image_descriptor_digest": "sha256:dce0155e24ff98677750c086f6dd11dfa203d5118c21e7856240e553a26b2557",
+      "config_digest": "sha256:a9d44c5adde4c57b22bfacb8944c5c1e4c588f90615f4275a14e3531b234ff67"
+    }
+  },
+  "removed_packages": [
+    "adduser",
+    "apt",
+    "debian-archive-keyring",
+    "libapt-pkg7.0",
+    "libbsd0",
+    "libhogweed6t64",
+    "liblz4-1",
+    "libnettle8t64",
+    "libseccomp2",
+    "libsemanage-common",
+    "libsemanage2",
+    "libsepol2",
+    "libxxhash0",
+    "mount",
+    "passwd",
+    "sqv"
+  ],
+  "removed_records": [
+    {
+      "package": "apt",
+      "advisory": "CVE-2011-3374",
+      "severity": "LOW"
+    },
+    {
+      "package": "libapt-pkg7.0",
+      "advisory": "CVE-2011-3374",
+      "severity": "LOW"
+    },
+    {
+      "package": "mount",
+      "advisory": "CVE-2022-0563",
+      "severity": "LOW"
+    },
+    {
+      "package": "mount",
+      "advisory": "CVE-2026-3184",
+      "severity": "MEDIUM"
+    },
+    {
+      "package": "mount",
+      "advisory": "CVE-2026-76642",
+      "severity": "HIGH"
+    },
+    {
+      "package": "mount",
+      "advisory": "CVE-2026-78408",
+      "severity": "HIGH"
+    },
+    {
+      "package": "mount",
+      "advisory": "CVE-2026-78409",
+      "severity": "HIGH"
+    },
+    {
+      "package": "mount",
+      "advisory": "CVE-2026-78410",
+      "severity": "HIGH"
+    },
+    {
+      "package": "passwd",
+      "advisory": "CVE-2007-5686",
+      "severity": "LOW"
+    },
+    {
+      "package": "passwd",
+      "advisory": "CVE-2024-56433",
+      "severity": "LOW"
+    },
+    {
+      "package": "passwd",
+      "advisory": "TEMP-0628843-DBAD28",
+      "severity": "LOW"
+    }
+  ],
+  "added_records": [],
+  "fixed_by_package_upgrade": 0,
+  "unique_advisories_eliminated_by_removal": [
+    "CVE-2011-3374"
+  ],
+  "remaining_high_unique": [
+    "CVE-2025-69720",
+    "CVE-2026-119373",
+    "CVE-2026-119374",
+    "CVE-2026-119379",
+    "CVE-2026-16742",
+    "CVE-2026-54369",
+    "CVE-2026-76642",
+    "CVE-2026-78408",
+    "CVE-2026-78409",
+    "CVE-2026-78410",
+    "CVE-2026-9538"
+  ],
+  "supported_high_component_absence": [
+    "CVE-2026-16742",
+    "CVE-2026-9538"
+  ],
+  "historical_baseline_debian_signatures_match": true,
+  "build_stage_exposure_unchanged": true,
+  "alpine_zero_report_not_fix_evidence": {
+    "sqlite_installed": "3.53.4-r0",
+    "upstream_first_fixed": "3.54.0",
+    "enabled_features": [
+      "FTS5",
+      "SESSION",
+      "SECURE_DELETE"
+    ],
+    "not_proven_fixed": [
+      "CVE-2026-119373",
+      "CVE-2026-119374",
+      "CVE-2026-119379"
+    ],
+    "alpine_secdb_has_no_corresponding_fix_entries": true
+  }
+}
