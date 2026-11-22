@@ -238,6 +238,32 @@ it("offers payment from saved status before advance replies and ignores the olde
   expect(advance).toHaveBeenCalledTimes(1);
 });
 
+it("keeps polling until saved status confirms the purchase hold was released", async () => {
+  vi.useFakeTimers();
+  const original = { ...savedPurchase, state: "created" } satisfies PurchaseIntentResponse;
+  const statusPath = `/api/purchase-intents/${original.purchase_intent_id}`;
+  const statusReadCount = () => fetcher.mock.calls.filter(([url]) => new URL(String(url)).pathname === statusPath).length;
+  owned = original;
+  await act(async () => { renderProduct(); });
+  screen.getByRole("button", { name: ru.Purchase.continue }).focus();
+
+  // The status read saw the old purchase state and the already removed hold.
+  owned = { ...original, scope_held: false };
+  await act(async () => vi.advanceTimersByTimeAsync(2_000));
+  expect(statusReadCount()).toBe(1);
+  expect(screen.queryByRole("button", { name: ru.Purchase.buy })).not.toBeInTheDocument();
+
+  owned = { ...original, state: "failed_before_external_effect", scope_held: false, reason: "terms_changed" };
+  await act(async () => vi.advanceTimersByTimeAsync(5_000));
+
+  expect(statusReadCount()).toBe(2);
+  expect(screen.getByText(ru.Purchase.termsChanged)).toBeVisible();
+  expect(screen.getByRole("button", { name: ru.Purchase.buy })).toHaveFocus();
+  await act(async () => vi.advanceTimersByTimeAsync(10_000));
+  expect(statusReadCount()).toBe(2);
+  expect(advance).not.toHaveBeenCalled();
+});
+
 it("offers a new terms review when polling confirms release before advance replies", async () => {
   vi.useFakeTimers();
   const reply = Promise.withResolvers<Response>();

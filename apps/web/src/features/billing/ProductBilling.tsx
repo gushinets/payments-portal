@@ -153,9 +153,12 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     canPoll && !advancing && uncertainConfirmation ? productId : undefined,
     (saved, readStartedAt) => {
       if (readStartedAt < workFinishedAt.current) return;
+      // A status read can see the old purchase state after the hold was removed.
+      const released = purchaseReleased(saved);
+      if (!saved.scope_held && !released) return;
       const linked = saved.scope_held && saved.state === "linked";
       if (busy.current) {
-        if (!advancing || !(linked || purchaseReleased(saved))) return;
+        if (!advancing || !(linked || released)) return;
         // A saved binding or release supersedes the pending advance's UI update.
         cancel();
         finishWork();
