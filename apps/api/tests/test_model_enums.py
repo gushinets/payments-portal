@@ -98,6 +98,7 @@ def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
     }
     assert _values(BillingStateObservationKind) == {
         "authoritative_subscription_read",
+        "audited_subscription_read",
         "target_product_discovery",
         "primary_selection",
         "deterministic_access_boundary",
