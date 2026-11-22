@@ -17,7 +17,7 @@ from app.domains.billing.reconciliation_contracts import (
 from app.domains.catalog.commercial_offer import CommercialPeriod
 from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from app.integrations.lbx.client import LbxServerClient
-from app.integrations.lbx.calendar import monthly_instance_start_date, normalize_access_end, normalize_calendar
+from app.integrations.lbx.calendar import instance_start_calendar_date, normalize_access_end, normalize_calendar
 from app.integrations.lbx.customer import LbxUser
 from app.integrations.lbx.dto import LbxRead, LbxTariff
 from app.integrations.lbx.errors import LbxError, LbxResponseInvalid, LbxScopeMismatch
@@ -87,22 +87,22 @@ def _calendar_complete(
     cycle_end = parsed["last_tariffication_period_end"]
     # Keep the existing all-date completeness policy; the new start-order proof
     # is required only when interpreting the observed naive-midnight form.
-    monthly_midnight = (
+    midnight_start = (
         cycle is not None
         and cycle.precision == CalendarPrecision.DATE
         and any(
-            isinstance(value, datetime) and monthly_instance_start_date(value, period) is not None
+            isinstance(value, datetime) and instance_start_calendar_date(value, period) is not None
             for value in (parsed.get("subscription_start_date"), parsed.get("subscription_instance_start_date"))
         )
     )
     for prefix in ("subscription", "subscription_instance"):
         start, end = parsed.get(prefix + "_start_date"), parsed.get(prefix + "_end_date")
-        calendar_start = monthly_instance_start_date(start, period) if start is not None and monthly_midnight else None
+        calendar_start = instance_start_calendar_date(start, period) if start is not None and midnight_start else None
         if calendar_start is not None:
             if not _calendar_ordered(calendar_start, cycle_start):
                 return False
         # Calendar dates may straddle activation/termination. Only explicit
-        # timestamps or the bounded monthly start representation prove more.
+        # timestamps or a supported date-only start representation prove more.
         elif (
             start
             and (isinstance(start, datetime) or isinstance(cycle_start, datetime))

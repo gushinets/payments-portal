@@ -8,6 +8,9 @@ from app.domains.catalog.commercial_offer import CommercialPeriod
 from app.integrations.lbx.financial import EMPTY_CALENDAR
 
 
+_MIDNIGHT_DATE_PROFILES = frozenset({("month", 1, "instance_start"), ("day", 1, "first_instance_start")})
+
+
 def normalize_access_end(value: str | None) -> datetime | None:
     """Only an explicit zoned instant establishes a finite access boundary."""
     if value in EMPTY_CALENDAR or len(value) == 10:
@@ -19,13 +22,13 @@ def normalize_access_end(value: str | None) -> datetime | None:
     return parsed.astimezone(UTC) if parsed.utcoffset() is not None else None
 
 
-def monthly_instance_start_date(value: date | datetime, period: CommercialPeriod) -> date | None:
-    """Interpret a start only in the observed one-month, date-cycle profile.
+def instance_start_calendar_date(value: date | datetime, period: CommercialPeriod) -> date | None:
+    """Interpret a start only in a date-cycle profile observed on LBX.
 
     Callers establish date-only cycle bounds. A naive midnight is a calendar
     representation, never proof of a timezone or an exact access deadline.
     """
-    if (period.unit, period.length, period.anchor) != ("month", 1, "instance_start"):
+    if (period.unit, period.length, period.anchor) not in _MIDNIGHT_DATE_PROFILES:
         return None
     if isinstance(value, datetime):
         if value.utcoffset() is not None or value.time() != time.min:
@@ -58,7 +61,7 @@ def normalize_calendar(calendar: dict[str, str | None], period: CommercialPeriod
     try:
         if len(start) == 10 and len(end) == 10 and anchor not in EMPTY_CALENDAR:
             parsed_anchor = date.fromisoformat(anchor) if len(anchor) == 10 else datetime.fromisoformat(anchor)
-            calendar_anchor = monthly_instance_start_date(parsed_anchor, period)
+            calendar_anchor = instance_start_calendar_date(parsed_anchor, period)
             if calendar_anchor is not None:
                 # Epoch is missing evidence, including equivalent midnight spellings.
                 if calendar_anchor == date(1970, 1, 1):
