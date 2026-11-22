@@ -505,6 +505,7 @@ def test_api_production_image_installs_only_main_dependencies() -> None:
     assert "uv-source" not in production_runtime
     assert "/uv" not in production_runtime
 
+
 @pytest.mark.parametrize(
     ("app_env", "host", "use_tls", "allowed"),
     [
@@ -517,7 +518,10 @@ def test_api_production_image_installs_only_main_dependencies() -> None:
     ],
 )
 def test_settings_require_tls_for_production_smtp_delivery(
-    app_env: str, host: str, use_tls: str, allowed: bool,
+    app_env: str,
+    host: str,
+    use_tls: str,
+    allowed: bool,
 ) -> None:
     environment = {
         **DEFAULT_API_TEST_ENV,

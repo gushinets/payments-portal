@@ -515,6 +515,7 @@ def test_web_receives_only_public_backend_callbacks(path: str) -> None:
     assert "BACKEND_CONSUMERS" not in public["BACKEND_CALLBACKS"]
     assert "BACKEND_CONSUMERS" in services["api"]["environment"]
 
+
 def test_manual_ai_review_limits_token_permissions_to_each_job() -> None:
     workflow = yaml.safe_load((ROOT / ".github/workflows/ai-pr-review.yml").read_text(encoding="utf-8"))
     jobs = workflow["jobs"]
