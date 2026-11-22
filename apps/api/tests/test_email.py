@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ssl
 from string import Formatter
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -15,7 +16,7 @@ from app.generated.locales import SUPPORTED_ROUTE_LOCALES, RouteLocale
 
 class FakeSmtp:
     def __init__(self) -> None:
-        self.tls_context = None
+        self.tls_context: ssl.SSLContext | None = None
         self.sent = False
 
     def __enter__(self) -> "FakeSmtp":
@@ -24,7 +25,7 @@ class FakeSmtp:
     def __exit__(self, *_: object) -> None:
         return None
 
-    def starttls(self, *, context: object) -> None:
+    def starttls(self, *, context: ssl.SSLContext) -> None:
         self.tls_context = context
 
     def login(self, _username: str, _password: str) -> None:
@@ -36,7 +37,6 @@ class FakeSmtp:
 
 def test_send_text_email_uses_verifying_tls_context(monkeypatch) -> None:
     smtp = FakeSmtp()
-    tls_context = object()
     monkeypatch.setattr(
         email_sender,
         "settings",
@@ -54,18 +54,14 @@ def test_send_text_email_uses_verifying_tls_context(monkeypatch) -> None:
         "SMTP",
         lambda _host, _port, timeout: smtp,
     )
-    monkeypatch.setattr(
-        email_sender.ssl,
-        "create_default_context",
-        lambda: tls_context,
-    )
-
     assert email_sender.send_text_email(
         to_email="user@example.com",
         subject="Reset",
         body="Reset link",
     )
-    assert smtp.tls_context is tls_context
+    assert smtp.tls_context is not None
+    assert smtp.tls_context.verify_mode == ssl.CERT_REQUIRED
+    assert smtp.tls_context.check_hostname
     assert smtp.sent
 
 

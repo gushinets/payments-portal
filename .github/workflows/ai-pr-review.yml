@@ -4,15 +4,13 @@ on:
   issue_comment:
     types: [created]
 
-permissions:
-  actions: read
-  contents: read
-  statuses: read
-  pull-requests: write
-  checks: write
+permissions: {}
 
 jobs:
   comment-gate:
+    permissions:
+      pull-requests: write
+      checks: write
     if: github.event.issue.pull_request != null
     runs-on: ubuntu-24.04
     outputs:
@@ -149,6 +147,12 @@ jobs:
             }
 
   ai-pr-review:
+    permissions:
+      actions: read
+      contents: read
+      statuses: read
+      pull-requests: write
+      checks: write
     needs: [comment-gate]
     if: needs.comment-gate.outputs.run == 'true'
     uses: gushinets/ai-pr-review/.github/workflows/reusable-ai-pr-review.yml@c1351f2e944006dbddb04f16aebb1c77b17f2900
@@ -163,6 +167,8 @@ jobs:
       LINEAR_CLIENT_SECRET: ${{ secrets.LINEAR_CLIENT_SECRET }}
 
   finalize-trigger:
+    permissions:
+      checks: write
     needs: [comment-gate, ai-pr-review]
     if: >-
       always() &&

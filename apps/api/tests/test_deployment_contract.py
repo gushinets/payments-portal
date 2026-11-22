@@ -514,3 +514,18 @@ def test_web_receives_only_public_backend_callbacks(path: str) -> None:
     assert "BACKEND_CALLBACKS" in public
     assert "BACKEND_CONSUMERS" not in public["BACKEND_CALLBACKS"]
     assert "BACKEND_CONSUMERS" in services["api"]["environment"]
+
+def test_manual_ai_review_limits_token_permissions_to_each_job() -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ai-pr-review.yml").read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+
+    assert workflow.get("permissions") == {}
+    assert jobs["comment-gate"]["permissions"] == {"pull-requests": "write", "checks": "write"}
+    assert jobs["ai-pr-review"]["permissions"] == {
+        "actions": "read",
+        "contents": "read",
+        "statuses": "read",
+        "pull-requests": "write",
+        "checks": "write",
+    }
+    assert jobs["finalize-trigger"]["permissions"] == {"checks": "write"}
