@@ -36,10 +36,12 @@ as it observes it.
   navigation, bootstrap and Widget startup separately, with buyer wait,
   first-attempt errors and retries recorded separately from successful timings.
   Measure reopening and refresh separately on prepared purchases.
-- On the final revision, prepare two purchases for the same verified test
-  buyer, with the second product on a different tariff. Verify that each
-  Widget reaches READY and that the Portal identifies its agreement and seller
-  on initial opening, reopening and refresh.
+- On the final revision, prepare Brief Decoder and Proposal AI purchases for
+  the same verified test buyer on different tariffs and separate agreements.
+  Verify that each Widget reaches READY and that the Portal identifies its
+  agreement and seller on initial opening, reopening and refresh. In the
+  cabinet, switch the selected purchase and verify that the Portal displays
+  its agreement reference and that the buyer can find the same agreement in LBX.
 - Complete [W02](https://linear.app/paveldik/issue/ANY-819#comment-a2679865-ce7a-4099-8d1a-3d397ff6c909)
   with those two purchases on separate agreements. Record both balances, open
   payment for one purchase and select the agreement identified by the Portal.
