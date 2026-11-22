@@ -24,6 +24,12 @@ billing configuration leaves billing unavailable without breaking identity.
 Invalid partial configuration produces a safe billing error, with no startup
 provider call or automatic publication.
 
+For an LBX deployment that requires an explicit payment delay on new
+Portal-created customers, set `LBX_CUSTOMER_PAYMENT_DELAY_DAYS` to a
+nonnegative integer. Value `0` sends zero days in the LBX customer create
+request. An unset or empty value keeps the provider API default. The setting
+applies only when Portal creates a customer and never updates existing cards.
+
 Server API, Client API and SDK paths are `/api/rest/v1`, `/api/rest/v1/client`
 and `/lbxwidget.js` on that same validated origin. Do not append them to the
 configured origin. Never put credentials in browser settings or CLI arguments.
