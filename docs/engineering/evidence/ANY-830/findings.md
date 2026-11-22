@@ -1,0 +1,49 @@
+# ANY-830 before/after findings
+
+Derived from [findings.csv](findings.csv).
+
+## Original findings
+
+| ID | Sonar issue / location | Rule / security impact | Classification | Action | Baseline main | Latest main | PR observation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| F01 | [AaFpbACIysG4pTvpybzF](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbACIysG4pTvpybzF)<br>`docker-compose.yml:45` | secrets:S6698 / BLOCKER | Intentional test/development | Preserve local default | OPEN | Pending refresh | Pending |
+| F02 | [AaFpbAB2ysG4pTvpybyu](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbAB2ysG4pTvpybyu)<br>`scripts/repo.py:478` | secrets:S6698 / BLOCKER | Intentional test/development | Preserve local default | OPEN | Pending refresh | Pending |
+| F03 | [AaFpbAB2ysG4pTvpybyv](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbAB2ysG4pTvpybyv)<br>`scripts/repo.py:3619` | pythonsecurity:S2083 / BLOCKER | False positive | Preserve in-place redaction | OPEN | Pending refresh | Pending |
+| F04 | [AaFpbABBysG4pTvpybyp](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbABBysG4pTvpybyp)<br>`apps/api/app/core/email.py:29` | python:S4830 / HIGH | False positive | Preserve verifying STARTTLS. Strengthen coverage and fix the separate production opt-out in N01. | OPEN | Pending refresh | Pending |
+| F05 | [AaFpbACBysG4pTvpyby4](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbACBysG4pTvpyby4)<br>`.github/workflows/ci.yml:204` | githubactions:S8482 / HIGH | False positive | Preserve fixed-code JSON parsing | OPEN | Pending refresh | Pending |
+| F06 | [AaFpbAB2ysG4pTvpybyw](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbAB2ysG4pTvpybyw)<br>`scripts/repo.py:4276` | pythonsecurity:S8705 / HIGH | False positive | Preserve argument-list execution | OPEN | Pending refresh | Pending |
+| F07 | [AaFpbAA6ysG4pTvpybym](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbAA6ysG4pTvpybym)<br>`apps/api/app/domains/identity/passwords.py:10` | python:S2068 / MEDIUM | False positive | Preserve password policy | OPEN | Pending refresh | Pending |
+| F08 | [AaFpbACBysG4pTvpyby-](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbACBysG4pTvpyby-)<br>`.github/workflows/ci.yml:96` | yaml:S2068 / MEDIUM | Intentional test/development | Preserve ephemeral CI credential | OPEN | Pending refresh | Pending |
+| F09 | [AaFpbAB2ysG4pTvpybyq](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbAB2ysG4pTvpybyq)<br>`scripts/repo.py:473` | python:S2068 / MEDIUM | Intentional test/development | Preserve matching local bootstrap credential | OPEN | Pending refresh | Pending |
+| F10 | [AaFpbAB_ysG4pTvpybyx](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbAB_ysG4pTvpybyx)<br>`.github/workflows/ai-pr-review.yml:8` | githubactions:S8264 / LOW | Confirmed defect | Move Actions read permission to the reusable-workflow caller job. | OPEN | Pending refresh | Pending |
+| F11 | [AaFpbAB_ysG4pTvpybyy](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbAB_ysG4pTvpybyy)<br>`.github/workflows/ai-pr-review.yml:10` | githubactions:S8264 / LOW | Confirmed defect | Move statuses read to the reusable-workflow caller job. | OPEN | Pending refresh | Pending |
+| F12 | [AaFpbAB_ysG4pTvpybyz](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbAB_ysG4pTvpybyz)<br>`.github/workflows/ai-pr-review.yml:11` | githubactions:S8233 / LOW | Confirmed defect | Grant PR write only to the gate and reusable-workflow caller. | OPEN | Pending refresh | Pending |
+| F13 | [AaFpbAB_ysG4pTvpyby0](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbAB_ysG4pTvpyby0)<br>`.github/workflows/ai-pr-review.yml:12` | githubactions:S8233 / LOW | Confirmed defect | Grant checks write explicitly to the three current jobs. | OPEN | Pending refresh | Pending |
+| F14 | [AaFpbACFysG4pTvpybzE](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbACFysG4pTvpybzE)<br>`security/trivy/verify-api-runtime.sh:63` | shell:S5332 / LOW | Intentional test/development | Preserve loopback liveness | OPEN | Pending refresh | Pending |
+| F15 | [AaFpbACDysG4pTvpybzB](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbACDysG4pTvpybzB)<br>`security/trivy/fixtures/non-compose/insecure-pod.yaml:6` | kubernetes:S6865 / MEDIUM | Intentional test/development | Preserve negative Kubernetes fixture | OPEN | Pending refresh | Pending |
+| F16 | [AaFpbACDysG4pTvpyby_](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbACDysG4pTvpyby_)<br>`security/trivy/fixtures/non-compose/insecure-pod.yaml:7` | kubernetes:S6864 / MEDIUM | Intentional test/development | Preserve negative Kubernetes fixture | OPEN | Pending refresh | Pending |
+| F17 | [AaFpbAAWysG4pTvpybyj](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbAAWysG4pTvpybyj)<br>`apps/web/next.config.mjs:7` | javascript:S1313 / LOW | Confirmed defect | Remove implicit LAN allowlisting from the config and example. Keep explicit LAN opt-in. | OPEN | Pending refresh | Pending |
+
+## New findings
+
+| ID | Sonar issue / location | Rule / security impact | Classification | Action | Baseline main | Latest main | PR observation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| N01 | `apps/api/app/core/settings.py:85` | Source review adjacent to python:S4830 / Unrated | Confirmed defect | Reject production SMTP configurations that enable delivery without verifying STARTTLS. Keep disabled or development/test mail valid. | No Sonar key | No Sonar key | Pending |
+
+## Separate ownership
+
+| ID | Sonar issue / location | Rule / security impact | Classification | Action | Baseline main | Latest main | PR observation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| O01 | [AaFpbACBysG4pTvpyby1](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbACBysG4pTvpyby1)<br>`.github/workflows/ci.yml:45` | githubactions:S8541 / MEDIUM | Separate ownership | Track in ANY-744 | OPEN | Pending refresh | Pending |
+| O02 | [AaFpbACBysG4pTvpyby3](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbACBysG4pTvpyby3)<br>`.github/workflows/ci.yml:130` | githubactions:S8541 / MEDIUM | Separate ownership | Track in ANY-744 | OPEN | Pending refresh | Pending |
+| O03 | [AaFpbACBysG4pTvpyby6](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbACBysG4pTvpyby6)<br>`.github/workflows/ci.yml:295` | githubactions:S8541 / MEDIUM | Separate ownership | Track in ANY-744 | OPEN | Pending refresh | Pending |
+| O04 | [AaFpbAAXysG4pTvpybyk](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbAAXysG4pTvpybyk)<br>`apps/api/Dockerfile:29` | docker:S8541 / MEDIUM | Separate ownership | Track in ANY-744 | OPEN | Pending refresh | Pending |
+| O05 | [AaFpbAAXysG4pTvpybyl](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbAAXysG4pTvpybyl)<br>`apps/api/Dockerfile:33` | docker:S8541 / MEDIUM | Separate ownership | Track in ANY-744 | OPEN | Pending refresh | Pending |
+| O06 | [AaFpbACBysG4pTvpyby5](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbACBysG4pTvpyby5)<br>`.github/workflows/ci.yml:258` | githubactions:S6505 / MEDIUM | Separate ownership | Track in ANY-744 | OPEN | Pending refresh | Pending |
+| O07 | [AaFpbACBysG4pTvpyby2](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbACBysG4pTvpyby2)<br>`.github/workflows/ci.yml:47` | githubactions:S6505 / MEDIUM | Separate ownership | Track in ANY-744 | OPEN | Pending refresh | Pending |
+| O08 | [AaFpbACBysG4pTvpyby7](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbACBysG4pTvpyby7)<br>`.github/workflows/ci.yml:300` | githubactions:S6505 / MEDIUM | Separate ownership | Track in ANY-744 | OPEN | Pending refresh | Pending |
+| O09 | [AaFpbACBysG4pTvpyby8](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbACBysG4pTvpyby8)<br>`.github/workflows/ci.yml:301` | githubactions:S6505 / MEDIUM | Separate ownership | Track in ANY-744 | OPEN | Pending refresh | Pending |
+| O10 | [AaFpbACBysG4pTvpyby9](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbACBysG4pTvpyby9)<br>`.github/workflows/ci.yml:301` | githubactions:S8543 / MEDIUM | Separate ownership | Track in ANY-744 | OPEN | Pending refresh | Pending |
+| O11 | [AaFpbAAUysG4pTvpybyi](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbAAUysG4pTvpybyi)<br>`apps/web/Dockerfile:8` | docker:S6505 / MEDIUM | Separate ownership | Track in ANY-744 | OPEN | Pending refresh | Pending |
+| O12 | [AaFpbAB2ysG4pTvpybyr](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpbAB2ysG4pTvpybyr)<br>`scripts/repo.py:1324` | python:S8786 / None (reliability) | Separate ownership | Track in ANY-745 | OPEN | Pending refresh | Pending |
+| O13 | [AaFpa_-YysG4pTvpybyg](https://sonarcloud.io/project/issues?id=gushinets_payments-portal&branch=main&open=AaFpa_-YysG4pTvpybyg)<br>`apps/web/src/features/legal/LegalPageView.tsx:8` | typescript:S8786 / None (reliability) | Separate ownership | Track in ANY-746 | OPEN | Pending refresh | Pending |
