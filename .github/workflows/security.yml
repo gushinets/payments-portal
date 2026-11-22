@@ -18,6 +18,7 @@ concurrency:
 env:
   API_IMAGE: payment-portal-api:trivy-${{ github.sha }}
   APP_PUBLIC_BASE_URL: https://payments.example.test
+  TRIVY_CACHE_DIR: ${{ github.workspace }}/.cache/trivy
   TRIVY_REPORT_DIR: .harness/trivy
   WEB_IMAGE: payment-portal-web:trivy-${{ github.sha }}
 
@@ -31,7 +32,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Prepare report directory
-        run: mkdir -p "$TRIVY_REPORT_DIR"
+        run: mkdir -p "$TRIVY_REPORT_DIR/api-evidence"
 
       - name: Scan repository filesystem
         env:
@@ -92,33 +93,33 @@ jobs:
       - name: Verify scanned API image PostgreSQL readiness and migration cycle
         run: |
           sh security/trivy/verify-api-postgres.sh "$API_IMAGE" > "$RUNNER_TEMP/api-postgres-runtime.json"
-          mv "$RUNNER_TEMP/api-postgres-runtime.json" "$TRIVY_REPORT_DIR/api-postgres-runtime.json"
+          mv "$RUNNER_TEMP/api-postgres-runtime.json" "$TRIVY_REPORT_DIR/api-evidence/api-postgres-runtime.json"
 
       - name: Collect production API component evidence
         run: >-
           docker run --rm --network none --entrypoint python
           --mount "type=bind,src=$PWD/security/trivy/inspect-api-components.py,dst=/tmp/inspect-api-components.py,readonly"
           "$API_IMAGE" /tmp/inspect-api-components.py
-          > "$TRIVY_REPORT_DIR/api-components.json"
+          > "$TRIVY_REPORT_DIR/api-evidence/api-components.json"
 
       - name: Verify API deployment privilege and excluded-tool boundaries
         run: |
           docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges:true --entrypoint python --mount "type=bind,src=$PWD/security/trivy/inspect-api-isolation.py,dst=/probe.py,readonly" "$API_IMAGE" /probe.py > "$RUNNER_TEMP/api-isolation.json"
           python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); assert p["isolation_boundary_passed"]; assert not any(p["excluded_paths_present"].values()); assert set(p["runtime_file_filters"])=={"path-exclude=/usr/bin/infocmp","path-exclude=/usr/bin/nsenter"}' "$RUNNER_TEMP/api-isolation.json"
-          mv "$RUNNER_TEMP/api-isolation.json" "$TRIVY_REPORT_DIR/api-isolation.json"
+          mv "$RUNNER_TEMP/api-isolation.json" "$TRIVY_REPORT_DIR/api-evidence/api-isolation.json"
 
       - name: Simulate API package removal options without changing packages
         run: >-
           docker run --rm --network none --user 0:0 --entrypoint python
           --mount "type=bind,src=$PWD/security/trivy/inspect-api-components.py,dst=/tmp/inspect-api-components.py,readonly"
           "$API_IMAGE" /tmp/inspect-api-components.py --removal-options
-          > "$TRIVY_REPORT_DIR/api-removal-options.json"
+          > "$TRIVY_REPORT_DIR/api-evidence/api-removal-options.json"
 
       - name: Check supported Debian candidates in disposable build base
         run: |
           docker build --target base --file apps/api/Dockerfile --tag "$API_IMAGE-base" .
-          docker run --rm --entrypoint python             --mount "type=bind,src=$PWD/security/trivy/inspect-api-updates.py,dst=/tmp/inspect-api-updates.py,readonly"             "$API_IMAGE-base" /tmp/inspect-api-updates.py > "$TRIVY_REPORT_DIR/api-debian-updates.json"
-          docker image inspect "$API_IMAGE" "$API_IMAGE-base" | python3 -c 'import json,sys; print(json.dumps({"images":[{"id":i["Id"],"repo_digests":i.get("RepoDigests",[]),"platform":i["Os"]+"/"+i["Architecture"],"user":i["Config"].get("User",""),"command":i["Config"].get("Cmd",[])} for i in json.load(sys.stdin)]}))' > "$TRIVY_REPORT_DIR/api-image-identities.json"
+          docker run --rm --entrypoint python             --mount "type=bind,src=$PWD/security/trivy/inspect-api-updates.py,dst=/tmp/inspect-api-updates.py,readonly"             "$API_IMAGE-base" /tmp/inspect-api-updates.py > "$TRIVY_REPORT_DIR/api-evidence/api-debian-updates.json"
+          docker image inspect "$API_IMAGE" "$API_IMAGE-base" | python3 -c 'import json,sys; print(json.dumps({"images":[{"id":i["Id"],"repo_digests":i.get("RepoDigests",[]),"platform":i["Os"]+"/"+i["Architecture"],"user":i["Config"].get("User",""),"command":i["Config"].get("Cmd",[])} for i in json.load(sys.stdin)]}))' > "$TRIVY_REPORT_DIR/api-evidence/api-image-identities.json"
           trivy image --config trivy.yaml --ignorefile .trivyignore.yaml --scanners vuln,secret             --format json --output "$TRIVY_REPORT_DIR/api-build-base.json" --timeout 15m "$API_IMAGE-base"
 
       - name: Build production web image
@@ -166,7 +167,7 @@ jobs:
 
       - name: Compare API privilege hardening with one vulnerability database
         run: |
-          mkdir -p .harness/any674-comparison
+          mkdir -p .harness/any674-comparison/reports
           python3 security/trivy/inspect-api-updates.py --baseline-dockerfile
           docker build --platform linux/amd64 --target production --file .harness/any674-comparison/control.Dockerfile --tag "$API_IMAGE-control" .
           docker run --rm --network none --entrypoint python --mount "type=bind,src=$PWD/security/trivy/inspect-api-components.py,dst=/tmp/probe.py,readonly" "$API_IMAGE-control" /tmp/probe.py > .harness/any674-comparison/control-components.json
@@ -174,13 +175,18 @@ jobs:
           for side in control final; do
             target="$API_IMAGE"
             if [ "$side" = control ]; then target="$API_IMAGE-control"; fi
-            trivy image --cache-dir "$RUNNER_TEMP/any674-db" --skip-db-update --skip-java-db-update --offline-scan --config trivy.yaml --ignorefile .trivyignore.yaml --scanners vuln,secret --format json --output ".harness/any674-comparison/$side-image.json" --timeout 15m "$target"
+            trivy image --cache-dir "$RUNNER_TEMP/any674-db" --skip-db-update --skip-java-db-update --offline-scan --config trivy.yaml --ignorefile .trivyignore.yaml --scanners vuln,secret --format json --output ".harness/any674-comparison/reports/$side-image.json" --timeout 15m "$target"
           done
           cp "$RUNNER_TEMP/any674-db/db/metadata.json" .harness/any674-comparison/database-metadata.json
           sha256sum "$RUNNER_TEMP/any674-db/db/trivy.db" > .harness/any674-comparison/database.sha256
-          python3 scripts/repo.py trivy redact .harness/any674-comparison
+
+      - name: Redact API comparison reports
+        id: redact_comparison
+        if: always()
+        run: python3 scripts/repo.py trivy redact .harness/any674-comparison/reports
 
       - name: Retain sanitized API comparison evidence
+        if: ${{ always() && steps.redact_comparison.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: any674-image-comparison-${{ github.run_id }}-${{ github.run_attempt }}
@@ -188,19 +194,46 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Scan production PostgreSQL image
+        run: python3 scripts/repo.py trivy scan-production-image "$TRIVY_REPORT_DIR" --service postgres
+
+      - name: Scan production Caddy image
+        run: python3 scripts/repo.py trivy scan-production-image "$TRIVY_REPORT_DIR" --service caddy
+
       - name: Redact secret values from reports
         id: redact
         if: always()
         run: python3 scripts/repo.py trivy redact "$TRIVY_REPORT_DIR"
+
+      - name: Record scanner and report provenance
+        if: ${{ always() && steps.redact.outcome == 'success' }}
+        working-directory: .harness/trivy
+        run: |
+          mkdir -p provenance
+          trivy --version --format json > "$RUNNER_TEMP/trivy-version.json"
+          mv "$RUNNER_TEMP/trivy-version.json" provenance/trivy-version.json
+          if compgen -G '*.json' >/dev/null; then
+            sha256sum -- *.json > provenance/report-sha256.txt
+          fi
+          if compgen -G 'api-evidence/*.json' >/dev/null; then
+            sha256sum -- api-evidence/*.json > provenance/api-evidence-sha256.txt
+          fi
 
       - name: Upload Trivy reports
         if: ${{ always() && steps.redact.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: trivy-reports-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .harness/trivy/*.json
+          path: |
+            .harness/trivy/*.json
+            .harness/trivy/api-evidence/*.json
+            .harness/trivy/provenance/*
           if-no-files-found: error
           retention-days: 14
+
+      - name: Verify required Trivy reports
+        if: ${{ always() && steps.redact.outcome == 'success' }}
+        run: python3 scripts/repo.py trivy verify-reports "$TRIVY_REPORT_DIR"
 
       - name: Record report-only policy
         if: ${{ vars.TRIVY_ENFORCE != 'true' }}

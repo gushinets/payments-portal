@@ -196,3 +196,29 @@ scanner exception or downgrade. Restart local canonical checks after this source
 change; the earlier local fast attempt was interrupted during API tests and its
 full stage was unreached. Final-head CI/browser and canonical outcomes are recorded
 in the PR handoff to avoid presenting the earlier head as final verification.
+
+## Reconcile main after ANY-831 integration
+
+Fetched main236c852e88b5374dcc0c34baae4981bbc78c87c7 introduces production
+PostgreSQL/Caddy image scanning and strict Trivy report validation. The existing
+3ced88e0 PR branch conflicts in security.yml. Preserve both production-image
+coverage and API runtime/isolation/comparison evidence. Coverage assessment:
+existing Trivy gate tests cover ANY-831 schema/provenance/redaction contracts,
+but mixed API inventory and Trivy report directories need a merge regression.
+
+- [x] Reproduce the strict-redactor failure when API inventory shares the scan-report directory.
+- [x] Retain both workflow blocks, separate non-Trivy API evidence, and guard comparison uploads on successful redaction.
+- [ ] Run focused integration/contracts/static checks, commit/push the reconciled branch, verify mergeability and new-head CI. No PR merge/deploy or policy exception.
+
+The new suite first reproduced7 failures (including actual strict redaction of
+an API inventory) with1 contract-retention pass. Segregated inventory, scan and
+comparison paths retain all evidence and add a hash manifest for API diagnostics.
+The imported upload-order test now selects the named Trivy report artifact,
+rather than accidentally selecting the separate API-comparison artifact; none of
+its redaction/completeness/gate assertions are removed. Final focused102 cases
+pass. Initial combined164-case execution had only that old-selector failure;
+the subsequent focused run covers its correction. Docs, architecture and lint
+pass; independent read-only reconciliation review found no actionable issue.
+API Dockerfile/runtime/deployment and browser-port behavior are unchanged.
+Exact reconciled-head CI outcomes are recorded in the PR handoff; previous local
+Windows canonical API hangs remain a limitation, not evidence of a full pass.
