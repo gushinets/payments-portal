@@ -236,6 +236,9 @@ async def test_negative_first_bind_and_observation_roll_back_together(
     purchase = synthetic_prepare(factory, transport, purchase, uncertain=True)
     operation = next(op for op in purchase.operations if op.kind == "subscription")
     transport.subscriptions[0].update(state=3, current_blocking=0)
+    observation_ids = select(BillingStateObservation.observation_id)
+    with factory() as db:
+        observations_before = set(db.scalars(observation_ids))
 
     def fail(*args: object, **kwargs: object) -> None:
         raise RuntimeError("simulated first-bind enrollment failure")
@@ -250,7 +253,7 @@ async def test_negative_first_bind_and_observation_roll_back_together(
         saved = db.get(ExternalCreateOperation, operation.id)
         assert saved.bound_external_object_id is None and saved.send_fence == operation.fence
         assert db.scalar(select(func.count()).select_from(ExternalSubscription)) == 0
-        assert db.scalar(select(func.count()).select_from(BillingStateObservation)) == 0
+        assert set(db.scalars(observation_ids)) == observations_before
     recovered = await recover_financial(
         sources, step1_settings(), factory=factory, user_id=purchase.user_id, purchase_id=purchase.id
     )
@@ -273,6 +276,9 @@ async def test_reviewed_bound_financial_operation_is_completed_recovery_without_
     financial.financial_pending(factory, purchase, operation, conflict=True)
     current = service.read_purchase(factory, purchase.user_id, purchase.id)
     before = len(transport.requests)
+    observation_ids = select(BillingStateObservation.observation_id)
+    with factory() as db:
+        observations_before = set(db.scalars(observation_ids))
     result = await recover_financial(
         sources, step1_settings(), factory=factory, user_id=purchase.user_id, purchase_id=purchase.id
     )
@@ -293,5 +299,5 @@ async def test_reviewed_bound_financial_operation_is_completed_recovery_without_
     background_recovery.repair_batch(factory, step1_settings())
     with factory() as db:
         assert db.get(BillingWorkItem, claim.id).work_state == "completed"
-        assert db.scalar(select(func.count()).select_from(BillingStateObservation)) == 1
+        assert set(db.scalars(observation_ids)) == observations_before
         assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 1

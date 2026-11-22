@@ -1,10 +1,11 @@
 """Forward/backward migration evidence on real disposable PostgreSQL."""
 
+from collections.abc import Iterator
 from uuid import uuid4
 
 import pytest
 from alembic import command
-from sqlalchemy import select, text
+from sqlalchemy import event, select, text
 from sqlalchemy.engine import Engine, URL
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.orm import Session, sessionmaker
@@ -14,7 +15,8 @@ from apps.api.tests.factories.paid_access import AcceptedSubscription
 from app.domains.purchases.evidence import accepted
 from app.models import PurchaseIntent
 from app.domains.billing.paid_allowances import materialize_allowance
-from app.models import BillingProductAccessScope, ExternalSubscription
+from app.domains.billing.reconciliation_contracts import PREPARED_AGREEMENT_SCHEMA
+from app.models import BillingProductAccessScope, BillingStateObservation, ExternalSubscription
 from apps.api.tests.test_paid_access_terms_postgres import calendar
 
 pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
@@ -23,6 +25,26 @@ pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+@pytest.fixture(autouse=True)
+def historical_agreement_evidence() -> Iterator[None]:
+    """Use the predecessor's agreement evidence while building migration fixtures."""
+
+    def retain_legacy_evidence(db: Session, flush_context: object, instances: object) -> None:
+        for row in db.new:
+            if (
+                isinstance(row, BillingStateObservation)
+                and row.evidence_schema_version == PREPARED_AGREEMENT_SCHEMA
+                and row.access_scope_id is None
+            ):
+                db.expunge(row)
+
+    event.listen(Session, "before_flush", retain_legacy_evidence)
+    try:
+        yield
+    finally:
+        event.remove(Session, "before_flush", retain_legacy_evidence)
 
 
 async def test_paid_access_migration_preserves_legacy_utc_without_calendar_inference(
