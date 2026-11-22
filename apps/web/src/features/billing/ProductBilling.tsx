@@ -200,7 +200,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
   }, [begin, cancel, finishWork, productId, user.email_verified]);
 
   async function run(work: (token: string, requestId: string, current: () => boolean) => Promise<void>, visibleFailure: Failure | null = null) {
-    // The status and recovery buttons stay focusable while work is active.
+    // Pending purchase actions can stay focusable while this guard blocks repeat activation.
     if (busy.current || !user.email_verified) return;
     busy.current = true;
     poll.clearPause();
@@ -310,7 +310,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
           try {
             const existing = await currentPurchase(token, productId, id);
             if (current() && existing.purchase) {
-              setState({ kind: "purchase", purchase: existing.purchase });
+              showPurchase(existing.purchase);
               return;
             }
           } catch { /* Preserve the original conflict and request ID if inspection fails. */ }
@@ -323,7 +323,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
         throw error;
       }
       if (!current()) return;
-      setState({ kind: "purchase", purchase: result });
+      showPurchase(result);
       if (result.state === "created" || result.state === "preparing" || result.state === "awaiting_external_result") await prepare(token, result, id, current);
     });
   }
@@ -368,7 +368,9 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
           </div>)}
         </fieldset>
         {state.submission !== ReviewSubmission.Draft && <p>{t("confirmationUncertain")}</p>}
-        <button ref={confirmButton} className="btn-primary" type="button" disabled={working || readRefused || !state.review.documents.length || state.selected.length !== state.review.documents.length} onClick={() => void confirm()}>{t(state.submission === ReviewSubmission.Draft ? "confirm" : "retryConfirm")}</button>
+        <button ref={confirmButton} className="btn-primary" type="button" aria-disabled={working || undefined}
+          disabled={readRefused || !state.review.documents.length || state.selected.length !== state.review.documents.length}
+          onClick={() => void confirm()}>{t(state.submission === ReviewSubmission.Draft ? "confirm" : "retryConfirm")}</button>
       </div>}
     </>}
     {purchase && (linked || user.email_verified) && <div key={purchase.purchase_intent_id} className={linked ? undefined : "purchase-status"}>

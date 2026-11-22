@@ -14,6 +14,7 @@ async function syntheticBilling(page: Page, signedIn = true) {
     termsChanged: false, catalogUnavailable: false, scriptFailure: false, readyFailure: false,
     confirmations: [] as { key: string; body: unknown }[], advances: 0, advanceDelayMs: 0,
     advanceState: "linked" as PurchaseIntentResponse["state"],
+    beforeAdvance: async (): Promise<void> => undefined,
     bootstraps: [] as unknown[], beforeBootstrap: async (): Promise<void> => undefined
   };
   if (signedIn) await page.addInitScript(() => localStorage.setItem("anytoolai_session_token_v1", "synthetic-portal-session"));
@@ -71,6 +72,7 @@ async function syntheticBilling(page: Page, signedIn = true) {
     if (path === `/api/purchase-intents/${savedPurchase.purchase_intent_id}/advance`) {
       state.advances += 1;
       state.owned = { ...savedPurchase, state: state.advanceState };
+      await state.beforeAdvance();
       if (state.advanceDelayMs) await new Promise((resolve) => setTimeout(resolve, state.advanceDelayMs));
       return route.fulfill({ json: state.owned });
     }
@@ -331,6 +333,62 @@ test("keyboard recovery keeps focus until polling offers payment", async ({ page
   expect(state.advances).toBe(1);
   expect(state.bootstraps).toEqual([]);
 });
+
+for (const outcome of ["payment", "session refusal", "session refusal after moving focus"] as const) {
+  test(`keyboard confirmation keeps focus through ${outcome}`, async ({ page }) => {
+    const state = await syntheticBilling(page);
+    const confirmationReply = Promise.withResolvers<void>();
+    const advanceReply = Promise.withResolvers<void>();
+    let confirmationRequests = 0;
+    state.beforeAdvance = () => advanceReply.promise;
+    await page.route("**/api/purchase-intents", async (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      confirmationRequests += 1;
+      await confirmationReply.promise;
+      return outcome === "payment" ? route.fallback() : route.abort("failed");
+    });
+    if (outcome !== "payment") {
+      await page.route("**/api/purchase-intents/current?*", (route) => confirmationRequests
+        ? route.fulfill({ status: 401, json: { detail: { code: "billing_session_required" } } })
+        : route.fallback());
+    }
+
+    const panel = await openProduct(page);
+    try {
+      await panel.getByRole("button", { name: ru.Purchase.buy, exact: true }).click();
+      await panel.getByRole("checkbox").check();
+      await panel.getByRole("button", { name: ru.Purchase.confirm, exact: true }).focus();
+      await page.keyboard.press("Enter");
+      const retry = panel.getByRole("button", { name: ru.Purchase.retryConfirm });
+      await expect.poll(() => confirmationRequests).toBe(1);
+      await expect(retry).toBeDisabled();
+      await expect(retry).toBeFocused();
+      await page.keyboard.press("Enter");
+
+      const { title, version } = purchaseReview.documents[0];
+      const terms = panel.getByRole("link", { name: `${title} · ${version}` });
+      if (outcome === "session refusal after moving focus") await terms.focus();
+      confirmationReply.resolve();
+
+      if (outcome === "payment") {
+        await expect(panel.getByRole("button", { name: ru.Purchase.continue, exact: true })).toBeFocused();
+        await expect(panel.getByRole("link", { name: ru.Billing.pay })).toBeFocused({ timeout: 9000 });
+        expect(state.advances).toBe(1);
+      } else {
+        await expect(panel.getByRole("alert")).toContainText(ru.Billing.errors.session);
+        await expect(retry).toBeDisabled();
+        const nextAction = outcome === "session refusal" ? panel.getByRole("button", { name: ru.Purchase.refresh }) : terms;
+        await expect(nextAction).toBeFocused();
+        expect(state.advances).toBe(0);
+      }
+      expect(confirmationRequests).toBe(1);
+      expect(state.bootstraps).toEqual([]);
+    } finally {
+      confirmationReply.resolve();
+      advanceReply.resolve();
+    }
+  });
+}
 
 test("recovered agreement allows explicit continuation of the same purchase", async ({ page }, testInfo) => {
   const state = await syntheticBilling(page);

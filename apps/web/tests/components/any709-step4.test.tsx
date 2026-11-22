@@ -221,14 +221,17 @@ it("offers payment from saved status before advance replies and ignores the olde
   await act(async () => { renderProduct(); });
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.buy })); });
   fireEvent.click(screen.getByRole("checkbox"));
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.confirm })); });
+  const confirmButton = screen.getByRole("button", { name: ru.Purchase.confirm });
+  confirmButton.focus();
+  await act(async () => { fireEvent.click(confirmButton); });
   expect(advance).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("button", { name: ru.Purchase.continue })).toHaveFocus();
   expect(screen.queryByRole("link", { name: ru.Billing.pay })).not.toBeInTheDocument();
 
   owned = savedPurchase;
   await act(async () => vi.advanceTimersByTimeAsync(10_000));
 
-  expect(screen.getByRole("link", { name: ru.Billing.pay })).toBeVisible();
+  expect(screen.getByRole("link", { name: ru.Billing.pay })).toHaveFocus();
   await act(async () => reply.resolve(json({ ...savedPurchase, state: "awaiting_external_result" })));
   expect(screen.getByRole("link", { name: ru.Billing.pay })).toBeVisible();
   expect(confirm).toHaveBeenCalledTimes(1);
