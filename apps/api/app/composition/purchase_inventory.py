@@ -6,19 +6,21 @@ from typing import Any
 from starlette.concurrency import run_in_threadpool
 
 from app.composition.purchase_inventory_history import (
+    AuditedCompetitors,
     ReleasedSubscriptionInventory,
-    load_audited_subscription_candidates,
+    load_audited_competitors,
     observe_released_subscription,
+    read_bound_subscriptions,
     read_inventory_candidate,
     subscription_listing_identities,
 )
-from app.domains.billing.operator_contracts import LateObjectDisposition
-from app.composition.reconciliation import read_subscription_source, reconcile_subscription
+from app.domains.billing.operator_contracts import AuditedSubscriptionConclusion, LateObjectDisposition
+from app.composition.reconciliation import read_subscription_source
 from app.domains.billing.reconciliation import read_source_time
 from app.core.errors import AppError
 from app.core.settings import Settings
 from app.domains.billing.discovery import DiscoveredCandidate, ProductDiscovery, scope_versions
-from app.domains.billing.paid_policy import CandidateConclusion as Conclusion, PaidDecision, paid_decision
+from app.domains.billing.paid_policy import CandidateConclusion as Conclusion
 from app.domains.billing.background_recovery import customer_snapshot
 from app.domains.billing.contracts import CustomerOpen
 from app.domains.billing.customer_conflicts import record_customer_conflict
@@ -29,9 +31,9 @@ from app.domains.billing.reconciliation_contracts import (
 )
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.catalog.publication import SessionFactory
-from app.domains.purchases import financial, service
+from app.domains.purchases import financial
 from app.domains.purchases.contracts import Purchase, PurchaseInventoryIncomplete
-from app.domains.purchases.inventory import same_purchase
+from app.domains.purchases.inventory import same_purchase, save_audited_subscription_reads
 from app.domains.purchases.inventory_contracts import InventoryCandidateProof, InventoryResult, InventoryStale
 from app.infrastructure.preflight import (
     PreflightAdmission,
@@ -41,10 +43,10 @@ from app.infrastructure.preflight import (
 )
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.errors import LbxResponseInvalid, LbxScopeMismatch
-from app.integrations.lbx.financial import Subscription, agreement_is_closed, subscription_lifecycle
+from app.integrations.lbx.financial import Agreement, Subscription, agreement_is_closed, subscription_lifecycle
 from app.integrations.lbx.reconciliation import MAX_RELEVANT_SUBSCRIPTIONS, timely_point
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State
-from app.models import ExternalSubscriptionLifecycleStatus as Lifecycle, PurchaseIntentState
+from app.models import ExternalSubscriptionLifecycleStatus as Lifecycle
 
 
 async def collect_inventory(
@@ -76,16 +78,14 @@ async def collect_inventory(
     if reuse is not None and not same_purchase(versions[reuse.purchase.id], reuse.purchase):
         raise InventoryStale()
     scope_state = await delegate(scope_versions, factory, initial[0]) if initial else {}
-    audited_candidates = (
-        await delegate(load_audited_subscription_candidates, factory, initial[0]) if initial else frozenset()
+    audited = (
+        await delegate(load_audited_competitors, factory, current, initial[0])
+        if initial
+        else AuditedCompetitors(current)
     )
-    audited_ids = {candidate.external_id for candidate in audited_candidates}
-    candidates = {purchase.accepted.selection.product_id: [] for purchase in initial}
-    product_complete = dict.fromkeys(candidates, True)
-    sources = []
+    audited_ids = audited.case_ids.keys()
+    audited_observation_ids = frozenset(observation.id for observation in audited.observations.values())
     conflicts, pending = set(), set()
-    complete = True
-    conflicting_bindings: set[str] = set()
     bindings = {
         operation.bound_id: purchase
         for purchase in initial
@@ -99,74 +99,30 @@ async def collect_inventory(
         if operation.kind == Kind.AGREEMENT and operation.bound_id is not None
     }
     if len(bindings) > MAX_RELEVANT_SUBSCRIPTIONS:
-        return InventoryResult(current, initial, (), (), False, audited_candidates=audited_candidates)
-    # Canonical reads belong to their existing lease, including when absent from
-    # discovery or already in review. Commit timely negatives before later I/O.
-    for provider_id, purchase in bindings.items():
-        product = purchase.accepted.selection.product_id
-        conclusion = Conclusion.INCOMPLETE
-        committed = None
-        if reuse is not None and purchase.id == reuse.purchase.id:
-            assert reuse.proof is not None
-            proof = reuse.proof
-        else:
-            try:
-                identity = await delegate(service.linked_subscription_id, factory, purchase)
-                result = await reconcile_subscription(
-                    client,
-                    admission,
-                    configuration,
-                    factory=factory,
-                    subscription_id=identity,
-                    budget=budget,
-                    work_claim=work_claim,
-                    delegate=delegate,
-                    expected=purchase,
-                )
-                versions[purchase.id] = result.purchase
-                sources.append(result)
-                committed = result
-                proof = result.proof
-            except AppError:
-                complete = False
-                product_complete[product] = False
-                candidates[product].append(
-                    DiscoveredCandidate(
-                        identity=provider_id,
-                        agreement_id=next(op.bound_id for op in purchase.operations if op.kind == Kind.AGREEMENT),
-                        purchase_id=purchase.id,
-                        conclusion=conclusion,
-                    )
-                )
-                continue
-        if proof.identity == IdentityProof.CONFLICT and "subscription_identity_conflict" in proof.reasons:
-            conflicting_bindings.add(provider_id)
-        # Reused operator proof contributes completeness but supplies no committed
-        # source receipt: only the final audited writer may apply/select it.
-        if proof.complete and (committed is None or committed.purchase.state != PurchaseIntentState.MANUAL_REVIEW):
-            conclusion = Conclusion.ELIGIBLE if paid_decision(proof) == PaidDecision.GRANT else Conclusion.INELIGIBLE
-        elif proof.identity == IdentityProof.MATCH and proof.lifecycle == Lifecycle.ENDED:
-            conclusion = Conclusion.INELIGIBLE
-        product_complete[product] &= conclusion != Conclusion.INCOMPLETE
-        candidates[product].append(
-            DiscoveredCandidate(
-                identity=provider_id,
-                agreement_id=next(op.bound_id for op in purchase.operations if op.kind == Kind.AGREEMENT),
-                purchase_id=purchase.id,
-                conclusion=conclusion,
-                subscription_id=committed.subject.subscription_id if committed else None,
-                observation_id=committed.observation_id if committed else None,
-                fence=committed.subject.fence if committed else None,
-            )
+        return InventoryResult(
+            current,
+            initial,
+            (),
+            (),
+            False,
+            audited_candidates=audited.candidates,
+            audited_observation_ids=audited_observation_ids,
         )
-        # Inventory needs original ownership, applicable terms and lifecycle,
-        # not a complete paid-cycle calendar for an already bound object.
-        if (
-            proof.identity != IdentityProof.MATCH
-            or proof.commercial == CommercialProof.INCOMPLETE
-            or proof.lifecycle is None
-        ):
-            complete = False
+    bound = await read_bound_subscriptions(
+        client,
+        admission,
+        configuration,
+        factory=factory,
+        versions=versions,
+        bindings=bindings,
+        audited=audited,
+        budget=budget,
+        reuse=reuse,
+        work_claim=work_claim,
+        delegate=delegate,
+    )
+    candidates, product_complete = bound.candidates, bound.product_complete
+    conflicting_bindings, complete = bound.conflicting_bindings, bound.complete
     try:
         if reuse is None:
             try:
@@ -191,31 +147,34 @@ async def collect_inventory(
             selection = purchase.accepted.selection
             products_by_tariff.setdefault(selection.tariff_id, set()).add(selection.product_id)
 
-        def implicated_products(row: Subscription) -> set[str]:
-            subscription_id, agreement_id = str(row.subscription_id), str(row.agreement_id)
-            bound = bindings.get(subscription_id)
-            retired_subscription = retired_index.subscriptions.get(subscription_id)
-            retired_agreement = retired_index.agreements.get(agreement_id)
-            owners = [bound, agreements.get(agreement_id)]
-            owners.extend(history.purchase for history in (retired_subscription, retired_agreement) if history)
-            owned = {owner.accepted.selection.product_id for owner in owners if owner is not None}
-            # A historical agreement alone cannot establish ownership of this subscription.
-            if (
-                not owned
-                or subscription_id in audited_ids
-                or (retired_agreement is not None and bound is None and retired_subscription is None)
-            ):
-                owned.update(products_by_tariff.get(row.tariff_id, ()))
-            return owned & candidates.keys()
+        def implicated_products(subscription_id: str, row: Subscription) -> set[str]:
+            products = retired_index.implicated_products(
+                subscription_id, row, bindings, agreements, products_by_tariff, audited_ids
+            )
+            return products & candidates.keys()
 
         relevant: dict[str, Subscription | None] = {
             str(row.subscription_id): row
             for row in rows
-            if str(row.subscription_id) in audited_ids or implicated_products(row) or retired_index.owner(row)
+            if str(row.subscription_id) in audited_ids
+            or implicated_products(str(row.subscription_id), row)
+            or retired_index.owner(row)
         }
-        # Canonical contradictions and audited competitors survive discovery omissions.
-        for provider_id in sorted(conflicting_bindings | audited_ids):
+        for provider_id in sorted(conflicting_bindings):
             relevant.setdefault(provider_id, None)
+        omitted = sorted(audited_ids - audited.retired_ids() - relevant.keys() - bindings.keys())
+        if len(relevant) <= MAX_RELEVANT_SUBSCRIPTIONS < len(relevant) + len(omitted):
+            # Progress through old proof without authorizing admission from a partial pass.
+            complete = False
+            product_complete = dict.fromkeys(product_complete, False)
+            offset = (work_claim.attempt_number - 1) % len(omitted) if work_claim else 0
+            batch = (omitted[offset:] + omitted[:offset])[:MAX_RELEVANT_SUBSCRIPTIONS]
+            for provider_id in batch:
+                budget.check()
+                await audited.read_omitted(client, factory, provider_id, budget, delegate)
+            relevant.clear()
+        else:
+            relevant.update(dict.fromkeys(omitted))
         within_read_limit = len(relevant) <= MAX_RELEVANT_SUBSCRIPTIONS
         complete &= within_read_limit
         confirmed_agreements: set[int] = set()
@@ -233,7 +192,7 @@ async def collect_inventory(
                 continue
             unlisted_competitor = candidate is None and known is None
             if candidate is not None:
-                affected = implicated_products(candidate)
+                affected = implicated_products(provider_id, candidate)
                 agreement_id = str(candidate.agreement_id)
             elif known is not None:
                 affected = {known.accepted.selection.product_id}
@@ -349,6 +308,22 @@ async def collect_inventory(
                             ):
                                 conflicts.add(owner.id)
                         if point is None or point.agreement_id == candidate.agreement_id:
+                            if (
+                                provider_id in audited_ids
+                                and proof.identity == IdentityProof.MATCH
+                                and proof.lifecycle
+                                in {
+                                    Lifecycle.ACTIVE,
+                                    Lifecycle.INACTIVE,
+                                }
+                            ):
+                                audited.record(
+                                    provider_id,
+                                    str(candidate.agreement_id),
+                                    candidate.tariff_id,
+                                    proof.read_finished_at,
+                                    AuditedSubscriptionConclusion.CONTRADICTED,
+                                )
                             continue
                         historical_read = proof.read_started_at, proof.read_finished_at
             if historical_read is None:
@@ -356,13 +331,30 @@ async def collect_inventory(
                 point = await read_inventory_candidate(
                     lambda: client.get_subscription(subscription_id=int(provider_id), budget=budget), budget
                 )
-                if point is None or str(point.subscription_id) != provider_id:
+                if point is None:
                     complete = False
                     if unlisted_competitor:
                         # With no current point or listing its current tariff is unknown.
                         product_complete = dict.fromkeys(product_complete, False)
                     continue
                 historical_read = read_started, await delegate(read_source_time, factory)
+            point_agreement_id = point.agreement_id
+            agreement_read = False
+            point_agreement: Agreement | None = None
+
+            async def read_agreement() -> Agreement | None:
+                nonlocal agreement_read, point_agreement
+                if not agreement_read:
+                    point_agreement = await read_inventory_candidate(
+                        lambda: client.get_agreement(agreement_id=point_agreement_id, budget=budget), budget
+                    )
+                    agreement_read = True
+                    if provider_id in audited_ids and point_agreement is not None:
+                        audited.observe(provider_id, point, point_agreement, await delegate(read_source_time, factory))
+                return point_agreement
+
+            if provider_id in audited_ids:
+                audited.observe(provider_id, point, None, historical_read[1])
             if point.agreement_id == rejected_original_agreement_id:
                 if different_receipt_owner is not None:
                     # Its dedicated agreement really has a different subscription from its receipt.
@@ -383,7 +375,7 @@ async def collect_inventory(
                     delegate,
                 )
             if unlisted_competitor or listing_disagrees or history is not None:
-                for product in implicated_products(point) - affected:
+                for product in implicated_products(provider_id, point) - affected:
                     candidates[product].append(
                         DiscoveredCandidate(
                             identity=provider_id, agreement_id=str(point.agreement_id), conclusion=Conclusion.INCOMPLETE
@@ -405,9 +397,7 @@ async def collect_inventory(
                     late_observation = await observe_released_subscription(
                         history.purchase,
                         point,
-                        lambda: read_inventory_candidate(
-                            lambda: client.get_agreement(agreement_id=point.agreement_id, budget=budget), budget
-                        ),
+                        read_agreement,
                         read_started_at=historical_read[0],
                         read_finished_at=historical_read[1],
                         subscription_id=int(provider_id),
@@ -428,18 +418,20 @@ async def collect_inventory(
                 if late_observation.disposition != LateObjectDisposition.UNRELATED:
                     complete = False
                     if late_observation.disposition == LateObjectDisposition.RELATIONSHIP_CONFLICT:
+                        if provider_id in audited_ids:
+                            audited.record(
+                                provider_id,
+                                str(point.agreement_id),
+                                point.tariff_id,
+                                await delegate(read_source_time, factory),
+                                AuditedSubscriptionConclusion.CONTRADICTED,
+                            )
                         for product in products_by_tariff.get(point.tariff_id, ()):
                             product_complete[product] = False
                     continue
                 # Disproof settles the historical case. Apply ordinary admission to the live object below.
-            agreement = await read_inventory_candidate(
-                lambda: client.get_agreement(agreement_id=point.agreement_id, budget=budget), budget
-            )
-            if (
-                agreement is None
-                or agreement.agreement_id != point.agreement_id
-                or agreement.user_id != int(current.provider_id)
-            ):
+            agreement = await read_agreement()
+            if agreement is None or agreement.user_id != int(current.provider_id):
                 complete = False
                 continue
             if agreement_is_closed(agreement) or subscription_lifecycle(point)[0] == Lifecycle.ENDED:
@@ -463,8 +455,10 @@ async def collect_inventory(
             complete = False
         for product in candidates:
             product_complete[product] &= subscription_listing_identities(
-                tuple(row for row in rows if product in implicated_products(row))
-            ) == subscription_listing_identities(tuple(row for row in again if product in implicated_products(row)))
+                tuple(row for row in rows if product in implicated_products(str(row.subscription_id), row))
+            ) == subscription_listing_identities(
+                tuple(row for row in again if product in implicated_products(str(row.subscription_id), row))
+            )
     except InventoryStale:
         raise
     except (AppError, PreflightDeadlineExceeded, PreflightCleanupPending):
@@ -486,13 +480,17 @@ async def collect_inventory(
         )
         for product, observed in sorted(candidates.items())
     )
-    return InventoryResult(
+    result = InventoryResult(
         current,
         tuple(versions.values()),
         tuple(sorted(conflicts)),
         tuple(sorted(pending)),
         complete,
         products=products,
-        sources=tuple(sources),
-        audited_candidates=audited_candidates,
+        sources=tuple(bound.sources),
+        audited_candidates=audited.candidates,
+        audited_observation_ids=audited_observation_ids,
     )
+    if audited.updates:
+        return await delegate(save_audited_subscription_reads, factory, result, audited.updates, work_claim)
+    return result

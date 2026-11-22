@@ -202,6 +202,7 @@ def claim_work(
             now,
             row.lease_expires_at,
             row.recipient_id,
+            attempt_number=row.attempt_count,
         )
         db.commit()
         # A failed/uncertain commit cannot return ownership or start HTTP.

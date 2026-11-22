@@ -7,7 +7,7 @@ from functools import partial
 from threading import Event
 from uuid import UUID
 from concurrent.futures import Future
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 import pytest
@@ -27,7 +27,7 @@ from app.domains.purchases.contracts import Purchase, PurchaseRefused, PurchaseI
 from app.domains.purchases.inventory_contracts import InventoryStale
 from app.infrastructure.queries import billing_operator
 from app.infrastructure.preflight import PreflightBudget
-from app.integrations.lbx.financial import NewAgreement, Subscription
+from app.integrations.lbx.financial import Agreement, NewAgreement, Subscription
 from app.integrations.lbx.errors import LbxTimeout
 from app.models import (
     BillingProductAccessScope,
@@ -348,6 +348,141 @@ async def test_omitted_disproved_subscription_must_be_point_read_before_create(
     monkeypatch.setattr(client, "get_subscription", read_subscription)
     with pytest.raises(PurchaseInventoryIncomplete):
         await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=replacement.id)
+    assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
+
+
+@pytest.mark.parametrize("visible", [0, 20])
+async def test_ended_audited_subscriptions_can_drain_an_overflow(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    visible: int,
+) -> None:
+    transport, sources, _ = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    old, replacement, command = await _independent_late_subscription(background_scenario, factory)
+    terminal.resolve_purchase(factory, config, command, PRINCIPAL)
+    agreement, subscription = old.operations
+    first = transport.subscriptions[0]
+    first["state"] = 3
+    retired_ids = set(range(1567, 1588 - visible))
+    for external_id in sorted(retired_ids - {1567}):
+        observed_at = datetime.now(UTC)
+        case = terminal.record_late_object(
+            factory,
+            old,
+            subscription.id,
+            str(external_id),
+            observed_at,
+            read_finished_at=observed_at,
+            subscription_point=LateSubscriptionPoint(agreement.bound_id, first["tariff_id"], original_live_proven=True),
+        ).review
+        assert case is not None
+        disproof = terminal.OperationEvidence(
+            operation_id=subscription.id,
+            outcome=terminal.TerminalEvidenceKind.NO_EXTERNAL_EFFECT,
+            unrelated_object_ids=(str(external_id),),
+        )
+        terminal.resolve_purchase(
+            factory, config, _confirmation(factory, old, disproof, case_id=case.review_case_id), PRINCIPAL
+        )
+        transport.subscriptions.append({**first, "subscription_id": external_id})
+    transport.subscriptions.extend({**first, "subscription_id": 2000 + offset} for offset in range(visible))
+
+    client = sources.require_lbx()
+    discover = client.discover_subscriptions
+
+    async def omit_audited(*, user_id: int, budget: PreflightBudget, agreement_id: int | None = None):
+        return tuple(
+            row
+            for row in await discover(user_id=user_id, budget=budget, agreement_id=agreement_id)
+            if row.subscription_id not in retired_ids
+        )
+
+    monkeypatch.setattr(client, "discover_subscriptions", omit_audited)
+    transport.requests.clear()
+    overflow = await inventory(sources, factory, replacement)
+    assert not overflow.complete and not overflow.products[0].complete
+    points = [item.url.path for item in transport.requests if "/subscriptions/" in item.url.path]
+    assert 0 < len(points) <= 20
+    assert all(int(path.rsplit("/", 1)[1]) in retired_ids for path in points)
+    assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
+    fresh = await inventory(sources, factory, replacement)
+    assert fresh.complete and fresh.products[0].complete
+    fresh.require_clear(replacement)
+
+
+@pytest.mark.parametrize("historical_agreement", [True, False])
+async def test_inventory_uses_point_url_identity_for_audited_subscription(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    historical_agreement: bool,
+) -> None:
+    transport, sources, _ = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    _, replacement, command = await _independent_late_subscription(background_scenario, factory)
+    terminal.resolve_purchase(factory, config, command, PRINCIPAL)
+    transport.hide.add("/subscriptions")
+    transport.subscriptions[0]["state"] = 3
+    if not historical_agreement:
+        transport.agreements.append({**transport.agreements[0], "agreement_id": 900})
+        transport.subscriptions[0]["agreement_id"] = 900
+    client = sources.require_lbx()
+    get_subscription, get_agreement = client.get_subscription, client.get_agreement
+
+    async def subscription_echo(*, subscription_id: int, budget: PreflightBudget) -> Subscription:
+        point = await get_subscription(subscription_id=subscription_id, budget=budget)
+        return point.model_copy(update={"subscription_id": 2999})
+
+    async def agreement_echo(*, agreement_id: int, budget: PreflightBudget) -> Agreement:
+        point = await get_agreement(agreement_id=agreement_id, budget=budget)
+        return point.model_copy(update={"agreement_id": 2998})
+
+    monkeypatch.setattr(client, "get_subscription", subscription_echo)
+    monkeypatch.setattr(client, "get_agreement", agreement_echo)
+    result = await inventory(sources, factory, replacement)
+    assert result.complete and result.products[0].complete
+    assert [candidate.identity for candidate in result.products[0].candidates] == ["1567"]
+
+
+async def test_reappearing_competitor_invalidates_retained_terminal_read(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    transport, sources, _ = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    _, replacement, command = await _independent_late_subscription(background_scenario, factory)
+    terminal.resolve_purchase(factory, config, command, PRINCIPAL)
+    transport.hide.add("/subscriptions")
+    point = transport.subscriptions[0]
+    point["state"] = 3
+    assert (await inventory(sources, factory, replacement)).complete
+    transport.requests.clear()
+    collected = await inventory(sources, factory, replacement)
+    collected.require_clear(replacement)
+    assert not any(item.url.path.endswith("/subscriptions/1567") for item in transport.requests)
+
+    point["state"] = 2
+    transport.hide.clear()
+    assert (await inventory(sources, factory, replacement)).conflicts == (replacement.id,)
+    transport.hide.add("/subscriptions")
+    transport.requests.clear()
+    assert (await inventory(sources, factory, replacement)).conflicts == (replacement.id,)
+    assert any(item.url.path.endswith("/subscriptions/1567") for item in transport.requests)
+
+    op = replacement.operations[0]
+    agreement = NewAgreement(user_id=345, organization_id=21, agreement_number=op.key, create_date=date.today())
+    with pytest.raises(InventoryStale):
+        financial.claim_financial(
+            factory,
+            replacement,
+            op,
+            agreement.request_document(),
+            configuration=config,
+            token=TOKEN,
+            inventory=collected,
+        )
     assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
 
 
@@ -819,6 +954,86 @@ async def test_replacement_recover_checks_terminal_owner_at_first_bind(
         assert (case["reason"], case["scope_reference"]) == ("financial_binding_conflict", str(op.id))
     else:
         assert result == 0 and saved.state == PurchaseIntentState.LINKED
+
+
+@pytest.mark.parametrize("disputed", [True, False], ids=["disputed-id", "genuine-id"])
+async def test_replacement_recover_rechecks_late_case_before_first_binding(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    disputed: bool,
+) -> None:
+    transport, sources, purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    old = synthetic_prepare(factory, transport, purchase, uncertain=True)
+    transport.agreements[0]["close_date"] = datetime.now(UTC).date().isoformat()
+    terminal.resolve_purchase(factory, config, request(factory, old, confirmed=True), PRINCIPAL)
+    old = service.read_purchase(factory, old.user_id, old.id)
+    replacement = await accept(sources, factory, key="recover-while-original-case-opens")
+    transport.hide.add("/subscriptions")
+    transport.fail_create = "/subscriptions"
+    await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=replacement.id)
+    before = service.read_purchase(factory, replacement.user_id, replacement.id)
+    old_point, genuine_point = transport.subscriptions
+    assert (old_point["subscription_id"], genuine_point["subscription_id"]) == (567, 568)
+    if disputed:
+        old_point.update(agreement_id=genuine_point["agreement_id"], state=genuine_point["state"])
+        transport.subscriptions.pop()
+    transport.hide.clear()
+
+    client = sources.require_lbx()
+    get_subscription = client.get_subscription
+    cases = []
+
+    async def open_late_case(*, subscription_id: int, budget: PreflightBudget) -> Subscription:
+        point = await get_subscription(subscription_id=subscription_id, budget=budget)
+        observed_at = datetime.now(UTC)
+        cases.append(
+            terminal.record_late_object(
+                factory,
+                old,
+                old.operations[1].id,
+                "567",
+                observed_at,
+                read_finished_at=observed_at,
+                subscription_point=LateSubscriptionPoint("456", point.tariff_id, original_live_proven=True),
+            ).review
+        )
+        return point
+
+    monkeypatch.setattr(client, "get_subscription", open_late_case)
+    if not disputed:
+        linked = await recover_financial(
+            sources, config, factory=factory, user_id=before.user_id, purchase_id=before.id
+        )
+        assert linked.operations[1].bound_id == "568"
+        assert len(cases) == 1 and cases[0] is not None
+        assert transport.creates("/agreements") == transport.creates("/subscriptions") == 1
+        return
+    with pytest.raises(PurchaseRefused, match="purchase_existing_subscription_review"):
+        await recover_financial(sources, config, factory=factory, user_id=before.user_id, purchase_id=before.id)
+    assert service.read_purchase(factory, before.user_id, before.id) == before
+    assert len(cases) == 1 and cases[0] is not None
+    with factory() as db:
+        assert (
+            db.scalar(select(ExternalSubscription).where(ExternalSubscription.purchase_intent_id == before.id)) is None
+        )
+        assert db.scalars(
+            select(ManualReviewCase).where(ManualReviewCase.case_state == "open")
+        ).one().review_case_id == (cases[0].review_case_id)
+
+    disproof = terminal.OperationEvidence(
+        operation_id=old.operations[1].id,
+        outcome=terminal.TerminalEvidenceKind.NO_EXTERNAL_EFFECT,
+        unrelated_object_ids=("567",),
+    )
+    terminal.resolve_purchase(
+        factory, config, _confirmation(factory, old, disproof, case_id=cases[0].review_case_id), PRINCIPAL
+    )
+    monkeypatch.setattr(client, "get_subscription", get_subscription)
+    linked = await recover_financial(sources, config, factory=factory, user_id=before.user_id, purchase_id=before.id)
+    assert linked.operations[1].bound_id == "567"
+    assert transport.creates("/agreements") == transport.creates("/subscriptions") == 1
 
 
 @pytest.mark.parametrize("audit_first", [True, False], ids=["audit-first", "bind-first"])

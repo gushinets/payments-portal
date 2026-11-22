@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Select, Text, and_, cast, exists, or_, select
+from sqlalchemy import Select, Text, and_, cast, exists, func, or_, select
 from sqlalchemy.orm import InstrumentedAttribute, Session, aliased
 from sqlalchemy.sql import ColumnElement
 from sqlalchemy.sql.selectable import Exists
@@ -279,6 +279,44 @@ def released_subscription_audits(
     return list(db.execute(query).tuples())
 
 
+def latest_audited_subscription_reads(
+    db: Session,
+    customer_id: UUID,
+    account_id: str,
+    user_id: UUID,
+    provider_customer_id: str,
+    external_ids: set[str],
+    *,
+    schema: str,
+) -> list[BillingStateObservation]:
+    observation = BillingStateObservation
+    document = observation.evidence_document
+    external_id = document["external_id"].as_string()
+    ranked = (
+        select(
+            observation.observation_id,
+            func.row_number()
+            .over(
+                partition_by=external_id,
+                order_by=(observation.observed_at.desc(), observation.observation_id),
+            )
+            .label("reading_order"),
+        )
+        .where(
+            observation.observation_kind == BillingStateObservationKind.AUDITED_SUBSCRIPTION_READ,
+            observation.evidence_schema_version == schema,
+            observation.external_billing_account_id == account_id,
+            observation.user_id == user_id,
+            document["customer_id"].as_string() == str(customer_id),
+            document["provider_customer_id"].as_string() == provider_customer_id,
+            external_id.in_(external_ids),
+        )
+        .subquery()
+    )
+    query = select(observation).join(ranked, ranked.c.observation_id == observation.observation_id)
+    return list(db.scalars(query.where(ranked.c.reading_order == 1)))
+
+
 def observations(db: Session, subscription_id: UUID) -> list[BillingStateObservation]:
     return list(
         db.scalars(
@@ -323,6 +361,28 @@ def has_newer_live_subscription_read(
     return bool(db.scalar(select(live_read)))
 
 
+def prepared_agreement_observation(
+    db: Session, purchase_id: UUID, agreement_id: str, *, schema: str
+) -> tuple[datetime, str | None] | None:
+    observation = BillingStateObservation
+    evidence = observation.evidence_document
+    return (
+        db.execute(
+            select(observation.observed_at, evidence["original_proof"]["agreement_closure"].as_string())
+            .where(
+                observation.purchase_intent_id == purchase_id,
+                observation.observation_kind == BillingStateObservationKind.TARGET_PRODUCT_DISCOVERY,
+                observation.evidence_schema_version == schema,
+                evidence["agreement_id"].as_string() == agreement_id,
+            )
+            .order_by(observation.observed_at.desc(), observation.observation_id)
+            .limit(1)
+        )
+        .tuples()
+        .first()
+    )
+
+
 def work(db: Session, references: tuple[str, ...]) -> list[BillingWorkItem]:
     return list(
         db.scalars(
@@ -346,6 +406,23 @@ def _open_purchase_reviews(customer_id: UUID, reason: str) -> Select[tuple[UUID,
 
 def has_open_purchase_review(db: Session, customer_id: UUID, *, reason: str) -> bool:
     return bool(db.scalar(select(_open_purchase_reviews(customer_id, reason).exists())))
+
+
+def has_open_late_object_review(
+    db: Session, operation: ExternalCreateOperation, external_id: str, *, reason: str, schema: str
+) -> bool:
+    case = ManualReviewCase
+    other = ExternalCreateOperation
+    query = _open_purchase_reviews(operation.customer_id, reason).where(
+        PurchaseIntent.purchase_intent_id != operation.purchase_intent_id,
+        PurchaseIntent.external_billing_account_id == operation.external_billing_account_id,
+        other.purchase_intent_id == PurchaseIntent.purchase_intent_id,
+        other.operation_kind == operation.operation_kind,
+        case.evidence_schema_version == schema,
+        case.evidence_document["operation_id"].as_string() == cast(other.create_operation_id, Text),
+        case.evidence_document["external_object_id"].as_string() == external_id,
+    )
+    return bool(db.scalar(select(query.exists())))
 
 
 def open_purchase_review_refs(db: Session, customer_id: UUID, *, reason: str, limit: int) -> list[tuple[UUID, UUID]]:

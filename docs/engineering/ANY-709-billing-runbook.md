@@ -571,10 +571,10 @@ independent of purchase lifecycle.
 
 Prepared product detail links to `/account?purchase=<id>#billing`. The deep link
 selects an owned purchase. A completed purchase shows its terminal outcome.
-The cabinet rereads a held purchase when its listed status differs from the
-detail or a complete list omits the purchase. It pauses payment for that
-selection and hides any open payment Widget while checking. If the status read
-fails, the customer can retry it in the cabinet. If the purchase is still held
+For a held purchase opened through that link, the cabinet rereads its status
+when the list and detail disagree or a complete list omits it. It pauses payment
+for that selection and hides any open payment Widget while checking. If the
+status read fails, the customer can retry it in the cabinet. If the purchase is still held
 and linked, the same Widget becomes visible again. If it was released, the
 cabinet closes the Widget and shows the terminal outcome and a link to buy
 again. A new Widget session requires a user action.

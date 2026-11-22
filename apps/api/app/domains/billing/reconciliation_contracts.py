@@ -16,6 +16,13 @@ from app.models import (
 RECONCILIATION_SCHEMA = "subscription-reconciliation:v2"
 RECONCILIATION_READ_SCHEMAS = ("subscription-reconciliation:v1", RECONCILIATION_SCHEMA)
 PREPARED_SUBSCRIPTION_SCHEMA = "prepared-subscription:v1"
+PREPARED_AGREEMENT_SCHEMA = "prepared-agreement:v1"
+
+
+class AgreementClosure(StrEnum):
+    OPEN = "open"
+    CLOSED = "closed"
+    UNKNOWN = "unknown"
 
 
 class CommercialProof(StrEnum):

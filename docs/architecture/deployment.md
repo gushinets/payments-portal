@@ -183,7 +183,7 @@ current migration chain and table inventory. Do not create a separate
 bootstrap CLI. Before starting normal runtime on a fresh database, verify:
 
 - Alembic reports one head and the database is at that head;
-- the current head is `20261117_821_merge` and exactly 30 application tables exist;
+- the current head is `20261122_821_inventory` and exactly 30 application tables exist;
 - every removed legacy catalog/order/payment/provider/subscription/
   entitlement/trial table is absent;
 - all seventeen billing/link/purchase tables are empty before explicit flows;
@@ -366,9 +366,9 @@ For a late case, pass `--case-id "$CASE_ID"` to `resolve-purchase`.
 
 ### Paired compatibility and synchronized cutover
 
-Deploy the ANY-821 Portal build with Alembic head `20261117_821_merge`. It joins
-the published ANY-766 head `20261113_0013` and terminal resolution revision
-`20261116_821`.
+Deploy the ANY-821 Portal build with Alembic head `20261122_821_inventory`. Its
+parent `20261117_821_merge` joins the published ANY-766 head `20261113_0013` and
+terminal resolution revision `20261116_821`.
 
 The reviewed ANY-766 source pair used Portal head `20261113_0013` and Kernel head
 `0022`, with consumer identity V2, AccessSnapshot V3 and
@@ -399,6 +399,10 @@ Even after a purchase was completed as `resolved_no_external_effect`, an open
 late-object review requires a compatible Portal reader to block new financial
 CREATEs for that customer. Confirming the object keeps the downgrade blocked.
 Ruling it out removes that review's restriction.
+`20261122_821_inventory` also refuses downgrade while the database contains
+an audited subscription observation or a prepared agreement observation
+without an access scope. Use a Portal image that understands these observations
+when retaining the database.
 The existing guards for retained V2 evidence, allowance activation and issuance
 budgets still apply.
 Keep the matching application and database backup together for recovery.
@@ -435,8 +439,8 @@ For a paired cutover from the Step 8 baseline:
    usage receiver permissions before enabling Portal delivery.
 3. While both old application sets remain stopped, run the selected Portal
    `migrate` image to apply `alembic upgrade head`. Verify
-   `20261117_821_merge` for the ANY-821 build. This head includes all ANY-766
-   revisions through `20261113_0013` and the terminal resolution revision. The
+   `20261122_821_inventory` for the ANY-821 build. This head includes all ANY-766
+   revisions through `20261113_0013`, terminal resolution and the observation checks. The
    [schema reference](payment-portal-data-model.md#physical-baseline) lists
    their effects. Keep the old Portal API and workers stopped. Configure
    consumers before the updated API starts and verifies P/digest and recipient

@@ -10,10 +10,11 @@ from sqlalchemy.orm import Session
 from app.core.settings import Settings
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.customers import lock_customer, lock_user
-from app.domains.billing.operator_cases import reviewed_unsent_operation
+from app.domains.billing.operator_cases import newer_open_agreement, reviewed_unsent_operation
 from app.domains.billing.operator_contracts import (
     AuditedObjects,
     LATE_REASON,
+    LATE_SCHEMA,
     TERMINAL_AUDIT_REASONS,
     TERMINAL_REASON,
     TERMINAL_SCHEMA as SCHEMA,
@@ -50,8 +51,6 @@ from app.models import (
     ManualReviewCase,
     PurchaseIntentState as IntentState,
 )
-
-LATE_SCHEMA = "purchase-late-object:v1"
 
 
 @dataclass(frozen=True)
@@ -182,6 +181,14 @@ def resolve_purchase(
                 raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
             if not required and retained and item.external_object_id not in retained:
                 raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
+            if (
+                late is None
+                and op.operation_kind == Kind.AGREEMENT
+                and snapshot.bound_id is not None
+                and item.external_object_id == snapshot.bound_id
+                and newer_open_agreement(db, op, snapshot.bound_id, evidence.confirmed_at)
+            ):
+                raise PurchaseRefused("purchase_resolution_confirmation_required", 409)
             if (
                 late is None
                 and op.operation_kind == Kind.SUBSCRIPTION

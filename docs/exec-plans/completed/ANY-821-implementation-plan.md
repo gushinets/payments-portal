@@ -1,7 +1,7 @@
 # ANY-821 - Terminal resolution for UNKNOWN purchases
 
 Status: Completed.
-Updated: 2026-11-20
+Updated: 2026-11-22
 Issue: [ANY-821](https://linear.app/paveldik/issue/ANY-821/define-and-implement-terminal-resolution-for-purchases-stuck-in)
 
 ## Implemented scope
@@ -23,12 +23,17 @@ and production enablement remain with ANY-504.
    for under the terminal completion procedure.
 4. **Object found after release.** A live original or a confirmed relationship
    conflict opens a case on the completed purchase. The operator resolves that
-   case for the named object. An independent live subscription on the same
-   tariff still blocks duplicate financial creation.
+   case for the named object. The open case prevents first binding of that
+   exact object to a replacement. An independent live subscription on the same
+   tariff still blocks duplicate financial creation. If omitted audit IDs push
+   the scan over its limit, bounded reads retain terminal evidence across retries
+   so a later complete scan can establish admission.
 5. **Partial preparation.** A known agreement and an uncertain subscription
    require separate evidence. Terminal completion records `resolved_external_terminal`
    when a created object is confirmed to have ended and the other operation is
-   also accounted for.
+   also accounted for. Retain the agreement status from first binding and
+   require fresh confirmation if that read found the agreement open after
+   the operator's confirmation.
 6. **Two-hour deadline.** Automatic discovery pauses for manual review. The
    customer or operator can still request GET-only recovery. The hold remains.
 7. **Cancellation, replay and replacement.** Operator completion releases the
@@ -36,5 +41,6 @@ and production enablement remain with ANY-504.
    command after restart. A replacement has its own consent and operations.
 
 See the [operator procedure](../../engineering/billing-background-operations.md#terminal-completion-any-821),
-[purchase history and downgrade rules](../../architecture/payment-portal-data-model.md#purchase-and-external-create-tables)
+[purchase history and downgrade rules](../../architecture/payment-portal-data-model.md#purchase-and-external-create-tables),
+[point-resource identity decision](../../architecture/decisions/0005-external-billing-boundary.md#accepted-point-resource-identity-decision---2026-11-01)
 and [customer journey](../../product/ru-mvp.md).

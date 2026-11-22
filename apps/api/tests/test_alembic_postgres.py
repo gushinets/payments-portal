@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.script import ScriptDirectory
+from alembic.util.exc import CommandError
 from sqlalchemy import inspect, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine, URL
@@ -20,7 +21,7 @@ BASELINE_REVISION = "20260924_0001"
 EMAIL_VERIFICATION_REVISION = "20261001_0002"
 BILLING_PREPARATION_REVISION = "20261029_0003"
 WORKER_REVISION = "20261028_0005"
-HEAD_REVISION = "20261117_821_merge"
+HEAD_REVISION = "20261122_821_inventory"
 
 SURVIVOR_TABLES = {
     "regions",
@@ -820,6 +821,90 @@ def test_terminal_backend_merge_preserves_history_from_either_published_head(
     assert _public_table_names(postgres_engine) == APPLICATION_TABLES | {"alembic_version"}
 
 
+@pytest.mark.parametrize(
+    ("observation_kind", "evidence_schema"),
+    [
+        ("audited_subscription_read", "audited-subscription-read:v1"),
+        ("target_product_discovery", "prepared-agreement:v1"),
+    ],
+)
+def test_any821_observation_history_prevents_downgrade(
+    postgres_engine: Engine, database_test_url: URL, observation_kind: str, evidence_schema: str
+) -> None:
+    reset_public_schema(postgres_engine)
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, "20261117_821_merge")
+        with postgres_engine.begin() as connection:
+            _seed_subscription_graph(connection)
+            before = connection.execute(
+                text("SELECT purchase_intent_id, accepted_snapshot FROM purchase_intents")
+            ).all()
+        command.upgrade(config, "head")
+        with postgres_engine.begin() as connection:
+            assert (
+                connection.execute(text("SELECT purchase_intent_id, accepted_snapshot FROM purchase_intents")).all()
+                == before
+            )
+            observation_id = connection.scalar(
+                text("""
+                INSERT INTO billing_state_observations
+                    (observation_id, observation_kind, external_billing_account_id, user_id, product_id, purchase_intent_id,
+                     observed_at, evidence_schema_version, evidence_document,
+                     completeness_classification, result_classification)
+                SELECT gen_random_uuid(), :kind, external_billing_account_id, user_id,
+                       CASE WHEN :kind = 'target_product_discovery' THEN product_id END,
+                       CASE WHEN :kind = 'target_product_discovery' THEN purchase_intent_id END,
+                       now(), :schema, '{}'::jsonb, 'complete', 'source_negative'
+                FROM purchase_intents LIMIT 1 RETURNING observation_id
+                """),
+                {"kind": observation_kind, "schema": evidence_schema},
+            )
+            assert observation_id is not None
+        with pytest.raises(CommandError, match="observations require compatible readers; downgrade refused"):
+            command.downgrade(config, "20261117_821_merge")
+    with postgres_engine.connect() as connection:
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == HEAD_REVISION
+        assert (
+            connection.scalar(
+                text("SELECT observation_kind FROM billing_state_observations WHERE observation_id = :id"),
+                {"id": observation_id},
+            )
+            == observation_kind
+        )
+
+
+def test_v2_observation_history_still_prevents_downgrade(postgres_engine: Engine, database_test_url: URL) -> None:
+    reset_public_schema(postgres_engine)
+    with alembic_test_config(database_test_url) as config:
+        command.upgrade(config, "head")
+        with postgres_engine.begin() as connection:
+            _seed_subscription_graph(connection)
+            observation_id = connection.scalar(
+                text("""
+                INSERT INTO billing_state_observations
+                    (observation_id, observation_kind, external_billing_account_id, user_id, product_id, subscription_id,
+                     observed_at, evidence_schema_version, evidence_document,
+                     completeness_classification, result_classification)
+                SELECT gen_random_uuid(), 'authoritative_subscription_read', external_billing_account_id,
+                       user_id, product_id, subscription_id, now(), 'subscription-reconciliation:v2',
+                       '{}'::jsonb, 'complete', 'paid_verified'
+                FROM external_subscriptions RETURNING observation_id
+                """)
+            )
+            assert observation_id is not None
+        with pytest.raises(RuntimeError, match="Activation/V2 evidence requires the new reader"):
+            command.downgrade(config, "20261111_0011")
+    with postgres_engine.connect() as connection:
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == HEAD_REVISION
+        assert (
+            connection.scalar(
+                text("SELECT observation_id FROM billing_state_observations WHERE observation_id = :id"),
+                {"id": observation_id},
+            )
+            == observation_id
+        )
+
+
 def test_clean_first_install_has_expected_revisions_and_exact_application_schema(
     postgres_engine: Engine,
     database_test_url: URL,
@@ -833,6 +918,7 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         assert script.get_bases() == [BASELINE_REVISION]
         assert [item.revision for item in script.walk_revisions()] == [
             HEAD_REVISION,
+            "20261117_821_merge",
             "20261113_0013",
             "20261113_0012",
             "20261111_0011",

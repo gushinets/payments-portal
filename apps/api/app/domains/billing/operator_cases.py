@@ -1,18 +1,25 @@
 """Exact review relationships accepted by the existing audited operator actions."""
 
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.domains.billing.contracts import CustomerOpen
 from app.domains.billing.operator_contracts import (
+    AUDITED_SUBSCRIPTION_SCHEMA,
     TERMINAL_AUDIT_REASONS,
     TERMINAL_SCHEMA,
     AuditedSubscriptionCandidate,
+    AuditedSubscriptionEvidence,
+    AuditedSubscriptionObservation,
     ResolutionRequest,
     TerminalAudit,
 )
+from app.domains.billing.reconciliation_contracts import PREPARED_AGREEMENT_SCHEMA, AgreementClosure
 from app.domains.catalog.commercial_offer import canonical_document, commercial_digest
+from app.domains.identity.services.auth import as_utc
 from app.domains.purchases.contracts import (
     FINANCIAL_REVIEW_SCHEMA,
     FinancialOperation,
@@ -81,6 +88,46 @@ def audited_subscription_candidates(
     return frozenset(
         candidate for operation_id, candidate in disproved if (operation_id, candidate.external_id) not in originals
     )
+
+
+def audited_subscription_reads(
+    db: Session,
+    customer: CustomerOpen,
+    purchase: Purchase,
+    candidates: frozenset[AuditedSubscriptionCandidate],
+) -> dict[str, AuditedSubscriptionObservation]:
+    if not candidates or customer.provider_id is None:
+        return {}
+    rows = queries.latest_audited_subscription_reads(
+        db,
+        customer.customer_id,
+        purchase.account_id,
+        purchase.user_id,
+        customer.provider_id,
+        {candidate.external_id for candidate in candidates},
+        schema=AUDITED_SUBSCRIPTION_SCHEMA,
+    )
+    try:
+        observations = [
+            AuditedSubscriptionObservation(
+                row.observation_id, row.observed_at, AuditedSubscriptionEvidence.model_validate(row.evidence_document)
+            )
+            for row in rows
+        ]
+    except ValidationError as error:
+        raise PurchaseInventoryIncomplete() from error
+    return {observation.evidence.external_id: observation for observation in observations}
+
+
+def newer_open_agreement(db: Session, op: ExternalCreateOperation, agreement_id: str, confirmed_at: datetime) -> bool:
+    observation = queries.prepared_agreement_observation(
+        db, op.purchase_intent_id, agreement_id, schema=PREPARED_AGREEMENT_SCHEMA
+    )
+    if observation is None:
+        # Older binders only persisted closed-agreement reads.
+        return op.resolved_at is not None and as_utc(op.resolved_at) > confirmed_at
+    observed_at, closure = observation
+    return as_utc(observed_at) > confirmed_at and closure == AgreementClosure.OPEN
 
 
 def possible_send_case(case: ManualReviewCase) -> bool:

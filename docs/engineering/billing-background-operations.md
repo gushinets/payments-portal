@@ -503,8 +503,9 @@ parser arguments exit 2.
   Output includes original operations/fences, current subscription facts/trust,
   `expected_resolution_digest`, financial request correlation keys, permanently
   bound object IDs (`external_object_id`) and saved CREATE IDs (`receipt_candidate_id`),
-  recent observation summaries, work and review IDs/digests. Work/review lists
-  cap at 100 with truncation flags; observations contain the latest 20 records.
+  work and review IDs/digests. Work/review lists cap at 100 with truncation flags.
+  `observations` contains up to 20 recent records for the linked subscription
+  and is empty until a subscription is linked.
   `blocking_late_reviews` lists up to 100 open late-object cases that block new
   financial CREATEs for this customer. Each entry contains the original
   `purchase_intent_id` and `review_case_id`. `blocking_late_reviews_truncated`
@@ -632,6 +633,39 @@ If a later authoritative read confirms that the original subscription is active
 or inactive, obtain a fresh confirmation before initial completion, even when
 commercial details are incomplete. This includes a first binding through
 `recover`. A refreshed digest alone does not renew the earlier confirmation.
+The same rule applies when first binding reads the original agreement as open.
+An omitted closure field provides no closure status. For a legacy binding with
+no stored observation, obtain fresh confirmation if its binding time is later
+than the confirmation you have.
+
+To check whether a bound agreement caused
+`purchase_resolution_confirmation_required`, use the same read-only SQL session
+and substitute the purchase ID from `inspect`:
+
+```sql
+SELECT o.resolved_at AS agreement_bound_at,
+       a.observed_at AS agreement_read_at,
+       a.evidence_document->'original_proof'->>'agreement_closure' AS agreement_closure
+FROM external_create_operations AS o
+LEFT JOIN LATERAL (
+    SELECT observed_at, evidence_document
+    FROM billing_state_observations
+    WHERE purchase_intent_id = o.purchase_intent_id
+      AND observation_kind = 'target_product_discovery'
+      AND evidence_schema_version = 'prepared-agreement:v1'
+      AND evidence_document->>'agreement_id' = o.bound_external_object_id
+    ORDER BY observed_at DESC, observation_id
+    LIMIT 1
+) AS a ON true
+WHERE o.purchase_intent_id = '<purchase-intent-uuid>'::uuid
+  AND o.operation_kind = 'agreement'
+  AND o.bound_external_object_id IS NOT NULL;
+```
+
+Compare `confirmed_at` with `agreement_read_at` when the closure is `open`.
+For a legacy binding without an observation, compare it with
+`agreement_bound_at`. If either applicable time is later, obtain fresh LBX
+confirmation before retrying.
 Keep provider payloads, secrets and personal data out of reason/reference.
 
 ```bash
@@ -683,8 +717,11 @@ When LBX lists a possible late object under a held purchase's agreement,
 inventory reads the subscription by ID to identify its actual agreement.
 A different saved receipt or an open binding review prevents binding it to the
 held purchase. Ordinary recovery can read a saved receipt ID omitted by the
-list. While the competing entries remain disputed, the held operation keeps
-its send fence. Two distinct IDs confirmed on its own dedicated agreement,
+list. An open late case on another purchase for the same customer and exact
+candidate ID also prevents first binding. Ordinary recovery returns
+`purchase_existing_subscription_review` and retains its operation for retry
+after the original case closes. While the competing entries remain disputed,
+the held operation keeps its send fence. Two distinct IDs confirmed on its own dedicated agreement,
 or a verified contradiction with its own receipt, require review. Once the
 original late case closes and the listing is corrected, GET-only recovery can
 bind the held purchase's own subscription.
@@ -720,8 +757,14 @@ Closing the case preserves the purchase's terminal outcome. A live independent
 subscription still blocks a new purchase on the same tariff from sending a
 financial CREATE until the subscription ends or its agreement closes.
 Inventory point-reads audited unrelated subscriptions even when discovery
-omits them. If the audited candidate set changes before the inventory is
-applied, admission and first-primary selection require a fresh inventory.
+omits them. A point-proven terminal subscription or closed owned agreement can
+be retained as evidence for an omitted ID. A listed candidate still needs a
+current point read. New live or contradictory evidence supersedes the retained
+terminal read. When omitted audit IDs alone push the scan over its candidate
+limit, a bounded pass checks those IDs and records its findings. The worker
+rotates through the remaining IDs on retry. Admission and first-primary
+selection require a subsequent complete scan. Changes to the audit set or the
+retained observations before application require a fresh inventory.
 A failed point read of a potential competitor on that tariff blocks first-primary
 selection for that inventory pass, even when the candidate is listed only under
 the historical agreement. The worker retries incomplete inventory.

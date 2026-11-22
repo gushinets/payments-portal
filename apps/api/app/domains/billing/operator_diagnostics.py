@@ -5,6 +5,7 @@ from uuid import UUID
 from app.core.settings import Settings
 from app.domains.billing.operator_contracts import (
     LATE_REASON,
+    LATE_SCHEMA,
     TERMINAL_REASON,
     TERMINAL_SCHEMA,
     LateObjectEvidence,
@@ -20,7 +21,6 @@ from app.infrastructure.queries import billing_operator as queries, billing_reco
 from app.infrastructure.queries.billing_customers import diagnostic_user
 from app.infrastructure.queries.billing_background import operation_subject
 from app.domains.billing.customer_scope import connection_account
-from app.domains.billing.terminal_resolution import LATE_SCHEMA
 from app.models import ManualReviewCase
 
 

@@ -164,15 +164,14 @@ async def test_commit_ack_duplicate_after_completion_never_revives_or_mutates(
     assert (await client.post(PATH, json=changed, headers=headers(config.backend_consumers[0]))).status_code == 204
     assert hint(factory).payload_document == body
     from alembic import command
+    from alembic.util.exc import CommandError
     from apps.api.tests.support.postgres import alembic_test_config
 
     with alembic_test_config(factory.kw["bind"].url) as migration:
-        # Normal reconciliation now retains V2/activation evidence, so 0012
-        # refuses before the older exhaustion-history guard can be reached.
-        with pytest.raises(RuntimeError, match="Activation/V2 evidence requires the new reader"):
+        with pytest.raises(CommandError, match="ANY-821 inventory observations require compatible readers"):
             command.downgrade(migration, "20261111_0010")
     with factory() as db:
-        assert db.scalar(text("SELECT version_num FROM alembic_version")) == "20261117_821_merge"
+        assert db.scalar(text("SELECT version_num FROM alembic_version")) == "20261122_821_inventory"
     assert hint(factory).payload_document == body
     assert hint(factory).work_state == BillingWorkState.COMPLETED
     assert hint(factory).enqueue_generation == done.enqueue_generation

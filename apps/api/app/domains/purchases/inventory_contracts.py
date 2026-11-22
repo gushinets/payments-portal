@@ -32,6 +32,7 @@ class InventoryResult:
     sources: tuple[ReconciliationResult, ...] = ()
     discovery_ids: tuple[UUID, ...] = ()
     audited_candidates: frozenset[AuditedSubscriptionCandidate] = frozenset()
+    audited_observation_ids: frozenset[UUID] = frozenset()
 
     def require_clear(self, purchase: Purchase, *, original: bool = False, primary: bool = False) -> None:
         if purchase.id in self.conflicts:

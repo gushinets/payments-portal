@@ -771,6 +771,62 @@ async def test_initial_completion_checks_newer_first_binding(
     assert terminal.resolve_purchase(factory, config, refreshed, PRINCIPAL).already_resolved
 
 
+@pytest.mark.parametrize("closure", ["open", "missing", "closed", "legacy"])
+async def test_initial_completion_checks_first_agreement_binding(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    closure: str,
+) -> None:
+    transport, sources, purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    agreement = purchase.operations[0]
+    command = NewAgreement(user_id=345, organization_id=21, agreement_number=agreement.key, create_date=date.today())
+    claimed = financial.claim_financial(
+        factory, purchase, agreement, command.request_document(), configuration=config, token=TOKEN
+    )
+    financial.record_receipt(factory, purchase, claimed, 456)
+    purchase = service.read_purchase(factory, purchase.user_id, purchase.id)
+    before = request(factory, purchase, confirmed=True)
+    agreement_proof = terminal.OperationEvidence(
+        operation_id=agreement.id, outcome=terminal.TerminalEvidenceKind.EXTERNAL_TERMINAL, external_object_id="456"
+    )
+    before = before.model_copy(
+        update={
+            "evidence": before.evidence.model_copy(
+                update={"operations": (agreement_proof, before.evidence.operations[1])}
+            )
+        }
+    )
+    point = {**agreement_factory().model_dump(), **command.request_document()}
+    if closure == "closed":
+        point["close_date"] = date.today().isoformat()
+    elif closure == "missing":
+        point.pop("close_date", None)
+    else:
+        point["close_date"] = None
+    transport.agreements.append(point)
+    if closure == "legacy":
+        # The previous binder saved the operation while skipping observations for open agreements.
+        monkeypatch.setattr(financial, "record_first_binding", lambda *_: None)
+    recovered = await recover_financial(
+        sources, config, factory=factory, user_id=purchase.user_id, purchase_id=purchase.id
+    )
+    assert recovered.operations[0].bound_id == "456" and recovered.held
+    refreshed = request(factory, recovered, confirmed=True)
+    stale = refreshed.model_copy(update={"evidence": before.evidence})
+    if closure in {"open", "legacy"}:
+        with pytest.raises(PurchaseRefused, match="purchase_resolution_confirmation_required"):
+            terminal.resolve_purchase(factory, config, stale, PRINCIPAL)
+        assert service.read_purchase(factory, purchase.user_id, purchase.id).held
+    else:
+        refreshed = stale
+    assert terminal.resolve_purchase(factory, config, refreshed, PRINCIPAL).state == (
+        PurchaseIntentState.RESOLVED_EXTERNAL_TERMINAL
+    )
+    assert terminal.resolve_purchase(factory, config, refreshed, PRINCIPAL).already_resolved
+
+
 @pytest.mark.parametrize("prior_state", [OperationState.PENDING, OperationState.PROVEN_NOT_SENT])
 async def test_terminal_completion_retains_unsent_proof_after_terms_change_review(
     migrated_database: Engine, postgres_session_factory: sessionmaker[Session], prior_state: OperationState

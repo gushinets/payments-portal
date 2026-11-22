@@ -46,6 +46,7 @@ from app.integrations.lbx.financial import (
     NewAgreement,
     NewSubscription,
     Subscription,
+    agreement_closure,
     agreement_is_closed,
     prove_agreement,
     prove_effective_terms,
@@ -272,13 +273,15 @@ async def recover_one(
         if proof is None:
             finished = await delegate(read_source_time, factory)
         budget.check()
+        closure, close_date = agreement_closure(agreement)
         original = OriginalOperationProof(
             started,
             finished,
             digest(command),
             customer,
             proof,
-            agreement.close_date if agreement_is_closed(agreement) else None,
+            close_date,
+            closure,
         )
         if resolution is not None:
             from app.composition.purchase_inventory import collect_inventory

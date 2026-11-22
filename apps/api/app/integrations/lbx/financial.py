@@ -13,6 +13,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field, field_validator
 
+from app.domains.billing.reconciliation_contracts import AgreementClosure
 from app.domains.catalog.product_link import CurrentOffer, ProductLinkRequest
 from app.integrations.lbx.customer import PrivateDto
 from app.integrations.lbx.dto import ExactNumber
@@ -160,6 +161,14 @@ def agreement_is_closed(point: Agreement) -> bool:
     except ValueError:
         raise LbxResponseInvalid() from None
     return True
+
+
+def agreement_closure(point: Agreement) -> tuple[AgreementClosure, str | None]:
+    if "close_date" not in point.model_fields_set:
+        return AgreementClosure.UNKNOWN, None
+    if agreement_is_closed(point):
+        return AgreementClosure.CLOSED, point.close_date
+    return AgreementClosure.OPEN, None
 
 
 def subscription_lifecycle(point: Subscription) -> tuple[Lifecycle, Financial, str]:

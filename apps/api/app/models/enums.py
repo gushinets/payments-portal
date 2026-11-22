@@ -93,6 +93,7 @@ class ExternalSubscriptionCommercialAccessStatus(StrEnum):
 
 class BillingStateObservationKind(StrEnum):
     AUTHORITATIVE_SUBSCRIPTION_READ = "authoritative_subscription_read"
+    AUDITED_SUBSCRIPTION_READ = "audited_subscription_read"
     TARGET_PRODUCT_DISCOVERY = "target_product_discovery"
     ALLOWANCE_ACTIVATION = "allowance_activation"
     PRIMARY_SELECTION = "primary_selection"

@@ -15,14 +15,16 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PositiveInt, m
 
 from app.domains.billing.contracts import CustomerOpen
 from app.domains.purchases.contracts import FinancialOperation, Purchase
-from app.domains.billing.reconciliation_contracts import SubscriptionProof
+from app.domains.billing.reconciliation_contracts import AgreementClosure, SubscriptionProof
 from app.models import PurchaseIntentState
 
 RESOLUTION_SCHEMA = "billing-operator-resolution:v1"
 LATE_REASON = "purchase_late_external_object"
+LATE_SCHEMA = "purchase-late-object:v1"
 TERMINAL_SCHEMA = "purchase-terminal-resolution:v1"
 TERMINAL_REASON = "purchase_terminal_resolution"
 TERMINAL_AUDIT_REASONS = (TERMINAL_REASON, LATE_REASON)
+AUDITED_SUBSCRIPTION_SCHEMA = "audited-subscription-read:v1"
 ProviderId = Annotated[str, Field(pattern=r"^[1-9][0-9]{0,19}$")]
 
 
@@ -30,6 +32,30 @@ ProviderId = Annotated[str, Field(pattern=r"^[1-9][0-9]{0,19}$")]
 class AuditedSubscriptionCandidate:
     external_id: str
     review_case_id: UUID
+
+
+class AuditedSubscriptionConclusion(StrEnum):
+    ENDED = "ended"
+    AGREEMENT_CLOSED = "agreement_closed"
+    CONTRADICTED = "contradicted"
+
+
+class AuditedSubscriptionEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    customer_id: UUID
+    provider_customer_id: ProviderId
+    external_id: ProviderId
+    agreement_id: ProviderId
+    tariff_id: PositiveInt
+    review_case_ids: tuple[UUID, ...] = Field(min_length=1)
+    conclusion: AuditedSubscriptionConclusion
+
+
+@dataclass(frozen=True)
+class AuditedSubscriptionObservation:
+    id: UUID
+    observed_at: datetime
+    evidence: AuditedSubscriptionEvidence
 
 
 @dataclass
@@ -248,3 +274,4 @@ class OriginalOperationProof:
     customer: CustomerOpen
     subscription: SubscriptionProof | None = None
     agreement_close_date: str | None = None
+    agreement_closure: AgreementClosure = AgreementClosure.UNKNOWN

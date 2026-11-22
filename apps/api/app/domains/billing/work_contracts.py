@@ -57,6 +57,7 @@ class WorkClaim:
     started_at: datetime
     expires_at: datetime
     recipient_id: str | None = None
+    attempt_number: int = 1
 
 
 @dataclass(frozen=True)

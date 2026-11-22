@@ -1,7 +1,7 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-11-19 (ANY-821 integration with ANY-766)
+Last updated: 2026-11-22 (ANY-821 agreement and inventory observations)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
@@ -10,7 +10,7 @@ This document describes the schema produced by the current Alembic chain:
 ```text
 20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 -> 20261110_0008 -> 20261111_0009 -> 20261111_0010 -> 20261111_0011 -> 20261113_0012 -> 20261113_0013
 20261031_0006 -> 20261116_821
-(20261113_0013, 20261116_821) -> 20261117_821_merge (head)
+(20261113_0013, 20261116_821) -> 20261117_821_merge -> 20261122_821_inventory (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
@@ -69,7 +69,7 @@ A fresh database has exactly 30 application tables: ten retained
 identity/session/legal tables, fifteen original external-billing persistence
 tables, one current product-link pointer, one purchase mutex, one session
 delegation table, one backend policy guard and one code-issuance budget table.
-Alembic has fourteen revisions, including the no-DDL merge of the published
+Alembic has fifteen revisions, including the no-DDL merge of the published
 ANY-766 and ANY-821 branches, and one current head. Revision
 `20261029_0003` belongs to ANY-709, `20261028_0005` to ANY-715 and
 `20261031_0006` to ANY-765 and `20261110_0007`/`20261110_0008`/`20261111_0009`/`20261111_0010` to ANY-766.
@@ -282,6 +282,12 @@ Downgrade refuses while a purchase retains the new terminal state, a
 retains a confirmed external object ID.
 `20261117_821_merge` joins this revision with published ANY-766 head
 `20261113_0013` without changing either migration or adding DDL.
+`20261122_821_inventory` widens the observation checks for
+`prepared-agreement:v1` evidence linked to a purchase before an access scope
+exists, and for customer-scoped `audited-subscription-read:v1` evidence. The
+former retains the status of the agreement at first binding. The latter retains
+a point-read conclusion tied to the independent candidate's external identity
+and exact review case IDs. Both new observation shapes block downgrade.
 
 `external_create_operations` records customer, agreement, or subscription
 create work. Customer creation has no purchase intent; agreement and
@@ -370,15 +376,16 @@ operations described below. See the
 `billing_state_observations` stores evidence whose core fields are immutable.
 Its closed kinds are
 `authoritative_subscription_read`, `target_product_discovery`,
-`primary_selection`, `deterministic_access_boundary`, and `allowance_activation`; database checks
-enforce each kind's minimum provenance shape. DELETE is forbidden, and all
+`primary_selection`, `deterministic_access_boundary`, `allowance_activation`,
+and `audited_subscription_read`. Database checks enforce each kind's minimum
+provenance shape. DELETE is forbidden, and all
 fields except `resulting_access_revision` are immutable. That field may be
 assigned exactly once from `NULL` to a non-null value; once assigned, it cannot
 be cleared or replaced. Migration `20261031_0006` requires an assigned revision
 to be positive. The shared paid writer assigns the causal revision only when the
 whole-user effective state changes; a semantic no-op retains the revision.
-Versioned `target-product-discovery:v2` and `paid-access-cause:v1` evidence may
-retain purchase provenance without an access scope.
+Evidence using `target-product-discovery:v2`, `paid-access-cause:v1` or
+`prepared-agreement:v1` may retain purchase provenance without an access scope.
 `target-product-discovery:v3` stores scoped candidate conclusions and references
 to the observations already committed by leased reconciliation. Inventory does
 not apply those source facts again. New `primary-selection:v2` observations link

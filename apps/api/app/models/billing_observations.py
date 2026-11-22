@@ -92,18 +92,22 @@ class BillingStateObservation(Base):
         ),
         CheckConstraint(
             "observation_kind IN ('authoritative_subscription_read', 'target_product_discovery', "
-            "'primary_selection', 'deterministic_access_boundary', 'allowance_activation')",
+            "'primary_selection', 'deterministic_access_boundary', 'allowance_activation', 'audited_subscription_read')",
             name="ck_billing_state_observations_kind",
         ),
         CheckConstraint(
             "(observation_kind <> 'authoritative_subscription_read' OR subscription_id IS NOT NULL) "
             "AND (observation_kind <> 'target_product_discovery' OR "
             "(user_id IS NOT NULL AND product_id IS NOT NULL AND (access_scope_id IS NOT NULL OR "
-            "(evidence_schema_version IN ('target-product-discovery:v2', 'paid-access-cause:v1') AND purchase_intent_id IS NOT NULL)))) "
+            "(evidence_schema_version IN ('target-product-discovery:v2', 'paid-access-cause:v1', 'prepared-agreement:v1') "
+            "AND purchase_intent_id IS NOT NULL)))) "
             "AND (observation_kind <> 'primary_selection' OR "
             "(access_scope_id IS NOT NULL AND basis_observation_id IS NOT NULL)) "
             "AND (observation_kind <> 'deterministic_access_boundary' OR "
-            "(access_scope_id IS NOT NULL AND subscription_id IS NOT NULL AND effective_at IS NOT NULL))",
+            "(access_scope_id IS NOT NULL AND subscription_id IS NOT NULL AND effective_at IS NOT NULL)) "
+            "AND (observation_kind <> 'audited_subscription_read' OR "
+            "(user_id IS NOT NULL AND product_id IS NULL AND access_scope_id IS NULL AND subscription_id IS NULL "
+            "AND purchase_intent_id IS NULL AND evidence_schema_version = 'audited-subscription-read:v1'))",
             name="ck_billing_state_observations_kind_shape",
         ),
         CheckConstraint(

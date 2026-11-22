@@ -683,6 +683,7 @@ async def test_activation_receipt_is_unique_immutable_and_blocks_downgrade(
     database_test_url: "URL",
 ) -> None:
     from alembic import command
+    from alembic.util.exc import CommandError
     from sqlalchemy import text
     from sqlalchemy.exc import DBAPIError, IntegrityError
     from apps.api.tests.support.postgres import alembic_test_config
@@ -713,5 +714,5 @@ async def test_activation_receipt_is_unique_immutable_and_blocks_downgrade(
             db.execute(text("DELETE FROM billing_state_observations WHERE observation_kind = 'allowance_activation'"))
         db.rollback()
     with alembic_test_config(database_test_url) as config:
-        with pytest.raises(RuntimeError, match="Activation/V2 evidence requires the new reader"):
+        with pytest.raises(CommandError, match="ANY-821 inventory observations require compatible readers"):
             command.downgrade(config, "20261111_0011")

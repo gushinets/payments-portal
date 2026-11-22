@@ -1,19 +1,33 @@
 """Local versions and admission effects for the shared scoped inventory."""
 
+from dataclasses import replace
+from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
 from app.domains.billing.customers import lock_customer
-from app.domains.billing.operator_cases import audited_subscription_candidates
+from app.domains.billing.operator_cases import audited_subscription_candidates, audited_subscription_reads
+from app.domains.billing.operator_contracts import (
+    AUDITED_SUBSCRIPTION_SCHEMA,
+    AuditedSubscriptionEvidence,
+    AuditedSubscriptionObservation,
+)
 from app.domains.billing.customer_reviews import customer_admission_reviews
+from app.domains.billing.work_contracts import WorkClaim
 from app.domains.catalog.publication import SessionFactory
+from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
 from app.domains.purchases.contracts import Purchase
 from app.domains.purchases.inventory_contracts import InventoryResult, InventoryStale
 from app.infrastructure.queries import purchases as queries
 from app.infrastructure.queries.billing_customers import customer_operation
-from app.models import ExternalBillingCustomerBindingState as Binding, ExternalCreateOperationState as State
+from app.models import (
+    BillingStateObservation,
+    BillingStateObservationKind,
+    ExternalBillingCustomerBindingState as Binding,
+    ExternalCreateOperationState as State,
+)
 
 
 def same_purchase(current: Purchase, expected: Purchase) -> bool:
@@ -27,7 +41,7 @@ def same_purchase(current: Purchase, expected: Purchase) -> bool:
     )
 
 
-def validate_inventory(db: Session, result: InventoryResult) -> None:
+def validate_inventory(db: Session, result: InventoryResult) -> dict[str, AuditedSubscriptionObservation]:
     """Caller holds the existing user lock; never refresh the attempt's subject."""
     customer = lock_customer(db, result.customer.customer_id)
     operation = customer_operation(db, customer.customer_id)
@@ -58,12 +72,59 @@ def validate_inventory(db: Session, result: InventoryResult) -> None:
         != result.audited_candidates
     ):
         raise InventoryStale()
+    reads = (
+        audited_subscription_reads(db, result.customer, result.purchases[0], result.audited_candidates)
+        if result.purchases
+        else {}
+    )
+    if frozenset(read.id for read in reads.values()) != result.audited_observation_ids:
+        raise InventoryStale()
     for expected in result.purchases:
         row = service._locked(db, expected)
         queries.operations(db, expected.id, lock=True)
         if not same_purchase(service._snapshot(db, row), expected):
             raise InventoryStale()
         service._verify_original_consent(db, row, expected.accepted)
+    return reads
+
+
+def save_audited_subscription_reads(
+    factory: SessionFactory,
+    result: InventoryResult,
+    updates: dict[str, tuple[datetime, AuditedSubscriptionEvidence]],
+    claim: WorkClaim | None,
+) -> InventoryResult:
+    from app.domains.billing.customers import lock_user
+    from app.domains.billing.work import verify_claim
+
+    purchase = result.purchases[0]
+    with factory() as db:
+        lock_user(db, purchase.user_id)
+        previous = validate_inventory(db, result)
+        if claim is not None:
+            verify_claim(db, claim)
+        observation_ids = {key: read.id for key, read in previous.items()}
+        for external_id, (finished, evidence) in updates.items():
+            if external_id in previous and as_utc(previous[external_id].observed_at) >= finished:
+                raise InventoryStale()
+            identity = uuid4()
+            db.add(
+                BillingStateObservation(
+                    observation_id=identity,
+                    observation_kind=BillingStateObservationKind.AUDITED_SUBSCRIPTION_READ,
+                    external_billing_account_id=purchase.account_id,
+                    user_id=purchase.user_id,
+                    observed_at=finished,
+                    work_item_id=claim.id if claim else None,
+                    evidence_schema_version=AUDITED_SUBSCRIPTION_SCHEMA,
+                    evidence_document=evidence.model_dump(mode="json"),
+                    completeness_classification="candidate_proof",
+                    result_classification=evidence.conclusion.value,
+                )
+            )
+            observation_ids[external_id] = identity
+        db.commit()
+    return replace(result, audited_observation_ids=frozenset(observation_ids.values()))
 
 
 def invalidate_unsent(db: Session, purchase: Purchase) -> bool:
