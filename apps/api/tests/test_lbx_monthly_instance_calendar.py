@@ -1,4 +1,4 @@
-"""ANY-864: observed monthly LBX dates, with synthetic ownership/terms only."""
+"""Observed mixed LBX calendar formats, with synthetic ownership and terms."""
 
 from dataclasses import replace
 from datetime import date
@@ -138,6 +138,51 @@ def test_midnight_date_bridge_does_not_enable_other_period_profiles(
     period = CommercialPeriod(unit, length, anchor, date(2026, 1, 1), None)
     proof = normalized_proof(end=end, period=period)
     assert not proof.calendar_complete and proof.cycle is None
+
+
+def test_daily_first_instance_midnight_proves_adjacent_days_without_an_instant() -> None:
+    period = CommercialPeriod("day", 1, "first_instance_start", date(2026, 10, 1), None)
+    # Date formatting from the live 043 response for tariff 31, period 4.
+    raw_start = "2026-10-13 00:00:00"
+    first = normalized_proof(
+        start="2026-11-20", end="2026-11-20", subscription_start=raw_start, instance_start=raw_start, period=period
+    )
+    assert first.complete and first.calendar_complete and first.financial == "allowed"
+    assert first.cycle == CalendarEvidence(
+        precision=CalendarPrecision.DATE, start="2026-11-20", end="2026-11-20", anchor="2026-10-13"
+    )
+    assert first.calendar["subscription_start_date"] == raw_start
+    assert first.access_end_at is None
+    initial = classify_cycle(first.cycle, period)
+    assert initial.kind == CycleKind.FIRST and initial.key == "date:2026-11-20:2026-11-20"
+
+    renewed = normalized_proof(
+        start="2026-11-21", end="2026-11-21", subscription_start=raw_start, instance_start=raw_start, period=period
+    )
+    assert renewed.calendar_complete
+    later = classify_cycle(renewed.cycle, period, first=first.cycle, latest=first.cycle)
+    assert later.kind == CycleKind.LATER and later.key == "date:2026-11-21:2026-11-21"
+
+
+@pytest.mark.parametrize(
+    "start,end,anchor,instance_start",
+    [
+        ("2026-11-20", "2026-11-20", "2026-11-21 00:00:00", "2026-11-20 00:00:00"),
+        ("2026-11-20", "2026-11-20", "2026-11-20 00:00:00", "2026-11-21 00:00:00"),
+        ("2026-11-20", "2026-11-20", "2026-11-20 00:00:01", "2026-11-20 00:00:00"),
+        ("2026-11-20", "2026-11-20", "2026-11-20T00:00:00+03:00", "2026-11-20 00:00:00"),
+        ("2026-11-20", "2026-11-21T00:00:00Z", "2026-11-20 00:00:00", "2026-11-20 00:00:00"),
+        ("2026-11-20", "2026-11-20", "1970-01-01T00:00:00.000", "2026-11-20 00:00:00"),
+    ],
+)
+def test_daily_first_instance_rejects_inconsistent_or_unproven_calendar(
+    start: str, end: str, anchor: str, instance_start: str
+) -> None:
+    period = CommercialPeriod("day", 1, "first_instance_start", date(2026, 10, 1), None)
+    proof = normalized_proof(
+        start=start, end=end, subscription_start=anchor, instance_start=instance_start, period=period
+    )
+    assert classify_cycle(proof.cycle, period).kind == CycleKind.AMBIGUOUS
 
 
 @pytest.mark.parametrize(
