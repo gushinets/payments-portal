@@ -718,6 +718,37 @@ it("leaves focus on accepted terms when a pending status poll is refused", async
   expect(terms).toHaveFocus();
 });
 
+it.each(["retry confirmation", "terms link"] as const)("handles confirmation poll refusal with focus on %s", async (focused) => {
+  vi.useFakeTimers();
+  confirm.mockRejectedValueOnce(new TypeError("synthetic_lost_reply"));
+  await act(async () => { renderProduct(); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.buy })); });
+  fireEvent.click(screen.getByRole("checkbox"));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.confirm })); });
+
+  const retry = screen.getByRole("button", { name: ru.Purchase.retryConfirm });
+  const refresh = screen.getByRole("button", { name: ru.Purchase.refresh });
+  retry.focus();
+  expect(retry).toHaveFocus();
+  const response = Promise.withResolvers<Response>();
+  fetcher.mockClear().mockReturnValueOnce(response.promise);
+  await act(async () => vi.advanceTimersByTimeAsync(2_100));
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  const [input, init] = fetcher.mock.calls[0];
+  expect(new URL(String(input)).pathname).toBe("/api/purchase-intents/current");
+  expect(init?.method ?? "GET").toBe("GET");
+
+  const { title, version } = purchaseReview.documents[0];
+  const terms = screen.getByRole("link", { name: `${title} · ${version}` });
+  if (focused === "terms link") terms.focus();
+  await act(async () => response.resolve(json({ detail: { code: "billing_session_required" } }, 401)));
+
+  expect(retry).toBeDisabled();
+  expect(focused === "retry confirmation" ? refresh : terms).toHaveFocus();
+  expect(confirm).toHaveBeenCalledTimes(1);
+  expect(advance).not.toHaveBeenCalled();
+});
+
 it.each(["first inspection", "later poll"])("keeps frozen confirmation disabled after refusal during %s", async (when) => {
   confirm.mockImplementationOnce(async () => {
     if (when === "later poll") fetcher.mockResolvedValueOnce(json({ purchase: null }));
