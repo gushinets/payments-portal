@@ -198,6 +198,7 @@ async def ensure_customer(
         user_name=current.first_name,
         user_surname=current.surname,
         user_patronymic=current.patronymic,
+        days_for_paying_orders=configuration.lbx_customer_payment_delay_days,
     )
     operation_id = current.operation_id
     retries = 0

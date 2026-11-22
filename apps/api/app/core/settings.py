@@ -114,6 +114,7 @@ class Settings(BaseSettings):
     lbx_server_password: SecretStr = SecretStr("")
     lbx_widget_signing_secret: SecretStr = SecretStr("")
     lbx_seller_organization_id: str = ""
+    lbx_customer_payment_delay_days: int | None = Field(default=None, ge=0)
     lbx_currency_id: str = "1"
     lbx_currency: str = "RUB"
     lbx_connect_timeout_seconds: float = Field(default=1.0, gt=0, le=30, allow_inf_nan=False)
@@ -168,9 +169,9 @@ class Settings(BaseSettings):
                 validate_production_public_url(consumer.backend_base_url, "Backend origin")
         return self
 
-    @field_validator("paid_access_clock_skew_seconds", mode="before")
+    @field_validator("paid_access_clock_skew_seconds", "lbx_customer_payment_delay_days", mode="before")
     @classmethod
-    def optional_paid_clock(cls, value: object) -> object:
+    def optional_integer(cls, value: object) -> object:
         return None if value == "" else value
 
     @field_validator("smtp_use_tls", mode="before")
