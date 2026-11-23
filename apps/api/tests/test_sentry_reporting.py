@@ -27,7 +27,7 @@ from app.infrastructure.sentry import (
     configure_sentry,
     report_exception,
 )
-from apps.api.tests.support.settings import DEFAULT_API_TEST_ENV
+from apps.api.tests.support.settings import DEFAULT_API_TEST_ENV, PRODUCTION_SETTINGS_DATABASE_URL
 
 
 TEST_DSN = "http://public@example.test/1"
@@ -71,10 +71,13 @@ def make_settings(**overrides: object) -> Settings:
 
 def make_production_settings(**overrides: object) -> Settings:
     return make_settings(
-        app_env=AppEnv.PRODUCTION,
-        app_public_base_url="https://payments.example.com",
-        cors_allow_origins=("https://payments.example.com",),
-        **overrides,
+        **{
+            "app_env": AppEnv.PRODUCTION,
+            "app_public_base_url": "https://payments.example.com",
+            "database_url": PRODUCTION_SETTINGS_DATABASE_URL,
+            "cors_allow_origins": ("https://payments.example.com",),
+            **overrides,
+        }
     )
 
 
