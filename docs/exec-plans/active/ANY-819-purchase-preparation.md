@@ -47,9 +47,10 @@ subscriptions.
   The [shared paid-read tests](../../../apps/web/tests/components/any765-paid-access.test.tsx)
   cover session replacement and unmount.
 - The [purchase PostgreSQL tests](../../../apps/api/tests/test_any709_step3_postgres.py)
-  cover durable recovery across restart, a late CREATE reply after concurrent
-  binding, live identity and fence before the first send, and deferral of
-  discovery to GET-only recovery after an ambiguous CREATE.
+  cover recovery from persisted state after recreating source resources,
+  a late CREATE reply after concurrent binding, live identity and fence before
+  the first send, and deferral of discovery to GET-only recovery after an
+  ambiguous CREATE.
 
 ## Open acceptance items
 
