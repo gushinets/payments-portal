@@ -172,7 +172,7 @@ describe("official SDK sandbox boundary", () => {
     vi.stubGlobal("MessageChannel", class { port1 = port1; port2 = port2; });
     const node = document.createElement("div");
     const failure = vi.fn();
-    const destroy = actual.mountOfficialWidget(node, response(), "Billing", () => true, failure);
+    const destroy = actual.mountOfficialWidget(node, response(), "Billing", () => true, failure, vi.fn());
     if (reason === "ready_timeout") {
       port1.onmessage!(new MessageEvent("message", { data: "ready" }));
       port1.onmessage!(new MessageEvent("message", { data: "rendered" }));
@@ -193,7 +193,7 @@ describe("official SDK sandbox boundary", () => {
     const node = document.createElement("div");
     let current = true;
     const failure = vi.fn();
-    const destroy = actual.mountOfficialWidget(node, response(), "Billing", () => current, failure);
+    const destroy = actual.mountOfficialWidget(node, response(), "Billing", () => current, failure, vi.fn());
     port1.onmessage!(new MessageEvent("message", { data: "ready" }));
     port1.onmessage!(new MessageEvent("message", { data: "rendered" }));
     port1.onmessage!(new MessageEvent("message", { data: "mounted" }));
@@ -214,7 +214,7 @@ describe("official SDK sandbox boundary", () => {
     vi.stubGlobal("MessageChannel", class { port1 = port1; port2 = port2; });
     const node = document.createElement("div");
     document.body.append(node);
-    const destroy = actual.mountOfficialWidget(node, response(), "Billing", () => true, vi.fn());
+    const destroy = actual.mountOfficialWidget(node, response(), "Billing", () => true, vi.fn(), vi.fn());
     const frame = node.querySelector("iframe")!;
     const send = vi.spyOn(frame.contentWindow!, "postMessage");
     fireEvent.load(frame);
@@ -238,7 +238,7 @@ describe("official SDK sandbox boundary", () => {
     vi.stubGlobal("MessageChannel", class { port1 = port(); port2 = port(); });
     const node = document.createElement("div");
     const bootstrap = response();
-    const destroy = actual.mountOfficialWidget(node, bootstrap, "Billing", () => true, vi.fn());
+    const destroy = actual.mountOfficialWidget(node, bootstrap, "Billing", () => true, vi.fn(), vi.fn());
     const frame = node.querySelector("iframe")!;
     const host = decodeURIComponent(frame.src.split(",").slice(1).join(","));
     expect(host).toContain("https://billing.test/lbxwidget.js");

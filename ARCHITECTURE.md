@@ -1,7 +1,7 @@
 # AnyToolAI Portal Architecture
 
 Status: authoritative current-state map
-Last updated: 2026-11-11
+Last updated: 2026-11-23
 
 ## System boundary
 
@@ -16,9 +16,9 @@ its owning team.
 
 The current Portal combines public discovery, product detail, account/auth and
 an owned-purchase cabinet. ANY-709 implements direct product links, live current
-offers, account Widget, accepted-purchase preparation/recovery and localized
-Buy/Continue/Manage with one shared payment-capable Widget. It remains
-pre-production. ANY-715 supplies embedded lifecycle polling and GET-only
+offers, accepted-purchase preparation and recovery, and one shared Widget for
+account viewing and verified payment. The Portal remains pre-production.
+ANY-715 supplies embedded lifecycle polling and GET-only
 recovery/inventory. ANY-765 adds local paid grants/allowances, semantic revisions,
 an invalidation outbox, autonomous expiry and authenticated cabinet reads.
 ANY-766 Step 5 adds configured-source allowance derivation. Step 12 now serves
@@ -70,9 +70,9 @@ The direct-provider architecture has been physically removed. There is no
 CloudPayments runtime, `PaymentProviderAdapter`, `PaymentProviderRegistry`,
 provider-account routing model, direct-payment webhook path, or Portal-owned
 catalog/order/payment/subscription/entitlement lifecycle. Purchase APIs supply
-explicit acceptance and bounded preparation;
-browser Buy/Continue/Manage uses the same owned purchase. Catalog details read
-current selected offers; catalog/preparation evidence alone grants no paid access.
+explicit acceptance and bounded preparation. The browser uses the same owned
+purchase for preparation and payment. Catalog details read current selected
+offers. Paid access requires authoritative subscription evidence.
 
 The current migrated schema contains 30 application tables: ten retained
 identity/session/legal tables, fifteen original target billing tables, a current
@@ -252,9 +252,10 @@ PostgreSQL preserves immutable links and accepted purchase history. The former s
 `document-summary` and `prompt-optimizer` slugs belong to the historical 4F
 presentation and are not the current catalog identity source. Brief owned cards
 link to product details; incomplete accepted purchases remain resumable. Product
-details own review, consent and preparation. Prepared purchases link to
-`/account?purchase=<id>#billing`; the cabinet owns one wide disposable Widget.
-Every payment entry uses the same original-purchase bootstrap and fresh proof.
+details own review, consent and preparation. On a prepared product, the payment
+action opens `/[locale]/account?purchase=<id>#billing`. The cabinet uses a
+same-tab click once in the originating session. Every payment entry uses the same
+original-purchase bootstrap and fresh proof before opening the shared Widget.
 ANY-715 reconciles subscription facts and recovers uncertain operations in the
 background. ANY-765 presents the separately committed paid projection, including
 confirmed/absent/unavailable evidence and provenance-labelled purchased limits. The local
