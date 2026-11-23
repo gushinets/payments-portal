@@ -14,7 +14,7 @@ import httpx
 from app.core.settings import Settings
 from app.infrastructure.preflight import PreflightAdmission, PreflightPolicy
 from app.integrations.lbx.client import API_PATH, LbxServerClient
-from apps.api.tests.support.settings import DEFAULT_API_TEST_ENV
+from apps.api.tests.support.settings import DEFAULT_API_TEST_ENV, PRODUCTION_SETTINGS_DATABASE_URL
 
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures/lbx"
@@ -44,6 +44,8 @@ def lbx_settings(**overrides: Any) -> Settings:
         lbx_seller_organization_id="21",
         lbx_retry_delay_seconds=0,
     )
+    if overrides.get("app_env") == "production":
+        values["database_url"] = PRODUCTION_SETTINGS_DATABASE_URL
     values.update(overrides)
     return Settings(_env_file=None, **values)
 
