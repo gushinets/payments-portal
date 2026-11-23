@@ -34,11 +34,13 @@ vi.mock("@/i18n/navigation", () => ({
     href,
     locale,
     children,
+    onNavigate,
     ...props
   }: {
     href: string;
     locale?: string;
     children: React.ReactNode;
+    onNavigate?: () => void;
   }) => {
     const activeLocale = locale ?? globalThis.__NEXT_INTL_LOCALE__ ?? "ru";
     const localizedHref = href.startsWith("/")
@@ -46,7 +48,10 @@ vi.mock("@/i18n/navigation", () => ({
       : href;
 
     return (
-      <a href={localizedHref} {...props}>
+      <a href={localizedHref} onClick={onNavigate ? (event) => {
+        event.preventDefault();
+        onNavigate();
+      } : undefined} {...props}>
         {children}
       </a>
     );

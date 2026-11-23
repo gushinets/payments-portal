@@ -5,6 +5,7 @@ import type { Page } from "@playwright/test";
 import ru from "../src/messages/ru.json";
 import pt from "../src/messages/pt.json";
 import { simulatedProduct } from "../tests/fixtures/catalog";
+import { emptyPaidState } from "../tests/fixtures/paid-access";
 import { savedPurchase } from "../tests/fixtures/purchase";
 import type { AccountPurchaseResponse } from "../src/generated/api-contracts/types.gen";
 
@@ -29,6 +30,8 @@ async function mockCatalog(page: Page, path: "" | "/products" | "/account") {
         email: "catalog@example.com", email_verified: true
       }
     } }));
+    await page.route("**/api/paid-access", (route) => route.fulfill({ json: emptyPaidState() }));
+    await page.route("**/api/paid-usage", (route) => route.fulfill({ json: { access_revision: 0, items: [] } }));
   }
   await page.route("**/api/purchase-intents", (route) => route.fulfill(state.inventoryUnavailable
     ? { status: 503, json: { detail: { code: "unavailable" } } }
@@ -163,7 +166,7 @@ for (const locale of ["ru", "pt"] as const) {
     const products = page.getByRole("region", { name: messages.Account.products.title });
     await products.getByRole("link", { name: messages.Account.products.detailAction }).click();
     await expect(page).toHaveURL(new RegExp(`/${locale}/products/proposal_ai$`), { timeout: 20000 });
-    await expect(page.getByRole("link", { name: messages.Purchase.manage })).toBeVisible();
+    await expect(page.getByRole("link", { name: messages.Billing.pay })).toBeVisible();
     state.unavailable = true;
     await page.goto(`/${locale}/account`);
     await expect(products.getByRole("article")).toHaveCount(1);

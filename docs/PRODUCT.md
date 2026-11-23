@@ -1,7 +1,7 @@
 # Product Scope
 
 Status: authoritative
-Last updated: 2026-11-11
+Last updated: 2026-11-23
 
 AnyToolAI Portal combines public product discovery, direct account entry, and
 identity/legal-consent flows for AnyToolAI products, deployed as one contour
@@ -29,8 +29,9 @@ Kernel conformance and sales remain gated. There are no production direct-
 provider subscribers or subscriptions to migrate.
 ANY-709 adds independently optional FIO and explicit verified-email account
 Widget viewing with one shared customer. It requires no offer/subscription and
-grants no paid access. Immutable purchase consent, request-driven preparation/
-recovery and Buy/Continue/Manage use verified payment presentation in the cabinet.
+grants no paid access. The product page owns immutable purchase consent and
+explicit preparation and recovery. The cabinet verifies the selected purchase
+before opening payment.
 Delivery and acceptance evidence are in
 [ANY-709](https://linear.app/paveldik/issue/ANY-709).
 
@@ -89,17 +90,16 @@ only their source-read/admission strategy.
   only: a not-ready state, localized metadata and safe home/products links,
   without commercial facts, purchase controls or API calls.
 - `/[locale]/account` as the direct sign-in/registration entry and authenticated
-  cabinet. Only owned held accepted purchases appear as compact cards; unfinished
-  purchases remain resumable. No published-but-unpurchased product is listed.
-  A full-catalog link is always available. A product management link selects its
-  purchase in the cabinet; every payment action uses fresh original-purchase
-  verification before opening the one wide Widget. Account-only viewing remains
-  available without a purchase or healthy source catalog.
+  cabinet. Cards link to product details and let users resume unfinished held
+  purchases. A separate link opens the full catalog. Every payment action
+  verifies the selected purchase before opening the shared Widget. Users can
+  also open the account view without a purchase or a working source catalog.
 - Local committed product grants, fixed purchased allowances and semantic access
   revisions from authoritative subscription facts. The authenticated cabinet
-  distinguishes confirmed access, fresh absence and unavailable evidence;
-  paid products remain visible when purchase listing is unavailable. Development
-  quantities are explicitly SIMULATED and excluded from production usage reads.
+  distinguishes confirmed access, fresh absence and unavailable evidence.
+  The cabinet also shows cards for products returned by the user's paid-access
+  or usage reads, even if the purchase list is empty or temporarily unavailable.
+  Development quantities are explicitly SIMULATED and excluded from production usage reads.
   Configured-source usage shows actual counters/read time independently of access.
 - The approved RU mockup's product/visual direction encoded by evolved Bundle 3
   and applied across the active Portal: navy/amber, flat dark panels, thin
@@ -109,9 +109,14 @@ only their source-read/admission strategy.
 - Password-based registration, sessions, logout, and the existing
   `/[locale]/forgot-password`, `/[locale]/reset-password`, and
   `/[locale]/verify-email` flows. Region Resolver confirmation is not implemented.
-- Product-page Buy/Continue with live review, explicit draft legal
-  consent, original held-purchase recovery and verified payment bootstrap. The
-  UI distinguishes unknown from no purchase and awaits financial verification.
+- Product-page live review, explicit consent to draft legal terms, and
+  continuation of the original held purchase. Bounded status polling observes
+  saved preparation and release.
+  In the same tab and session, the payment action opens the cabinet and starts
+  the Widget after purchase verification. Opening the payment link in a new
+  tab, visiting its URL directly or reloading that URL selects the purchase
+  and requires a separate click in the cabinet to open the Widget. The UI
+  distinguishes unknown from no purchase.
   One disposable SDK lifecycle replaces account/payment views and rejects late
   credentials after close, product/user change or logout. Purchase preparation
   and Widget outcomes alone grant no access.
@@ -171,7 +176,8 @@ trust boundary under ANY-541.
   Technical product/metric identity comes from Platform Kernel;
   commercial offers come from External Billing.
 - Historical 4F discovery CTAs open product detail/account surfaces. ANY-709
-  adds verified Buy/Continue/Manage; no product-execution URL is fabricated.
+  adds purchase preparation and verified payment in the cabinet. Product
+  execution follows the separate paid launch flow.
 - Pricing navigation and its unavailable placeholder establish presentation
   topology only. Published offer terms use the ANY-504 Step 6 Portal path;
   current sellability and genuine enablement retain the source/approval gates;

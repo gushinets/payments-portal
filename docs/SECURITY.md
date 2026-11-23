@@ -197,8 +197,10 @@ close and late-response guards prevent local credential reuse. Only proven
 payment presentation permits sandboxed forms, acquiring popups that can leave
 the sandbox, and user-activated navigation. Account viewing retains its stricter
 sandbox. These browser capabilities enable provider payment UX, do not establish
-ACLs or paid access, and require real-method human acceptance. Widget close reads
-local status only; the UI explicitly awaits authoritative payment verification.
+ACLs or paid access, and require real-method human acceptance. The cabinet's
+Close button refreshes local paid-access status and requests usage separately.
+For eligible allowances, the usage read queries the configured backend.
+Payment verification still requires authoritative billing evidence.
 
 SDK `render()` returning is not readiness proof. The isolated host accepts the
 existing `lbx-widget` READY message only from its actual nested window at the

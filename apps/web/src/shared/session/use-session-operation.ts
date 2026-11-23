@@ -51,16 +51,18 @@ export function useSessionOperation() {
     const version = current.version;
     const attempt = ++current.attempt;
     const token = window.localStorage.getItem(sessionStorageKey);
+    const isMounted = () => current.mounted && current.epoch === epoch;
     // A stale operation may finish its own spinner, but never a newer attempt.
-    const isLatest = () =>
-      current.mounted && current.epoch === epoch && current.attempt === attempt;
+    const isLatest = () => isMounted() && current.attempt === attempt;
+    const isCurrentSession = () =>
+      isMounted() &&
+      current.version === version &&
+      window.localStorage.getItem(sessionStorageKey) === token;
     return {
       token,
       isLatest,
-      isCurrent: () =>
-        isLatest() &&
-        current.version === version &&
-        window.localStorage.getItem(sessionStorageKey) === token
+      isCurrentSession,
+      isCurrent: () => current.attempt === attempt && isCurrentSession()
     };
   }, []);
   const beginAuth = useCallback(() => {
