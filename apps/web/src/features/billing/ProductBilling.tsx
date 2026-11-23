@@ -291,7 +291,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
       if (current()) await inspectCommandOutcome(token, id, current, error, purchase.purchase_intent_id);
       return;
     }
-    if (!current()) return;
+    if (!current() || hasMixedHoldStatus(result)) return;
     showPurchase(result);
     if (!advanceOutcomeUnknown(result)) setFailure(null);
   }

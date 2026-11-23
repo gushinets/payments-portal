@@ -618,12 +618,12 @@ for the same purchase.
 A held, linked result makes the payment action available while that reply is
 pending. A confirmed release shows the saved outcome and lets the buyer
 review the current terms if the product still has an available offer.
-If release commits between the purchase and hold reads, the status can pair an
-earlier state with `scope_held: false`. The product page confirms release only
+If release commits between the purchase and hold reads, the response can pair
+an earlier state with `scope_held: false`. The product page confirms release only
 when that flag is false and the state is `failed_before_external_effect` or
-`resolved_no_external_effect`. During polling, lost-reply recovery and manual
-status checks, a mixed response leaves the previous status in place so polling
-can continue for a pending purchase.
+`resolved_no_external_effect`. A mixed response from `advance` or a status
+read leaves the previous status in place so polling can continue for a pending
+purchase.
 
 After a lost advance reply, a saved `preparing` state keeps the unknown-outcome
 warning and its request ID visible. That state covers both a possible send and
