@@ -801,10 +801,21 @@ revision. The existing local worker must commit the reduction before reads resum
 
 The cabinet reads this endpoint independently of held-purchase listing and
 billing Widget availability. It refreshes on explicit request, when the buyer
-presses the Widget's Close button, after visibility returns and every 30 seconds
-while visible. These local reads show committed access status. Session changes
-and unmount discard late responses and stop polling. The displayed result
-expires conservatively using server duration and the browser's monotonic clock.
+presses the Widget's Close button, after visibility returns, every 30 seconds
+while visible, and when the visible cabinet regains focus. The same local
+refresh handles returns from a separate payment window and preserves the
+current Widget session. Session changes or unmounts discard late responses and
+stop polling. The displayed result expires conservatively using server
+duration and the browser's monotonic clock.
+
+For a linked purchase awaiting first activation, the product's optional
+`activation_check` field reports `checking` during the saved window, including
+the closing read, and for up to 60 seconds after handoff to regular
+reconciliation. It reports `unconfirmed` if access is still pending after the
+applicable period ends, or when there is no saved window and fresh matching
+reconciliation evidence still shows the subscription waiting. The field is
+`null` when no activation status applies. Committed entries in `grants` determine
+the cabinet's paid access.
 
 Per-product confirmed access, fresh authoritative absence and unavailable evidence
 remain distinct. Implicit revision zero with no product evidence is confirmed

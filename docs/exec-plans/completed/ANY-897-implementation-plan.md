@@ -172,27 +172,12 @@ access revision is committed.
   duration, repeat the timed purchase with that duration. An independently
   scheduled grant is evidence of fallback.
 
-  In the initial Brief Decoder run in Linear, credit arrived almost five
-  minutes after payment-form creation and the charge took another 2:54. Use
-  it as a reference for the late-activation test. The exact active REST
-  transition for that run is unknown.
+  Use the initial Brief Decoder case in the linked Linear QA baseline as the
+  reference for the late-activation test.
 
-Start QA with a five-minute window and retain the saved deadline for an open
-window when tuning its duration. The 20- and 40-second intervals, five-second
-read wait and 60-second confirmation display are the initial settings. The
-question of faster activation on the LBX test environment can proceed in parallel.
-
-## Verification results
-
-On 2026-11-23, a Brief Decoder purchase on local Portal with test LBX 043 and
-YooKassa met the timing target using a 13-minute QA window. The conservative
-upper bound from active, unblocked subscription evidence to the first observed
-access commit was 21.5 seconds. The visible cabinet updated 7.0 seconds after
-commit. A separate Proposal AI purchase confirmed issuance with the tab closed.
-
-After updating the `BillingWorkKind` contract test and upgrading Next.js and
-`eslint-config-next` to 16.4.6, `npm run check` passed. It covered the production
-web build, 41 web boundary checks, 455 component tests, 2,655 API-fast passes
-(one skip), and all 1,273 PostgreSQL tests. The canonical run left the opt-in
-browser suite disabled. The targeted cabinet browser run passed four checks
-covering desktop, mobile, and accessibility.
+Start the baseline QA run with a five-minute window. Use the selected 13-minute
+window (`BILLING_WIDGET_ACTIVATION_WINDOW_SECONDS=780`) for the qualifying QA
+timing run. Retain the saved deadline for an open window when tuning its
+duration. The 20- and 40-second intervals, five-second read wait and 60-second
+confirmation display are the initial settings. The question of faster
+activation on the LBX test environment can proceed in parallel.
