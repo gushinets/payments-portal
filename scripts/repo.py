@@ -524,6 +524,7 @@ def write_runtime(config: RuntimeConfig) -> None:
         "BILLING_WORKER_NORMAL_CONCURRENCY", "BILLING_WORKER_IO_TIMEOUT_SECONDS",
         "BILLING_WORKER_DELIVERY_CONCURRENCY",
         "BILLING_WORKER_SCAN_BATCH_SIZE",
+        "BILLING_WIDGET_ACTIVATION_WINDOW_SECONDS",
         "MAPPING_OPERATOR_LOCK_FILE",
     ):
         value = os.environ.get(name, local_env.get(name, ""))

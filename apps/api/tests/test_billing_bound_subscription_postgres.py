@@ -9,8 +9,11 @@ from uuid import UUID
 
 import httpx
 import pytest
+from alembic import command
 from fastapi import BackgroundTasks, FastAPI
 from sqlalchemy import func, select
+from sqlalchemy.engine import URL
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.types import Message, Receive, Scope, Send
 
@@ -24,10 +27,16 @@ from app.domains.billing.customers import apply_customer_read, reserve_customer
 from app.domains.billing.operator_diagnostics import inspect_evidence
 from app.domains.billing.reconciliation import apply_reconciliation, claim_reconciliation, read_source_time
 from app.domains.billing.reconciliation_contracts import ReconciliationSubject, SubscriptionProof
-from app.domains.billing.work_contracts import WorkClaim, WorkLane
+from app.domains.billing.work_contracts import DeliveryLane, WorkClaim, WorkLane
 from app.domains.purchases.contracts import Purchase
 from app.domains.purchases import widget_admission
+from app.domains.purchases import widget_activation_window as activation_windows
 from app.domains.purchases.widget_activation import WidgetActivationOpening
+from app.domains.purchases.widget_activation_window import (
+    WidgetActivationCompletion,
+    WidgetActivationCompletionReason,
+    WidgetActivationWindow,
+)
 from app.infrastructure.persistence.billing_work import coalesce
 from app.domains.purchases import financial
 from app.integrations.lbx.errors import LbxUnavailable
@@ -39,6 +48,8 @@ from app.models import (
     BillingStateObservation,
     BillingStateObservationKind,
     BillingWorkItem,
+    BillingWorkKind,
+    BillingWorkState,
     ExternalSubscription,
     ManualReviewCase,
     PaidAccessState,
@@ -47,6 +58,7 @@ from app.models import (
 from apps.api.tests.factories.billing_operator import resolution_request
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.support.any709_step3 import PurchaseTransport
+from apps.api.tests.support.postgres import alembic_test_config
 from apps.api.tests.test_any709_step3_postgres import TOKEN
 from apps.api.tests.test_billing_subscription_reconciliation_postgres import (
     activate,
@@ -123,6 +135,260 @@ async def payment_with_response_hook(
         headers={"Authorization": "Bearer " + TOKEN},
     ) as client:
         return await payment(client, purchase_id)
+
+
+def activation_job(factory: sessionmaker[Session]) -> BillingWorkItem:
+    with factory() as db:
+        return db.scalars(
+            select(BillingWorkItem).where(BillingWorkItem.work_kind == BillingWorkKind.WIDGET_ACTIVATION_CHECK)
+        ).one()
+
+
+def activation_schedule(row: BillingWorkItem) -> tuple[UUID, WidgetActivationWindow, datetime, int, datetime]:
+    return (
+        row.work_item_id,
+        WidgetActivationWindow.from_work(row),
+        row.next_attempt_at,
+        row.enqueue_generation,
+        row.updated_at,
+    )
+
+
+async def test_any897_parallel_widget_openings_save_one_window(
+    scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    widget_app: FastAPI,
+    portal: httpx.AsyncClient,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _, sources, purchase = scenario
+    factory = postgres_session_factory
+    # Both openings are still valid, and the window is due when a worker restarts.
+    first_opening = read_source_time(factory) - timedelta(seconds=30)
+    opening_times = (first_opening, first_opening + timedelta(microseconds=1))
+    database_now = widget_admission.database_now
+    prepared = iter(opening_times)
+
+    def preparation_clock(db: Session) -> datetime:
+        return next(prepared, None) or database_now(db)
+
+    monkeypatch.setattr(widget_admission, "database_now", preparation_clock)
+    sent: asyncio.Queue[None] = asyncio.Queue()
+    release = asyncio.Event()
+
+    async def after_send() -> None:
+        await sent.put(None)
+        await release.wait()
+
+    async with asyncio.TaskGroup() as group:
+        first = group.create_task(payment_with_response_hook(widget_app, purchase.id, after_send))
+        await asyncio.wait_for(sent.get(), timeout=10)
+        second = group.create_task(payment_with_response_hook(widget_app, purchase.id, after_send))
+        await asyncio.wait_for(sent.get(), timeout=10)
+        with factory() as db:
+            assert (
+                db.scalar(
+                    select(BillingWorkItem).where(BillingWorkItem.work_kind == BillingWorkKind.WIDGET_ACTIVATION_CHECK)
+                )
+                is None
+            )
+        release.set()
+    assert first.result().status_code == second.result().status_code == 200
+    assert not any(record.message == "widget_activation_enqueue_failed" for record in caplog.records)
+    saved = activation_job(factory)
+    window = WidgetActivationWindow.from_work(saved)
+    assert window.purchase_id == purchase.id
+    assert window.prepared_at in opening_times
+    assert window.deadline_at == window.prepared_at + timedelta(minutes=5)
+    assert saved.next_attempt_at == window.prepared_at + timedelta(seconds=20)
+    assert window.completion is None and saved.enqueue_generation == 0
+    assert saved.coalescing_key == f"{purchase.account_id}:{snapshot(factory)[0]}"
+
+    configuration = step1_settings(billing_widget_activation_window_seconds=600)
+    monkeypatch.setattr(billing_routes, "settings", configuration)
+    assert (await payment(portal, purchase.id)).status_code == 200
+    assert activation_schedule(activation_job(factory)) == activation_schedule(saved)
+
+    polled = asyncio.Event()
+    tick = BillingWorker.tick
+
+    async def record_tick(worker: BillingWorker, lane: WorkLane | DeliveryLane) -> bool:
+        result = await tick(worker, lane)
+        if lane == WorkLane.NORMAL:
+            polled.set()
+        return result
+
+    monkeypatch.setattr(BillingWorker, "tick", record_tick)
+    for config in (step1_settings(), configuration):
+        polled.clear()
+        worker = BillingWorker(config, factory, sources.require_lbx())
+        try:
+            await worker.start()
+            await asyncio.wait_for(polled.wait(), timeout=10)
+        finally:
+            await worker.aclose()
+        assert activation_schedule(activation_job(factory)) == activation_schedule(saved)
+
+
+@pytest.mark.parametrize(
+    "completion_reason,completion_offset,reopen_offset",
+    [
+        (None, 0, 5),
+        (WidgetActivationCompletionReason.ACTIVATION_DETECTED, -10, 50),
+        (WidgetActivationCompletionReason.ACTIVATION_DETECTED, -120, 5),
+        (WidgetActivationCompletionReason.WINDOW_EXPIRED, 5, 5),
+        (WidgetActivationCompletionReason.PURCHASE_INELIGIBLE, -10, 5),
+    ],
+    ids=["lease", "handoff-grace", "closing-grace-after-handoff", "expired", "ineligible"],
+)
+async def test_any897_reopening_enforces_saved_window_and_lease_bounds(
+    scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    portal: httpx.AsyncClient,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    completion_reason: WidgetActivationCompletionReason | None,
+    completion_offset: int,
+    reopen_offset: int,
+) -> None:
+    _, _, purchase = scenario
+    factory = postgres_session_factory
+    prepared_at = callback_at = read_source_time(factory)
+    monkeypatch.setattr(widget_admission, "database_now", lambda db: prepared_at)
+    monkeypatch.setattr(activation_windows, "database_now", lambda db: callback_at)
+    assert (await payment(portal, purchase.id)).status_code == 200
+    saved = activation_job(factory)
+    original = WidgetActivationWindow.from_work(saved)
+    monkeypatch.setattr(billing_routes, "settings", step1_settings(billing_widget_activation_window_seconds=420))
+    completed_at = original.deadline_at + timedelta(seconds=completion_offset)
+    earliest = original.deadline_at + timedelta(seconds=reopen_offset)
+
+    with factory() as db:
+        row = db.get(BillingWorkItem, saved.work_item_id)
+        completion = None
+        if completion_reason is None:
+            row.work_state = BillingWorkState.RUNNING
+            row.lease_owner = "test-worker"
+            row.lease_expires_at = earliest + timedelta(seconds=1)
+        else:
+            completion = WidgetActivationCompletion(reason=completion_reason, at=completed_at)
+            row.payload_document = original.model_copy(update={"completion": completion}).model_dump(mode="json")
+            row.work_state = BillingWorkState.COMPLETED
+        row.next_attempt_at = original.deadline_at
+        row.last_attempt_started_at = original.deadline_at - timedelta(seconds=20)
+        row.attempt_count = 3
+        db.commit()
+    prior_job = activation_job(factory)
+    assert WidgetActivationWindow.from_work(prior_job).completion == completion
+
+    # This callback runs past the threshold, but the Widget opened too early.
+    prepared_at = earliest - timedelta(microseconds=1)
+    callback_at = earliest + timedelta(seconds=1)
+    assert (await payment(portal, purchase.id)).status_code == 200
+    assert activation_schedule(activation_job(factory)) == activation_schedule(prior_job)
+
+    prepared_at = earliest
+    if prior_job.lease_expires_at is not None:
+        callback_at = prior_job.lease_expires_at - timedelta(microseconds=1)
+        assert (await payment(portal, purchase.id)).status_code == 200
+        assert activation_schedule(activation_job(factory)) == activation_schedule(prior_job)
+        callback_at = prior_job.lease_expires_at
+
+    assert (await payment(portal, purchase.id)).status_code == 200
+    reopened = activation_job(factory)
+    assert WidgetActivationWindow.from_work(reopened) == WidgetActivationWindow(
+        purchase_id=purchase.id, prepared_at=earliest, deadline_at=earliest + timedelta(minutes=7)
+    )
+    assert reopened.work_item_id == saved.work_item_id
+    assert reopened.enqueue_generation == saved.enqueue_generation + 1
+    assert reopened.next_attempt_at == earliest + timedelta(seconds=20)
+    assert reopened.work_state == BillingWorkState.PENDING and reopened.attempt_count == 0
+    assert reopened.last_attempt_started_at is reopened.lease_owner is reopened.lease_expires_at is None
+
+    prepared_at = earliest - timedelta(microseconds=1)
+    assert (await payment(portal, purchase.id)).status_code == 200
+    assert activation_schedule(activation_job(factory)) == activation_schedule(reopened)
+
+
+async def test_any897_expired_callbacks_and_purchases_that_no_longer_wait_cannot_save_windows(
+    scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    portal: httpx.AsyncClient,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport, _, purchase = scenario
+    factory = postgres_session_factory
+    prepared_at = read_source_time(factory)
+    callback_at = prepared_at + timedelta(minutes=5)
+    monkeypatch.setattr(widget_admission, "database_now", lambda db: prepared_at)
+    monkeypatch.setattr(activation_windows, "database_now", lambda db: callback_at)
+    assert (await payment(portal, purchase.id)).status_code == 200
+    with factory() as db:
+        assert (
+            db.scalar(
+                select(BillingWorkItem).where(BillingWorkItem.work_kind == BillingWorkKind.WIDGET_ACTIVATION_CHECK)
+            )
+            is None
+        )
+
+    prepared_at = callback_at
+    assert (await payment(portal, purchase.id)).status_code == 200
+    saved = activation_job(factory)
+    prepared_at = WidgetActivationWindow.from_work(saved).deadline_at + timedelta(seconds=5)
+    callback_at = prepared_at
+    activate(transport)
+    assert (await payment(portal, purchase.id)).status_code == 200
+    assert activation_schedule(activation_job(factory)) == activation_schedule(saved)
+
+    transport.subscriptions[0]["state"] = -2
+    callback_at = prepared_at + timedelta(minutes=5)
+    assert (await payment(portal, purchase.id)).status_code == 200
+    assert activation_schedule(activation_job(factory)) == activation_schedule(saved)
+
+
+async def test_any897_migrated_queue_enforces_one_key_even_after_completion(
+    scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    portal: httpx.AsyncClient,
+    postgres_session_factory: sessionmaker[Session],
+    database_test_url: URL,
+) -> None:
+    _, _, purchase = scenario
+    factory = postgres_session_factory
+    assert (await payment(portal, purchase.id)).status_code == 200
+    saved = activation_job(factory)
+    with factory() as db:
+        row = db.get(BillingWorkItem, saved.work_item_id)
+        row.work_state = BillingWorkState.COMPLETED
+        window = WidgetActivationWindow.from_work(row)
+        row.payload_document = window.model_copy(
+            update={
+                "completion": WidgetActivationCompletion(
+                    reason=WidgetActivationCompletionReason.PURCHASE_INELIGIBLE,
+                    at=window.prepared_at,
+                )
+            }
+        ).model_dump(mode="json")
+        db.commit()
+    completed = activation_job(factory)
+    with factory() as db:
+        duplicate = BillingWorkItem(
+            work_kind=saved.work_kind,
+            scope_kind=saved.scope_kind,
+            scope_reference=saved.scope_reference,
+            coalescing_key=saved.coalescing_key,
+            payload_schema_version=saved.payload_schema_version,
+            payload_document=saved.payload_document,
+            next_attempt_at=saved.next_attempt_at,
+            work_state=BillingWorkState.PENDING,
+        )
+        with pytest.raises(IntegrityError, match="uq_billing_work_items_widget_activation"), db.begin_nested():
+            db.add(duplicate)
+            db.flush()
+
+    with alembic_test_config(database_test_url) as migration:
+        with pytest.raises(RuntimeError, match="Widget activation windows require the unique queue key"):
+            command.downgrade(migration, "20261113_0013")
+    assert activation_schedule(activation_job(factory)) == activation_schedule(completed)
 
 
 @pytest.mark.parametrize("after_response", ["write_fails", "scope_released", "unlinked", "activated"])
@@ -224,7 +490,7 @@ async def test_any897_background_check_runs_after_widget_response_and_rechecks_p
 
 
 @pytest.mark.parametrize(
-    "mode", ["no_writer", "account", "inactive", "active", "current_primary", "previous_primary", "operator_primary"]
+    "mode", ["account", "inactive", "active", "current_primary", "previous_primary", "operator_primary"]
 )
 async def test_any897_only_waiting_first_activation_is_scheduled(
     scenario: tuple[PurchaseTransport, SourceResources, Purchase],
@@ -284,8 +550,7 @@ async def test_any897_only_waiting_first_activation_is_scheduled(
         pytest.fail("an ineligible Widget opening reached the activation writer")
 
     monkeypatch.setattr("starlette.background.BackgroundTasks.add_task", add_task)
-    if mode != "no_writer":
-        widget_app.dependency_overrides[billing_routes.get_widget_activation_writer] = lambda: writer
+    widget_app.dependency_overrides[billing_routes.get_widget_activation_writer] = lambda: writer
     response = (
         await portal.post("/api/billing/widget-bootstrap", json={})
         if mode == "account"

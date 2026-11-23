@@ -19,7 +19,7 @@ BASELINE_REVISION = "20260924_0001"
 EMAIL_VERIFICATION_REVISION = "20261001_0002"
 BILLING_PREPARATION_REVISION = "20261029_0003"
 WORKER_REVISION = "20261028_0005"
-HEAD_REVISION = "20261113_0013"
+HEAD_REVISION = "20261123_0014"
 
 SURVIVOR_TABLES = {
     "regions",
@@ -517,6 +517,7 @@ EXPECTED_CHECKS = {
         "ck_billing_work_items_lease_pair",
         "ck_billing_work_items_generation_nonnegative",
         "ck_billing_work_items_recipient",
+        "ck_billing_work_items_widget_activation_key",
     },
     "manual_review_cases": {"ck_manual_review_cases_evidence_schema_nonempty"},
     "paid_access_states": {"ck_paid_access_states_revision_positive"},
@@ -726,6 +727,7 @@ EXPECTED_INDEXES = {
         "ix_billing_work_items_coalescing_key",
         "uq_billing_work_items_create_recovery",
         "uq_billing_work_items_recurring",
+        "uq_billing_work_items_widget_activation",
         "ix_billing_work_items_priority_retry",
         "ix_billing_work_items_lease_expiry",
         "ix_billing_work_items_claim_scan",
@@ -803,6 +805,7 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         assert script.get_bases() == [BASELINE_REVISION]
         assert [item.revision for item in script.walk_revisions()] == [
             HEAD_REVISION,
+            "20261113_0013",
             "20261113_0012",
             "20261111_0011",
             "20261111_0010",

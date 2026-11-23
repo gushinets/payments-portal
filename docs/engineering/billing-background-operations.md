@@ -197,6 +197,8 @@ There is no separate process to launch or standalone worker command/container.
   than the cleanup reserve and at most 240 seconds. This leaves the 30-second
   claim/apply margin and refusal retry within the five-minute urgent cadence.
 - `BILLING_WORKER_SCAN_BATCH_SIZE=100`: local enrollment/repair batch, range 1–100.
+- `BILLING_WIDGET_ACTIVATION_WINDOW_SECONDS=300`: positive duration for new
+  activation windows opened by a payment Widget. Tuning it preserves saved deadlines.
 - `PAID_ACCESS_CLOCK_SKEW_SECONDS`: supported deployment clock budget, 1–299
   seconds with no default. Unset prevents new positive derivation while local
   reductions continue; existing allowance UTC bounds remain frozen.

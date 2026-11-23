@@ -183,7 +183,7 @@ current migration chain and table inventory. Do not create a separate
 bootstrap CLI. Before starting normal runtime on a fresh database, verify:
 
 - Alembic reports one head and the database is at that head;
-- the current head is `20261113_0013` and exactly 30 application tables exist;
+- the current head is `20261123_0014` and exactly 30 application tables exist;
 - every removed legacy catalog/order/payment/provider/subscription/
   entitlement/trial table is absent;
 - all seventeen billing/link/purchase tables are empty before explicit flows;
@@ -337,7 +337,7 @@ never repair failure by downgrading, stamping or rewriting purchase history.
 
 ### Paired compatibility and synchronized cutover
 
-The current local ANY-766 source pair requires
+The locally verified ANY-766 source pair used
 Portal migration head `20261113_0013`, Kernel head `0022`, consumer identity V2,
 AccessSnapshot V3, manifest/invalidation/usage/exhaustion V1. Source baselines are
 Portal `2e328bb59af690ec3a4599da0ce4556f9bedce76` and Kernel
@@ -387,7 +387,7 @@ Before installing this pair over the Step 8 baseline:
    allowance ownership by changing configuration. Enable Kernel invalidation and
    usage receiver permissions before enabling Portal delivery.
 3. While both old application sets remain stopped, run Portal's selected
-   `migrate` image through head `20261113_0013`: 0009 binds retained delegations
+   `migrate` image through its head: 0009 binds retained delegations
    and policy scope; 0010 partitions recipient/outbox/work keys and retires stale
    claims; 0011 adds exhaustion deduplication; 0012 retains allowance activation
    and introduces V2 internal evidence readers/writers; 0013 bounds new code
