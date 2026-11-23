@@ -35,6 +35,7 @@ SWEEP_SECONDS = 60
 URGENT_SECONDS = 300
 NORMAL_SECONDS = 900
 URGENT_TRUST_WINDOW = timedelta(minutes=30)
+SOURCE_WORK_KINDS = (RECONCILIATION, BillingWorkKind.EXTERNAL_CREATE_RECOVERY, BillingWorkKind.CUSTOMER_INVENTORY)
 
 
 def reconciliation_outcome(factory: SessionFactory, observation_id: UUID) -> tuple[str, datetime]:
@@ -172,7 +173,9 @@ def claim_work(
             if lane == WorkLane.LOCAL
             else (BillingWorkKind.ACCESS_INVALIDATION,)
             if lane == WorkLane.DELIVERY
-            else (RECONCILIATION, "external_create_recovery", "customer_inventory"),
+            else (*SOURCE_WORK_KINDS, BillingWorkKind.WIDGET_ACTIVATION_CHECK)
+            if lane == WorkLane.NORMAL
+            else SOURCE_WORK_KINDS,
             now,
             urgent=None if lane in (WorkLane.LOCAL, WorkLane.DELIVERY) else lane == WorkLane.URGENT,
             account=configuration.lbx_external_billing_account_id
@@ -190,8 +193,9 @@ def claim_work(
             return None
         row.lease_owner = str(uuid4())
         row.lease_expires_at = now + timedelta(seconds=configuration.billing_worker_io_timeout_seconds + 30)
-        row.last_attempt_started_at = now
-        row.attempt_count += 1
+        if row.work_kind != BillingWorkKind.WIDGET_ACTIVATION_CHECK:
+            row.last_attempt_started_at = now
+            row.attempt_count += 1
         row.work_state = "running"
         claim = WorkClaim(
             row.work_item_id,

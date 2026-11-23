@@ -125,6 +125,7 @@ def claimable(
     )
     if recipient_id is not None:
         query = query.where(BillingWorkItem.recipient_id == recipient_id)
+    activation_check = BillingWorkItem.work_kind == BillingWorkKind.WIDGET_ACTIVATION_CHECK
     if urgent is not None:
         # A normal job can become urgent while waiting, independently of another
         # source attempt or an enrollment sweep. Only the queue row is locked.
@@ -154,11 +155,14 @@ def claimable(
         # Also promote rows scheduled under the old normal cadence. Retain the
         # attempt-spacing and live-lease guards; only the queue row is locked.
         due = or_(due, reconciliation & paid_retry_due)
-        is_urgent = or_(BillingWorkItem.priority > 0, trust_due, reconciliation & paid_due)
-        query = query.where(is_urgent if urgent else ~is_urgent)
+        is_urgent = ~activation_check & or_(BillingWorkItem.priority > 0, trust_due, reconciliation & paid_due)
+        query = query.where(
+            is_urgent if urgent else ~is_urgent,
+            or_(~activation_check, BillingWorkItem.coalescing_key == account + ":" + BillingWorkItem.scope_reference),
+        )
     return db.scalar(
         query.where(due)
-        .order_by(BillingWorkItem.next_attempt_at, BillingWorkItem.work_item_id)
+        .order_by(activation_check, BillingWorkItem.next_attempt_at, BillingWorkItem.work_item_id)
         .limit(1)
         .with_for_update(skip_locked=True)
     )
@@ -256,6 +260,7 @@ def backlog(
                     "customer_inventory",
                     BillingWorkKind.ACCESS_INVALIDATION,
                     BillingWorkKind.ALLOWANCE_EXHAUSTION,
+                    BillingWorkKind.WIDGET_ACTIVATION_CHECK,
                 )
             ),
             or_(

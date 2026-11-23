@@ -357,6 +357,17 @@ backoff up to five minutes. Process pauses/backlog can cause observable cadence
 lag; they never extend trust. Claims/fences prevent competing or stale consumers
 from overwriting newer facts, and hints arriving during work remain due.
 
+ANY-897 Widget activation checks run in the normal source lane after due
+regular work. Each attempt makes one logical point read of the linked LBX
+subscription. The worker skips missed 20-second slots anchored at Widget
+preparation and uses the first slot starting at least 40 seconds after an
+attempt that failed. A closing read is due at the saved deadline, with at most
+five seconds of grace, including pickup delay. The ordinary read budget ends
+at the deadline. Each read and its bounded cleanup wait share a budget of at
+most five seconds. The lane retains resources until source cleanup finishes.
+Paid access continues through regular reconciliation. Handoff from a current
+positive point read is planned in ANY-897 Step 4.
+
 `external_create_recovery` is GET-only. Zero candidates remain uncertain; exactly
 one original point-proven candidate may bind; ambiguous/foreign candidates or
 an identity bound to another purchase require review or more proof. Recovery preserves the original

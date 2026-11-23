@@ -92,6 +92,11 @@ class PreflightBudget:
     def work_deadline(self) -> float:
         return self._work_deadline
 
+    def limit_deadline(self, deadline: float) -> None:
+        """Shorten this operation's monotonic deadline and retain its cleanup reserve."""
+        self._deadline = min(self.deadline, deadline)
+        self._work_deadline = min(self.work_deadline, self.deadline - self._owner.policy.cleanup_timeout_seconds)
+
     def remaining_seconds(self) -> float:
         self.check()
         return max(0.0, self.work_deadline - time.monotonic())

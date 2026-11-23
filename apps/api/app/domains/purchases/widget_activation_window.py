@@ -14,7 +14,7 @@ from app.infrastructure.queries.billing_reconciliation import database_now
 from app.models import BillingWorkItem, BillingWorkKind, BillingWorkScope, BillingWorkState
 
 WINDOW_SCHEMA = "widget-activation-window:v1"
-FIRST_ATTEMPT_DELAY = timedelta(seconds=20)
+ATTEMPT_INTERVAL = timedelta(seconds=20)
 CLOSING_GRACE = timedelta(seconds=5)
 HANDOFF_DISPLAY = timedelta(seconds=60)
 
@@ -84,7 +84,7 @@ def save_widget_activation_window(db: Session, opening: WidgetActivationOpening,
     window = WidgetActivationWindow(
         purchase_id=opening.purchase_id, prepared_at=opening.prepared_at, deadline_at=deadline
     )
-    due = min(window.prepared_at + FIRST_ATTEMPT_DELAY, window.deadline_at)
+    due = min(window.prepared_at + ATTEMPT_INTERVAL, window.deadline_at)
     if row is None:
         db.add(
             BillingWorkItem(

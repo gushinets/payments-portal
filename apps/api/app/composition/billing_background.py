@@ -1,4 +1,4 @@
-"""Worker entrypoints into shared GET-only recovery and bounded inventory proof."""
+"""Worker entrypoints for bounded billing source work."""
 
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -14,15 +14,45 @@ from app.domains.billing.paid_policy import MeteringPolicy
 from app.core.settings import Settings
 from app.domains.billing.discovery import persist_discoveries, apply_inventory
 from app.domains.billing import background_recovery as recovery, work
-from app.domains.billing.work_contracts import WorkClaim
+from app.domains.billing.work_contracts import WorkAttemptOutcome, WorkClaim
 from app.domains.catalog.publication import SessionFactory
+from app.domains.purchases.widget_activation_poll import finish_widget_activation_read, prepare_widget_activation_read
 from app.infrastructure.preflight import (
     PreflightAdmission,
     PreflightBudget,
+    PreflightDeadlineExceeded,
 )
 from app.integrations.lbx.client import LbxServerClient
+from app.integrations.lbx.errors import LbxError
+from app.integrations.lbx.financial import subscription_lifecycle
+from app.integrations.lbx.reconciliation import timely_point
 from app.infrastructure.sentry import report_billing_recovery_exhausted
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State
+
+
+async def check_widget_activation(
+    client: LbxServerClient,
+    configuration: Settings,
+    *,
+    factory: SessionFactory,
+    claim: WorkClaim,
+    budget: PreflightBudget,
+    delegate: Callable[..., Awaitable[Any]],
+) -> WorkAttemptOutcome:
+    attempt = await delegate(prepare_widget_activation_read, factory, configuration, claim)
+    if attempt is None:
+        return WorkAttemptOutcome.COMPLETED
+    budget.limit_deadline(attempt.monotonic_deadline)
+    error = None
+    try:
+        point = await timely_point(
+            lambda: client.get_subscription(subscription_id=attempt.provider_subscription_id, budget=budget), budget
+        )
+        subscription_lifecycle(point)
+        budget.check()
+    except (LbxError, PreflightDeadlineExceeded) as failure:
+        error = failure.code
+    return await delegate(finish_widget_activation_read, factory, claim, attempt, error=error)
 
 
 async def recover_operation(
