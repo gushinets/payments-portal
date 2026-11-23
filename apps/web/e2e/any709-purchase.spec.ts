@@ -279,12 +279,12 @@ test("keyboard recovery keeps focus until polling offers payment", async ({ page
   state.advanceState = "awaiting_external_result";
   state.advanceDelayMs = 12_000;
   const panel = await openProduct(page);
-  const recover = panel.getByRole("button", { name: ru.Purchase.recover });
-  await recover.focus();
+  const continuation = panel.getByRole("button", { name: ru.Purchase.continue, exact: true });
+  await continuation.focus();
   await page.keyboard.press("Enter");
   await expect.poll(() => state.advances).toBe(1);
-  await expect(recover).toBeDisabled();
-  await expect(recover).toBeFocused();
+  await expect(continuation).toBeDisabled();
+  await expect(continuation).toBeFocused();
   await page.keyboard.press("Enter");
 
   state.owned = savedPurchase;
@@ -379,8 +379,12 @@ test("UNKNOWN recovery remains available without catalog and billing can retry t
   state.catalogUnavailable = true;
   state.scriptFailure = true;
   const panel = await openProduct(page);
+  await expect(panel.getByText(ru.Purchase.states.awaiting_external_result)).toBeVisible();
   await expect(panel.getByRole("button", { name: ru.Purchase.buy, exact: true })).toHaveCount(0);
-  await panel.getByRole("button", { name: ru.Purchase.recover }).click();
+  await page.screenshot({ path: testInfo.outputPath("purchase-saved.png"), fullPage: true });
+  const accessibility = await new AxeBuilder({ page }).analyze();
+  expect(accessibility.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
+  await panel.getByRole("button", { name: ru.Purchase.continue, exact: true }).click();
   await panel.getByRole("link", { name: ru.Billing.pay }).click();
   const billing = page.getByRole("region", { name: ru.Billing.title });
   await expect(billing.getByRole("combobox")).toHaveValue(savedPurchase.purchase_intent_id);

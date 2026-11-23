@@ -506,7 +506,7 @@
     "states": {
       "created": "Kauf akzeptiert. Setzen Sie die Vorbereitung fort.",
       "preparing": "Vorbereitung läuft. Fahren Sie für eine sichere Prüfung fort.",
-      "awaiting_external_result": "Das Abrechnungsergebnis ist unbekannt. Der ursprüngliche Kauf bleibt reserviert.",
+      "awaiting_external_result": "Der Kauf wurde gespeichert.",
       "linked": "Abonnement vorbereitet",
       "resolved_no_external_effect": "Dieser Kauf wurde ohne externe Auswirkung abgeschlossen.",
       "failed_before_external_effect": "Dieser Kauf wurde vor der Erstellung von Finanzobjekten gestoppt.",

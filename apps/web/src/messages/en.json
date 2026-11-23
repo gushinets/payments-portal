@@ -506,7 +506,7 @@
     "states": {
       "created": "Purchase accepted. Continue preparation.",
       "preparing": "Preparation is in progress. Continue to check safely.",
-      "awaiting_external_result": "The billing outcome is unknown. The original purchase remains reserved.",
+      "awaiting_external_result": "Your purchase has been saved.",
       "linked": "Subscription prepared",
       "resolved_no_external_effect": "This purchase was resolved without an external effect.",
       "failed_before_external_effect": "This purchase stopped before any financial creation.",

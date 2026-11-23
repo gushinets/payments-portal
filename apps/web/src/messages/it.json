@@ -506,7 +506,7 @@
     "states": {
       "created": "Acquisto accettato. Continua la preparazione.",
       "preparing": "Preparazione in corso. Continua per verificare in sicurezza.",
-      "awaiting_external_result": "L’esito della fatturazione è sconosciuto. L’acquisto originale resta riservato.",
+      "awaiting_external_result": "Il tuo acquisto è stato salvato.",
       "linked": "Abbonamento predisposto",
       "resolved_no_external_effect": "L’acquisto è stato risolto senza effetti esterni.",
       "failed_before_external_effect": "L’acquisto si è fermato prima della creazione di oggetti finanziari.",

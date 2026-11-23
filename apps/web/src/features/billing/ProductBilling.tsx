@@ -336,7 +336,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
   }
 
   const resumable = purchase && purchase.scope_held && !linked;
-  const needsRecovery = purchase?.state === "awaiting_external_result" || purchase?.state === "manual_review";
+  const needsRecovery = purchase?.state === "manual_review";
   return <section className={linked ? "purchase-panel purchase-complete" : "purchase-panel"} aria-label={t("title")}>
     {!linked && <Heading>{t("title")}</Heading>}
     <div role="status">

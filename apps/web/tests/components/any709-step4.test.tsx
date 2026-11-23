@@ -154,21 +154,33 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-it("shows Continue when status polling learns the agreement has been recovered", async () => {
+it.each(["awaiting_external_result", "preparing"] as const)("continues a saved purchase when the next status is %s", async (stateAfterPoll) => {
+  vi.useFakeTimers();
   owned = { ...savedPurchase, state: "awaiting_external_result", reason: "purchase_pending" };
-  renderProduct();
-  expect(await screen.findByRole("button", { name: ru.Purchase.recover })).toBeEnabled();
-
-  owned = { ...owned, state: "preparing" };
-
-  const continuation = await screen.findByRole("button", { name: ru.Purchase.continue }, { timeout: 4000 });
+  await act(async () => { renderProduct(); });
+  const continuation = screen.getByRole("button", { name: ru.Purchase.continue });
   expect(continuation).toBeEnabled();
-  expect(screen.queryByText(ru.Purchase.states.awaiting_external_result)).not.toBeInTheDocument();
+  expect(screen.getByText("Покупка сохранена.")).toBeVisible();
+
+  owned = { ...owned, state: stateAfterPoll };
+  await act(async () => vi.advanceTimersByTimeAsync(2100));
+  const purchasePath = `/api/purchase-intents/${savedPurchase.purchase_intent_id}`;
+  expect(fetcher.mock.calls.some(([url]) => new URL(String(url)).pathname === purchasePath)).toBe(true);
+  const statusMessage = stateAfterPoll === "preparing" ? ru.Purchase.states.preparing : "Покупка сохранена.";
+  expect(screen.getByText(statusMessage)).toBeVisible();
+  expect(continuation).toBeEnabled();
+  expect(screen.queryByRole("link", { name: ru.Billing.pay })).not.toBeInTheDocument();
   expect(advance).not.toHaveBeenCalled();
+
   continuation.focus();
-  fireEvent.click(continuation);
-  expect(await screen.findByRole("link", { name: ru.Billing.pay })).toHaveFocus();
+  await act(async () => { fireEvent.click(continuation); });
+  expect(screen.getByRole("link", { name: ru.Billing.pay })).toHaveFocus();
   expect(advance).toHaveBeenCalledTimes(1);
+  expect(fetcher).toHaveBeenCalledWith(
+    expect.stringContaining(`${purchasePath}/advance`),
+    expect.objectContaining({ method: "POST" })
+  );
+  expect(confirm).not.toHaveBeenCalled();
 });
 
 it("announces recovery and moves focus from the status check to payment", async () => {
@@ -326,9 +338,9 @@ it("observes a subscription recovered after the fast polling window using status
   vi.useFakeTimers();
   owned = { ...savedPurchase, state: "awaiting_external_result", reason: "purchase_pending" };
   await act(async () => { renderProduct(); });
-  const recover = screen.getByRole("button", { name: ru.Purchase.recover });
-  expect(recover).toBeEnabled();
-  recover.focus();
+  const continuation = screen.getByRole("button", { name: ru.Purchase.continue });
+  expect(continuation).toBeEnabled();
+  continuation.focus();
 
   await act(async () => { await vi.advanceTimersByTimeAsync(155_000); });
   owned = savedPurchase;
@@ -461,7 +473,7 @@ describe("ANY-709 Step 4 purchase journey", () => {
 
   it.each([
     { state: "created", role: "button", name: ru.Purchase.continue, focus: "retry" },
-    { state: "awaiting_external_result", role: "button", name: ru.Purchase.recover, focus: "retry" },
+    { state: "awaiting_external_result", role: "button", name: ru.Purchase.continue, focus: "retry" },
     { state: "linked", role: "link", name: ru.Billing.pay, focus: "retry" },
     { state: "created", role: "button", name: ru.Purchase.continue, focus: "status check" },
   ] as const)("finds a late committed confirmation in $state with focus on $focus", async ({ state, role, name, focus }) => {
@@ -541,7 +553,7 @@ describe("ANY-709 Step 4 purchase journey", () => {
     owned = { ...savedPurchase, state, reason: state === "manual_review" ? "purchase_outcome_unknown" : "purchase_pending" };
     advance.mockImplementation(async () => json(owned));
     renderProduct();
-    const action = await screen.findByRole("button", { name: state === "created" || state === "preparing" ? ru.Purchase.continue : ru.Purchase.recover });
+    const action = await screen.findByRole("button", { name: state === "manual_review" ? ru.Purchase.recover : ru.Purchase.continue });
     expect(screen.queryByRole("button", { name: ru.Purchase.buy })).not.toBeInTheDocument();
     fireEvent.click(action);
     await waitFor(() => expect(advance).toHaveBeenCalledTimes(1));
@@ -632,10 +644,11 @@ it("keeps the unknown-outcome warning through preparation and clears it once the
   renderProduct();
   await accept();
   expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
-  expect(screen.getByRole("button", { name: ru.Purchase.recover })).toBeEnabled();
+  expect(screen.getByRole("button", { name: ru.Purchase.continue })).toBeEnabled();
 
   owned = { ...savedPurchase, state: "preparing", reason: "purchase_pending" };
-  expect(await screen.findByRole("button", { name: ru.Purchase.continue }, { timeout: 3000 })).toBeEnabled();
+  expect(await screen.findByText(ru.Purchase.states.preparing, {}, { timeout: 3000 })).toBeVisible();
+  expect(screen.getByRole("button", { name: ru.Purchase.continue })).toBeEnabled();
   expect(screen.getByRole("alert")).toHaveTextContent(ru.Billing.errors.financialPending);
   expect(advance).toHaveBeenCalledTimes(1);
 
@@ -713,16 +726,16 @@ it.each([
   vi.useFakeTimers();
   owned = { ...savedPurchase, state: "awaiting_external_result" };
   await act(async () => { renderProduct(); });
-  const recover = screen.getByRole("button", { name: ru.Purchase.recover });
+  const continuation = screen.getByRole("button", { name: ru.Purchase.continue });
   const refresh = screen.getByRole("button", { name: ru.Purchase.refresh });
-  recover.focus();
-  expect(recover).toHaveFocus();
+  continuation.focus();
+  expect(continuation).toHaveFocus();
   fetcher.mockClear().mockResolvedValueOnce(json({ detail: { code, request_id: "read-refused" } }, status));
   await act(async () => vi.advanceTimersByTimeAsync(120_000));
   expect(fetcher).toHaveBeenCalledTimes(1);
   expect(screen.getByRole("alert")).toHaveTextContent(message);
   expect(screen.getByRole("alert")).toHaveTextContent("read-refused");
-  expect(recover).not.toBeInTheDocument();
+  expect(continuation).not.toBeInTheDocument();
   expect(refresh).toHaveFocus();
 
   owned = { ...savedPurchase, state: "preparing" };
