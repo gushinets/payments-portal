@@ -112,9 +112,11 @@ only their source-read/admission strategy.
 - Product-page live review, explicit consent to draft legal terms, and
   continuation of the original held purchase. Bounded status polling observes
   saved preparation and release.
-  The payment action opens the cabinet. After verifying the purchase, the
-  cabinet uses that click once to open the payment Widget. The UI distinguishes
-  unknown from no purchase.
+  In the same tab and session, the payment action opens the cabinet and starts
+  the Widget after purchase verification. Opening the payment link in a new
+  tab, visiting its URL directly or reloading that URL selects the purchase
+  and requires a separate click in the cabinet to open the Widget. The UI
+  distinguishes unknown from no purchase.
   One disposable SDK lifecycle replaces account/payment views and rejects late
   credentials after close, product/user change or logout. Purchase preparation
   and Widget outcomes alone grant no access.

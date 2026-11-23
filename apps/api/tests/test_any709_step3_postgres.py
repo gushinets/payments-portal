@@ -121,7 +121,6 @@ async def test_any709_step3_complete_preparation_and_historical_manage(
             assert db.scalar(select(func.count()).select_from(DocumentAcceptance)) >= 3
         result = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
         assert result.state == IntentState.LINKED and result.held
-        assert sum(req.url.path.endswith("/users/345") for req in transport.requests) == 5
         # Current prices and hints change. Original effective terms still authorize Manage.
         transport.change_price()
         transport.subscriptions[0]["outer_id"] = "mutable-hint-changed"

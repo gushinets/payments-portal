@@ -38,24 +38,35 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   const billingSection = useRef<HTMLElement>(null);
   const paymentNotice = useRef<HTMLDivElement>(null);
   const automaticPaymentId = useRef<string | undefined>(undefined);
-  const focusBeforeRefusal = useRef<Element | null>(null);
+  const focusBeforeStatusChange = useRef<Element | null>(null);
   const retrySessionButton = useRef<HTMLButtonElement>(null);
+  const paymentButton = useRef<HTMLButtonElement>(null);
+  const purchaseSelector = useRef<HTMLSelectElement>(null);
   // undefined permits a visible single-purchase default; null explicitly selects account viewing.
   const [selectedId, setSelectedId] = useState<string | null | undefined>(initialPurchaseId);
   const [selectionState, setSelectionState] = useState<SelectionState>({ status: initialPurchaseId && emailVerified ? "loading" : "ready" });
   const sessionRefused = selectionState.status === "error" && selectionState.sessionRefused === true;
   const canRead = emailVerified && !sessionRefused;
+  const rememberFocus = useCallback(() => {
+    const focused = document.activeElement;
+    if (focused !== document.body) focusBeforeStatusChange.current = focused;
+  }, []);
+  const continueLinkRef = useCallback((link: HTMLAnchorElement | null) => {
+    if (!link) return;
+    // Capture focus while React detaches the link, before removing it from the DOM.
+    return () => {
+      if (document.activeElement === link) rememberFocus();
+    };
+  }, [rememberFocus]);
   const applyRefusal = useCallback(({ httpStatus, message, requestId }: PurchaseReadRefusal) => {
     cancel();
     if (initialPurchaseId) claimPaymentOpening(initialPurchaseId, userId, visit.current)?.();
     const sessionRefused = httpStatus === 401 || httpStatus === 403;
-    if (sessionRefused && document.activeElement !== document.body) {
-      focusBeforeRefusal.current = document.activeElement;
-    }
+    if (sessionRefused) rememberFocus();
     // A concurrent selection failure cannot restore a refused cabinet session.
     setSelectionState((previous) => previous.status === "error" && previous.sessionRefused
       ? previous : { status: "error", message, requestId, sessionRefused });
-  }, [cancel, initialPurchaseId, userId]);
+  }, [cancel, initialPurchaseId, rememberFocus, userId]);
   const widget = useBillingWidget(userId, emailVerified, applyRefusal);
   const { open: openWidget, close: closeWidget } = widget;
   const handleRefusal = useCallback((refusal: PurchaseReadRefusal) => {
@@ -66,19 +77,6 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   const { applyStatus } = purchases;
   const paid = usePaidAccess(canRead, handleRefusal);
   const usage = usePaidUsage(canRead, handleRefusal);
-
-  useLayoutEffect(() => {
-    if (!sessionRefused) return;
-    const focused = focusBeforeRefusal.current;
-    focusBeforeRefusal.current = null;
-    if (
-      focused &&
-      document.activeElement === document.body &&
-      (!focused.isConnected || focused.matches(":disabled"))
-    ) {
-      retrySessionButton.current?.focus();
-    }
-  }, [sessionRefused]);
 
   useEffect(() => {
     if (!initialPurchaseId || !canRead) return;
@@ -142,8 +140,23 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   );
 
   useLayoutEffect(() => {
-    if (paymentUnavailable) closeWidget();
-  }, [closeWidget, paymentUnavailable]);
+    if (paymentUnavailable) {
+      if (billingSection.current?.contains(document.activeElement)) rememberFocus();
+      closeWidget();
+      return;
+    }
+    const focused = focusBeforeStatusChange.current;
+    focusBeforeStatusChange.current = null;
+    if (
+      focused &&
+      document.activeElement === document.body &&
+      (!focused.isConnected || focused.matches(":disabled"))
+    ) {
+      const target = sessionRefused ? retrySessionButton.current
+        : canPay && !widget.loading ? paymentButton.current : purchaseSelector.current;
+      target?.focus();
+    }
+  });
 
   useLayoutEffect(() => {
     const purchaseId = automaticPaymentId.current;
@@ -218,7 +231,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
       {emailVerified && <div className="billing-selection">
         {!sessionRefused && <>
           <label htmlFor="billing-purchase">{b("selectedPurchase")}</label>
-          <select id="billing-purchase" value={selection?.purchase_intent_id ?? selectedId ?? ""} disabled={selectionState.status === "loading"} onChange={(event) => choose(event.target.value)}>
+          <select ref={purchaseSelector} id="billing-purchase" value={selection?.purchase_intent_id ?? selectedId ?? ""} disabled={selectionState.status === "loading"} onChange={(event) => choose(event.target.value)}>
             <option value="">{b("accountView")}</option>
             {selectionBlocked && selectedId && !selection && <option value={selectedId}>{selectionState.status === "loading" ? p("loading") : b("selectionUnavailable")}</option>}
             {options.map((item) => <option key={item.purchase_intent_id} value={item.purchase_intent_id}>{b("purchaseOption", { product: item.product_id, id: item.purchase_intent_id })}</option>)}
@@ -233,7 +246,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
         {!sessionRefused && selection && <p className="billing-selected-product">{b("selectedProduct", { product: selection.product_id })}</p>}
         {!selectionBlocked && checking && !poll.paused && <p role="status">{p("loading")}</p>}
         {poll.paused && <p role="status">{p("statusPollingPaused")}</p>}
-        {!selectionBlocked && selection && !canPay && <p>{!checking && b("preparationRequired")} <Link href={`/products/${encodeURIComponent(selection.product_id)}`}>{p("continue")}</Link></p>}
+        {!selectionBlocked && selection && !canPay && <p>{!checking && b("preparationRequired")} <Link ref={continueLinkRef} href={`/products/${encodeURIComponent(selection.product_id)}`}>{p("continue")}</Link></p>}
       </div>}
       <div aria-live="polite">
         {paymentTarget && <div ref={paymentNotice} className="notice">
@@ -241,7 +254,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
           <p>{b("paymentTargetNote")}</p>
         </div>}
       </div>
-      <button className="btn-primary" type="button" aria-describedby={widgetOpen ? "billing-refresh-hint" : undefined} disabled={!emailVerified || selectionBlocked || (!!selection && !canPay) || widget.loading} onClick={openSelected}>
+      <button ref={paymentButton} className="btn-primary" type="button" aria-describedby={widgetOpen ? "billing-refresh-hint" : undefined} disabled={!emailVerified || selectionBlocked || (!!selection && !canPay) || widget.loading} onClick={openSelected}>
         {widget.loading ? b("loading") : widgetOpen ? b("refresh") : canPay ? b("pay") : b("open")}
       </button>
       {widgetOpen && <p id="billing-refresh-hint" className="card-copy">{b("refreshHint")}</p>}
@@ -278,7 +291,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
             <Link className="btn-secondary" href={`/products/${encodeURIComponent(item.product_id)}`}>{t("detailAction")}</Link>
             {item.state === "linked" && !item.checking
               ? <button className="btn-secondary" type="button" disabled={!emailVerified} onClick={() => manage(item.purchase_intent_id)}>{p("manage")}</button>
-              : <Link className="btn-secondary" href={`/products/${encodeURIComponent(item.product_id)}`}>{p("continue")}</Link>}
+              : <Link ref={item.purchase_intent_id === selectionId ? continueLinkRef : undefined} className="btn-secondary" href={`/products/${encodeURIComponent(item.product_id)}`}>{p("continue")}</Link>}
           </div>
         </article>)}
         {paidOnlyProducts.map((id) => <article className="account-product-card" key={id}>

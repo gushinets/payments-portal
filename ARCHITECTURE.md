@@ -253,8 +253,8 @@ PostgreSQL preserves immutable links and accepted purchase history. The former s
 presentation and are not the current catalog identity source. Brief owned cards
 link to product details; incomplete accepted purchases remain resumable. Product
 details own review, consent and preparation. On a prepared product, the payment
-action opens `/[locale]/account?purchase=<id>#billing`. The cabinet uses that
-click once in the current session. Every payment entry uses the same
+action opens `/[locale]/account?purchase=<id>#billing`. The cabinet uses a
+same-tab click once in the originating session. Every payment entry uses the same
 original-purchase bootstrap and fresh proof before opening the shared Widget.
 ANY-715 reconciles subscription facts and recovers uncertain operations in the
 background. ANY-765 presents the separately committed paid projection, including

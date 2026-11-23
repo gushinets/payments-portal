@@ -26,6 +26,31 @@ subscription. Keep explicit preparation and let the existing GET-only worker
 recover the original operation. The browser can use the durable result as soon
 as it observes it.
 
+## Regression test coverage
+
+Verify that browser closure, reload, API restart and delayed replies preserve
+the original financial operations and create no duplicate agreements or
+subscriptions.
+
+- The [purchase browser scenarios](../../../apps/web/e2e/any709-purchase.spec.ts)
+  cover desktop and mobile, keyboard confirmation, recovery and session refusal.
+  Keep one constrained-viewport scenario that delays session and bootstrap,
+  scrolls during bootstrap, and checks the verified target before READY.
+- The [product component tests](../../../apps/web/tests/components/any709-step4.test.tsx)
+  cover focus on a surviving terms control, manual and automatic status updates,
+  and recovery of the original confirmation after a lost reply, including when
+  a status check returns no purchase.
+- The [cabinet component tests](../../../apps/web/tests/components/any709-cabinet.test.tsx)
+  cover refusal and non-payable outcomes across an open Widget and an in-flight
+  opening, including the focus handoff. They distinguish a current-session
+  refusal from stale purchase results, unrelated 401s and replaced sessions.
+  The [shared paid-read tests](../../../apps/web/tests/components/any765-paid-access.test.tsx)
+  cover session replacement and unmount.
+- The [purchase PostgreSQL tests](../../../apps/api/tests/test_any709_step3_postgres.py)
+  cover durable recovery across restart, a late CREATE reply after concurrent
+  binding, live identity and fence before the first send, and deferral of
+  discovery to GET-only recovery after an ambiguous CREATE.
+
 ## Open acceptance items
 
 - Measure a fresh buyer's first attempt from accepting terms to the official

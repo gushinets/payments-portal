@@ -25,8 +25,9 @@ The repository remains pre-production on the surface established by ANY-636 4F. 
 [completed plan](docs/exec-plans/completed/ANY-636-implementation-plan.md).
 ANY-709 adds source-backed current offers, direct product links, explicit
 verified-email account Widget, immutable purchase consent and request-driven
-financial preparation/recovery. A payment click on a prepared product opens the
-shared cabinet Widget after fresh ownership and effective-term verification.
+financial preparation/recovery. In the same tab and session, a payment click on
+a prepared product opens the shared cabinet Widget after fresh ownership and
+effective-term verification.
 ANY-715 adds durable embedded polling, GET-only recovery, shared scoped inventory
 and audited operator commands. ANY-765 adds committed paid grants/allowances,
 semantic revisions/outbox, local expiry and authenticated cabinet reads.

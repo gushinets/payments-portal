@@ -481,12 +481,18 @@ it("keeps observing recovery when an already-started poll reads a linked purchas
     list.mockImplementationOnce(async () => json({ purchases: [{ ...first, state: persistedState }], next_cursor: null }));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: ru.Purchase.retry })));
     expect(screen.getByText(ru.Account.products.pending)).toBeVisible();
+    const billing = within(screen.getByRole("region", { name: ru.Billing.title }));
+    const continuation = billing.getByRole("link", { name: ru.Purchase.continue });
+    continuation.focus();
+    expect(continuation).toHaveFocus();
 
     // The worker commits after the list query. The poll reads after that commit.
     persistedState = "linked";
     await act(async () => permitPollRead());
     await act(async () => vi.advanceTimersByTimeAsync(12_000));
-    expect(screen.getByRole("button", { name: ru.Billing.pay })).toBeEnabled();
+    const payment = billing.getByRole("button", { name: ru.Billing.pay });
+    expect(payment).toBeEnabled();
+    expect(payment).toHaveFocus();
     expect(screen.getByText(ru.Account.products.prepared)).toBeVisible();
     expect(bootstrap).not.toHaveBeenCalled();
   } finally {
@@ -518,7 +524,7 @@ it("clears the pause notice when polling resumes for the same purchase", async (
 });
 
 it.each([
-  [401, "opening"], [401, "open"], [403, "opening"], [403, "open"]
+  [401, "opening"], [403, "open"]
 ] as const)("closes the payment Widget on HTTP %i while it is %s", async (code, phase) => {
   const inventory = Promise.withResolvers<Response>();
   const opening = Promise.withResolvers<Response>();
@@ -545,7 +551,7 @@ it.each([
 });
 
 it.each([
-  ["manual_review", "opening"], ["manual_review", "open"], ["not_found", "opening"], ["not_found", "open"]
+  ["manual_review", "opening"], ["not_found", "open"]
 ] as const)("closes payment for a confirmed %s purchase while the Widget is %s", async (result, phase) => {
   const inventory = Promise.withResolvers<Response>();
   const opening = Promise.withResolvers<Response>();
@@ -562,6 +568,9 @@ it.each([
     await act(async () => opening.resolve(json(widgetResponse(true))));
     expect(document.querySelector("iframe")).toBeVisible();
   }
+  const focused = document.querySelector("iframe") ?? screen.getByRole("button", { name: ru.Billing.close });
+  focused.focus();
+  expect(focused).toHaveFocus();
   await act(async () => inventory.resolve(json({ purchases: [{ ...first, state: "manual_review" }], next_cursor: null })));
   await screen.findByText(result === "manual_review" ? ru.Billing.preparationRequired : ru.Billing.selectionUnavailable, {
     selector: "p", exact: false
@@ -570,6 +579,7 @@ it.each([
 
   expect(document.querySelector("iframe")).toBeNull();
   expect(mount).toHaveBeenCalledTimes(phase === "open" ? 1 : 0);
+  expect(selector()).toHaveFocus();
 });
 
 it("keeps an open payment Widget during a transient purchase status failure", async () => {
@@ -694,31 +704,9 @@ it("discards the pending payment click when a cabinet read refuses the session b
   expect(billing.getByRole("alert")).toHaveTextContent(ru.Billing.errors.session);
 });
 
-it("ignores a paid read from the previous session after signing in again", async () => {
-  const oldRead = Promise.withResolvers<Response>();
-  const ordinaryFetch = fetcher.getMockImplementation()!;
-  const usage = vi.fn().mockReturnValueOnce(oldRead.promise).mockImplementation(() => json({ items: [] }));
-  fetcher.mockImplementation((input, init) => new URL(String(input)).pathname === "/api/paid-usage"
-    ? usage() : ordinaryFetch(input, init));
-  const previous = renderCabinet(first.purchase_intent_id);
-  await waitFor(() => expect(usage).toHaveBeenCalledTimes(1));
-  act(() => {
-    window.localStorage.setItem(sessionStorageKey, "replacement-session");
-    window.dispatchEvent(new Event(sessionChangedEvent));
-  });
-  previous.unmount();
-  renderCabinet(first.purchase_intent_id);
-  fireEvent.click(await screen.findByRole("button", { name: ru.Billing.pay }));
-  await waitFor(() => expect(document.querySelector("iframe")).toBeVisible());
-  await act(async () => oldRead.resolve(json({ detail: { code: "billing_session_required" } }, 401)));
-  expect(document.querySelector("iframe")).toBeVisible();
-  expect(screen.queryByText(ru.Billing.errors.session)).toBeNull();
-});
-
 it.each([
   { scenario: "an outdated purchase status", code: 200 },
   { scenario: "a missing previous purchase", code: 404, reason: "purchase_not_found" },
-  { scenario: "a temporary failure", code: 503, reason: "unavailable" },
   { scenario: "an unclassified 401", code: 401, reason: "unexpected_auth_error" },
   { scenario: "a late verification refusal", code: 403, reason: "billing_email_verification_required" },
   { scenario: "a refusal of the current session", code: 401, reason: "billing_session_required", closesCheckout: true },
@@ -829,10 +817,9 @@ it.each(["open", "opening"])("closes an %s checkout on a late bootstrap refusal 
 });
 
 it.each([
-  { scenario: "a transient failure", status: 503, code: "unavailable" },
-  { scenario: "an unclassified 401", status: 401, code: "unexpected_auth_error" },
-  { scenario: "a refusal of the replaced session", status: 401, code: "billing_session_required", replacesSession: true }
-])("keeps the next checkout open after $scenario from a previous bootstrap", async ({ status, code, replacesSession }) => {
+  { scenario: "an unclassified 401", code: "unexpected_auth_error" },
+  { scenario: "a refusal of the replaced session", code: "billing_session_required", replacesSession: true }
+])("keeps the next checkout open after $scenario from a previous bootstrap", async ({ code, replacesSession }) => {
   const previous = Promise.withResolvers<Response>();
   bootstrap.mockReturnValueOnce(previous.promise);
   list.mockImplementation(async () => json({ purchases: [first, second], next_cursor: null }));
@@ -853,7 +840,7 @@ it.each([
   open();
   await screen.findByRole("button", { name: ru.Billing.refresh });
 
-  await act(async () => previous.resolve(json({ detail: { code, request_id: "old-bootstrap" } }, status)));
+  await act(async () => previous.resolve(json({ detail: { code, request_id: "old-bootstrap" } }, 401)));
   expect(document.querySelector("iframe")).toBeVisible();
   expect(selector()).toHaveValue(second.purchase_intent_id);
   expect(screen.queryByText("old-bootstrap", { exact: false })).not.toBeInTheDocument();

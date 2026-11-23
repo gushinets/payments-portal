@@ -11,8 +11,8 @@ accepted purchases, plus one shared billing Widget and a full-catalog link.
 Identity facts are compact supporting content. The repository remains
 pre-production. ANY-709 adds optional FIO, explicit verified-email account
 Widget viewing without an offer/subscription, immutable purchase consent and
-request-driven preparation and recovery. A payment action on a prepared product
-opens the shared cabinet Widget after fresh original-purchase proof. ANY-715
+request-driven preparation and recovery. The cabinet obtains fresh proof of the
+original purchase before opening the shared payment Widget. ANY-715
 adds embedded subscription reconciliation, GET-only recovery and audited
 operations. ANY-765 adds committed paid-access reads and cabinet presentation.
 ANY-766 implements delegated identity, consumer-scoped snapshot V3, durable
@@ -149,11 +149,14 @@ documents remain drafts.
    existing reset flow, and complete authenticated email verification.
 6. Each enabled, linked product shows current source-backed commercial terms.
    The buyer reviews and accepts terms on the product page, which checks the
-   saved status of a pending purchase for a bounded period. Once the purchase
-   is prepared, the payment button opens the localized cabinet and starts the
-   account-wide billing Widget. The cabinet displays the product and the
-   verified agreement and seller for the selected purchase while the Widget
-   loads. The Widget can offer payment on other agreements in the same account.
+   saved status of a pending purchase for a bounded period. On a prepared
+   purchase, the payment link opens the localized cabinet. In the same tab and
+   session, the cabinet uses that click to open the account-wide billing Widget
+   after verification. Opening the link in a new tab, visiting its URL directly
+   or reloading that URL selects the purchase and requires a separate click in
+   the cabinet. While the Widget loads, the cabinet displays the product and
+   the verified agreement and seller for the selected purchase. The Widget can
+   offer payment on other agreements in the same account.
    The buyer checks the agreement number and selects the displayed agreement
    before paying. Accepted terms and purchase history remain immutable in
    PostgreSQL. ANY-765 displays committed paid access and purchased simulated
@@ -210,9 +213,10 @@ execution and artifacts also remain outside this repository.
 Provider-dependent LBX semantics, Widget behavior, paid-access derivation, and
 launch remain gated on Phase 0 PASS under ANY-504, with evidence owned by
 ANY-634. This handoff adds no provider semantics or later-step implementation.
-Historical 4F changed no backend behavior, persistence, migrations, or
-contracts. ANY-664 adds the Step 6 producer for immutable mapping revisions;
-ANY-709 adds purchase UI/preparation; ANY-715 adds operating reconciliation/recovery;
+Historical 4F introduced no provider I/O and changed no backend behavior,
+persistence, migrations, or contracts. ANY-664 adds the Step 6 producer for
+immutable mapping revisions. ANY-709 adds purchase UI/preparation.
+ANY-715 adds operating reconciliation/recovery.
 ANY-765 adds committed paid projection and cabinet reads. ANY-766 implements
 snapshot/invalidation transport, Kernel paid admission and recoverable paid
 browser launch and current/historical cabinet usage. Steps 16/17 supply focused
@@ -317,8 +321,10 @@ schema or feature-local JSON cast authority.
 - Reset and verification fragment tokens remain in their current client-only
   flows, are removed from the address bar, and are not persisted or logged.
   Locale navigation does not carry those tokens.
-- No provider I/O, card collection, or Portal-owned commercial/access/trial
-  runtime is introduced. Payment-method configuration remains empty.
+- External Billing owns the payment flow and commercial lifecycle. Card data
+  stays within the external payment boundary. The Portal derives paid access
+  from authoritative subscription evidence. The public payment-method list is
+  empty.
 
 ## Final verification and intent/DoD evidence
 

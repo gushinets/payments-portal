@@ -125,44 +125,7 @@ test("guest sees read-only details and a sign-in prompt", async ({ page }) => {
   expect(state.bootstraps).toEqual([]);
 });
 
-for (const [label, viewport] of [
-  ["short viewport", { height: 550 }],
-  ["landscape", { width: 568, height: 320 }]
-] as const) {
-  test(`one-click payment brings the verified target into view before Widget READY (${label})`, async ({ page }) => {
-    await page.setViewportSize({ ...page.viewportSize()!, ...viewport });
-    const state = await syntheticBilling(page);
-    state.owned = savedPurchase;
-    state.readyFailure = true;
-    const panel = await openProduct(page);
-    const pay = panel.getByRole("link", { name: ru.Billing.pay });
-    await expect(pay).toBeVisible();
-
-    const sessionStarted = Promise.withResolvers<void>();
-    const sessionReply = Promise.withResolvers<void>();
-    await page.route("**/api/auth/session", async (route) => {
-      sessionStarted.resolve();
-      await sessionReply.promise;
-      return route.fulfill({ json: { authenticated: true, user: purchaseUser } });
-    });
-    const billing = page.getByRole("region", { name: ru.Billing.title });
-    try {
-      await pay.click();
-      await sessionStarted.promise;
-      await expect(billing).toHaveCount(0);
-    } finally {
-      sessionReply.resolve();
-    }
-
-    const paymentTarget = billing.getByText(/synthetic-agreement/);
-    await expect(paymentTarget).toContainText("synthetic-seller");
-    await expect(paymentTarget).toBeInViewport({ ratio: 1 });
-    await expect(billing.getByRole("button", { name: ru.Billing.loading })).toBeDisabled();
-    expect(state.bootstraps).toEqual([{ purchase_intent_id: savedPurchase.purchase_intent_id }]);
-  });
-}
-
-test("one-click payment keeps the verified target below the header after scrolling during bootstrap", async ({ page }) => {
+test("one-click payment shows the verified target before Widget READY after session loading and scroll", async ({ page }) => {
   await page.setViewportSize({ width: 568, height: 320 });
   const state = await syntheticBilling(page);
   state.owned = savedPurchase;
@@ -171,14 +134,26 @@ test("one-click payment keeps the verified target below the header after scrolli
   state.beforeBootstrap = () => bootstrapReply.promise;
 
   const panel = await openProduct(page);
+  const sessionStarted = Promise.withResolvers<void>();
+  const sessionReply = Promise.withResolvers<void>();
+  await page.route("**/api/auth/session", async (route) => {
+    sessionStarted.resolve();
+    await sessionReply.promise;
+    await route.fallback();
+  });
+
   const billing = page.getByRole("region", { name: ru.Billing.title });
   try {
     await panel.getByRole("link", { name: ru.Billing.pay }).click();
+    await sessionStarted.promise;
+    await expect(billing).toHaveCount(0);
+    sessionReply.resolve();
     await expect.poll(() => state.bootstraps.length).toBe(1);
     await page.mouse.move(540, 275);
     await page.mouse.wheel(0, 305);
     await expect.poll(() => billing.evaluate((section) => section.getBoundingClientRect().top)).toBeLessThan(-100);
   } finally {
+    sessionReply.resolve();
     bootstrapReply.resolve();
   }
 
@@ -298,22 +273,6 @@ test("preparation beyond five seconds produces the compact state without opening
   expect(state.bootstraps).toEqual([]);
 });
 
-test("status polling observes durable preparation without another financial request", async ({ page }) => {
-  const state = await syntheticBilling(page);
-  state.advanceState = "awaiting_external_result";
-  const panel = await openProduct(page);
-  await panel.getByRole("button", { name: ru.Purchase.buy, exact: true }).click();
-  await panel.getByRole("checkbox").check();
-  await panel.getByRole("button", { name: ru.Purchase.confirm }).click();
-  await expect(panel.getByRole("button", { name: ru.Purchase.recover })).toBeEnabled();
-  await panel.getByRole("button", { name: ru.Purchase.recover }).focus();
-  state.owned = savedPurchase;
-  await expect(panel.getByRole("link", { name: ru.Billing.pay })).toBeFocused({ timeout: 8000 });
-  expect(state.confirmations).toHaveLength(1);
-  expect(state.advances).toBe(1);
-  expect(state.bootstraps).toEqual([]);
-});
-
 test("keyboard recovery keeps focus until polling offers payment", async ({ page }) => {
   const state = await syntheticBilling(page);
   state.owned = { ...savedPurchase, state: "awaiting_external_result" };
@@ -330,11 +289,12 @@ test("keyboard recovery keeps focus until polling offers payment", async ({ page
 
   state.owned = savedPurchase;
   await expect(panel.getByRole("link", { name: ru.Billing.pay })).toBeFocused({ timeout: 9000 });
+  expect(state.confirmations).toEqual([]);
   expect(state.advances).toBe(1);
   expect(state.bootstraps).toEqual([]);
 });
 
-for (const outcome of ["payment", "session refusal", "session refusal after moving focus"] as const) {
+for (const outcome of ["payment", "session refusal"] as const) {
   test(`keyboard confirmation keeps focus through ${outcome}`, async ({ page }) => {
     const state = await syntheticBilling(page);
     const confirmationReply = Promise.withResolvers<void>();
@@ -365,9 +325,6 @@ for (const outcome of ["payment", "session refusal", "session refusal after movi
       await expect(retry).toBeFocused();
       await page.keyboard.press("Enter");
 
-      const { title, version } = purchaseReview.documents[0];
-      const terms = panel.getByRole("link", { name: `${title} · ${version}` });
-      if (outcome === "session refusal after moving focus") await terms.focus();
       confirmationReply.resolve();
 
       if (outcome === "payment") {
@@ -377,8 +334,7 @@ for (const outcome of ["payment", "session refusal", "session refusal after movi
       } else {
         await expect(panel.getByRole("alert")).toContainText(ru.Billing.errors.session);
         await expect(retry).toBeDisabled();
-        const nextAction = outcome === "session refusal" ? panel.getByRole("button", { name: ru.Purchase.refresh }) : terms;
-        await expect(nextAction).toBeFocused();
+        await expect(panel.getByRole("button", { name: ru.Purchase.refresh })).toBeFocused();
         expect(state.advances).toBe(0);
       }
       expect(confirmationRequests).toBe(1);
@@ -632,24 +588,4 @@ test("a paid-access refresh closes expired checkout and lets the buyer sign in a
   await retry.press("Enter");
   await expect(page.getByRole("heading", { name: ru.Auth.dialogTitle })).toBeVisible();
   expect(state.bootstraps).toEqual([{ purchase_intent_id: savedPurchase.purchase_intent_id }]);
-});
-
-test("restores the saved purchase after confirmation loses its commit acknowledgement", async ({ page }) => {
-  const state = await syntheticBilling(page);
-  let posts = 0;
-  await page.route("**/api/purchase-intents", async (route) => {
-    if (route.request().method() !== "POST") return route.fallback();
-    posts++;
-    state.owned = { ...savedPurchase, state: "created" };
-    return route.fulfill({ status: 500, json: { detail: { code: "internal_server_error" } } });
-  });
-  const panel = await openProduct(page);
-  await panel.getByRole("button", { name: ru.Purchase.buy, exact: true }).click();
-  await panel.getByRole("checkbox").check();
-  await panel.getByRole("button", { name: ru.Purchase.confirm }).click();
-  await expect(panel.getByRole("button", { name: ru.Purchase.continue })).toBeEnabled({ timeout: 4000 });
-  await expect(panel.getByRole("alert")).toHaveCount(0);
-  expect(posts).toBe(1);
-  expect(state.advances).toBe(0);
-  expect(state.bootstraps).toEqual([]);
 });

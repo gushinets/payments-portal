@@ -653,10 +653,12 @@ or usage read for the current session returns 401 `billing_session_required` or
 403 `billing_email_verification_required`. When a purchase read confirms that
 the selected purchase is unavailable for payment, the cabinet closes its
 payment Widget or cancels its opening. Temporary read failures leave the open
-Widget in place. After a session refusal, the cabinet moves focus to Retry if
-the focused element was removed or disabled and focus fell back to the document.
-Retry reloads the cabinet and checks the session before offering billing again. A
-manual status check on the product page can restore continuation once the
+Widget in place. When an update removes or disables the focused control and
+focus falls back to the document, the cabinet moves it to Retry after a session
+refusal, to the purchase selector after closing payment for an unavailable
+purchase, or to the payment action when the selected purchase becomes payable.
+Retry reloads the cabinet and checks the session before offering billing again.
+A manual status check on the product page can restore continuation once the
 purchase is readable.
 
 ANY-715 now supplies persisted observation/reconciliation facts and operator
@@ -787,11 +789,11 @@ effective deadline at or before the sampled database time returns `503` with
 revision. The existing local worker must commit the reduction before reads resume.
 
 The cabinet reads this endpoint independently of held-purchase listing and
-billing Widget availability. It refreshes explicitly, every 30 seconds while
-visible, after visibility returns and after Widget closure. These are local reads,
-not payment confirmation. Session changes/unmount discard late responses and
-stop polling; the displayed result expires conservatively using server duration
-and the browser's monotonic clock.
+billing Widget availability. It refreshes on explicit request, when the buyer
+presses the Widget's Close button, after visibility returns and every 30 seconds
+while visible. These local reads show committed access status. Session changes
+and unmount discard late responses and stop polling. The displayed result
+expires conservatively using server duration and the browser's monotonic clock.
 
 Per-product confirmed access, fresh authoritative absence and unavailable evidence
 remain distinct. Implicit revision zero with no product evidence is confirmed
