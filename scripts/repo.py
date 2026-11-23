@@ -752,7 +752,7 @@ def cmd_lock_api(_: argparse.Namespace) -> None:
 
 
 def cmd_check_api_lock(_: argparse.Namespace) -> None:
-    run(api_uv_command("lock", "--check"), env=uv_environment())
+    run(api_uv_command("lock", "--check", "--no-build"), env=uv_environment())
 
 
 def cmd_up(args: argparse.Namespace) -> None:

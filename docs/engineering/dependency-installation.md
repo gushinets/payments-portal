@@ -71,6 +71,10 @@ the reviewed resolutions.
 
 ## Python
 
+CI and `npm run lock:check:api` use `uv lock --check --no-build`. A lock
+check may resolve metadata when the manifest and lock disagree. The build
+guard applies before that resolution can invoke a source backend.
+
 CI, the API Docker dependency stages and `npm run sync:api` use
 `uv sync --locked --no-build`. Keep the requested group flags and
 `--no-install-project` in the image. The API declares `package = false`, so

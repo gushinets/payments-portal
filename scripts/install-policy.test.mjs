@@ -162,6 +162,12 @@ test('CI, Docker and the local harness use the locked install policy', () => {
   const apiDocker = read('apps/api/Dockerfile');
   const webDocker = read('apps/web/Dockerfile');
   const harness = read('scripts/repo.py');
+  const ciLockChecks = [...ci.matchAll(/run: uv lock([^\r\n]*)/g)];
+  assert.equal(ciLockChecks.length, 3);
+  for (const [, options] of ciLockChecks) {
+    assert.match(options, /\B--check\b.*\B--no-build\b/);
+  }
+  assert.match(harness, /api_uv_command\("lock", "--check", "--no-build"\)/);
   const ciSyncs = [...ci.matchAll(/run: uv sync([^\r\n]*)/g)];
   const dockerSyncs = [...apiDocker.matchAll(/RUN uv sync([^\r\n]*)/g)];
   assert.equal(ciSyncs.length, 3);

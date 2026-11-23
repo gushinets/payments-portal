@@ -40,7 +40,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: apps/api/uv.lock
       - name: Validate API dependency lock
-        run: uv lock --directory apps/api --check
+        run: uv lock --directory apps/api --check --no-build
       - name: Install API dependencies
         run: uv sync --directory apps/api --locked --dev --no-build --python 3.12
       - name: Install web dependencies
@@ -125,7 +125,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: apps/api/uv.lock
       - name: Validate API dependency lock
-        run: uv lock --directory apps/api --check
+        run: uv lock --directory apps/api --check --no-build
       - name: Install API dependencies
         run: uv sync --directory apps/api --locked --dev --no-build --python 3.12
       - name: Create private CI environment
@@ -306,7 +306,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: apps/api/uv.lock
       - name: Validate API dependency lock
-        run: uv lock --directory apps/api --check
+        run: uv lock --directory apps/api --check --no-build
       - name: Install API dependencies
         run: uv sync --directory apps/api --locked --no-dev --no-build --python 3.12
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
