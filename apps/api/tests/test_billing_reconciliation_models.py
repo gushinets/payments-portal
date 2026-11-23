@@ -439,6 +439,7 @@ def test_step_4_safe_checks_are_exact() -> None:
         "ck_billing_work_items_payload_schema_nonempty",
         "ck_billing_work_items_lease_pair",
         "ck_billing_work_items_generation_nonnegative",
+        "ck_billing_work_items_widget_activation_key",
     }
     assert _check_names(ManualReviewCase) == {
         "ck_manual_review_cases_evidence_schema_nonempty",
@@ -541,6 +542,7 @@ def test_lookup_indexes_cover_the_fixed_contract() -> None:
         "ix_billing_work_items_coalescing_key": ("coalescing_key",),
         "uq_billing_work_items_create_recovery": ("coalescing_key",),
         "uq_billing_work_items_recurring": ("work_kind", "coalescing_key"),
+        "uq_billing_work_items_widget_activation": ("coalescing_key",),
         "ix_billing_work_items_priority_retry": ("work_state", "priority", "next_attempt_at"),
         "ix_billing_work_items_lease_expiry": ("lease_expires_at",),
         "ix_billing_work_items_claim_scan": (
