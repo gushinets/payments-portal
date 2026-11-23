@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from unittest.mock import Mock
+from urllib.parse import parse_qs, urlsplit
+
 import pytest
 
 from app.core.database import SessionLocal
@@ -10,8 +13,16 @@ from app.domains.identity.passwords import (
     hash_password,
     password_meets_policy,
 )
+from app.domains.identity.services import password_reset as password_reset_service
 from app.models import User
-from apps.api.tests.support.api import client, reset_api_database
+from apps.api.tests.support.api import client, register_test_user, reset_api_database
+
+
+GENERATED_PASSWORDS = (
+    pytest.param("a9V4qR7mX2sL", id="alphanumeric"),
+    pytest.param("a9V4qR7mX2sL~", id="tilde-only-punctuation"),
+    pytest.param(" α\u0301βγδεζηθικ ", id="decomposed-unicode-with-spaces"),
+)
 
 
 def setup_function() -> None:
@@ -47,6 +58,45 @@ def test_password_policy_constants_define_business_bounds() -> None:
 )
 def test_password_policy_requires_each_character_class(password: str) -> None:
     assert password_meets_policy(password) is False
+
+
+@pytest.mark.parametrize("password", GENERATED_PASSWORDS)
+def test_password_policy_accepts_generated_password(password: str) -> None:
+    assert password_meets_policy(password) is True
+
+
+@pytest.mark.parametrize("password", GENERATED_PASSWORDS)
+def test_registration_accepts_generated_password(password: str) -> None:
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "generated-password@example.com",
+            "password": password,
+            "personal_consent": True,
+            "offer_consent": True,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+
+
+@pytest.mark.parametrize("password", GENERATED_PASSWORDS)
+def test_password_reset_accepts_generated_password(password: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    email = "generated-password-reset@example.com"
+    register_test_user(email=email)
+    send_email = Mock(return_value=True)
+    monkeypatch.setattr(password_reset_service, "send_password_reset_email", send_email)
+
+    reset_request = client.post("/api/auth/password-reset/request", json={"email": email})
+    assert reset_request.status_code == 200, reset_request.text
+    assert send_email.call_count == 1
+    reset_url = send_email.call_args.args[1]
+    token = parse_qs(urlsplit(reset_url).fragment)["token"][0]
+
+    response = client.post("/api/auth/password-reset/confirm", json={"token": token, "password": password})
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"status": "password_reset"}
 
 
 @pytest.mark.parametrize(
