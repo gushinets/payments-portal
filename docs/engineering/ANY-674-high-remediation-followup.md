@@ -7,7 +7,10 @@ Ticket: https://linear.app/paveldik/issue/ANY-674
 Refresh the digest-pinned Python 3.12/Trixie image, apply supported Debian updates,
 remove unnecessary production tools, and retain uv and application dependencies.
 Preserve non-root startup, native imports, TLS, timezone support and Alembic.
-Production settings require PostgreSQL. API/migration services drop capabilities
+Production settings require PostgreSQL with the installed Psycopg 3 driver.
+Bare `postgresql://` URLs normalize to `postgresql+psycopg://`; other explicitly
+selected drivers are rejected before engine initialization. Connection credentials
+and options are preserved. API/migration services drop capabilities
 and retain no-new-privileges. Runtime inspection and disposable PostgreSQL checks
 verify the built image. Scanner policy and scoped exceptions are unchanged.
 

@@ -7,6 +7,8 @@ from unittest.mock import patch
 import pytest
 import yaml
 from pydantic import ValidationError
+from sqlalchemy import create_engine
+from sqlalchemy.engine import make_url
 
 from apps.api.tests.support.settings import DEFAULT_API_TEST_ENV, configure_api_test_environment
 
@@ -54,7 +56,30 @@ def test_sqlite_remains_supported_outside_production(app_env: str) -> None:
     "database_url", ["postgresql+psycopg://user:value@db/payments", "postgresql://user:value@db/payments"]
 )
 def test_production_preserves_postgresql_database_contract(database_url: str) -> None:
-    assert settings_for(database_url, "production").database_url == database_url
+    configured_url = settings_for(database_url, "production").database_url
+    assert configured_url == "postgresql+psycopg://user:value@db/payments"
+    engine = create_engine(configured_url)
+    try:
+        assert engine.dialect.driver == "psycopg"
+        assert engine.dialect.dbapi.__name__ == "psycopg"
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("driver", ["psycopg2", "asyncpg", "unavailable"])
+def test_production_rejects_unsupported_postgresql_driver(driver: str) -> None:
+    with pytest.raises(ValidationError, match="Production DATABASE_URL must use psycopg") as error:
+        settings_for(f"postgresql+{driver}://user:private-value@db/payments", "production")
+
+    assert "private-value" not in str(error.value)
+
+
+def test_production_driver_normalization_preserves_connection_details() -> None:
+    value = "postgresql://user:p%40ss%3Aword%2Fvalue@[::1]:5433/payments?sslmode=require&application_name=api"
+    configured_url = make_url(settings_for(value, "production").database_url)
+
+    assert configured_url == make_url(value).set(drivername="postgresql+psycopg")
+    assert configured_url.password == "p@ss:word/value"
 
 
 @pytest.mark.parametrize("service", ["api", "migrate"])

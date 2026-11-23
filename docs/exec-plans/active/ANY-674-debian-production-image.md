@@ -14,6 +14,9 @@ records implementation boundaries and the agreed follow-up.
 - [x] Preserve non-root startup, readiness and PostgreSQL migration verification.
 - [x] Verify 183 focused tests with Git Bash, documentation, lint and PR metadata.
 - [x] Record the agreed monitoring and December 2 review plan.
+- [x] Reproduce five driver-validation regressions; normalize bare PostgreSQL URLs
+  to Psycopg 3 and reject unavailable drivers. Verify real engine construction,
+  encoded credentials/options and secret-safe validation errors.
 - [ ] Verify exact-head hosted canonical and security checks.
 - [ ] Obtain human review acceptance.
 

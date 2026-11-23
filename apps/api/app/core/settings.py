@@ -235,11 +235,16 @@ class Settings(BaseSettings):
             raise ValueError("DATABASE_URL is required")
         if info.data.get("app_env") == AppEnv.PRODUCTION:
             try:
-                backend = make_url(value).get_backend_name()
+                url = make_url(value)
+                backend = url.get_backend_name()
             except (ArgumentError, ValueError):
                 raise ValueError("Production DATABASE_URL must use PostgreSQL") from None
             if backend != "postgresql":
                 raise ValueError("Production DATABASE_URL must use PostgreSQL")
+            if url.drivername == "postgresql":
+                return url.set(drivername="postgresql+psycopg").render_as_string(hide_password=False)
+            if url.drivername != "postgresql+psycopg":
+                raise ValueError("Production DATABASE_URL must use psycopg")
         return value
 
     @field_validator("cors_allow_origins")
