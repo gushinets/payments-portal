@@ -13,6 +13,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field, field_validator
 
+from app.domains.billing.reconciliation_contracts import SubscriptionLifecycleReason
 from app.domains.catalog.product_link import CurrentOffer, ProductLinkRequest
 from app.integrations.lbx.customer import PrivateDto
 from app.integrations.lbx.dto import ExactNumber
@@ -162,18 +163,18 @@ def agreement_is_closed(point: Agreement) -> bool:
     return True
 
 
-def subscription_lifecycle(point: Subscription) -> tuple[Lifecycle, Financial, str]:
+def subscription_lifecycle(point: Subscription) -> tuple[Lifecycle, Financial, SubscriptionLifecycleReason]:
     """Recognized canonical states; unknown codes never prove a negative."""
     states = {
-        (-2, 0): (Lifecycle.INACTIVE, Financial.BLOCKED, "waiting"),
-        (-1, 0): (Lifecycle.INACTIVE, Financial.BLOCKED, "inactive"),
-        (0, 0): (Lifecycle.INACTIVE, Financial.BLOCKED, "inactive"),
-        (2, 0): (Lifecycle.ACTIVE, Financial.ALLOWED, "active"),
-        (2, 1): (Lifecycle.ACTIVE, Financial.BLOCKED, "financial_block"),
-        (2, 3): (Lifecycle.ACTIVE, Financial.BLOCKED, "administrative_block"),
-        (3, 0): (Lifecycle.ENDED, Financial.BLOCKED, "ended"),
-        (3, 1): (Lifecycle.ENDED, Financial.BLOCKED, "ended"),
-        (3, 3): (Lifecycle.ENDED, Financial.BLOCKED, "ended"),
+        (-2, 0): (Lifecycle.INACTIVE, Financial.BLOCKED, SubscriptionLifecycleReason.WAITING),
+        (-1, 0): (Lifecycle.INACTIVE, Financial.BLOCKED, SubscriptionLifecycleReason.INACTIVE),
+        (0, 0): (Lifecycle.INACTIVE, Financial.BLOCKED, SubscriptionLifecycleReason.INACTIVE),
+        (2, 0): (Lifecycle.ACTIVE, Financial.ALLOWED, SubscriptionLifecycleReason.ACTIVE),
+        (2, 1): (Lifecycle.ACTIVE, Financial.BLOCKED, SubscriptionLifecycleReason.FINANCIAL_BLOCK),
+        (2, 3): (Lifecycle.ACTIVE, Financial.BLOCKED, SubscriptionLifecycleReason.ADMINISTRATIVE_BLOCK),
+        (3, 0): (Lifecycle.ENDED, Financial.BLOCKED, SubscriptionLifecycleReason.ENDED),
+        (3, 1): (Lifecycle.ENDED, Financial.BLOCKED, SubscriptionLifecycleReason.ENDED),
+        (3, 3): (Lifecycle.ENDED, Financial.BLOCKED, SubscriptionLifecycleReason.ENDED),
     }
     result = states.get((point.state, point.current_blocking))
     if result is None:

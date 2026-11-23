@@ -3,39 +3,50 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import httpx
 import pytest
+from fastapi import BackgroundTasks, FastAPI
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
+from starlette.types import Message, Receive, Scope, Send
 
 from app.composition import reconciliation as orchestration
 from app.composition.billing_operator import reconcile_purchase, resolve_review
+from app.composition.sources import SourceResources
 from app.domains.billing import work
+from app.domains.billing import router as billing_routes
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.customers import apply_customer_read, reserve_customer
 from app.domains.billing.operator_diagnostics import inspect_evidence
-from app.domains.billing.reconciliation import apply_reconciliation, claim_reconciliation
+from app.domains.billing.reconciliation import apply_reconciliation, claim_reconciliation, read_source_time
 from app.domains.billing.reconciliation_contracts import ReconciliationSubject, SubscriptionProof
 from app.domains.billing.work_contracts import WorkClaim, WorkLane
 from app.domains.purchases.contracts import Purchase
+from app.domains.purchases import widget_admission
+from app.domains.purchases.widget_activation import WidgetActivationOpening
 from app.infrastructure.persistence.billing_work import coalesce
 from app.domains.purchases import financial
 from app.integrations.lbx.errors import LbxUnavailable
 from app.integrations.lbx.reconciliation import read_subscription_proof
 from app.jobs.billing import BillingWorker
 from app.models import (
+    BillingProductAccessScope,
+    BillingPurchaseScopeHold,
     BillingStateObservation,
+    BillingStateObservationKind,
     BillingWorkItem,
     ExternalSubscription,
     ManualReviewCase,
+    PaidAccessState,
     PurchasedAllowance,
 )
 from apps.api.tests.factories.billing_operator import resolution_request
 from apps.api.tests.support.any709_step1 import step1_settings
+from apps.api.tests.support.any709_step3 import PurchaseTransport
 from apps.api.tests.test_any709_step3_postgres import TOKEN
 from apps.api.tests.test_billing_subscription_reconciliation_postgres import (
     activate,
@@ -54,12 +65,11 @@ def anyio_backend() -> str:
 
 
 @pytest.fixture
-async def portal(
+def widget_app(
     scenario: tuple,
     postgres_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
-) -> AsyncIterator[httpx.AsyncClient]:
-    from app.domains.billing import router as billing_routes
+) -> FastAPI:
     from app.domains.purchases import router as purchase_routes
     from app.http.dependencies import get_session_factory
     from app.main import create_app
@@ -70,8 +80,13 @@ async def portal(
     app = create_app()
     app.dependency_overrides[get_session_factory] = lambda: postgres_session_factory
     app.state.sources = scenario[1]
+    return app
+
+
+@pytest.fixture
+async def portal(widget_app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+        transport=httpx.ASGITransport(app=widget_app, raise_app_exceptions=False),
         base_url="http://portal.test",
         headers={"Authorization": "Bearer " + TOKEN},
     ) as client:
@@ -89,6 +104,195 @@ def observation_count(factory: sessionmaker[Session], schema: str) -> int:
 
 async def payment(portal: httpx.AsyncClient, purchase_id: UUID) -> httpx.Response:
     return await portal.post("/api/billing/widget-bootstrap", json={"purchase_intent_id": str(purchase_id)})
+
+
+async def payment_with_response_hook(
+    app: FastAPI, purchase_id: UUID, on_sent: Callable[[], Awaitable[None]]
+) -> httpx.Response:
+    async def observe(scope: Scope, receive: Receive, send: Send) -> None:
+        async def capture(message: Message) -> None:
+            await send(message)
+            if message["type"] == "http.response.body" and not message.get("more_body", False):
+                await on_sent()
+
+        await app(scope, receive, capture)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=observe),
+        base_url="http://portal.test",
+        headers={"Authorization": "Bearer " + TOKEN},
+    ) as client:
+        return await payment(client, purchase_id)
+
+
+@pytest.mark.parametrize("after_response", ["write_fails", "scope_released", "unlinked", "activated"])
+async def test_any897_background_check_runs_after_widget_response_and_rechecks_purchase(
+    scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    widget_app: FastAPI,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    after_response: str,
+) -> None:
+    transport, sources, purchase = scenario
+    factory = postgres_session_factory
+    subscription_id = snapshot(factory)[0]
+    writes: list[WidgetActivationOpening] = []
+    preparation_times: list[datetime] = []
+    sent_at: datetime | None = None
+    scheduled_work: tuple[UUID, int, datetime] | None = None
+    database_now = widget_admission.database_now
+
+    def record_preparation_time(db: Session) -> datetime:
+        now = database_now(db)
+        preparation_times.append(now)
+        return now
+
+    monkeypatch.setattr(widget_admission, "database_now", record_preparation_time)
+
+    def writer(db: Session, opening: WidgetActivationOpening) -> None:
+        assert sent_at is not None
+        writes.append(opening)
+        assert db.in_transaction()
+        assert db.scalar(select(func.current_setting("lock_timeout"))) != "0"
+        raise RuntimeError("private test canary")
+
+    widget_app.dependency_overrides[billing_routes.get_widget_activation_writer] = lambda: writer
+
+    async def on_sent() -> None:
+        nonlocal sent_at, scheduled_work
+        sent_at = read_source_time(factory)
+        if after_response == "write_fails":
+            with factory() as db:
+                job = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == work.RECONCILIATION))
+                scheduled_work = (job.work_item_id, job.enqueue_generation, job.next_attempt_at)
+        elif after_response == "activated":
+            activate(transport)
+            await run(sources, factory)
+        else:
+            with factory() as db:
+                if after_response == "scope_released":
+                    db.delete(
+                        db.get(BillingPurchaseScopeHold, (purchase.user_id, purchase.accepted.selection.product_id))
+                    )
+                else:
+                    db.get(ExternalSubscription, subscription_id).purchase_intent_id = None
+                db.commit()
+
+    started_at = read_source_time(factory)
+    response = await payment_with_response_hook(widget_app, purchase.id, on_sent)
+    assert response.status_code == 200 and response.json()["disablePayments"] is False
+    failures = [record for record in caplog.records if record.message == "widget_activation_enqueue_failed"]
+    if after_response != "write_fails":
+        assert not writes and not failures
+        return
+
+    (opening,) = writes
+    assert (opening.user_id, opening.purchase_id, opening.customer_id, opening.account_id, opening.subscription_id) == (
+        purchase.user_id,
+        purchase.id,
+        purchase.customer_id,
+        purchase.account_id,
+        subscription_id,
+    )
+    assert sent_at is not None
+    assert started_at <= opening.prepared_at <= sent_at
+    assert preparation_times == [opening.prepared_at]
+    (failure,) = failures
+    assert failure.structured["error_type"] == "RuntimeError" and "private test canary" not in caplog.text
+
+    # Activation is processed by the original scheduled job without another Widget open.
+    activate(transport)
+    with factory() as db:
+        job = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == work.RECONCILIATION))
+        assert job.work_state == "pending"
+        assert (job.work_item_id, job.enqueue_generation, job.next_attempt_at) == scheduled_work
+        job.next_attempt_at = database_now(db) - timedelta(seconds=1)
+        job.priority = 1
+        db.commit()
+    worker = BillingWorker(step1_settings(paid_access_clock_skew_seconds=5), factory, sources.require_lbx())
+    try:
+        assert await worker.tick(WorkLane.URGENT)
+        assert snapshot(factory)[1:3] == ("active", "allowed")
+        assert await worker.tick(WorkLane.URGENT)
+    finally:
+        await worker.aclose()
+    with factory() as db:
+        state = db.scalar(select(PaidAccessState).where(PaidAccessState.user_id == purchase.user_id))
+        assert state.access_revision == 1
+        assert state.effective_state_document["grants"][0]["product_id"] == purchase.accepted.selection.product_id
+
+
+@pytest.mark.parametrize(
+    "mode", ["no_writer", "account", "inactive", "active", "current_primary", "previous_primary", "operator_primary"]
+)
+async def test_any897_only_waiting_first_activation_is_scheduled(
+    scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    widget_app: FastAPI,
+    portal: httpx.AsyncClient,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+) -> None:
+    transport, sources, purchase = scenario
+    factory = postgres_session_factory
+    if mode == "inactive":
+        transport.subscriptions[0]["state"] = -1
+    elif mode == "active":
+        activate(transport)
+    elif mode in {"current_primary", "previous_primary", "operator_primary"}:
+        activate(transport)
+        basis = await run(sources, factory)
+        transport.subscriptions[0]["state"] = -2
+        with factory() as db:
+            scope = db.get(BillingProductAccessScope, basis.access_scope_id)
+            if mode == "current_primary":
+                scope.primary_subscription_id = basis.subscription_id
+            else:
+                operator = mode == "operator_primary"
+                db.add(
+                    BillingStateObservation(
+                        observation_kind=BillingStateObservationKind.AUTHORITATIVE_SUBSCRIPTION_READ
+                        if operator
+                        else BillingStateObservationKind.PRIMARY_SELECTION,
+                        external_billing_account_id=purchase.account_id,
+                        user_id=purchase.user_id,
+                        product_id=purchase.accepted.selection.product_id,
+                        access_scope_id=scope.access_scope_id,
+                        subscription_id=basis.subscription_id,
+                        basis_observation_id=None if operator else basis.observation_id,
+                        observed_at=basis.observed_at,
+                        evidence_schema_version=basis.evidence_schema_version if operator else "primary-selection:v2",
+                        evidence_document={
+                            **basis.evidence_document,
+                            "primary_selection": {"review_case_id": str(basis.observation_id), "principal": "test"},
+                        }
+                        if operator
+                        else {"source_observation_id": str(basis.observation_id)},
+                        completeness_classification=basis.completeness_classification,
+                        result_classification=basis.result_classification if operator else "primary_selected",
+                    )
+                )
+            db.commit()
+
+    scheduled: list[Callable[..., object]] = []
+
+    def add_task(tasks: BackgroundTasks, function: Callable[..., object], *args: object, **kwargs: object) -> None:
+        scheduled.append(function)
+
+    def writer(db: Session, opening: WidgetActivationOpening) -> None:
+        pytest.fail("an ineligible Widget opening reached the activation writer")
+
+    monkeypatch.setattr("starlette.background.BackgroundTasks.add_task", add_task)
+    if mode != "no_writer":
+        widget_app.dependency_overrides[billing_routes.get_widget_activation_writer] = lambda: writer
+    response = (
+        await portal.post("/api/billing/widget-bootstrap", json={})
+        if mode == "account"
+        else await payment(portal, purchase.id)
+    )
+    assert response.status_code == 200
+    assert scheduled == []
 
 
 @pytest.mark.parametrize("entrypoint", ["payment", "advance", "worker", "operator"])

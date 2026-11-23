@@ -29,6 +29,15 @@ class IdentityProof(StrEnum):
     INCOMPLETE = "incomplete"
 
 
+class SubscriptionLifecycleReason(StrEnum):
+    WAITING = "waiting"
+    INACTIVE = "inactive"
+    ACTIVE = "active"
+    FINANCIAL_BLOCK = "financial_block"
+    ADMINISTRATIVE_BLOCK = "administrative_block"
+    ENDED = "ended"
+
+
 @dataclass(frozen=True)
 class SubscriptionCandidateSubject:
     """Original possible-send candidate; no canonical local subscription yet."""

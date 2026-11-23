@@ -31,6 +31,7 @@ from app.domains.billing.customers import (
     reserve_customer,
 )
 from app.domains.catalog.publication import SessionFactory
+from app.domains.purchases.widget_activation import WidgetActivationOpening
 from app.infrastructure.preflight import PreflightBudget, PreflightCleanupPending, PreflightDeadlineExceeded
 from app.integrations.lbx._transport import customer_diagnostics
 from app.integrations.lbx.client import LbxServerClient
@@ -61,6 +62,7 @@ class AccountWidget:
     purchase_id: UUID | None = None
     agreement_reference: str | None = None
     seller_reference: str | None = None
+    activation_opening: WidgetActivationOpening | None = None
 
 
 async def _find_customer(
@@ -255,6 +257,7 @@ async def bootstrap_account(
     factory: SessionFactory,
     token: str,
     purchase_id: UUID | None = None,
+    prepare_activation: bool = False,
 ) -> AccountWidget:
     def check_auth() -> UUID:
         with factory() as db:
@@ -327,11 +330,18 @@ async def bootstrap_account(
                         await run_in_threadpool(apply_customer_read, factory, current, ambiguous=True)
                         raise BillingAccountFailure("billing_identity_conflict", 409)
                     budget.check()
+                    activation_opening = None
                     if payment_purchase is not None:
                         from app.domains.purchases.widget_admission import recheck_payment_purchase
 
-                        await run_in_threadpool(
-                            recheck_payment_purchase, factory, configuration, token, verification, current
+                        activation_opening = await run_in_threadpool(
+                            recheck_payment_purchase,
+                            factory,
+                            configuration,
+                            token,
+                            verification,
+                            current,
+                            prepare_activation=prepare_activation,
                         )
                     else:
                         await run_in_threadpool(recheck_widget_session, factory, configuration, token, current)
@@ -354,6 +364,7 @@ async def bootstrap_account(
                             payment_purchase.id,
                             agreement.key,
                             str(payment_purchase.accepted.seller_id),
+                            activation_opening=activation_opening,
                         )
                     return AccountWidget(credential, configuration.lbx_provider_origin)
                 except AppError as error:
