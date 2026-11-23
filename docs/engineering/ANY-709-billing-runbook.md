@@ -630,6 +630,11 @@ warning and its request ID visible. That state covers both a possible send and
 a recovered agreement that is ready for explicit continuation. The buyer can
 check status or continue the same purchase while preparation is unresolved.
 
+A purchase whose open agreement was bound before the update may still be in
+`awaiting_external_result`. The product page shows **Your purchase has been
+saved.** and offers **Continue**. This action runs `advance` on the original
+purchase and rechecks subscription admission using the saved agreement binding.
+
 With the tab visible, the product page polls a held purchase in `created`,
 `preparing` or `awaiting_external_result`. After an uncertain confirmation it
 can poll for the current purchase by product. The cabinet polls only the

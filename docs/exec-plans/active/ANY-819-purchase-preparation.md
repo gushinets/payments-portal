@@ -28,9 +28,9 @@ as it observes it.
 
 ## Regression test coverage
 
-Verify that browser closure, reload, API restart and delayed replies preserve
-the original financial operations and create no duplicate agreements or
-subscriptions.
+Verify that reload and delayed replies preserve the original financial
+operations without duplicate agreements or subscriptions. The browser closure
+and full API restart scenarios are part of the end-to-end acceptance below.
 
 - The [purchase browser scenarios](../../../apps/web/e2e/any709-purchase.spec.ts)
   cover desktop and mobile, keyboard confirmation, recovery and session refusal.
@@ -54,6 +54,18 @@ subscriptions.
 
 ## Open acceptance items
 
+For each interruption scenario, arrange for LBX to accept the financial CREATE
+and delay its reply until after the interruption. Compare the saved operation
+IDs and correlation keys before and after recovery. Verify in LBX that recovery
+produces no duplicate agreements or subscriptions.
+
+- Close the browser while a financial CREATE is in flight. Reopen the product as
+  the same verified buyer and verify that the saved purchase resumes from its
+  recorded state.
+- Stop the API process while a financial CREATE is in flight, before the result
+  is recorded. Restart the full process with the same database and the billing
+  worker enabled. Verify that GET-only recovery finds the original operation
+  from persisted state.
 - Measure a fresh buyer's first attempt from accepting terms to the official
   Widget READY on baseline `f6b1f1d2` and the final revision. Use the same LBX
   test stand, equivalent fresh buyers and offers, and the same
