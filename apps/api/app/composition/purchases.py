@@ -223,7 +223,9 @@ async def _prepare(
                     provider_id = await client.create_agreement(command, budget=budget)
                 else:
                     provider_id = await client.create_subscription(command, budget=budget)
-                await run_in_threadpool(financial.record_receipt, factory, purchase, operation, provider_id)
+                receipt_recorded = await run_in_threadpool(
+                    financial.record_receipt, factory, purchase, operation, provider_id
+                )
             except LbxCreateNotSent:
                 await run_in_threadpool(financial.proven_not_sent, factory, purchase, operation)
                 break  # Resume only on another explicit advance; never retry this attempt.
@@ -242,6 +244,11 @@ async def _prepare(
                         "reason": facts.reason if facts else "unknown",
                     },
                 )
+                # The possible-send claim already enrolled GET-only recovery.
+                # Return the saved state so the worker can discover a late reply.
+                break
+            if not receipt_recorded:
+                continue  # Another binder already proved this operation; the next step reloads the purchase.
             purchase = await run_in_threadpool(service.read_purchase, factory, purchase.user_id, purchase.id)
             operation = _operation(purchase, kind)
             if not await _recover_one(sources, configuration, purchase, operation, customer, factory, budget=budget):
@@ -310,13 +317,10 @@ async def verify_payment_purchase(
     configuration: Settings,
     *,
     factory: SessionFactory,
-    token: str,
-    purchase_id: UUID,
+    purchase: Purchase,
     customer: CustomerOpen,
     budget: PreflightBudget,
 ) -> ReconciliationResult:
-    user_id = await run_in_threadpool(service.authenticate_user, factory, configuration, token)
-    purchase = await run_in_threadpool(service.read_purchase, factory, user_id, purchase_id)
     _connection(purchase, configuration)
     if (
         purchase.customer_id != customer.customer_id
