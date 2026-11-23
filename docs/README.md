@@ -1,7 +1,7 @@
 # Documentation Index
 
 Status: authoritative index
-Last updated: 2026-11-18
+Last updated: 2026-11-23
 
 Start with the smallest document that matches the task.
 
@@ -129,6 +129,7 @@ Start with the smallest document that matches the task.
 - [Security](SECURITY.md)
 - [Quality score](QUALITY_SCORE.md)
 - [Execution plans](exec-plans/README.md)
+- [ANY-819 purchase preparation plan](exec-plans/active/ANY-819-purchase-preparation.md) — implementation steps and live Widget acceptance criteria.
 - [ANY-766 active implementation plan](exec-plans/active/ANY-766-implementation-plan.md) — authoritative Portal/backend API and Kernel integration plan; Steps 1–17 and five PR corrections complete in the agreed local scope; PR readiness checklist pending; broader acceptance matrix deferred.
 - [Joint paid-runtime harness](../tools/joint_paid_runtime/README.md) — isolated real-app HTTP/PostgreSQL and desktop/mobile smoke, explicit external substitutes and run-owned cleanup.
 - [ANY-822 test-execution acceleration plan](exec-plans/active/ANY-822-implementation-plan.md) — acceptance criteria, retained test guarantees and verification.

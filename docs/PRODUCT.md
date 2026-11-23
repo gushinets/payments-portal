@@ -1,7 +1,7 @@
 # Product Scope
 
 Status: authoritative
-Last updated: 2026-11-19
+Last updated: 2026-11-23
 
 AnyToolAI Portal combines public product discovery, direct account entry, and
 identity/legal-consent flows for AnyToolAI products, deployed as one contour
@@ -29,8 +29,9 @@ Kernel conformance and sales remain gated. There are no production direct-
 provider subscribers or subscriptions to migrate.
 ANY-709 adds independently optional FIO and explicit verified-email account
 Widget viewing with one shared customer. It requires no offer/subscription and
-grants no paid access. Immutable purchase consent, request-driven preparation/
-recovery and Buy/Continue/Manage use verified payment presentation in the cabinet.
+grants no paid access. The product page owns immutable purchase consent and
+explicit preparation and recovery. The cabinet verifies the selected purchase
+before opening payment.
 Delivery and acceptance evidence are in
 [ANY-709](https://linear.app/paveldik/issue/ANY-709).
 
@@ -108,9 +109,12 @@ only their source-read/admission strategy.
 - Password-based registration, sessions, logout, and the existing
   `/[locale]/forgot-password`, `/[locale]/reset-password`, and
   `/[locale]/verify-email` flows. Region Resolver confirmation is not implemented.
-- Product-page Buy/Continue with live review, explicit draft legal
-  consent, original held-purchase recovery and verified payment bootstrap. The
-  UI distinguishes unknown from no purchase and awaits financial verification.
+- Product-page live review, explicit consent to draft legal terms, and
+  continuation of the original held purchase. Bounded status polling observes
+  saved preparation and release.
+  The payment action opens the cabinet. After verifying the purchase, the
+  cabinet uses that click once to open the payment Widget. The UI distinguishes
+  unknown from no purchase.
   One disposable SDK lifecycle replaces account/payment views and rejects late
   credentials after close, product/user change or logout. Purchase preparation
   and Widget outcomes alone grant no access.
@@ -170,7 +174,8 @@ trust boundary under ANY-541.
   Technical product/metric identity comes from Platform Kernel;
   commercial offers come from External Billing.
 - Historical 4F discovery CTAs open product detail/account surfaces. ANY-709
-  adds verified Buy/Continue/Manage; no product-execution URL is fabricated.
+  adds purchase preparation and verified payment in the cabinet. Product
+  execution follows the separate paid launch flow.
 - Pricing navigation and its unavailable placeholder establish presentation
   topology only. Published offer terms use the ANY-504 Step 6 Portal path;
   current sellability and genuine enablement retain the source/approval gates;

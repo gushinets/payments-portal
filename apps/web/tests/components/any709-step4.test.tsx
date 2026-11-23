@@ -238,20 +238,29 @@ it("offers payment from saved status before advance replies and ignores the olde
   expect(advance).toHaveBeenCalledTimes(1);
 });
 
-it("keeps polling until saved status confirms the purchase hold was released", async () => {
+it.each(["polling", "advance recovery", "manual check"] as const)("keeps polling after a mixed release status from %s", async (source) => {
   vi.useFakeTimers();
   const original = { ...savedPurchase, state: "created" } satisfies PurchaseIntentResponse;
   const statusPath = `/api/purchase-intents/${original.purchase_intent_id}`;
   const statusReadCount = () => fetcher.mock.calls.filter(([url]) => new URL(String(url)).pathname === statusPath).length;
   owned = original;
   await act(async () => { renderProduct(); });
-  screen.getByRole("button", { name: ru.Purchase.continue }).focus();
+  const continueButton = screen.getByRole("button", { name: ru.Purchase.continue });
+  continueButton.focus();
 
   // The status read saw the old purchase state and the already removed hold.
   owned = { ...original, scope_held: false };
-  await act(async () => vi.advanceTimersByTimeAsync(2_000));
+  if (source === "advance recovery") {
+    advance.mockResolvedValueOnce(json({ detail: { request_id: "gateway-timeout" } }, 504));
+    await act(async () => { fireEvent.click(continueButton); });
+  } else if (source === "manual check") {
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: ru.Purchase.refresh })); });
+  } else {
+    await act(async () => vi.advanceTimersByTimeAsync(2_000));
+  }
   expect(statusReadCount()).toBe(1);
   expect(screen.queryByRole("button", { name: ru.Purchase.buy })).not.toBeInTheDocument();
+  if (source === "advance recovery") expect(screen.getByRole("alert")).toHaveTextContent("gateway-timeout");
 
   owned = { ...original, state: "failed_before_external_effect", scope_held: false, reason: "terms_changed" };
   await act(async () => vi.advanceTimersByTimeAsync(5_000));
@@ -259,9 +268,10 @@ it("keeps polling until saved status confirms the purchase hold was released", a
   expect(statusReadCount()).toBe(2);
   expect(screen.getByText(ru.Purchase.termsChanged)).toBeVisible();
   expect(screen.getByRole("button", { name: ru.Purchase.buy })).toHaveFocus();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   await act(async () => vi.advanceTimersByTimeAsync(10_000));
   expect(statusReadCount()).toBe(2);
-  expect(advance).not.toHaveBeenCalled();
+  expect(advance).toHaveBeenCalledTimes(source === "advance recovery" ? 1 : 0);
 });
 
 it("offers a new terms review when polling confirms release before advance replies", async () => {

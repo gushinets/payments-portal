@@ -549,7 +549,7 @@ test("returning to an abandoned account visit requires a fresh payment click", a
   expect(state.bootstraps).toEqual([{ purchase_intent_id: savedPurchase.purchase_intent_id }]);
 });
 
-test("an expired session ends the cabinet recheck and closes its open payment Widget", async ({ page }) => {
+test("an expired session closes checkout and moves focus from the Widget to Retry", async ({ page }, testInfo) => {
   const state = await syntheticBilling(page);
   state.owned = savedPurchase;
   const purchasePath = "/api/purchase-intents/" + savedPurchase.purchase_intent_id;
@@ -578,6 +578,9 @@ test("an expired session ends the cabinet recheck and closes its open payment Wi
   expect(state.bootstraps).toEqual([]);
   await billing.getByRole("button", { name: ru.Billing.pay }).click();
   await expect(billing.getByRole("button", { name: ru.Billing.refresh })).toBeEnabled();
+  const widget = billing.locator("iframe");
+  await widget.focus();
+  await expect(widget).toBeFocused();
 
   revoked = true;
   const refusal = page.waitForResponse((response) => new URL(response.url()).pathname === purchasePath && response.status() === 401);
@@ -590,6 +593,10 @@ test("an expired session ends the cabinet recheck and closes its open payment Wi
   await expect(billing.getByText(ru.Purchase.loading, { exact: true })).toHaveCount(0, { timeout: 4000 });
   await expect(billing.getByRole("alert")).toContainText(ru.Billing.errors.session);
   await expect(billing.getByRole("alert")).toContainText("revoked-session");
+  await expect(billing.getByRole("button", { name: ru.Purchase.retry })).toBeFocused();
+  const accessibility = await new AxeBuilder({ page }).analyze();
+  expect(accessibility.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath("cabinet-expired-session-focus.png"), fullPage: true });
 });
 
 test("a paid-access refresh closes expired checkout and lets the buyer sign in again", async ({ page }) => {

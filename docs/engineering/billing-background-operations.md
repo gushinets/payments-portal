@@ -201,12 +201,16 @@ There is no separate process to launch or standalone worker command/container.
   seconds with no default. Unset prevents new positive derivation while local
   reductions continue; existing allowance UTC bounds remain frozen.
 
-Foreground purchase preparation and Widget opening use
-`PREFLIGHT_TOTAL_TIMEOUT_SECONDS`, forwarded by development, agent and production
-Compose. The production example currently sets **60 seconds** as a temporary
-operating value pending [ANY-819](https://linear.app/paveldik/issue/ANY-819);
-preserve the working local override. The application default remains 10 seconds.
-This foreground budget is separate from the worker timeout above.
+`PREFLIGHT_TOTAL_TIMEOUT_SECONDS` configures the admission and source I/O
+budget for catalog and purchase operations, Widget bootstrap, paid usage and
+operator source reads.
+Development, agent and production Compose forward the setting. The application
+default is 10 seconds. The production example uses a temporary 60-second
+budget. Preserve the working local override and revisit the value after
+[ANY-819 live latency acceptance](../exec-plans/active/ANY-819-purchase-preparation.md#open-acceptance-items).
+This foreground budget is separate from the worker timeout above. During
+purchase preparation and Widget bootstrap, an in-progress database unit can
+finish if the source deadline expires.
 
 `PREFLIGHT_CLEANUP_TIMEOUT_SECONDS` reserves cleanup within the total I/O budget.
 Finite work/subscription leases include a 30-second local apply margin. Late or

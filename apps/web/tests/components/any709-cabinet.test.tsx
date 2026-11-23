@@ -602,16 +602,20 @@ it.each(["manual_review", "session_refused", "stale_conflict"] as const)(
 
 it("closes the Widget when retrying the purchase list reveals an expired session", async () => {
   list.mockResolvedValueOnce(json({}, 503));
+  render(<button type="button">Outside checkout</button>);
+  const outside = screen.getByRole("button", { name: "Outside checkout" });
   renderCabinet(first.purchase_intent_id);
   const retry = await screen.findByRole("button", { name: ru.Purchase.retry });
   fireEvent.click(await screen.findByRole("button", { name: ru.Billing.pay }));
   await waitFor(() => expect(document.querySelector("iframe")).toBeVisible());
+  outside.focus();
   list.mockResolvedValueOnce(json({ detail: { code: "billing_session_required", request_id: "list-auth" } }, 401));
   fireEvent.click(retry);
   const billing = within(screen.getByRole("region", { name: ru.Billing.title }));
   expect(await billing.findByRole("alert")).toHaveTextContent(ru.Billing.errors.session);
   expect(billing.getByRole("alert")).toHaveTextContent("list-auth");
   expect(document.querySelector("iframe")).toBeNull();
+  expect(outside).toHaveFocus();
   expect(bootstrap).toHaveBeenCalledTimes(1);
 });
 
@@ -626,6 +630,9 @@ it.each([
     await act(async () => { renderCabinet(first.purchase_intent_id); });
     await act(async () => open());
     expect(document.querySelector("iframe")).toBeVisible();
+    const close = screen.getByRole("button", { name: ru.Billing.close });
+    close.focus();
+    expect(close).toHaveFocus();
     const ordinaryFetch = fetcher.getMockImplementation()!;
     fetcher.mockClear().mockImplementation((input, init) => new URL(String(input)).pathname === path
       ? Promise.resolve(json({ detail: { code: reason, request_id: "paid-read" } }, code))
@@ -640,9 +647,11 @@ it.each([
       expect(billing.queryByRole("combobox")).toBeNull();
       expect(screen.getByRole("region", { name: ru.Billing.title })).not.toHaveTextContent(first.product_id);
       expect(billing.getByRole("button", { name: ru.Billing.open })).toBeDisabled();
+      expect(billing.getByRole("button", { name: ru.Purchase.retry })).toHaveFocus();
     } else {
       expect(document.querySelector("iframe")).toBeVisible();
       expect(billing.queryByRole("alert")).toBeNull();
+      expect(close).toHaveFocus();
     }
     expect(bootstrap).toHaveBeenCalledTimes(1);
   } finally {
@@ -777,6 +786,9 @@ it.each(["open", "opening"])("closes an %s checkout on a late bootstrap refusal 
     expect(screen.getByRole("button", { name: ru.Billing.loading })).toBeDisabled();
   }
 
+  const focused = checkout === "open" ? document.querySelector("iframe")! : screen.getByRole("button", { name: ru.Billing.close });
+  focused.focus();
+  expect(focused).toHaveFocus();
   await act(async () => previous.resolve(json({
     detail: { code: "billing_session_required", request_id: "bootstrap-refusal" }
   }, 401)));
@@ -787,6 +799,7 @@ it.each(["open", "opening"])("closes an %s checkout on a late bootstrap refusal 
   expect(screen.getByRole("alert")).toHaveTextContent(ru.Billing.errors.session);
   expect(screen.getByRole("alert")).toHaveTextContent("bootstrap-refusal");
   expect(screen.getByRole("button", { name: ru.Billing.open })).toBeDisabled();
+  expect(screen.getByRole("button", { name: ru.Purchase.retry })).toHaveFocus();
   expect(payloads()).toEqual([
     { purchase_intent_id: first.purchase_intent_id }, { purchase_intent_id: second.purchase_intent_id }
   ]);

@@ -38,6 +38,8 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   const billingSection = useRef<HTMLElement>(null);
   const paymentNotice = useRef<HTMLDivElement>(null);
   const automaticPaymentId = useRef<string | undefined>(undefined);
+  const focusBeforeRefusal = useRef<Element | null>(null);
+  const retrySessionButton = useRef<HTMLButtonElement>(null);
   // undefined permits a visible single-purchase default; null explicitly selects account viewing.
   const [selectedId, setSelectedId] = useState<string | null | undefined>(initialPurchaseId);
   const [selectionState, setSelectionState] = useState<SelectionState>({ status: initialPurchaseId && emailVerified ? "loading" : "ready" });
@@ -47,6 +49,9 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
     cancel();
     if (initialPurchaseId) claimPaymentOpening(initialPurchaseId, userId, visit.current)?.();
     const sessionRefused = httpStatus === 401 || httpStatus === 403;
+    if (sessionRefused && document.activeElement !== document.body) {
+      focusBeforeRefusal.current = document.activeElement;
+    }
     // A concurrent selection failure cannot restore a refused cabinet session.
     setSelectionState((previous) => previous.status === "error" && previous.sessionRefused
       ? previous : { status: "error", message, requestId, sessionRefused });
@@ -54,13 +59,22 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   const widget = useBillingWidget(userId, emailVerified, applyRefusal);
   const { open: openWidget, close: closeWidget } = widget;
   const handleRefusal = useCallback((refusal: PurchaseReadRefusal) => {
-    if (refusal.httpStatus === 401 || refusal.httpStatus === 403) closeWidget();
     applyRefusal(refusal);
+    if (refusal.httpStatus === 401 || refusal.httpStatus === 403) closeWidget();
   }, [applyRefusal, closeWidget]);
   const purchases = useAccountPurchases(canRead, handleRefusal);
   const { applyStatus } = purchases;
   const paid = usePaidAccess(canRead, handleRefusal);
   const usage = usePaidUsage(canRead, handleRefusal);
+
+  useLayoutEffect(() => {
+    if (!sessionRefused) return;
+    const focused = focusBeforeRefusal.current;
+    focusBeforeRefusal.current = null;
+    if (focused && !focused.isConnected && document.activeElement === document.body) {
+      retrySessionButton.current?.focus();
+    }
+  }, [sessionRefused]);
 
   useEffect(() => {
     if (!initialPurchaseId || !canRead) return;
@@ -210,7 +224,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
         {selectionBlocked && selectionState.status !== "loading" && <div className="notice error" role="alert">
           <p>{b((selectionState.status === "error" ? selectionState.message : undefined) ?? "selectionUnavailable")}</p>
           {selectionState.status === "error" && selectionState.requestId && <p>{b("requestId", { id: selectionState.requestId })}</p>}
-          {sessionRefused && <button className="btn-secondary" type="button" onClick={() => window.location.reload()}>{p("retry")}</button>}
+          {sessionRefused && <button ref={retrySessionButton} className="btn-secondary" type="button" onClick={() => window.location.reload()}>{p("retry")}</button>}
         </div>}
         {!sessionRefused && selection && <p className="billing-selected-product">{b("selectedProduct", { product: selection.product_id })}</p>}
         {!selectionBlocked && checking && !poll.paused && <p role="status">{p("loading")}</p>}

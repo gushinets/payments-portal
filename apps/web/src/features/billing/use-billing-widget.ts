@@ -115,8 +115,9 @@ export function useBillingWidget(userId: string, emailVerified: boolean, onSessi
       const refusal = billingSessionRefusal(error, requestId);
       // A purchase change cancels the attempt, but the session can still be the same.
       if (onSessionRefused && refusal?.httpStatus === 401 && operation.isCurrentSession()) {
-        close();
+        // Capture focus before close removes an active iframe.
         onSessionRefused(refusal);
+        close();
         return;
       }
       if (operation.isLatest()) opening.current = false;

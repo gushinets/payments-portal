@@ -44,6 +44,11 @@ function purchaseReleased(purchase: PurchaseIntentResponse): boolean {
     (purchase.state === "resolved_no_external_effect" || purchase.state === "failed_before_external_effect");
 }
 
+function hasMixedHoldStatus(purchase: PurchaseIntentResponse): boolean {
+  // A status read can see the old purchase state after the hold was removed.
+  return !purchase.scope_held && !purchaseReleased(purchase);
+}
+
 export function ProductBilling({ productId, offerAvailable, user, headingLevel = 2 }: ProductBillingProps) {
   return user
     ? <PurchasePanel key={`${user.user_id}:${productId}`} productId={productId} offerAvailable={offerAvailable} user={user} headingLevel={headingLevel} />
@@ -152,10 +157,8 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     canPoll && purchase?.scope_held && (advancing || purchaseNeedsStatus(purchase)) ? purchase : undefined,
     canPoll && !advancing && uncertainConfirmation ? productId : undefined,
     (saved, readStartedAt) => {
-      if (readStartedAt < workFinishedAt.current) return;
-      // A status read can see the old purchase state after the hold was removed.
+      if (readStartedAt < workFinishedAt.current || hasMixedHoldStatus(saved)) return;
       const released = purchaseReleased(saved);
-      if (!saved.scope_held && !released) return;
       const linked = saved.scope_held && saved.state === "linked";
       if (busy.current) {
         if (!advancing || !(linked || released)) return;
@@ -235,7 +238,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
           : (await currentPurchase(token, productId, id)).purchase;
         // A lost confirmation may still be completing. Keep its frozen request/key
         // when no hold is visible yet; a local empty GET is not a release proof.
-        if (!current()) return;
+        if (!current() || (purchase && hasMixedHoldStatus(purchase))) return;
         if (purchase) showPurchase(purchase);
         else if (state.kind !== "review") setState({ kind: "none" });
         if (!advanceOutcomeUnknown(purchase)) setFailure(null);
@@ -271,6 +274,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
       }
     }
     if (!current()) return;
+    if (saved && hasMixedHoldStatus(saved)) saved = null;
     if (saved) showPurchase(saved);
     // A saved intent proves confirmation. Advance also needs evidence of preparation.
     const pending = purchaseId ? advanceOutcomeUnknown(saved) : !saved;
