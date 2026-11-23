@@ -1,7 +1,7 @@
 # RU AnyToolAI Portal — As-Built 4F Handoff
 
 Status: authoritative implemented-product specification and deferred-step handoff
-Last updated: 2026-11-11
+Last updated: 2026-11-23
 
 The surface established by ANY-636 4F is a product-centric AnyToolAI Portal:
 public product-first home, catalog/discovery, per-product pages,
@@ -11,12 +11,13 @@ accepted purchases, plus one shared billing Widget and a full-catalog link.
 Identity facts are compact supporting content. The repository remains
 pre-production. ANY-709 adds optional FIO, explicit verified-email account
 Widget viewing without an offer/subscription, immutable purchase consent and
-request-driven preparation/recovery. Buy/Continue/Manage uses one shared cabinet
-Widget with fresh original-purchase proof. ANY-715 adds embedded subscription
-reconciliation, GET-only recovery and audited operations. ANY-765 adds committed
-paid-access reads and cabinet presentation. ANY-766 implements delegated
-identity, consumer-scoped snapshot V3, durable Kernel invalidations and recoverable paid browser
-launch. Step 15 adds actual current/historical usage in the cabinet; Steps 16/17
+request-driven preparation and recovery. The cabinet obtains fresh proof of the
+original purchase before opening the shared payment Widget. ANY-715
+adds embedded subscription reconciliation, GET-only recovery and audited
+operations. ANY-765 adds committed paid-access reads and cabinet presentation.
+ANY-766 implements delegated identity, consumer-scoped snapshot V3, durable
+Kernel invalidations and recoverable paid browser launch. Step 15 adds actual
+current/historical usage in the cabinet. Steps 16/17
 supply focused local acceptance and build/install preparation. The
 [active plan](../exec-plans/active/ANY-766-implementation-plan.md) records that scope.
 ANY-664's v1 publication/DB-only catalog is historical. Current listing discovers
@@ -49,7 +50,7 @@ confirmation through the separate Region Resolver remains planned.
 | --- | --- |
 | `/[locale]` | Product-first home with account entry, collection and current-product discovery |
 | `/[locale]/products` | Enabled Kernel products through the Portal catalog API |
-| `/[locale]/products/[product_id]` | Current LBX offer plus independent authenticated review/Buy/Continue/Manage |
+| `/[locale]/products/[product_id]` | Current LBX offer, authenticated review and preparation, and payment entry for a prepared purchase |
 | `/[locale]/pricing` | Localized presentation-only not-ready state and home/products navigation |
 | `/[locale]/account` | Direct sign-in/registration entry and product-centric authenticated cabinet |
 | `/[locale]/forgot-password` | Password-reset email request |
@@ -114,12 +115,8 @@ the mockup's remote CSS import.
   sellability, subscription/provider state or purchase controls.
 - The authenticated cabinet places compact email/verification/logout context
   in a supporting rail. The primary workspace has one wide Widget, explicit
-  purchase selection, and brief owned-purchase cards linking to product details.
-  Product pages retain offer/review/consent/preparation; a prepared purchase shows
-  “Subscription prepared” and links to `/account?purchase=<id>#billing`. The cabinet
-  verifies the selected purchase before payment and displays its product plus
-  proven agreement/seller. No catalog product is shown as owned without a held
-  accepted purchase. Responsive layouts stack the rail and workspace.
+  purchase selection, and compact cards linking to product details. Responsive
+  layouts stack the rail and workspace.
 
 Mockup demo prices (`0/490/990 ₽`), providers such as CloudPayments, plan and
 subscription values, renewal/payment controls, usage (`320/500`, `3/10`),
@@ -142,16 +139,26 @@ documents remain drafts.
    through the existing `AuthForm`. The header sign-in modal remains available.
 3. Registration requires explicit, initially unchecked personal-data and offer
    confirmations using generated canonical RU acceptance text and legal links.
-4. The authenticated cabinet shows one billing workspace and brief cards for
-   the user's held accepted purchases, including resumable unfinished purchases,
-   with detail and full-catalog links. Supporting account context renders the
-   returned email and `email_verified` fact, offers verification/resend when
-   needed, and provides logout.
+4. The authenticated cabinet shows the user's held accepted purchases,
+   including unfinished purchases that can be resumed. Products returned by
+   paid-access or usage reads also have cards, even when absent from the purchase
+   list. Cards link to product details. A separate link opens the full catalog.
+   The account panel shows the email and `email_verified` status, offers
+   verification and resend actions when needed, and provides logout.
 5. A user can request a password-reset email, replace the password through the
    existing reset flow, and complete authenticated email verification.
 6. Each enabled, linked product shows current source-backed commercial terms.
-   ANY-709 adds explicit review/consent, Buy/Continue/Manage and verified payment
-   Widget opening; accepted terms and purchase history remain immutable in
+   The buyer reviews and accepts terms on the product page, which checks the
+   saved status of a pending purchase for a bounded period. On a prepared
+   purchase, the payment link opens the localized cabinet. In the same tab and
+   session, the cabinet uses that click to open the account-wide billing Widget
+   after verification. Opening the link in a new tab, visiting its URL directly
+   or reloading that URL selects the purchase and requires a separate click in
+   the cabinet. While the Widget loads, the cabinet displays the product and
+   the verified agreement and seller for the selected purchase. The Widget can
+   offer payment on other agreements in the same account.
+   The buyer checks the agreement number and selects the displayed agreement
+   before paying. Accepted terms and purchase history remain immutable in
    PostgreSQL. ANY-765 displays committed paid access and purchased simulated
    limits through authenticated local `GET /api/paid-access`. Confirmed absence
    and unavailable evidence remain distinct; actual usage/remaining quota is read
@@ -162,7 +169,9 @@ documents remain drafts.
 
 Account state is frontend component state: loading, signed out, session error
 with retry, or authenticated. Missing or expired sessions lead to the direct
-auth form; transient session failures offer retry. Authentication and email
+auth form when the account checks the session. Transient session failures offer
+retry. If billing confirms a session refusal while the cabinet is open, the
+cabinet closes the Widget and offers a session recheck. Authentication and email
 verification facts do not establish paid access.
 
 UI “not ready/unknown” is not evidence of no subscription, no access, or zero
@@ -188,7 +197,7 @@ names and ownership decisions.
 | Legal pages, links, registration acceptance | Portal identity/legal boundary and canonical RU legal source; existing legal runtime and generated legal assets | Preserve now; legal documents remain drafts |
 | Product discovery and detail content | Portal API discovers enabled Kernel products and reads selected live LBX offers; PostgreSQL retains links/history | Kernel owns `product_id`; locale catalogs own surrounding UI copy |
 | Technical capability manifest and commercial catalog, tariffs, prices, periods, sellability | Kernel owns technical identity/capabilities; External Billing owns commercial truth; Portal stores immutable approved bindings/terms | ANY-664 delivered historical v1 source reads/publication. ANY-709 Step 1 adds direct links, enabled-product discovery and live selected offers; genuine Kernel enablement remains gated; ANY-709 now supplies purchase admission |
-| Purchase/payment Widget entry | External Billing with Portal orchestration and generated contracts | ANY-709 implements Buy/Continue/Manage, review/consent and fresh verified payment presentation |
+| Purchase/payment Widget entry | External Billing with Portal orchestration and generated contracts | The product page handles review and consent. The cabinet verifies the selected purchase before opening payment |
 | Subscription/billing state | Step 7 preparation/history plus ANY-715 authoritative normalized observations with finite source trust | Preparation is not payment verification; reconciliation facts are not paid grants; no new UI state contract is claimed |
 | Provider reconciliation/recovery | ANY-715 embedded polling, GET-only recovery/inventory and provider-free deadlines over authoritative External Billing reads | Step 8 implemented; polling-only; webhook receiver removed; verification scope/results are in the [completed ANY-715 plan](../exec-plans/completed/ANY-715-mvp-rebuild-plan.md#stage-6-verification-and-handoff--2026-11-06) |
 | Confirmed paid-access state and delivery | ANY-765 committed provider-neutral projection from shared authoritative observations | Local authenticated cabinet read, ANY-766 snapshot V3 and durable invalidation delivery implemented; Step 16 supplies focused paired local acceptance |
@@ -204,9 +213,10 @@ execution and artifacts also remain outside this repository.
 Provider-dependent LBX semantics, Widget behavior, paid-access derivation, and
 launch remain gated on Phase 0 PASS under ANY-504, with evidence owned by
 ANY-634. This handoff adds no provider semantics or later-step implementation.
-Historical 4F changed no backend behavior, persistence, migrations, or
-contracts. ANY-664 adds the Step 6 producer for immutable mapping revisions;
-ANY-709 adds purchase UI/preparation; ANY-715 adds operating reconciliation/recovery;
+Historical 4F introduced no provider I/O and changed no backend behavior,
+persistence, migrations, or contracts. ANY-664 adds the Step 6 producer for
+immutable mapping revisions. ANY-709 adds purchase UI/preparation.
+ANY-715 adds operating reconciliation/recovery.
 ANY-765 adds committed paid projection and cabinet reads. ANY-766 implements
 snapshot/invalidation transport, Kernel paid admission and recoverable paid
 browser launch and current/historical cabinet usage. Steps 16/17 supply focused
@@ -311,8 +321,10 @@ schema or feature-local JSON cast authority.
 - Reset and verification fragment tokens remain in their current client-only
   flows, are removed from the address bar, and are not persisted or logged.
   Locale navigation does not carry those tokens.
-- No provider I/O, card collection, or Portal-owned commercial/access/trial
-  runtime is introduced. Payment-method configuration remains empty.
+- External Billing owns the payment flow and commercial lifecycle. Card data
+  stays within the external payment boundary. The Portal derives paid access
+  from authoritative subscription evidence. The public payment-method list is
+  empty.
 
 ## Final verification and intent/DoD evidence
 

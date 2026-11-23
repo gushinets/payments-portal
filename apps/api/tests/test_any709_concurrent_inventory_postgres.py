@@ -18,6 +18,7 @@ from app.composition import purchases
 from app.composition.sources import SourceResources, source_resources
 from app.core.settings import Settings
 from app.domains.billing.contracts import CustomerOpen
+from app.domains.billing.work_contracts import WorkLane
 from app.domains.catalog.link_publication import publish_product_link
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases import service
@@ -30,8 +31,9 @@ from app.domains.purchases.contracts import (
 )
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.financial import NewSubscription
+from app.jobs.billing import BillingWorker
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State
-from app.models import ExternalCreateOperation
+from app.models import ExternalCreateOperation, PurchaseIntentState
 from apps.api.tests.support.any709_step1 import link_document, link_selection, step1_settings
 from apps.api.tests.test_any709_review_fixes_postgres import add_second_period
 from apps.api.tests.test_any709_step3_postgres import TOKEN, accept, setup_purchase
@@ -130,11 +132,33 @@ async def test_sibling_inventory_waits_for_original_preparation_without_hiding_c
 
         if checkpoint == "before_receipt":
             monkeypatch.setattr(client, "create_subscription", pause_before_receipt)
-        else:
+        elif checkpoint == "before_binding":
             monkeypatch.setattr(purchases, "_recover_one", pause_before_binding)
-        task = asyncio.create_task(
-            purchases.advance_purchase(sources, configuration, factory=factory, token=TOKEN, purchase_id=first.id)
-        )
+
+        async def complete_original() -> Purchase:
+            result = await purchases.advance_purchase(
+                sources, configuration, factory=factory, token=TOKEN, purchase_id=first.id
+            )
+            if checkpoint != "unknown":
+                return result
+            assert result.state == PurchaseIntentState.AWAITING_EXTERNAL_RESULT
+            assert next(op.state for op in result.operations if op.kind == Kind.SUBSCRIPTION) == State.UNKNOWN
+            transport.fail_create = None
+            entered.set()
+            await release.wait()
+
+            # Reconcile only after the sibling observes the committed UNKNOWN.
+            before = len(transport.requests)
+            worker = BillingWorker(configuration, factory, client)
+            try:
+                assert await worker.tick(WorkLane.URGENT)
+            finally:
+                await worker.aclose()
+            requests = transport.requests[before:]
+            assert requests and all(request.method == "GET" for request in requests)
+            return service.read_purchase(factory, first.user_id, first.id)
+
+        task = asyncio.create_task(complete_original())
         try:
             await asyncio.wait_for(entered.wait(), timeout=10)
             saved_agreement = deepcopy(transport.agreements[0])

@@ -23,9 +23,13 @@ from app.composition.purchases import advance_purchase, confirm_purchase, recove
 from app.composition.sources import SourceResources, source_resources
 from app.core.time import utc_now
 from app.domains.billing.contracts import BillingRefused
+from app.domains.billing.work_contracts import WorkLane
 from app.domains.catalog.link_publication import publish_product_link
 from app.domains.purchases.contracts import Purchase, PurchaseMeaning, LegalSelection, PurchaseRefused
 from app.domains.purchases import financial, service
+from app.infrastructure.preflight import PreflightBudget
+from app.integrations.lbx.financial import NewAgreement
+from app.jobs.billing import BillingWorker
 from app.models import (
     BillingPurchaseScopeHold,
     BillingProductAccessScope,
@@ -33,6 +37,7 @@ from app.models import (
     BillingStateObservation,
     DocumentAcceptance,
     ExternalBillingCustomer,
+    ExternalBillingCustomerBindingState as Binding,
     ExternalCreateOperation,
     ExternalCreateOperationKind as Kind,
     ExternalCreateOperationState as State,
@@ -154,6 +159,61 @@ async def test_any709_step3_complete_preparation_and_historical_manage(
             assert db.scalar(select(func.count()).select_from(model)) == 0
         assert db.scalar(select(func.count()).select_from(BillingPurchaseScopeHold)) == 1
         assert db.scalar(select(func.count()).select_from(ExternalBillingCustomer)) == 1
+
+
+async def test_customer_point_proof_is_stale_when_its_fence_changes_before_first_send(
+    migrated_database: Engine, postgres_session_factory: sessionmaker[Session]
+) -> None:
+    factory = postgres_session_factory
+    transport = setup_purchase(factory)
+    config = step1_settings()
+
+    def change_customer_fence() -> None:
+        with factory() as db:
+            operation = db.scalar(
+                select(ExternalCreateOperation).where(ExternalCreateOperation.operation_kind == Kind.CUSTOMER)
+            )
+            assert operation is not None
+            operation.send_fence = uuid4()
+            db.commit()
+
+    async with source_resources(
+        config,
+        kernel_transport=httpx.MockTransport(transport.kernel),
+        lbx_transport=httpx.MockTransport(transport.respond),
+    ) as sources:
+        purchase = await accept(sources, factory)
+        transport.before_offer = change_customer_fence
+
+        with pytest.raises(PurchaseRefused, match="purchase_inventory_incomplete"):
+            await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+
+        assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
+
+
+async def test_customer_point_proof_detects_source_key_drift_before_first_send(
+    migrated_database: Engine, postgres_session_factory: sessionmaker[Session]
+) -> None:
+    factory, config = postgres_session_factory, step1_settings()
+    transport = setup_purchase(factory)
+
+    def change_original_key_at_source() -> None:
+        assert transport.customer is not None
+        transport.customer["outer_id"] = "changed-original-key"
+
+    async with source_resources(
+        config,
+        kernel_transport=httpx.MockTransport(transport.kernel),
+        lbx_transport=httpx.MockTransport(transport.respond),
+    ) as sources:
+        purchase = await accept(sources, factory)
+        transport.before_offer = change_original_key_at_source
+        with pytest.raises(BillingRefused, match="billing_identity_conflict"):
+            await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+
+        assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
+        with factory() as db:
+            assert db.get(ExternalBillingCustomer, purchase.customer_id).binding_state == Binding.IDENTITY_CONFLICT
 
 
 @pytest.mark.parametrize("path", ["/agreements/456", "/subscriptions/567"])
@@ -323,10 +383,18 @@ async def test_any709_step3_api_smoke_review_confirm_continue_payment(
             if lost_agreement_response:
                 transport.fail_create = "/agreements"
                 transport.hide.add("/agreements")
+            start = len(transport.requests)
             prepared = await client.post(f"/api/purchase-intents/{purchase_id}/advance")
             assert prepared.status_code == 200
             if lost_agreement_response:
                 assert prepared.json()["state"] == "awaiting_external_result" and prepared.json()["scope_held"]
+                assert (
+                    sum(
+                        req.method == "GET" and req.url.path.endswith("/agreements")
+                        for req in transport.requests[start:]
+                    )
+                    == 1
+                )
                 repeated = await client.post(f"/api/purchase-intents/{purchase_id}/advance")
                 assert repeated.status_code == 200 and repeated.json()["state"] == "awaiting_external_result"
                 assert transport.creates("/agreements") == 1 and transport.creates("/subscriptions") == 0
@@ -475,10 +543,71 @@ async def test_any709_step3_500_after_create_recovers_without_another_post(
     ) as sources:
         purchase = await accept(sources, factory)
         result = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
-        assert result.state == IntentState.LINKED
+        assert result.state == IntentState.AWAITING_EXTERNAL_RESULT
         assert transport.creates(path) == 1
-        await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+        before = len(transport.requests)
+        worker = BillingWorker(config, factory, sources.require_lbx())
+        try:
+            assert await worker.tick(WorkLane.URGENT)
+        finally:
+            await worker.aclose()
+        recovered = service.read_purchase(factory, purchase.user_id, purchase.id)
+        assert transport.requests[before:]
+        assert all(req.method == "GET" for req in transport.requests[before:])
+        if path == "/agreements":
+            assert recovered.state == IntentState.PREPARING
+            assert recovered.held and recovered.accepted == purchase.accepted
+            assert next(op for op in recovered.operations if op.kind == Kind.AGREEMENT).state == State.BOUND
+            assert next(op for op in recovered.operations if op.kind == Kind.SUBSCRIPTION).state == State.PENDING
+            assert transport.creates("/subscriptions") == 0
+            recovered = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+        assert recovered.state == IntentState.LINKED
+        assert recovered.accepted == purchase.accepted
         assert transport.creates(path) == 1
+
+
+@pytest.mark.parametrize("receipt_matches", [True, False])
+async def test_any709_step3_worker_binds_agreement_before_receipt(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    receipt_matches: bool,
+) -> None:
+    factory = postgres_session_factory
+    transport = setup_purchase(factory)
+    config = step1_settings()
+    async with source_resources(
+        config,
+        kernel_transport=httpx.MockTransport(transport.kernel),
+        lbx_transport=httpx.MockTransport(transport.respond),
+    ) as sources:
+        purchase = await accept(sources, factory)
+        client = sources.require_lbx()
+        create_agreement = client.create_agreement
+
+        async def deliver_after_worker(command: NewAgreement, *, budget: PreflightBudget) -> int:
+            provider_id = await create_agreement(command, budget=budget)
+            before = len(transport.requests)
+            worker = BillingWorker(config, factory, client)
+            try:
+                assert await worker.tick(WorkLane.URGENT)
+            finally:
+                await worker.aclose()
+            assert transport.requests[before:]
+            assert all(req.method == "GET" for req in transport.requests[before:])
+            saved = service.read_purchase(factory, purchase.user_id, purchase.id)
+            agreement = next(op for op in saved.operations if op.kind == Kind.AGREEMENT)
+            assert (agreement.state, agreement.bound_id) == (State.BOUND, str(provider_id))
+            return provider_id if receipt_matches else provider_id + 1
+
+        monkeypatch.setattr(client, "create_agreement", deliver_after_worker)
+        result = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+
+    assert result.held and result.accepted == purchase.accepted
+    assert [op.id for op in result.operations] == [op.id for op in purchase.operations]
+    assert result.state == (IntentState.LINKED if receipt_matches else IntentState.PREPARING)
+    assert transport.creates("/agreements") == 1
+    assert transport.creates("/subscriptions") == int(receipt_matches)
 
 
 async def test_any709_step3_restart_zero_discovery_deadline_and_get_only_operator_recovery(
@@ -768,14 +897,23 @@ async def test_any709_step3_ambiguous_post_uses_only_get_recovery(
     ) as sources:
         purchase = await accept(sources, factory)
         result = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
-        assert result.state == (IntentState.MANUAL_REVIEW if failure == "multiple" else IntentState.LINKED)
-        assert result.held
-        await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+        assert result.state == IntentState.AWAITING_EXTERNAL_RESULT and result.held
+        before = len(transport.requests)
+        recovered = await recover_financial(
+            sources, config, factory=factory, user_id=purchase.user_id, purchase_id=purchase.id
+        )
+        assert all(req.method == "GET" for req in transport.requests[before:])
         assert transport.creates("/agreements") == 1
         if failure == "multiple":
+            assert recovered.state == IntentState.MANUAL_REVIEW
             assert transport.creates("/subscriptions") == 0
             with factory() as db:
                 assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 1
+        else:
+            assert transport.creates("/subscriptions") == 0
+            continued = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+            assert continued.state == IntentState.LINKED
+            assert transport.creates("/agreements") == transport.creates("/subscriptions") == 1
 
 
 async def test_any709_step3_lost_claim_ack_and_late_apply_keep_original_fence_and_hold(

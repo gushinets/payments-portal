@@ -12,8 +12,8 @@ export function BillingAccount({ userId, emailVerified }: { userId: string; emai
       <h2>{t("title")}</h2>
       <p className="card-copy">{t("description")}</p>
       {!emailVerified && <p className="card-copy">{t("verificationRequired")}</p>}
-      <button className="btn-secondary" type="button" disabled={!emailVerified || widget.state.status === "loading"} onClick={() => void widget.open()}>
-        {widget.state.status === "loading" ? t("loading") : t("open")}
+      <button className="btn-secondary" type="button" disabled={!emailVerified || widget.loading} onClick={() => void widget.open()}>
+        {widget.loading ? t("loading") : t("open")}
       </button>
       <WidgetView widget={widget} />
     </section>

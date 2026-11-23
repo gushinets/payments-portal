@@ -1,4 +1,4 @@
-"""Initial subscription facts only, inside the original financial bind transaction."""
+"""Preparation state and initial facts inside the original financial bind transaction."""
 
 from dataclasses import asdict
 from uuid import uuid4
@@ -72,6 +72,18 @@ def record_first_binding(
         db.add(sub)
         db.flush()
         row.state = IntentState.LINKED
+        row.state_updated_at = proof.read_finished_at
+    elif (
+        op.operation_kind == Kind.AGREEMENT
+        and row.state == IntentState.AWAITING_EXTERNAL_RESULT
+        and proof.agreement_close_date is None
+        and any(
+            item.operation_kind == Kind.SUBSCRIPTION and item.operation_state in {State.PENDING, State.PROVEN_NOT_SENT}
+            for item in operations
+        )
+    ):
+        # The original agreement is known. Only explicit advance can send the subscription.
+        row.state = IntentState.PREPARING
         row.state_updated_at = proof.read_finished_at
     if sub is not None or proof.agreement_close_date is not None:
         document = asdict(observation) if observation else {"agreement_id": str(provider_id)}

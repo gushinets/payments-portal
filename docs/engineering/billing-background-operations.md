@@ -201,12 +201,16 @@ There is no separate process to launch or standalone worker command/container.
   seconds with no default. Unset prevents new positive derivation while local
   reductions continue; existing allowance UTC bounds remain frozen.
 
-Foreground purchase preparation and Widget opening use
-`PREFLIGHT_TOTAL_TIMEOUT_SECONDS`, forwarded by development, agent and production
-Compose. The production example currently sets **60 seconds** as a temporary
-operating value pending [ANY-819](https://linear.app/paveldik/issue/ANY-819);
-preserve the working local override. The application default remains 10 seconds.
-This foreground budget is separate from the worker timeout above.
+`PREFLIGHT_TOTAL_TIMEOUT_SECONDS` configures the admission and source I/O
+budget for catalog and purchase operations, Widget bootstrap, paid usage and
+operator source reads.
+Development, agent and production Compose forward the setting. The application
+default is 10 seconds. The production example uses a temporary 60-second
+budget. Preserve the working local override and revisit the value after
+[ANY-819 live latency acceptance](../exec-plans/active/ANY-819-purchase-preparation.md#open-acceptance-items).
+This foreground budget is separate from the worker timeout above. During
+purchase preparation and Widget bootstrap, an in-progress database unit can
+finish if the source deadline expires.
 
 `PREFLIGHT_CLEANUP_TIMEOUT_SECONDS` reserves cleanup within the total I/O budget.
 Finite work/subscription leases include a 30-second local apply margin. Late or
@@ -358,11 +362,29 @@ operation, request/key/date, accepted history and hold. Known financial conflict
 need audited resolution; a deadline-only escalation permits explicit user/CLI
 GET-only recovery after automatic discovery has paused.
 Advance, worker and operator use the same GET-only original-operation collector
-and transactional binder. The original saved command, actual possible-send
-history and fresh ownership/effective terms are required. A known binding never
-re-enters preparation: completed recovery is a no-op, while lifecycle updates
-require the existing subscription lease. A concurrent first binder discards the
-losing candidate proof and forces fresh claimed reconciliation.
+and transactional binder. When advance completes after an ambiguous financial
+reply, its response contains the saved state. If the preflight deadline
+expires, advance can return HTTP 503 `preflight_deadline_exceeded` after saving
+the uncertain outcome. Read `GET /api/purchase-intents/<id>` as the verified
+purchase owner to check its saved state. See the
+[billing runbook](ANY-709-billing-runbook.md#browser-operation-and-diagnostics).
+The enrolled worker looks for the original operation while the outcome is
+uncertain. If recovery binds an open agreement while the purchase is
+`awaiting_external_result` and the subscription operation is PENDING or
+PROVEN_NOT_SENT, the purchase returns to `preparing`. The buyer can explicitly
+continue. That advance checks admission again before sending the subscription.
+If an in-flight advance receives a successful agreement CREATE reply for the
+same provider ID that the original operation already bound, it uses the saved
+binding and proceeds through the usual subscription admission checks.
+Recovery requires the original saved command, possible-send history and fresh
+proof of ownership and effective terms. The recovery worker skips operations
+with a committed binding. If another caller binds an operation during ordinary
+recovery, the losing attempt discards its proof and reads the saved binding.
+For a subscription, it then reconciles through the existing lease with fresh
+proof. Subscription lifecycle updates use that same lease. An audited
+[`resolve-review --resolution bind-original`](#privileged-purchase-operations)
+returns `billing_review_stale` if another caller binds the operation
+before the reviewed binding is applied.
 
 Original termination is recoverable history, including a closed agreement.
 First binding atomically retains the binding and normalized negative, with zero
