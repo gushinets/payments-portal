@@ -12,7 +12,6 @@ import app.core.password_reset_email as password_reset_email
 import app.domains.identity.password_reset as password_reset_presentation
 import app.domains.identity.services.password_reset as password_reset_service
 from app.core.database import SessionLocal
-from app.domains.identity.errors import PasswordPolicyError
 from app.generated.locales import (
     LANGUAGE_TAG_BY_ROUTE_LOCALE,
     RouteLocale,
@@ -142,7 +141,8 @@ def test_password_reset_email_token_and_session_revocation(monkeypatch: pytest.M
     assert reuse_response.json() == {"detail": {"code": "invalid_or_expired_reset_token"}}
 
 
-def test_invalid_replacement_password_does_not_consume_reset_token(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("length", [11, 129])
+def test_out_of_bounds_password_does_not_consume_reset_token(length: int, monkeypatch: pytest.MonkeyPatch) -> None:
     reset_token = "policy-reset-token-value-with-enough-entropy"
     monkeypatch.setattr(
         password_reset_service,
@@ -176,15 +176,14 @@ def test_invalid_replacement_password_does_not_consume_reset_token(monkeypatch: 
         == 200
     )
 
+    rejected = client.post(
+        "/api/auth/password-reset/confirm",
+        json={"token": reset_token, "password": "🧰" * length},
+    )
+    assert rejected.status_code == 400
+    assert rejected.json() == {"detail": {"code": "password_policy_not_met"}}
+
     with SessionLocal() as db:
-        with pytest.raises(PasswordPolicyError):
-            password_reset_service.confirm_password_reset(
-                db,
-                token=reset_token,
-                password="alllowercase1!",
-                tenant_id="anytoolai",
-                region="ru",
-            )
         stored_token = db.query(MagicLinkToken).filter_by(purpose=MagicLinkPurpose.PASSWORD_RESET).one()
         assert stored_token.used_at is None
 
@@ -193,6 +192,7 @@ def test_invalid_replacement_password_does_not_consume_reset_token(monkeypatch: 
         json={"token": reset_token, "password": "Replacement-pass1!"},
     )
     assert accepted.status_code == 200
+    assert accepted.json() == {"status": "password_reset"}
 
 
 def test_foreign_contour_password_reset_token_is_rejected_without_mutation() -> None:
