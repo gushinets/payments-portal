@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from uuid import UUID
 
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.backend_consumers import BackendConsumer
@@ -14,23 +15,39 @@ from app.domains.billing.customers import authenticate
 from app.domains.billing.paid_contracts import EffectiveState
 from app.domains.billing.paid_deadlines import effective_deadline
 from app.domains.billing.paid_policy import MeteringPolicy
-from app.domains.billing.reconciliation_contracts import RECONCILIATION_READ_SCHEMAS, IdentityProof, CommercialProof
 from app.domains.billing.reconciliation import SOURCE_TRUST
-from app.domains.catalog.publication import SessionFactory
+from app.domains.billing.reconciliation_contracts import (
+    RECONCILIATION_READ_SCHEMAS,
+    CommercialProof,
+    IdentityProof,
+    SubscriptionLifecycleReason,
+)
+from app.domains.billing.work import key
 from app.domains.catalog.contracts import SourceProvenance
+from app.domains.catalog.publication import SessionFactory
 from app.domains.catalog.technical_source import TechnicalOwnership
 from app.domains.identity.services.auth import as_utc
-from app.domains.purchases.technical_terms import AcceptedTechnicalTerms
 from app.domains.purchases.contracts import PurchaseRefused
 from app.domains.purchases.evidence import accepted
+from app.domains.purchases.technical_terms import AcceptedTechnicalTerms
+from app.domains.purchases.widget_activation_window import (
+    CLOSING_GRACE,
+    HANDOFF_DISPLAY,
+    WidgetActivationCompletionReason,
+    WidgetActivationWindow,
+)
 from app.infrastructure.queries import paid_read as queries
 from app.infrastructure.queries.backend_policies import BackendPolicyConflict, require_current_policy
-from app.infrastructure.queries.billing_reconciliation import database_now
+from app.infrastructure.queries.billing_reconciliation import database_now, open_review_references, primary_selections
 from app.models import (
-    BillingStateObservation,
     BillingProductAccessScope,
+    BillingStateObservation,
+    BillingWorkItem,
+    ExternalBillingCustomerBindingState as Binding,
+    ExternalSubscriptionCommercialAccessStatus as Commercial,
     ExternalSubscriptionFinancialAccessStatus as Financial,
     ExternalSubscriptionLifecycleStatus as Lifecycle,
+    PurchaseIntentState,
 )
 
 
@@ -40,12 +57,18 @@ class ProductPaidStatus(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
+class ActivationCheckStatus(StrEnum):
+    CHECKING = "checking"
+    UNCONFIRMED = "unconfirmed"
+
+
 @dataclass(frozen=True)
 class ProductEvidence:
     product_id: str
     status: ProductPaidStatus
     observed_at: datetime | None = None
     effective_until: datetime | None = None
+    activation_check: ActivationCheckStatus | None = None
 
 
 @dataclass(frozen=True)
@@ -167,19 +190,70 @@ def read_access_snapshot(
         return SnapshotRead(state.revision, state.document, min(now + timedelta(seconds=60), expires), expires)
 
 
-def _negative(observation: BillingStateObservation | None, now: datetime) -> bool:
+class _RetainedProof(BaseModel):
+    read_started_at: datetime
+    identity: IdentityProof
+    commercial: CommercialProof
+    financial: Financial | None
+    lifecycle: Lifecycle | None
+    reasons: tuple[str, ...] = ()
+
+    def fresh_match(self, now: datetime) -> bool:
+        return self.identity == IdentityProof.MATCH and as_utc(self.read_started_at) + SOURCE_TRUST > now
+
+
+def _retained_proof(observation: BillingStateObservation | None) -> _RetainedProof | None:
     if observation is None or observation.evidence_schema_version not in RECONCILIATION_READ_SCHEMAS:
-        return False
-    proof = observation.evidence_document
+        return None
+    try:
+        return _RetainedProof.model_validate(observation.evidence_document)
+    except ValidationError:
+        return None
+
+
+def _negative(proof: _RetainedProof | None, now: datetime) -> bool:
     return (
-        as_utc(datetime.fromisoformat(proof["read_started_at"])) + SOURCE_TRUST > now
-        and proof["identity"] == IdentityProof.MATCH
+        proof is not None
+        and proof.fresh_match(now)
         and (
-            proof["commercial"] == CommercialProof.MISMATCH
-            or proof["financial"] == Financial.BLOCKED
-            or proof["lifecycle"] in (Lifecycle.INACTIVE, Lifecycle.ENDED)
+            proof.commercial == CommercialProof.MISMATCH
+            or proof.financial == Financial.BLOCKED
+            or proof.lifecycle in (Lifecycle.INACTIVE, Lifecycle.ENDED)
         )
     )
+
+
+def _activation_status(
+    job: BillingWorkItem | None, purchase_id: UUID, proof: _RetainedProof | None, now: datetime
+) -> ActivationCheckStatus | None:
+    if job is not None:
+        try:
+            window = WidgetActivationWindow.from_work(job)
+        except ValueError:
+            window = None
+        if window is not None and window.purchase_id == purchase_id:
+            completion = window.completion
+            if completion is None:
+                if now < window.deadline_at + CLOSING_GRACE:
+                    return ActivationCheckStatus.CHECKING
+            elif completion.reason == WidgetActivationCompletionReason.PURCHASE_INELIGIBLE:
+                return None
+            elif (
+                completion.reason == WidgetActivationCompletionReason.ACTIVATION_DETECTED
+                and now < completion.at + HANDOFF_DISPLAY
+            ):
+                return ActivationCheckStatus.CHECKING
+            return ActivationCheckStatus.UNCONFIRMED
+    if (
+        proof is not None
+        and proof.fresh_match(now)
+        and proof.commercial == CommercialProof.MATCH
+        and proof.lifecycle == Lifecycle.INACTIVE
+        and proof.financial == Financial.BLOCKED
+        and SubscriptionLifecycleReason.WAITING in proof.reasons
+    ):
+        return ActivationCheckStatus.UNCONFIRMED
+    return None
 
 
 def read_paid_access(factory: SessionFactory, configuration: Settings, token: str) -> PaidRead:
@@ -191,24 +265,48 @@ def read_paid_access(factory: SessionFactory, configuration: Settings, token: st
         ids = queries.product_ids(db, user.id)
         visible = ids[: queries.MAX_EVIDENCE_PRODUCTS]
         sources = {
-            purchase.product_id: (sub, observation)
-            for purchase, sub, observation in queries.sources(db, user.id, visible)
+            purchase.product_id: (purchase, sub, observation, binding)
+            for purchase, sub, observation, binding in queries.sources(db, user.id, visible)
         }
+        granted = {grant.product_id for grant in state.document.grants}
+        candidates = {
+            product: (purchase.purchase_intent_id, sub)
+            for product, (purchase, sub, _, binding) in sources.items()
+            if product not in granted
+            and purchase.state == PurchaseIntentState.LINKED
+            and binding == Binding.BOUND
+            and sub is not None
+            and sub.commercial_access_status == Commercial.ELIGIBLE
+            and sub.lifecycle_status != Lifecycle.ENDED
+            and not (sub.lifecycle_status == Lifecycle.ACTIVE and sub.financial_access_status == Financial.BLOCKED)
+            and product in scopes
+            and scopes[product].primary_subscription_id is None
+        }
+        subscription_ids = {sub.subscription_id for _, sub in candidates.values()}
+        selected = primary_selections(db, subscription_ids) if subscription_ids else set()
+        reviews = open_review_references(db, subscription_ids) if subscription_ids else set()
+        job_keys = {key(sub) for _, sub in candidates.values()}
+        jobs = queries.activation_jobs(db, job_keys) if job_keys else {}
         # Sample database time after the local reads, which may themselves wait.
         # Never omit an overdue tuple while returning its old revision.
         now = as_utc(database_now(db))
         state.require_current(now, MeteringPolicy.for_environment(configuration.app_env))
-        granted = {grant.product_id for grant in state.document.grants}
         products = []
         for product in visible:
-            sub, observation = sources.get(product, (None, None))
+            _, sub, observation, _ = sources.get(product, (None, None, None, None))
             scope = scopes.get(product)
+            proof = _retained_proof(observation)
             if product in granted:
                 status = ProductPaidStatus.CONFIRMED
-            elif _negative(observation, now):
+            elif _negative(proof, now):
                 status = ProductPaidStatus.ABSENT
             else:
                 status = ProductPaidStatus.UNAVAILABLE
+            activation_check = None
+            if candidate := candidates.get(product):
+                purchase_id, pending = candidate
+                if pending.subscription_id not in selected and str(pending.subscription_id) not in reviews:
+                    activation_check = _activation_status(jobs.get(key(pending)), purchase_id, proof, now)
             products.append(
                 ProductEvidence(
                     product,
@@ -221,6 +319,7 @@ def read_paid_access(factory: SessionFactory, configuration: Settings, token: st
                         else None
                     ),
                     effective_deadline(scope) if scope else None,
+                    activation_check,
                 )
             )
         return PaidRead(

@@ -8,15 +8,16 @@ import { kernelLaunchUrl } from "@/shared/config/kernel-web";
 export function PaidProductAccess({ productId, paid }: { productId: string; paid: ReturnType<typeof usePaidAccess> }) {
   const t = useTranslations("Account.products.paid");
   const { state } = paid;
-  if (state.status === PaidReadStatus.Loading) return <p className="card-copy" role="status">{t("loading")}</p>;
   const data = state.status === PaidReadStatus.Ready ? state.data : null;
   const evidence = data?.products.find((item) => item.product_id === productId);
   const granted = data?.grants.some((item) => item.product_id === productId);
-  const status = granted ? "confirmed" : evidence?.status ?? "unavailable";
+  const status = state.status === PaidReadStatus.Loading
+    ? "loading"
+    : granted ? "confirmed" : evidence?.activation_check ?? evidence?.status ?? "unavailable";
   const allowances = data?.allowances.filter((item) => item.product_id === productId) ?? [];
   const launchUrl = granted ? kernelLaunchUrl(productId) : null;
   return <div className="paid-product-access">
-    <p>{t(status)}</p>
+    <p className={status === "loading" ? "card-copy" : undefined} role="status">{t(status)}</p>
     {granted && <>
       {allowances.map((item) => <div key={item.allowance_id}>
         <p>{t("quantity", { quantity: item.quantity, unit: item.unit })}</p>

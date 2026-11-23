@@ -75,7 +75,8 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   }, [applyRefusal, closeWidget]);
   const purchases = useAccountPurchases(canRead, handleRefusal);
   const { applyStatus } = purchases;
-  const paid = usePaidAccess(canRead, handleRefusal);
+  const paymentWidgetOpen = widget.state.status === WidgetStatus.Open && widget.state.target !== null;
+  const paid = usePaidAccess(canRead, handleRefusal, paymentWidgetOpen);
   const usage = usePaidUsage(canRead, handleRefusal);
 
   useEffect(() => {

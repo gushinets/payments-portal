@@ -170,6 +170,8 @@
       "paid": {
         "loading": "Bezahlten Zugriff prüfen…",
         "confirmed": "Bezahlter Zugriff bestätigt",
+        "checking": "Aktivierung wird geprüft",
+        "unconfirmed": "Aktivierung noch nicht bestätigt",
         "no_paid_access": "Kein bezahlter Zugriff auf dieses Produkt",
         "unavailable": "Der bezahlte Zugriff konnte nicht bestätigt werden. Erneut versuchen.",
         "quantity": "Gekauftes Limit: {quantity} {unit}",

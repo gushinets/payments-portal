@@ -137,6 +137,24 @@ it("refreshes while visible, pauses while hidden and catches up on visibility", 
   expect(paid).toHaveBeenCalledTimes(3);
 });
 
+it("refreshes on window focus only while visible with no paid read in flight", async () => {
+  renderCabinet();
+  await screen.findByText(a.confirmed);
+  const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+  fireEvent.focus(window);
+  expect(paid).toHaveBeenCalledTimes(1);
+
+  visibility.mockReturnValue("visible");
+  let finish!: (response: Response) => void;
+  paid.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }));
+  fireEvent.focus(window);
+  await waitFor(() => expect(paid).toHaveBeenCalledTimes(2));
+  fireEvent.focus(window);
+  expect(paid).toHaveBeenCalledTimes(2);
+  await act(async () => finish(Response.json(paidState())));
+  expect(screen.getByText(a.confirmed)).toBeVisible();
+});
+
 it("expires a successful view at its server deadline even before the next periodic refresh", async () => {
   vi.useFakeTimers();
   paid.mockResolvedValueOnce(Response.json(paidState({ effective_until: new Date(Date.now() + 500).toISOString() })))

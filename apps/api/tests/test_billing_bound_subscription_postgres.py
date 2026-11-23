@@ -21,13 +21,19 @@ from starlette.types import Message, Receive, Scope, Send
 
 from app.composition import reconciliation as orchestration
 from app.composition.billing_operator import reconcile_purchase, resolve_review
+from app.composition.paid_reads import paid_read_resources
 from app.composition.sources import SourceResources
-from app.domains.billing import work
+from app.domains.billing import paid_read, paid_router, work
 from app.domains.billing import router as billing_routes
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.customers import apply_customer_read, reserve_customer
 from app.domains.billing.operator_diagnostics import inspect_evidence
-from app.domains.billing.reconciliation import apply_reconciliation, claim_reconciliation, read_source_time
+from app.domains.billing.reconciliation import (
+    SOURCE_TRUST,
+    apply_reconciliation,
+    claim_reconciliation,
+    read_source_time,
+)
 from app.domains.billing.reconciliation_contracts import ReconciliationSubject, SubscriptionProof
 from app.domains.billing.work_contracts import DeliveryLane, WorkClaim, WorkLane
 from app.domains.purchases.contracts import Purchase
@@ -58,6 +64,7 @@ from app.models import (
     BillingWorkState,
     ExternalSubscription,
     ExternalSubscriptionCommercialAccessStatus,
+    ExternalSubscriptionLifecycleStatus,
     ManualReviewCase,
     PaidAccessState,
     PurchasedAllowance,
@@ -111,6 +118,29 @@ async def portal(widget_app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
         headers={"Authorization": "Bearer " + TOKEN},
     ) as client:
         yield client
+
+
+@pytest.fixture
+async def cabinet(
+    portal: httpx.AsyncClient,
+    widget_app: FastAPI,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> AsyncIterator[httpx.AsyncClient]:
+    configuration = step1_settings()
+    monkeypatch.setattr(paid_router, "settings", configuration)
+    async with paid_read_resources(configuration, factory=postgres_session_factory) as reads:
+        widget_app.state.paid_reads = reads
+        yield portal
+
+
+async def cabinet_status(client: httpx.AsyncClient) -> tuple[str | None, int]:
+    response = await client.get("/api/paid-access")
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    (product,) = body["products"]
+    assert product["product_id"] == "proposal_ai"
+    return product["activation_check"], body["access_revision"]
 
 
 def observation_count(factory: sessionmaker[Session], schema: str) -> int:
@@ -231,11 +261,15 @@ async def activation_polling(
 @pytest.mark.parametrize("handoff_at", [40, 112], ids=["ordinary", "closing-grace"])
 async def test_any897_activation_handoff_advances_real_reconciliation_and_first_grant(
     activation_polling: ActivationPolling,
+    cabinet: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
     period_proven: bool,
     handoff_at: int,
 ) -> None:
     polling = activation_polling
     factory = polling.factory
+    monkeypatch.setattr(paid_read, "database_now", lambda db: polling.now)
+    assert await cabinet_status(cabinet) == ("checking", 0)
     with factory() as db:
         original = db.scalars(select(BillingWorkItem).where(BillingWorkItem.work_kind == work.RECONCILIATION)).one()
         assert original.work_state == BillingWorkState.PENDING
@@ -267,6 +301,7 @@ async def test_any897_activation_handoff_advances_real_reconciliation_and_first_
         reason=WidgetActivationCompletionReason.ACTIVATION_DETECTED,
         at=polling.now,
     )
+    assert await cabinet_status(cabinet) == ("checking", 0)
     assert [(request.method, request.url.path) for request in polling.transport.requests] == [
         ("GET", "/api/rest/v1/subscriptions/567"),
         ("GET", "/api/rest/v1/subscriptions/567"),
@@ -281,6 +316,7 @@ async def test_any897_activation_handoff_advances_real_reconciliation_and_first_
         assert read.observed_at == polling.now
         assert read.evidence_document["calendar_complete"] is period_proven
         assert db.scalar(select(PaidAccessState)) is None  # Inventory must select the first primary.
+    assert await cabinet_status(cabinet) == ("checking", 0)
 
     assert await polling.tick(handoff_at + 2, WorkLane.URGENT)
     with factory() as db:
@@ -293,6 +329,122 @@ async def test_any897_activation_handoff_advances_real_reconciliation_and_first_
         if period_proven:
             (allowance,) = allowances
             assert allowance.subscription_id == waiting[0] and allowance.quantity == 100
+    assert await cabinet_status(cabinet) == (None, 1)
+
+
+@pytest.mark.parametrize("handoff", [False, True], ids=["closing-read", "handoff"])
+async def test_any897_cabinet_uses_saved_window_and_handoff_cutoffs_without_writes(
+    activation_polling: ActivationPolling, cabinet: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, handoff: bool
+) -> None:
+    polling = activation_polling
+    monkeypatch.setattr(paid_read, "database_now", lambda db: polling.now)
+    cutoff = polling.window.deadline_at + activation_windows.CLOSING_GRACE
+    if handoff:
+        polling.transport.subscriptions[0]["state"] = 2
+        assert await polling.tick(20)
+        cutoff = polling.now + activation_windows.HANDOFF_DISPLAY
+        polling.transport.requests.clear()
+    before = activation_schedule(polling.job())
+    polling.now = cutoff - timedelta(microseconds=1)
+    assert await cabinet_status(cabinet) == ("checking", 0)
+    assert await cabinet_status(cabinet) == ("checking", 0)  # Reload under the same saved window.
+    polling.now = cutoff
+    assert await cabinet_status(cabinet) == ("unconfirmed", 0)
+    assert activation_schedule(polling.job()) == before and polling.transport.requests == []
+
+
+@pytest.mark.parametrize(
+    "outcome", ["ineligible", "expired", "conflict", "ended", "mismatched-window", "invalid-window"]
+)
+async def test_any897_cabinet_distinguishes_terminal_outcomes_from_pending(
+    activation_polling: ActivationPolling, cabinet: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    polling = activation_polling
+    monkeypatch.setattr(paid_read, "database_now", lambda db: polling.now)
+    assert await cabinet_status(cabinet) == ("checking", 0)
+    with polling.factory() as db:
+        job = db.get(BillingWorkItem, polling.job().work_item_id)
+        sub = db.scalars(select(ExternalSubscription)).one()
+        match outcome:
+            case "conflict":
+                db.add(
+                    ManualReviewCase(
+                        scope_kind="subscription",
+                        scope_reference=str(sub.subscription_id),
+                        case_state="open",
+                        reason_code="subscription_identity_conflict",
+                        evidence_schema_version="subscription-reconciliation:v2",
+                        evidence_document={},
+                    )
+                )
+            case "ended":
+                sub.lifecycle_status = ExternalSubscriptionLifecycleStatus.ENDED
+            case "mismatched-window":
+                job.payload_document = {**job.payload_document, "purchase_id": str(sub.subscription_id)}
+            case "invalid-window":
+                job.payload_document = {**job.payload_document, "deadline_at": "invalid"}
+            case _:
+                reason = (
+                    WidgetActivationCompletionReason.WINDOW_EXPIRED
+                    if outcome == "expired"
+                    else WidgetActivationCompletionReason.PURCHASE_INELIGIBLE
+                )
+                completion = WidgetActivationCompletion(reason=reason, at=polling.now)
+                job.payload_document = {**job.payload_document, "completion": completion.model_dump(mode="json")}
+                job.work_state = BillingWorkState.COMPLETED
+        db.commit()
+    expected = "unconfirmed" if outcome in {"expired", "mismatched-window", "invalid-window"} else None
+    assert await cabinet_status(cabinet) == (expected, 0)
+    assert polling.transport.requests == []
+
+
+@pytest.mark.parametrize("scenario", [True], indirect=True)
+async def test_any897_cabinet_reads_grant_when_activation_arrives_after_the_window(
+    activation_polling: ActivationPolling, cabinet: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    polling = activation_polling
+    monkeypatch.setattr(paid_read, "database_now", lambda db: polling.now)
+    regular = reconciliation_schedule(polling.factory)
+    assert await polling.tick(115)
+    assert (
+        WidgetActivationWindow.from_work(polling.job()).completion.reason
+        == WidgetActivationCompletionReason.WINDOW_EXPIRED
+    )
+    assert await cabinet_status(cabinet) == ("unconfirmed", 0)
+    assert reconciliation_schedule(polling.factory) == regular
+    polling.transport.subscriptions[0]["state"] = 2
+    due = (regular[1] - polling.window.prepared_at).total_seconds()
+    assert due > 115
+    assert await polling.tick(due, WorkLane.URGENT)
+    assert await polling.tick(due + 1, WorkLane.URGENT)
+    assert await cabinet_status(cabinet) == (None, 1)
+
+
+async def test_any897_cabinet_without_window_requires_fresh_waiting_evidence(
+    scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    cabinet: httpx.AsyncClient,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport, sources, _ = scenario
+    factory = postgres_session_factory
+    assert await cabinet_status(cabinet) == (None, 0)
+    await run(sources, factory)
+    transport.requests.clear()
+    assert await cabinet_status(cabinet) == ("unconfirmed", 0)
+    with factory() as db:
+        sub = db.scalars(select(ExternalSubscription)).one()
+        observed = db.get(BillingStateObservation, sub.latest_observation_id)
+        stale_at = datetime.fromisoformat(observed.evidence_document["read_started_at"]) + SOURCE_TRUST
+        assert (
+            db.scalar(
+                select(BillingWorkItem).where(BillingWorkItem.work_kind == BillingWorkKind.WIDGET_ACTIVATION_CHECK)
+            )
+            is None
+        )
+    monkeypatch.setattr(paid_read, "database_now", lambda db: stale_at)
+    assert await cabinet_status(cabinet) == (None, 0)
+    assert not transport.requests
 
 
 async def test_any897_worker_reads_only_the_saved_subscription_once_per_current_slot(

@@ -170,6 +170,8 @@
       "paid": {
         "loading": "Vérification de l’accès payant…",
         "confirmed": "Accès payant confirmé",
+        "checking": "Vérification de l’activation",
+        "unconfirmed": "L’activation n’est pas encore confirmée",
         "no_paid_access": "Aucun accès payant à ce produit",
         "unavailable": "Impossible de confirmer l’accès payant. Réessayez.",
         "quantity": "Limite achetée : {quantity} {unit}",

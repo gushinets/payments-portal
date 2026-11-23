@@ -9,6 +9,10 @@ from app.models import (
     BillingProductAccessScope,
     BillingPurchaseScopeHold,
     BillingStateObservation,
+    BillingWorkItem,
+    BillingWorkKind,
+    ExternalBillingCustomer,
+    ExternalBillingCustomerBindingState,
     ExternalSubscription,
     PaidAccessState,
     PurchaseIntent,
@@ -56,14 +60,19 @@ def product_ids(db: Session, user_id: UUID) -> list[str]:
 
 def sources(
     db: Session, user_id: UUID, products: list[str]
-) -> list[tuple[PurchaseIntent, ExternalSubscription | None, BillingStateObservation | None]]:
+) -> list[
+    tuple[
+        PurchaseIntent, ExternalSubscription | None, BillingStateObservation | None, ExternalBillingCustomerBindingState
+    ]
+]:
     return list(
         db.execute(
-            select(PurchaseIntent, ExternalSubscription, BillingStateObservation)
+            select(PurchaseIntent, ExternalSubscription, BillingStateObservation, ExternalBillingCustomer.binding_state)
             .join(
                 BillingPurchaseScopeHold,
                 BillingPurchaseScopeHold.purchase_intent_id == PurchaseIntent.purchase_intent_id,
             )
+            .join(ExternalBillingCustomer, ExternalBillingCustomer.customer_id == PurchaseIntent.customer_id)
             .outerjoin(
                 ExternalSubscription, ExternalSubscription.purchase_intent_id == PurchaseIntent.purchase_intent_id
             )
@@ -74,6 +83,18 @@ def sources(
             .where(PurchaseIntent.user_id == user_id, PurchaseIntent.product_id.in_(products))
         ).tuples()
     )
+
+
+def activation_jobs(db: Session, keys: set[str]) -> dict[str, BillingWorkItem]:
+    return {
+        row.coalescing_key: row
+        for row in db.scalars(
+            select(BillingWorkItem).where(
+                BillingWorkItem.work_kind == BillingWorkKind.WIDGET_ACTIVATION_CHECK,
+                BillingWorkItem.coalescing_key.in_(keys),
+            )
+        )
+    }
 
 
 def allowances(db: Session, identities: list[UUID]) -> list[PurchasedAllowance]:

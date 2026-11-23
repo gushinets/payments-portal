@@ -283,6 +283,14 @@
         "title": "AccountPurchasesResponse",
         "type": "object"
       },
+      "ActivationCheckStatus": {
+        "enum": [
+          "checking",
+          "unconfirmed"
+        ],
+        "title": "ActivationCheckStatus",
+        "type": "string"
+      },
       "AllowanceExhaustion": {
         "additionalProperties": false,
         "properties": {
@@ -1291,6 +1299,16 @@
       },
       "PaidAccessProductResponse": {
         "properties": {
+          "activation_check": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActivationCheckStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "effective_until": {
             "anyOf": [
               {
