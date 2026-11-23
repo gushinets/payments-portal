@@ -152,6 +152,12 @@ def activation_job(factory: sessionmaker[Session]) -> BillingWorkItem:
         ).one()
 
 
+def reconciliation_schedule(factory: sessionmaker[Session]) -> tuple[UUID, datetime, int]:
+    with factory() as db:
+        row = db.scalars(select(BillingWorkItem).where(BillingWorkItem.work_kind == work.RECONCILIATION)).one()
+        return row.work_item_id, row.next_attempt_at, row.enqueue_generation
+
+
 def activation_schedule(row: BillingWorkItem) -> tuple[UUID, WidgetActivationWindow, datetime, int, datetime]:
     return (
         row.work_item_id,
@@ -187,25 +193,106 @@ async def activation_polling(
 ) -> AsyncIterator[ActivationPolling]:
     transport, sources, purchase = scenario
     factory = postgres_session_factory
-    config = step1_settings(billing_widget_activation_window_seconds=110)
+    has_terms = purchase.accepted.technical_terms is not None
+    config = step1_settings(
+        billing_widget_activation_window_seconds=110,
+        purchase_test_terms_enabled=has_terms,
+        paid_access_clock_skew_seconds=5 if has_terms else None,
+    )
     monkeypatch.setattr(billing_routes, "settings", config)
-    assert (await payment(portal, purchase.id)).status_code == 200
-    window = WidgetActivationWindow.from_work(activation_job(factory))
-    with factory() as db:
-        for row in db.scalars(
-            select(BillingWorkItem).where(BillingWorkItem.work_kind != BillingWorkKind.WIDGET_ACTIVATION_CHECK)
-        ):
-            row.next_attempt_at = window.deadline_at + timedelta(days=1)
-        db.commit()
-
-    transport.requests.clear()
     worker = BillingWorker(config, factory, sources.require_lbx())
-    polling = ActivationPolling(factory, transport, worker, window, window.prepared_at)
-    monkeypatch.setattr(billing_reconciliation, "database_now", lambda db: polling.now)
     try:
+        if has_terms:
+            with factory() as db:
+                for row in db.scalars(select(BillingWorkItem).where(BillingWorkItem.work_kind != work.RECONCILIATION)):
+                    row.next_attempt_at = billing_reconciliation.database_now(db) + timedelta(days=1)
+                db.commit()
+            assert await worker.tick(WorkLane.URGENT)  # Establish the ordinary cadence while still unpaid.
+        assert (await payment(portal, purchase.id)).status_code == 200
+        window = WidgetActivationWindow.from_work(activation_job(factory))
+        if not has_terms:
+            with factory() as db:
+                for row in db.scalars(
+                    select(BillingWorkItem).where(BillingWorkItem.work_kind != BillingWorkKind.WIDGET_ACTIVATION_CHECK)
+                ):
+                    row.next_attempt_at = window.deadline_at + timedelta(days=1)
+                db.commit()
+
+        transport.requests.clear()
+        polling = ActivationPolling(factory, transport, worker, window, window.prepared_at)
+        monkeypatch.setattr(billing_reconciliation, "database_now", lambda db: polling.now)
         yield polling
     finally:
         await worker.aclose()
+
+
+@pytest.mark.parametrize("scenario", [True], indirect=True)
+@pytest.mark.parametrize("period_proven", [True, False], ids=["proven-period", "missing-period"])
+@pytest.mark.parametrize("handoff_at", [40, 112], ids=["ordinary", "closing-grace"])
+async def test_any897_activation_handoff_advances_real_reconciliation_and_first_grant(
+    activation_polling: ActivationPolling,
+    period_proven: bool,
+    handoff_at: int,
+) -> None:
+    polling = activation_polling
+    factory = polling.factory
+    with factory() as db:
+        original = db.scalars(select(BillingWorkItem).where(BillingWorkItem.work_kind == work.RECONCILIATION)).one()
+        assert original.work_state == BillingWorkState.PENDING
+    assert polling.window.prepared_at + timedelta(seconds=handoff_at + 2) < original.next_attempt_at
+    assert await polling.tick(20)  # The unpaid subscription still reports waiting.
+    waiting = snapshot(factory)
+    point = polling.transport.subscriptions[0]
+    point["state"] = 2
+    if period_proven:
+        start = polling.window.prepared_at.date().replace(day=1)
+        next_month = (start + timedelta(days=32)).replace(day=1)
+        point.update(
+            subscription_start_date=start.isoformat(),
+            subscription_instance_start_date=start.isoformat(),
+            last_tariffication_period_start=start.isoformat(),
+            last_tariffication_period_end=(next_month - timedelta(days=1)).isoformat(),
+        )
+
+    assert await polling.tick(handoff_at)
+    with factory() as db:
+        advanced = db.scalars(select(BillingWorkItem).where(BillingWorkItem.work_kind == work.RECONCILIATION)).one()
+        assert advanced.work_item_id == original.work_item_id
+        assert advanced.next_attempt_at == polling.now < original.next_attempt_at
+        assert advanced.enqueue_generation == original.enqueue_generation + 1
+        assert db.scalar(select(PaidAccessState)) is None
+        assert db.scalar(select(PurchasedAllowance)) is None
+    assert snapshot(factory) == waiting
+    assert WidgetActivationWindow.from_work(polling.job()).completion == WidgetActivationCompletion(
+        reason=WidgetActivationCompletionReason.ACTIVATION_DETECTED,
+        at=polling.now,
+    )
+    assert [(request.method, request.url.path) for request in polling.transport.requests] == [
+        ("GET", "/api/rest/v1/subscriptions/567"),
+        ("GET", "/api/rest/v1/subscriptions/567"),
+    ]
+
+    assert await polling.tick(handoff_at + 1, WorkLane.URGENT)
+    with factory() as db:
+        regular = db.get(BillingWorkItem, original.work_item_id)
+        assert regular.last_attempt_started_at == polling.now
+        assert regular.attempt_count == original.attempt_count + 1
+        read = db.get(BillingStateObservation, db.get(ExternalSubscription, waiting[0]).latest_observation_id)
+        assert read.observed_at == polling.now
+        assert read.evidence_document["calendar_complete"] is period_proven
+        assert db.scalar(select(PaidAccessState)) is None  # Inventory must select the first primary.
+
+    assert await polling.tick(handoff_at + 2, WorkLane.URGENT)
+    with factory() as db:
+        state = db.scalars(select(PaidAccessState)).one()
+        assert state.access_revision == 1 and state.committed_at == polling.now < original.next_attempt_at
+        assert state.effective_state_document["grants"] == [{"product_id": "proposal_ai", "valid_until": None}]
+        assert db.scalar(select(BillingProductAccessScope.primary_subscription_id)) == waiting[0]
+        allowances = db.scalars(select(PurchasedAllowance)).all()
+        assert len(allowances) == len(state.effective_state_document["allowances"]) == int(period_proven)
+        if period_proven:
+            (allowance,) = allowances
+            assert allowance.subscription_id == waiting[0] and allowance.quantity == 100
 
 
 async def test_any897_worker_reads_only_the_saved_subscription_once_per_current_slot(
@@ -218,7 +305,6 @@ async def test_any897_worker_reads_only_the_saved_subscription_once_per_current_
     assert not await polling.tick(19)
     assert await polling.tick(20)
     assert not await polling.tick(20)
-    activate(polling.transport)
     assert await polling.tick(83)
     assert not await polling.tick(83)
     assert [(request.method, request.url.path) for request in polling.transport.requests] == [
@@ -388,26 +474,153 @@ async def test_any897_closing_timeout_retains_source_cleanup_ownership(
         release.set()
 
 
-async def test_any897_ordinary_response_after_deadline_is_discarded(
+@pytest.mark.parametrize("starts_at, cutoff", [(109, 110), (112, 115)], ids=["ordinary", "closing"])
+async def test_any897_late_positive_response_is_discarded(
     activation_polling: ActivationPolling,
     monkeypatch: pytest.MonkeyPatch,
+    starts_at: int,
+    cutoff: int,
 ) -> None:
     polling = activation_polling
+    original = reconciliation_schedule(polling.factory)
+    activate(polling.transport)
     get = polling.worker.client.get_subscription
 
     async def returned_after_cutoff(*, subscription_id: int, budget: PreflightBudget) -> Subscription:
-        assert 0 < budget.deadline - monotonic() <= 1
+        assert 0 < budget.deadline - monotonic() <= cutoff - starts_at
         point = await get(subscription_id=subscription_id, budget=budget)
-        polling.now = polling.window.deadline_at + timedelta(milliseconds=1)
+        polling.now = polling.window.prepared_at + timedelta(seconds=cutoff, milliseconds=1)
         return point
 
     monkeypatch.setattr(polling.worker.client, "get_subscription", returned_after_cutoff)
-    assert await polling.tick(109)
-    assert not await polling.tick(111)
+    assert await polling.tick(starts_at)
+    assert not await polling.tick(cutoff + 1)
     job = polling.job()
     assert len(polling.transport.requests) == job.attempt_count == 1
     assert job.last_error_classification == PreflightDeadlineExceeded().code
     assert WidgetActivationWindow.from_work(job).completion.reason == WidgetActivationCompletionReason.WINDOW_EXPIRED
+    assert reconciliation_schedule(polling.factory) == original
+
+
+@pytest.mark.parametrize("changed", ["binding", "primary", "lease", "generation"])
+async def test_any897_activation_handoff_rechecks_binding_and_claim_after_point_read(
+    activation_polling: ActivationPolling,
+    monkeypatch: pytest.MonkeyPatch,
+    changed: str,
+) -> None:
+    polling = activation_polling
+    factory = polling.factory
+    original = reconciliation_schedule(factory)
+    activate(polling.transport)
+    get = polling.worker.client.get_subscription
+
+    async def change_before_apply(*, subscription_id: int, budget: PreflightBudget) -> Subscription:
+        point = await get(subscription_id=subscription_id, budget=budget)
+        with factory() as db:
+            if changed in {"binding", "primary"}:
+                sub = db.scalar(select(ExternalSubscription))
+                if changed == "binding":
+                    sub.purchase_intent_id = None
+                else:
+                    db.scalar(select(BillingProductAccessScope)).primary_subscription_id = sub.subscription_id
+            else:
+                row = db.scalar(
+                    select(BillingWorkItem).where(BillingWorkItem.work_kind == BillingWorkKind.WIDGET_ACTIVATION_CHECK)
+                )
+                if changed == "lease":
+                    row.lease_owner = "replacement"
+                else:
+                    row.enqueue_generation += 1
+            db.commit()
+        return point
+
+    monkeypatch.setattr(polling.worker.client, "get_subscription", change_before_apply)
+    if changed in {"lease", "generation"}:
+        with pytest.raises(BillingRefused, match="billing_work_stale"):
+            await polling.tick(20)
+        assert WidgetActivationWindow.from_work(polling.job()).completion is None
+    else:
+        assert await polling.tick(20)
+        assert WidgetActivationWindow.from_work(polling.job()).completion.reason == (
+            WidgetActivationCompletionReason.PURCHASE_INELIGIBLE
+        )
+    assert reconciliation_schedule(factory) == original
+
+
+@pytest.mark.parametrize("state,blocking", [(2, 1), (2, 3), (3, 0)])
+async def test_any897_blocked_or_ended_point_never_advances_reconciliation(
+    activation_polling: ActivationPolling,
+    state: int,
+    blocking: int,
+) -> None:
+    polling = activation_polling
+    original = reconciliation_schedule(polling.factory)
+    polling.transport.subscriptions[0].update(state=state, current_blocking=blocking)
+    assert await polling.tick(20)
+    completed = WidgetActivationWindow.from_work(polling.job()).completion
+    if state == 3:
+        assert completed.reason == WidgetActivationCompletionReason.PURCHASE_INELIGIBLE
+    else:
+        assert completed is None
+    assert reconciliation_schedule(polling.factory) == original
+
+
+async def test_any897_handoff_past_cutoff_rolls_back_hint_and_expires_window(
+    activation_polling: ActivationPolling,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    polling = activation_polling
+    original = reconciliation_schedule(polling.factory)
+    activate(polling.transport)
+    enroll = work.enroll_subscription
+
+    def advance_then_cross_cutoff(db: Session, subscription: ExternalSubscription, *, hint: bool = False) -> None:
+        enroll(db, subscription, hint=hint)
+        polling.now = polling.window.deadline_at + timedelta(seconds=5, milliseconds=1)
+
+    monkeypatch.setattr(work, "enroll_subscription", advance_then_cross_cutoff)
+    assert await polling.tick(112)
+    assert polling.now > polling.window.deadline_at + timedelta(seconds=5)
+    assert len(polling.transport.requests) == 1
+    assert reconciliation_schedule(polling.factory) == original
+    assert (
+        WidgetActivationWindow.from_work(polling.job()).completion.reason
+        == WidgetActivationCompletionReason.WINDOW_EXPIRED
+    )
+
+
+async def test_any897_handoff_hint_survives_running_reconciliation(
+    activation_polling: ActivationPolling,
+) -> None:
+    polling = activation_polling
+    factory = polling.factory
+    identity, _, generation = reconciliation_schedule(factory)
+    with factory() as db:
+        db.get(BillingWorkItem, identity).next_attempt_at = polling.now
+        db.commit()
+    claim = work.claim_work(factory, polling.worker.configuration, WorkLane.URGENT)
+    assert claim is not None and claim.id == identity
+    activate(polling.transport)
+    assert await polling.tick(20)
+    with factory() as db:
+        row = db.get(BillingWorkItem, identity)
+        assert row.enqueue_generation == generation + 1
+        assert row.work_state == BillingWorkState.RUNNING and row.lease_owner == claim.owner
+        assert row.next_attempt_at <= polling.now
+    polling.now += timedelta(seconds=1)
+    await orchestration.reconcile_subscription(
+        polling.worker.client,
+        polling.worker.admissions[WorkLane.URGENT],
+        polling.worker.configuration,
+        factory=factory,
+        subscription_id=UUID(claim.reference),
+        work_claim=claim,
+    )
+    with factory() as db:
+        row = db.get(BillingWorkItem, identity)
+        assert row.work_state == BillingWorkState.PENDING and row.lease_owner is None
+        assert row.enqueue_generation == generation + 1 and row.next_attempt_at <= polling.now
+    assert await polling.tick(22, WorkLane.URGENT)
 
 
 async def test_any897_parallel_widget_openings_save_one_window(

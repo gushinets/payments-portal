@@ -16,7 +16,12 @@ from app.domains.billing.discovery import persist_discoveries, apply_inventory
 from app.domains.billing import background_recovery as recovery, work
 from app.domains.billing.work_contracts import WorkAttemptOutcome, WorkClaim
 from app.domains.catalog.publication import SessionFactory
-from app.domains.purchases.widget_activation_poll import finish_widget_activation_read, prepare_widget_activation_read
+from app.domains.purchases.widget_activation_poll import (
+    WidgetActivationReadFailure,
+    WidgetActivationResult,
+    finish_widget_activation_read,
+    prepare_widget_activation_read,
+)
 from app.infrastructure.preflight import (
     PreflightAdmission,
     PreflightBudget,
@@ -43,16 +48,16 @@ async def check_widget_activation(
     if attempt is None:
         return WorkAttemptOutcome.COMPLETED
     budget.limit_deadline(attempt.monotonic_deadline)
-    error = None
+    result: WidgetActivationResult
     try:
         point = await timely_point(
             lambda: client.get_subscription(subscription_id=attempt.provider_subscription_id, budget=budget), budget
         )
-        subscription_lifecycle(point)
+        _, _, result = subscription_lifecycle(point)
         budget.check()
     except (LbxError, PreflightDeadlineExceeded) as failure:
-        error = failure.code
-    return await delegate(finish_widget_activation_read, factory, claim, attempt, error=error)
+        result = WidgetActivationReadFailure(failure.code)
+    return await delegate(finish_widget_activation_read, factory, configuration, claim, attempt, result)
 
 
 async def recover_operation(

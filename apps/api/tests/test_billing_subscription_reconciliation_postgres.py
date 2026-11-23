@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.composition.purchases import advance_purchase, verify_payment_purchase
+from app.composition.purchases import advance_purchase, confirm_purchase, review_purchase, verify_payment_purchase
 from app.composition.reconciliation import reconcile_subscription
 from app.composition.sources import SourceResources, source_resources
 from app.domains.billing.contracts import BillingRefused
@@ -37,6 +37,7 @@ from app.models import (
 )
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.support.any709_step3 import PurchaseTransport
+from apps.api.tests.factories.purchase_terms import reviewed_meaning
 from apps.api.tests.test_any709_step3_postgres import setup_purchase, accept, TOKEN
 
 pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
@@ -49,22 +50,39 @@ def anyio_backend() -> str:
 
 @pytest.fixture
 async def scenario(
-    migrated_database: Engine, postgres_session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> AsyncIterator[tuple[PurchaseTransport, SourceResources, Purchase]]:
     from app.integrations.lbx import current_offer
 
     monkeypatch.setattr(current_offer, "utc_now", lambda: datetime(2026, 10, 27, 12, tzinfo=UTC))
     factory = postgres_session_factory
     transport = setup_purchase(factory)
+    with_paid_terms = getattr(request, "param", False)
+    configuration = step1_settings(purchase_test_terms_enabled=with_paid_terms)
     async with source_resources(
-        step1_settings(),
+        configuration,
         kernel_transport=httpx.MockTransport(transport.kernel),
         lbx_transport=httpx.MockTransport(transport.respond),
     ) as sources:
-        purchase = await accept(sources, factory)
-        purchase = await advance_purchase(
-            sources, step1_settings(), factory=factory, token=TOKEN, purchase_id=purchase.id
-        )
+        if with_paid_terms:
+            link, offer, documents, terms = await review_purchase(
+                sources, configuration, factory=factory, token=TOKEN, product_id="proposal_ai"
+            )
+            assert terms is not None
+            purchase = await confirm_purchase(
+                sources,
+                configuration,
+                factory=factory,
+                token=TOKEN,
+                key="activation-handoff",
+                meaning=reviewed_meaning("proposal_ai", link.mapping_revision_id, offer.fingerprint, documents, terms),
+            )
+        else:
+            purchase = await accept(sources, factory)
+        purchase = await advance_purchase(sources, configuration, factory=factory, token=TOKEN, purchase_id=purchase.id)
         yield transport, sources, purchase
 
 

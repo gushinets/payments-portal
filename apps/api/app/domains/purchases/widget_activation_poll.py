@@ -11,6 +11,7 @@ from app.core.settings import Settings
 from app.domains.billing import work
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.customers import lock_user
+from app.domains.billing.reconciliation_contracts import SubscriptionLifecycleReason
 from app.domains.billing.work_contracts import WorkAttemptOutcome, WorkClaim
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
@@ -28,6 +29,7 @@ from app.models import (
     BillingWorkItem,
     ExternalBillingCustomer,
     ExternalBillingCustomerBindingState,
+    ExternalSubscription,
     PurchaseIntentState,
 )
 
@@ -41,6 +43,14 @@ class WidgetActivationRead:
     provider_subscription_id: int
     allowed_until: datetime
     monotonic_deadline: float
+
+
+@dataclass(frozen=True)
+class WidgetActivationReadFailure:
+    code: str
+
+
+WidgetActivationResult = SubscriptionLifecycleReason | WidgetActivationReadFailure
 
 
 def _next_due(window: WidgetActivationWindow, row: BillingWorkItem) -> datetime:
@@ -90,9 +100,9 @@ def _complete(
     work.finish(db, row, claim, due=None, error=row.last_error_classification)
 
 
-def _provider_subscription_id(
+def _eligible_subscription(
     db: Session, row: BillingWorkItem, window: WidgetActivationWindow, user_id: UUID
-) -> int | None:
+) -> ExternalSubscription | None:
     purchase = purchases.owned(db, user_id, window.purchase_id, lock=True)
     if purchase is None or purchase.state != PurchaseIntentState.LINKED:
         return None
@@ -111,33 +121,50 @@ def _provider_subscription_id(
     customer = db.get(ExternalBillingCustomer, sub.customer_id)
     if customer is None or customer.binding_state != ExternalBillingCustomerBindingState.BOUND:
         return None
-    provider_id = sub.external_subscription_id
+    return sub
+
+
+def _provider_subscription_id(subscription: ExternalSubscription | None) -> int | None:
+    provider_id = subscription.external_subscription_id if subscription is not None else None
     if provider_id is None or not provider_id.isascii() or not provider_id.isdecimal() or len(provider_id) > 20:
         return None
     numeric = int(provider_id)
     return numeric if numeric > 0 and str(numeric) == provider_id else None
 
 
+def _locked_target(
+    db: Session, configuration: Settings, claim: WorkClaim
+) -> tuple[BillingWorkItem, WidgetActivationWindow, ExternalSubscription | None]:
+    sub = queries.subscription(db, UUID(claim.reference))
+    # Serialize against Widget enqueue and reconciliation before locking the queue row.
+    user = lock_user(db, sub.user_id) if sub is not None else None
+    row = _verify_claim(db, claim)
+    window = WidgetActivationWindow.from_work(row)
+    target = None
+    if user is not None and (user.tenant_id, user.region) == (
+        configuration.instance_tenant_id,
+        configuration.instance_region,
+    ):
+        target = _eligible_subscription(db, row, window, user.id)
+    return row, window, target
+
+
+def _claim_time(db: Session, claim: WorkClaim) -> datetime:
+    now = as_utc(queries.database_now(db))
+    if now >= claim.expires_at:
+        raise BillingRefused("billing_work_stale", 409)
+    return now
+
+
 def prepare_widget_activation_read(
     factory: SessionFactory, configuration: Settings, claim: WorkClaim
 ) -> WidgetActivationRead | None:
     with factory() as db:
-        sub = queries.subscription(db, UUID(claim.reference))
-        # Serialize against Widget enqueue and reconciliation before locking the queue row.
-        user = lock_user(db, sub.user_id) if sub is not None else None
-        row = _verify_claim(db, claim)
-        window = WidgetActivationWindow.from_work(row)
-        provider_id = (
-            _provider_subscription_id(db, row, window, user.id)
-            if user is not None
-            and (user.tenant_id, user.region) == (configuration.instance_tenant_id, configuration.instance_region)
-            else None
-        )
+        row, window, target = _locked_target(db, configuration, claim)
+        provider_id = _provider_subscription_id(target)
         # A delay obtaining the locks, committing, or resuming the waiter consumes the same budget.
         sampled_at = monotonic()
-        now = as_utc(queries.database_now(db))
-        if now >= claim.expires_at:
-            raise BillingRefused("billing_work_stale", 409)
+        now = _claim_time(db, claim)
         due = _next_due(window, row)
         attempt = None
         if _exhausted(window, row, now):
@@ -160,16 +187,46 @@ def prepare_widget_activation_read(
         return attempt
 
 
+def _try_handoff(
+    db: Session, subscription: ExternalSubscription, claim: WorkClaim, allowed_until: datetime
+) -> datetime:
+    # The regular queue upsert can wait on another owner. Undo the hint if that wait consumes the budget.
+    with db.begin_nested() as handoff:
+        work.enroll_subscription(db, subscription, hint=True)
+        now = _claim_time(db, claim)
+        if now > allowed_until:
+            handoff.rollback()
+    return now
+
+
 def finish_widget_activation_read(
-    factory: SessionFactory, claim: WorkClaim, attempt: WidgetActivationRead, *, error: str | None
+    factory: SessionFactory,
+    configuration: Settings,
+    claim: WorkClaim,
+    attempt: WidgetActivationRead,
+    result: WidgetActivationResult,
 ) -> WorkAttemptOutcome:
     with factory() as db:
-        row = _verify_claim(db, claim)
-        window = WidgetActivationWindow.from_work(row)
-        now = as_utc(queries.database_now(db))
-        row.last_error_classification = PreflightDeadlineExceeded().code if now > attempt.allowed_until else error
-        if _exhausted(window, row, now):
-            _complete(db, row, claim, window, now, WidgetActivationCompletionReason.WINDOW_EXPIRED)
+        row, window, target = _locked_target(db, configuration, claim)
+        if target is not None and target.external_subscription_id != str(attempt.provider_subscription_id):
+            target = None
+        now = _claim_time(db, claim)
+        if target is not None and result == SubscriptionLifecycleReason.ACTIVE and now <= attempt.allowed_until:
+            now = _try_handoff(db, target, claim, attempt.allowed_until)
+        if now > attempt.allowed_until:
+            result = WidgetActivationReadFailure(PreflightDeadlineExceeded().code)
+        row.last_error_classification = result.code if isinstance(result, WidgetActivationReadFailure) else None
+
+        completion = None
+        if target is None or result == SubscriptionLifecycleReason.ENDED:
+            completion = WidgetActivationCompletionReason.PURCHASE_INELIGIBLE
+        elif result == SubscriptionLifecycleReason.ACTIVE:
+            completion = WidgetActivationCompletionReason.ACTIVATION_DETECTED
+        elif _exhausted(window, row, now):
+            completion = WidgetActivationCompletionReason.WINDOW_EXPIRED
+
+        if completion is not None:
+            _complete(db, row, claim, window, now, completion)
             outcome = WorkAttemptOutcome.COMPLETED
         else:
             work.finish(db, row, claim, due=_next_due(window, row), error=row.last_error_classification)

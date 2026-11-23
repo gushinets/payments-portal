@@ -365,8 +365,13 @@ attempt that failed. A closing read is due at the saved deadline, with at most
 five seconds of grace, including pickup delay. The ordinary read budget ends
 at the deadline. Each read and its bounded cleanup wait share a budget of at
 most five seconds. The lane retains resources until source cleanup finishes.
-Paid access continues through regular reconciliation. Handoff from a current
-positive point read is planned in ANY-897 Step 4.
+A timely active and unblocked point read completes the window and advances
+the existing regular reconciliation job in the same transaction. The worker
+rechecks the saved binding, claim and deadline before committing the hint.
+The hint preserves an in-flight regular reconciliation lease and advances its
+generation so the older attempt cannot consume the new wakeup. Paid access
+and purchased allowances are written by standard reconciliation and primary
+selection from their own authoritative proof.
 
 `external_create_recovery` is GET-only. Zero candidates remain uncertain; exactly
 one original point-proven candidate may bind; ambiguous/foreign candidates or
