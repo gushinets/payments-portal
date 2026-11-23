@@ -1,8 +1,0 @@
-AFFECTED COMPONENT SEARCH
-RETAINED VULNERABLE TOOLS
-/usr/bin/infocmp
-/usr/bin/nsenter
-MOUNT TOOLS
-APP MAPPING DIRECTORY
-drwx------ 2 app app 4096 Nov 18 16:32 /run/payments-portal
-PACKAGE DATABASE

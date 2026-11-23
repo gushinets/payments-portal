@@ -1,114 +1,61 @@
-# ANY-674 — Supported updates and High remediation follow-up
+# ANY-674 — Debian production-image remediation
 
 Ticket: https://linear.app/paveldik/issue/ANY-674 · [PR179](https://github.com/gushinets/payments-portal/pull/179)
 
-## Current technical ownership — November21 assignment
+## Result and comparable evidence
 
-**Iosif**, Linear user `bb236781-3bbe-4406-a1fc-1b0c2391b133`, is the
-explicitly assigned technical CVE review/remediation owner for Payment portal,
-including **all87 currently reported IDs and all12 High IDs**. The
-[87-ID ownership record](evidence/ANY-674-ownership-2026-11-21/technical-owners.csv)
-enumerates the exact scope and links each row to its existing applicability and
-next-action assessment. Assignment authority is the requester's explicit
-instruction, transcribed in [ANY-674's ownership addendum](https://linear.app/paveldik/issue/ANY-674)
-and Linear issue comment `7b036154-99bd-4f4a-b925-50939756af1c`; project comment
-`78f56c9a-7595-4ae9-889b-5bd5585ebb20` records the project-wide role.
+Python remains 3.12.16, Debian Trixie, uv and application dependencies retained.
+The initial Python 3.12.14→3.12.16 change fixed **zero Debian advisories**:
+87 unchanged package versions, 218 records /96 IDs on each side.
+Verified minimization subsequently removed16 unnecessary packages (87→71),
+eliminating apt CVE-2011-3374; its same-database comparison was218/96→207/95.
+The refreshed database later identified221 records /101 IDs in the retained image.
 
-The role covers Wednesday dependency/image checks, immediate critical-finding
-triage, applicability assessment, reports to Mikhail and tracking remediation
-tasks. The proposed current-finding review checkpoint is **2026-12-02**, earlier
-on a maintained fix or exposure change. This is a review date, not an approved
-exception expiry. Package/backport maintenance commitments, substantial changes
-and resources still require their separate decisions. No residual risk is
-accepted, no exception is approved and no merge/deployment is authorized by this
-assignment.
+Available supported updates then changed base-files13.8+deb13u7→u8,
+libc6/libc-bin2.41-12+deb13u4→u5, and openssl/libssl3t64/
+openssl-provider-legacy3.5.7-1~deb13u3→3.5.9-1~deb13u1.
+The Debian glibc patch fixed14 advisory IDs /28 records.
 
-The hashed scan/applicability ledgers below are frozen **pre-assignment** evidence.
-Their `owner: pending team assignment` fields describe capture-time state, not
-current ownership. This section and the separately enumerated assignment record
-supersede those fields administratively without modifying historical scans,
-applicability classifications, package facts or their checksums.
-
-## Outcome
-
-The November21 fresh supported Debian rebuild now contains real package fixes:
-**14 glibc advisory IDs /28 finding records eliminated by a Debian patch**.
-This supersedes the earlier observation of no available upgrades, without
-rewriting that historical result. Python remains3.12.16, Debian remains Trixie,
-the digest-pinned base and application dependencies are unchanged.
-
-Two vulnerable optional executables, `infocmp` and `nsenter`, are absent from
-the final merged filesystem. Their Essential packages and necessary libraries
-remain, so Trivy correctly continues reporting their source-package advisories.
-This is component removal, not a library patch or scanner-count reduction.
-Production settings now reject non-PostgreSQL databases; development/test SQLite
-remains supported. API and migration Compose services explicitly drop all Linux
-capabilities and retain no-new-privileges. None of these controls is risk acceptance.
-
-## Comparable images and packages
-
-All three retained images were scanned with Trivy0.72.0, linux/amd64, repository
-configuration and one frozen database updated2026-11-21T13:02:47.203212637Z.
-Exact scan times, database hash, immutable identities and source revisions are in
-[provenance](evidence/ANY-674-high-followup-2026-11-21/provenance.json).
-
-| Image | Debian records / unique IDs | High records / IDs |
+| Same frozen database, linux/amd64 | Records / unique IDs | High records / IDs |
 | --- | --- | --- |
-| Retained historical image, rescanned |221 /101|46 /12|
-| Fresh supported rebuild before new controls, d1ff9c34 |193 /87|46 /12|
-| Selected final image, e5df91f4 application source |193 /87|46 /12|
+| Retained historical image |221 /101|46 /12|
+| Fresh supported rebuild, before additional controls |193 /87|46 /12|
+| Selected final image |193 /87|46 /12|
 
-No new advisory ID appeared. CVE-2026-124709 changed from Medium in the old
-database to High in this database; raw High is retained, not downgraded to the
-upstream Low classification. The new snapshot therefore has12 High IDs, versus
-the previously recorded11. All comparisons above use the same new snapshot.
+No new advisory ID was introduced. OpenSSL CVE-2026-124709 was reclassified
+Medium→High by scanner metadata; this is not a newly introduced vulnerability.
+Supported dpkg path filters remove only infocmp/nsenter;71 package records and
+726 retained ELF records match before/after, with2 intentional missing-file
+verification entries. These component removals do not erase source-package CVEs.
+Capabilities drop to zero; production requires PostgreSQL; no scanner exception.
 
-| Binary packages | Historical version | Fresh before and selected final |
+## Immutable identities and reproduction
+
+Trivy0.72.0; database updated2026-11-21T13:02:47.203212637Z, SHA-256
+`a11e6268518754ba292fe789eaf77173dc82e77b021d4458ca43f1ab10f6c757`.
+
+| Image | OCI index / Docker image identity | Actual linux/amd64 manifest |
 | --- | --- | --- |
-| base-files |13.8+deb13u7|13.8+deb13u8|
-| libc6, libc-bin |2.41-12+deb13u4|2.41-12+deb13u5|
-| libssl3t64, openssl, openssl-provider-legacy |3.5.7-1~deb13u3|3.5.9-1~deb13u1|
+| Historical | `sha256:3c894f500266e88c0fd16111c7d1d41decc7667aa0e4970fcfe7beceeb480c9f` | `sha256:465c9bb96f547914be0de9202e039142894adc0b5be90dd62bdf30d7271eb519` |
+| Fresh before | `sha256:17274802beeb70e0521d2511f9a272efb9eceb048920b07888063e3ad8f2107d` | `sha256:172443474938ca8481d1c79a5e23e6d526e4fb5d4c86f6d849d1c603c142a6d9` |
+| Final | `sha256:a9a6b0df1d1bd7c2209b3c79c72b8c8628fb7b06a6beedf593e42aab01bb2053` | `sha256:1e5c131fd4b90860832254708608589c83a2b6a47758ddbce856f9d2991dc03c` |
 
-Debian confirms all14 removed IDs fixed in glibc2.41-12+deb13u5; the
-[complete101-row ledger](evidence/ANY-674-high-followup-2026-11-21/advisory-dispositions.csv)
-enumerates them individually. OpenSSL/base-files updates are applied without
-claiming additional advisory elimination. The fresh signed repository probe
-records no further pending upgrades. Both fresh images have71 packages with
-identical complete versions. The historical87→71 package purge, one Low apt
-advisory elimination, and earlier zero-patch comparisons remain historical facts.
-ANY-742's independently integrated pip removal is not attributed to ANY-674.
+Identity correction: historical prose called index identities platform manifests.
+The separately verified manifest column above corrects that label; original raw
+reports are unchanged. Frozen scans used the same scanner/config/database.
 
-Immutable Docker/OCI platform manifest identities:
+```sh
+docker build --pull --no-cache --platform linux/amd64 --target production -f apps/api/Dockerfile -t payment-portal-api:any674-high-after-20261121 .
+bash security/trivy/verify-api-runtime.sh payment-portal-api:any674-high-after-20261121
+bash security/trivy/verify-api-postgres.sh payment-portal-api:any674-high-after-20261121
+npm run check:fast
+npm run check
+```
 
-- Historical: `sha256:3c894f500266e88c0fd16111c7d1d41decc7667aa0e4970fcfe7beceeb480c9f`.
-- Fresh before: `sha256:17274802beeb70e0521d2511f9a272efb9eceb048920b07888063e3ad8f2107d`.
-- Selected final: `sha256:a9a6b0df1d1bd7c2209b3c79c72b8c8628fb7b06a6beedf593e42aab01bb2053`.
-
-Trivy archive scans identify the OCI **config** digests instead: respectively
-`c5c7d71efe6973f1e16cd3d613cc641bc491bce007973094d239a5a0beed3ca7`,
-`962508c8baaa674be831c162216c08eddee34153988825e9c284c69c528f8275`,
-`be7c041e74ae4a72c8ebfdde9d32b8ec592a4768a88c96c08af1cc2f3b158fc8`.
-These are different identity fields linked by retained archives, not interchangeable
-digests. Full archives remain locally retained; sanitized inventories/scans are checked in.
-
-## The infocmp/nsenter experiment
-
-Supported exact `dpkg --path-exclude` configuration followed by a same-installed-
-version reinstall of ncurses-bin/util-linux removes only the two named executable
-paths. No forced dependency removal or metadata deletion is used. Complete ELF
-inventory comparison shows exactly two executable removals; every retained ELF
-hash/dependency is unchanged, and neither original executable hash survives under
-another name. `dpkg --audit` is clean. `dpkg --verify` gains exactly two expected
-missing-path entries, documented by the installed filter configuration; preexisting
-Python-slim documentation exclusions are unchanged. Package ownership/checksums
-remain accurate and available, including their intentional filtered-file entries.
-
-The startup/migration/health checks do not require these utilities. Necessary
-ncurses/tinfo, util-linux libraries and their consumers remain verified. Deleting
-Essential utility packages or arbitrary libraries was rejected because it breaks
-dependency/runtime contracts. The affected code remains in base/build stages and
-lower OCI layers: final merged-filesystem absence does not mean secure erasure
-from the image archive. Restoring either tool requires a maintained fixed version.
+Full scanner invocation, pinned scanner/base digests, scan timestamps and report
+hashes are preserved in `ANY-674-high-followup-2026-11-21/commands.md`,
+`provenance.json` and SHA256SUMS within the [local archive](evidence/ANY-674/README.md).
+A future fresh build may obtain newer packages; it does not recreate old images.
 
 ## Every remaining High: blocker, change and agreement
 
@@ -141,37 +88,28 @@ would additionally require an explicit architecture/deployment decision; none is
 introduced here. Prior Bookworm/Alpine candidate limitations remain recorded in
 the historical report, rather than presenting arbitrary distro churn as a fix.
 
-## Verification and limitations
+## Verification, ownership and limits
 
-Application/runtime source: e5df91f4; subsequent ba32f4d0 changes only test-setting
-producers and one regression case. Focused boundary tests10 pass; affected
-settings/integration producer tests220 pass/2 existing skips. The first hosted CI
-failed because test helpers still supplied SQLite while claiming production;
-helpers now supply a valid PostgreSQL settings-only URL without masking explicit
-invalid overrides. No application dependency, assertion or skip was removed.
+Runtime source e5df91f4: normal UID999/default CMD, native imports, TLS,
+compression/timezone, liveness/readiness and disposable PostgreSQL18.4
+Alembic upgrade→downgrade→upgrade passed for retained before/final images.
+No runtime installation/download is required. Bookworm/Alpine candidates were
+built and rejected; changed distro/scanner coverage alone was not a fix.
 
-At ba32f4d0, hosted [CI44915352941](https://github.com/gushinets/payments-portal/actions/runs/44915352941),
-[Security44915353123](https://github.com/gushinets/payments-portal/actions/runs/44915353123)
-and metadata checks pass. Both locally retained images pass offline runtime/native
-imports/TLS/compression/timezone checks and actual default-CMD non-root startup,
-liveness/readiness with disposable PostgreSQL18.4 and Alembic upgrade→downgrade→upgrade.
-Final PID1 effective/permitted/bounding capabilities are zero, no-new-privileges1,
-seccomp2; own-namespace setns returns EPERM and cgroup.procs cannot be opened for
-writing. No cgroup writes or production exploit tests were performed.
+At f81cb6d4, [CI45024321223](https://github.com/gushinets/payments-portal/actions/runs/45024321223)
+passed all5 jobs and [Security45024321262](https://github.com/gushinets/payments-portal/actions/runs/45024321262)
+passed, including runtime/migration/security evidence. Focused reconciliation:
+102 cases passed. Separate CI-port repair is tracked as ANY-904; pip work is
+attributable to ANY-742. Local canonical checks at3ced88e0 each timed out400s
+in API-fast; full downstream stages were unreached locally, not passed.
+No runtime rerun is claimed for this documentation-only archive relocation.
 
-Local `npm run check:fast` and broadest `npm run check` were both attempted at
-ba32f4d0. They failed from host memory exhaustion: Node/Vitest heap allocation
-failure in web components, and Next prerender ENOMEM in the full check. Full
-local downstream API/PostgreSQL stages were not reached; this is not a full local
-pass. Hosted canonical/PostgreSQL verification is separately successful. Earlier
-build-context file locking and a concurrent scanner cache lock were transient
-failed attempts; serial retries succeeded. No unrelated web repair is included.
+All101 IDs have individual applicability/options in the retained comparison CSV;
+87 remain scanner-reported. Iosif is the explicitly assigned technical owner
+for all87 including12 High. Proposed review checkpoint:2026-12-02, earlier on
+maintained fixes or exposure changes. Capture-time raw ledgers saying pending
+ownership are superseded by the November21 assignment, reconfirmed November22.
+No risk approval, exception, merge, deployment or issue completion is implied.
 
-The [reproduction commands](evidence/ANY-674-high-followup-2026-11-21/commands.md)
-and hashed raw evidence substantiate the selected image. Repository scanner
-enforcement/ignore policy is unchanged. Remaining87 IDs are individually assessed,
-not accepted or suppressed. Technical review ownership is now assigned to
-**Iosif** for every remaining ID as recorded above. Scoped follow-up
-decisions and any applicable authorized risk approvals remain separate from this
-assignment; they are not satisfied by naming an owner. No merge, deployment,
-Linear completion or residual-risk approval is performed.
+Complete historical evidence is [retained locally with checksums](evidence/ANY-674/README.md)
+by user instruction; external reviewers need to request the archive from its owner.

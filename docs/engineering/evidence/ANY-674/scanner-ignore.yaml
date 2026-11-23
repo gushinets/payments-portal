@@ -1,9 +1,0 @@
-# Every exception must include an ID, functional path or package-PURL scope,
-# an actionable statement naming the affected location and owner, and an expiry.
-# OS-package vulnerabilities normally require purls because Trivy image reports
-# do not provide a file path for dpkg packages.
-
-vulnerabilities: []
-
-misconfigurations: []
-secrets: []

@@ -1,3 +1,0 @@
-/usr/local/lib/python3.12/lib-dynload/_tkinter.cpython-312-x86_64-linux-gnu.so
-	libtk8.6.so => not found
-	libtcl8.6.so => not found
