@@ -1,6 +1,6 @@
 # ANY-897 — Automatic paid access activation after LBX payment
 
-Status: implementation complete; QA timing target met; repository verification open.
+Status: **DONE** — implementation and planned verification complete.
 
 [Linear ticket and QA baseline](https://linear.app/paveldik/issue/ANY-897/reduce-the-wait-for-paid-access-after-lbx-payment)
 
@@ -190,7 +190,9 @@ upper bound from active, unblocked subscription evidence to the first observed
 access commit was 21.5 seconds. The visible cabinet updated 7.0 seconds after
 commit. A separate Proposal AI purchase confirmed issuance with the tab closed.
 
-All 1,273 PostgreSQL tests passed. `npm run check` stopped at the API-fast enum
-test whose expected `BillingWorkKind` values omit `widget_activation_check`.
-The separate web build returned `SecurityFatalError` with the locked Next.js
-16.4.2.
+After updating the `BillingWorkKind` contract test and upgrading Next.js and
+`eslint-config-next` to 16.4.6, `npm run check` passed. It covered the production
+web build, 41 web boundary checks, 455 component tests, 2,655 API-fast passes
+(one skip), and all 1,273 PostgreSQL tests. The canonical run left the opt-in
+browser suite disabled. The targeted cabinet browser run passed four checks
+covering desktop, mobile, and accessibility.

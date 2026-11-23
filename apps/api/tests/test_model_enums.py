@@ -112,6 +112,7 @@ def test_canonical_enum_layer_contains_approved_vocabularies() -> None:
         "external_create_recovery",
         "access_invalidation",
         "allowance_exhaustion",
+        "widget_activation_check",
     }
     assert _values(BillingWorkState) == {"pending", "running", "completed", "invalid", "done", "paused"}
     assert _values(BillingWorkScope) == {

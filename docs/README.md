@@ -132,7 +132,7 @@ Start with the smallest document that matches the task.
 - [Execution plans](exec-plans/README.md)
 - [ANY-896 generated-password acceptance plan](exec-plans/active/ANY-896-implementation-plan.md) — registration, password reset and verification.
 - [ANY-819 purchase preparation plan](exec-plans/active/ANY-819-purchase-preparation.md) — implementation steps and live Widget acceptance criteria.
-- [ANY-897 automatic LBX activation plan](exec-plans/active/ANY-897-implementation-plan.md) — implementation complete and QA timing target met; repository verification remains open.
+- [ANY-897 completed automatic LBX activation plan](exec-plans/completed/ANY-897-implementation-plan.md) — implementation, QA timing results and repository verification.
 - [ANY-766 active implementation plan](exec-plans/active/ANY-766-implementation-plan.md) — authoritative Portal/backend API and Kernel integration plan; Steps 1–17 and five PR corrections complete in the agreed local scope; PR readiness checklist pending; broader acceptance matrix deferred.
 - [Joint paid-runtime harness](../tools/joint_paid_runtime/README.md) — isolated real-app HTTP/PostgreSQL and desktop/mobile smoke, explicit external substitutes and run-owned cleanup.
 - [ANY-822 test-execution acceleration plan](exec-plans/active/ANY-822-implementation-plan.md) — acceptance criteria, retained test guarantees and verification.
