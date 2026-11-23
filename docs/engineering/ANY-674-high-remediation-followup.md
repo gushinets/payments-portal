@@ -13,6 +13,9 @@ selected drivers are rejected before engine initialization. Connection credentia
 and options are preserved. API/migration services drop capabilities
 and retain no-new-privileges. Runtime inspection and disposable PostgreSQL checks
 verify the built image. Scanner policy and scoped exceptions are unchanged.
+The disposable PostgreSQL verifier waits for the final TCP listener before
+Alembic. Production package upgrades and filtered reinstalls use one refreshed
+Debian index in the same build layer, including when the shared base is cached.
 
 ## Agreed follow-up
 

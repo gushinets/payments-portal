@@ -18,7 +18,7 @@ postgres_id=$(docker run --detach --network "$network_id" --network-alias any674
   --env "POSTGRES_PASSWORD=$database_password" \
   postgres:18.4-alpine3.22@sha256:774521500f4c22761b25a6bdb772a0a3c2e8dd32468210bdad9231c5752ea398)
 attempt=0
-until docker exec "$postgres_id" pg_isready -U anytoolai -d any674_runtime >/dev/null 2>&1; do
+until docker exec "$postgres_id" pg_isready -h 127.0.0.1 -p 5432 -U anytoolai -d any674_runtime >/dev/null 2>&1; do
   attempt=$((attempt + 1))
   if [ "$attempt" -ge 60 ]; then echo "Disposable PostgreSQL did not become ready" >&2; exit 1; fi
   sleep 1

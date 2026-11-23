@@ -17,6 +17,10 @@ records implementation boundaries and the agreed follow-up.
 - [x] Reproduce five driver-validation regressions; normalize bare PostgreSQL URLs
   to Psycopg 3 and reject unavailable drivers. Verify real engine construction,
   encoded credentials/options and secret-safe validation errors.
+- [x] Reproduce temporary Unix-socket readiness and cached-base package-index
+  regressions; wait for TCP and upgrade/reinstall against one refreshed index.
+- [ ] Reconcile the fresh advisory register and record the two added dispositions
+  in the authorized storage location; keep detailed data out of Git.
 - [ ] Verify exact-head hosted canonical and security checks.
 - [ ] Obtain human review acceptance.
 

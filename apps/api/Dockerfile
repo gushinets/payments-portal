@@ -58,6 +58,7 @@ RUN groupadd --system app \
     && install -d -o app -g app -m 0700 /run/payments-portal \
     && printf '%s\n' 'path-exclude=/usr/bin/infocmp' 'path-exclude=/usr/bin/nsenter' > /etc/dpkg/dpkg.cfg.d/99-api-runtime-exclusions \
     && apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes --no-install-recommends \
     && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends --reinstall \
          "ncurses-bin=$(dpkg-query -W -f='${Version}' ncurses-bin)" \
          "util-linux=$(dpkg-query -W -f='${Version}' util-linux)" \
