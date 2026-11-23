@@ -80,6 +80,7 @@ export function usePurchaseStatusPoll(
         return;
       }
       reading = true;
+      setPausedKey(undefined);
       const requestId = newRequestId();
       try {
         const readStartedAt = performance.now();

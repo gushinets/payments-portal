@@ -581,14 +581,15 @@ independent of purchase lifecycle.
 
 ## Browser operation and diagnostics
 
-The payment button on a prepared product opens the localized cabinet (for
-example, `/ru/account?purchase=<id>#billing`). On that visit, the cabinet
-verifies the purchase, scrolls to billing and uses the click once to open its
-Widget. When the verified agreement and seller arrive, the cabinet brings
-them into view below the sticky navigation. The click expires after 30 seconds
-and is bound to the current session.
-Opening the URL directly, reloading or returning through browser history
-requires a fresh click to open the Widget. On reload, the cabinet reads
+Following the payment link on a prepared product in the same tab opens the
+localized cabinet (for example, `/ru/account?purchase=<id>#billing`). On that
+visit, the cabinet verifies the purchase, scrolls to billing and uses the click
+once to open its Widget. When the verified agreement and seller arrive, the
+cabinet brings them into view below the sticky navigation. The click expires
+after 30 seconds and is bound to the current session.
+Opening the link in a new tab, visiting the URL directly, reloading or
+returning through browser history requires a fresh click in the cabinet to
+open the Widget. On reload, the cabinet reads
 `purchase` from the URL. A manual selection lasts only for the current visit.
 Without a purchase ID, the cabinet preselects the sole purchase in a complete
 list. With several purchases, the buyer chooses one for payment. To open the
@@ -653,8 +654,8 @@ or usage read for the current session returns 401 `billing_session_required` or
 the selected purchase is unavailable for payment, the cabinet closes its
 payment Widget or cancels its opening. Temporary read failures leave the open
 Widget in place. After a session refusal, the cabinet moves focus to Retry if
-the focused element was removed and focus fell back to the document. Retry
-reloads the cabinet and checks the session before offering billing again. A
+the focused element was removed or disabled and focus fell back to the document.
+Retry reloads the cabinet and checks the session before offering billing again. A
 manual status check on the product page can restore continuation once the
 purchase is readable.
 

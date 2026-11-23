@@ -71,7 +71,11 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
     if (!sessionRefused) return;
     const focused = focusBeforeRefusal.current;
     focusBeforeRefusal.current = null;
-    if (focused && !focused.isConnected && document.activeElement === document.body) {
+    if (
+      focused &&
+      document.activeElement === document.body &&
+      (!focused.isConnected || focused.matches(":disabled"))
+    ) {
       retrySessionButton.current?.focus();
     }
   }, [sessionRefused]);

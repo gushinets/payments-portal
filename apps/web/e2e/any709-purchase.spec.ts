@@ -606,17 +606,30 @@ test("a paid-access refresh closes expired checkout and lets the buyer sign in a
   await page.getByRole("button", { name: ru.CookieBanner.acceptAction, exact: true }).click();
   const billing = page.getByRole("region", { name: ru.Billing.title });
   await billing.getByRole("button", { name: ru.Billing.pay, exact: true }).click();
-  await expect(billing.getByRole("button", { name: ru.Billing.refresh })).toBeEnabled();
+  const refresh = billing.getByRole("button", { name: ru.Billing.refresh });
+  await expect(refresh).toBeEnabled();
 
-  await page.route("**/api/paid-access", (route) => route.fulfill({
-    status: 401, json: { detail: { code: "billing_session_required", request_id: "expired-cabinet" } }
-  }));
+  const paidAccess = Promise.withResolvers<void>();
+  await page.route("**/api/paid-access", async (route) => {
+    await paidAccess.promise;
+    return route.fulfill({
+      status: 401, json: { detail: { code: "billing_session_required", request_id: "expired-cabinet" } }
+    });
+  });
   await page.route("**/api/auth/session", (route) => route.fulfill({ status: 401, json: { detail: "invalid_session" } }));
+  const refusal = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/paid-access" && response.status() === 401);
   await page.getByRole("button", { name: ru.Account.products.paid.refresh }).click();
+  await refresh.focus();
+  await expect(refresh).toBeFocused();
+  paidAccess.resolve();
+  await refusal;
   await expect(billing.getByRole("alert")).toContainText(ru.Billing.errors.session);
   await expect(billing.getByRole("alert")).toContainText("expired-cabinet");
   await expect(billing.locator("iframe")).toHaveCount(0);
-  await billing.getByRole("button", { name: ru.Purchase.retry }).click();
+  await expect(billing.getByRole("button", { name: ru.Billing.open })).toBeDisabled();
+  const retry = billing.getByRole("button", { name: ru.Purchase.retry });
+  await expect(retry).toBeFocused();
+  await retry.press("Enter");
   await expect(page.getByRole("heading", { name: ru.Auth.dialogTitle })).toBeVisible();
   expect(state.bootstraps).toEqual([{ purchase_intent_id: savedPurchase.purchase_intent_id }]);
 });

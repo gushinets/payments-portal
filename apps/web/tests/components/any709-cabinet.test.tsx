@@ -494,6 +494,29 @@ it("keeps observing recovery when an already-started poll reads a linked purchas
   }
 });
 
+it("clears the pause notice when polling resumes for the same purchase", async () => {
+  vi.useFakeTimers();
+  try {
+    let persistedState: AccountPurchaseResponse["state"] = "preparing";
+    list.mockResolvedValueOnce(json({}, 503));
+    list.mockImplementation(async () => json({ purchases: [{ ...first, state: persistedState }], next_cursor: null }));
+    status.mockImplementation(async () => json({ ...savedPurchase, state: persistedState }));
+
+    await act(async () => { renderCabinet(first.purchase_intent_id); });
+    await act(async () => vi.advanceTimersByTimeAsync(120_001));
+    expect(screen.getByText(ru.Purchase.statusPollingPaused)).toBeVisible();
+
+    persistedState = "awaiting_external_result";
+    const readsBeforeRestart = status.mock.calls.length;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: ru.Purchase.retry })));
+    await act(async () => vi.advanceTimersByTimeAsync(2100));
+    expect(status).toHaveBeenCalledTimes(readsBeforeRestart + 1);
+    expect(screen.queryByText(ru.Purchase.statusPollingPaused)).not.toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 it.each([
   [401, "opening"], [401, "open"], [403, "opening"], [403, "open"]
 ] as const)("closes the payment Widget on HTTP %i while it is %s", async (code, phase) => {
