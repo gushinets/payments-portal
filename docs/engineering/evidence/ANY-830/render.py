@@ -23,8 +23,8 @@ def main() -> None:
             "",
             f"## {heading}",
             "",
-            "| ID | Sonar issue / location | Rule / security impact | Classification | Action | Baseline main | Latest main | PR observation |",
-            "| --- | --- | --- | --- | --- | --- | --- | --- |",
+            "| ID | Sonar issue / location | Rule / security impact | Previous conclusion | Review verdict | Current classification | Action | Baseline main | Recorded main | PR observation |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
         ])
         for row in filter(scope, rows):
             key = row["issue_key"]
@@ -33,6 +33,8 @@ def main() -> None:
                 row["id"],
                 f"{issue}`{row['location']}`",
                 f"{row['rule']} / {row['security_impact'] or 'Unrated'}",
+                row["previous_conclusion"],
+                row["review_verdict"],
                 row["classification"],
                 row["action"],
                 row["baseline_status"],

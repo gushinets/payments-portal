@@ -15,6 +15,9 @@ in-scope defects and retain auditable before/after evidence.
 Preserve test fixtures, production readiness checks, SMTP verification and
 dependency-installation policy ownership. No merge or residual-risk approval.
 
+- [x] Reconcile the existing PR with main, preserve both test suites and verify
+  mergeability. Review 17 original keys and N01 independently and correct the
+  ledger for upstream changes and review evidence.
 - [ ] Record canonical and hosted verification results and hand off the PR.
 - [ ] Revalidate the original keys on main after a human-approved merge. Sonar
   issue administration remains pending for the documented per-issue dispositions.
