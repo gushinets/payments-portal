@@ -410,7 +410,7 @@ def test_workflow_uploads_only_after_redaction_and_checks_completeness() -> None
     workflow = yaml.safe_load((ROOT / ".github/workflows/security.yml").read_text(encoding="utf-8"))
     steps = workflow["jobs"]["trivy"]["steps"]
     redact = next(step for step in steps if step.get("id") == "redact")
-    upload = next(step for step in steps if step.get("uses", "").startswith("actions/upload-artifact@"))
+    upload = next(step for step in steps if step.get("name") == "Upload Trivy reports")
     verify = next(step for step in steps if "trivy verify-reports " in step.get("run", ""))
     gate = next(step for step in steps if "trivy gate " in step.get("run", ""))
     assert steps.index(redact) < steps.index(upload) < steps.index(verify) < steps.index(gate)

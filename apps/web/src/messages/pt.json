@@ -39,21 +39,13 @@
       "emailLabel": "E-mail",
       "passwordLabel": "Senha",
       "passwordPlaceholder": "Digite sua senha",
-      "newPasswordPlaceholder": "De 12 a 128 caracteres",
       "passwordConfirmLabel": "Repita a senha",
       "passwordConfirmPlaceholder": "Digite a senha novamente",
       "firstNameLabel": "Nome (opcional)",
       "surnameLabel": "Sobrenome (opcional)",
       "patronymicLabel": "Patronímico (opcional)"
     },
-    "passwordRequirements": {
-      "label": "Requisitos da senha",
-      "length": "De 12 a 128 caracteres",
-      "uppercase": "Pelo menos uma letra latina maiúscula (A–Z)",
-      "lowercase": "Pelo menos uma letra latina minúscula (a–z)",
-      "digit": "Pelo menos um dígito (0–9)",
-      "special": "Pelo menos um dos caracteres {characters}"
-    },
+    "passwordLengthHint": "De 12 a 128 caracteres.",
     "forgotPasswordAction": "Esqueceu a senha?",
     "actions": {
       "createAccount": "Criar conta",
@@ -63,7 +55,6 @@
     "validation": {
       "invalidEmail": "Digite um endereço de e-mail válido.",
       "passwordTooShort": "A senha deve ter pelo menos 8 caracteres.",
-      "passwordPolicyNotMet": "A senha não atende a todos os requisitos.",
       "passwordMismatch": "As senhas não coincidem.",
       "personalConsentRequired": "Você deve consentir com o tratamento de dados pessoais.",
       "offerConsentRequired": "Você deve aceitar os termos da oferta pública."
@@ -78,7 +69,7 @@
       "invalidCredentials": "O e-mail ou a senha está incorreto.",
       "missingPersonalConsent": "Você deve consentir com o tratamento de dados pessoais.",
       "missingOfferConsent": "Você deve aceitar os termos da oferta pública.",
-      "passwordPolicyNotMet": "A senha não atende a todos os requisitos.",
+      "passwordPolicyNotMet": "A senha deve ter de 12 a 128 caracteres.",
       "internalServer": "O serviço está temporariamente indisponível. Tente novamente mais tarde.",
       "contract": "O serviço retornou uma resposta inesperada. Tente novamente.",
       "network": "Não foi possível conectar ao serviço. Verifique sua conexão e tente novamente.",
@@ -232,21 +223,12 @@
       "description": "Defina uma nova senha para sua conta AnytoolAI. As sessões ativas serão encerradas após a alteração.",
       "fields": {
         "passwordLabel": "Nova senha",
-        "passwordPlaceholder": "De 12 a 128 caracteres",
         "passwordConfirmLabel": "Repita a senha",
         "passwordConfirmPlaceholder": "Digite a senha novamente"
       },
-      "passwordRequirements": {
-        "label": "Requisitos da senha",
-        "length": "De 12 a 128 caracteres",
-        "uppercase": "Pelo menos uma letra latina maiúscula (A–Z)",
-        "lowercase": "Pelo menos uma letra latina minúscula (a–z)",
-        "digit": "Pelo menos um dígito (0–9)",
-        "special": "Pelo menos um dos caracteres {characters}"
-      },
+      "passwordLengthHint": "De 12 a 128 caracteres.",
       "validation": {
         "missingToken": "O link para alterar a senha é inválido. Solicite um novo link.",
-        "passwordPolicyNotMet": "A senha não atende a todos os requisitos.",
         "passwordMismatch": "As senhas não são iguais."
       },
       "notices": {
@@ -260,8 +242,8 @@
     "errors": {
       "invalidOrExpiredToken": "O link é inválido ou expirou. Solicite um novo link.",
       "rateLimited": "Muitas tentativas de recuperação de senha. Tente novamente mais tarde.",
-      "invalidInput": "Verifique o e-mail e confirme se a senha atende a todos os requisitos.",
-      "passwordPolicyNotMet": "A senha não atende a todos os requisitos.",
+      "invalidInput": "Confira os dados informados e tente novamente.",
+      "passwordPolicyNotMet": "A senha deve ter de 12 a 128 caracteres.",
       "internalServer": "O serviço está temporariamente indisponível. Tente novamente mais tarde.",
       "contract": "O serviço retornou uma resposta inesperada. Tente novamente.",
       "network": "Não foi possível conectar ao serviço. Verifique sua conexão e tente novamente.",

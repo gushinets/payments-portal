@@ -6,6 +6,9 @@ from contextlib import contextmanager
 from typing import Any
 
 
+# Valid production Settings fixture only; database I/O uses explicit PostgreSQL fixtures.
+PRODUCTION_SETTINGS_DATABASE_URL = "postgresql+psycopg:///settings_only"
+
 DEFAULT_API_TEST_ENV = {
     "APP_ENV": "test",
     "INSTANCE_TENANT_ID": "anytoolai",

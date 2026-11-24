@@ -39,21 +39,13 @@
       "emailLabel": "Email",
       "passwordLabel": "Password",
       "passwordPlaceholder": "Enter your password",
-      "newPasswordPlaceholder": "12–128 characters",
       "passwordConfirmLabel": "Repeat password",
       "passwordConfirmPlaceholder": "Enter the password again",
       "firstNameLabel": "First name (optional)",
       "surnameLabel": "Surname (optional)",
       "patronymicLabel": "Patronymic (optional)"
     },
-    "passwordRequirements": {
-      "label": "Password requirements",
-      "length": "12–128 characters",
-      "uppercase": "At least one uppercase Latin letter (A–Z)",
-      "lowercase": "At least one lowercase Latin letter (a–z)",
-      "digit": "At least one digit (0–9)",
-      "special": "At least one of {characters}"
-    },
+    "passwordLengthHint": "12–128 characters.",
     "forgotPasswordAction": "Forgot your password?",
     "actions": {
       "createAccount": "Create account",
@@ -63,7 +55,6 @@
     "validation": {
       "invalidEmail": "Enter a valid email address.",
       "passwordTooShort": "The password must contain at least 8 characters.",
-      "passwordPolicyNotMet": "The password does not meet all requirements.",
       "passwordMismatch": "The passwords do not match.",
       "personalConsentRequired": "You must consent to personal data processing.",
       "offerConsentRequired": "You must accept the public offer terms."
@@ -78,7 +69,7 @@
       "invalidCredentials": "The email or password is incorrect.",
       "missingPersonalConsent": "You must consent to personal data processing.",
       "missingOfferConsent": "You must accept the public offer terms.",
-      "passwordPolicyNotMet": "The password does not meet all requirements.",
+      "passwordPolicyNotMet": "Your password must be 12–128 characters long.",
       "internalServer": "The service is temporarily unavailable. Try again later.",
       "contract": "The service returned an unexpected response. Try again.",
       "network": "Could not connect to the service. Check your connection and try again.",
@@ -232,21 +223,12 @@
       "description": "Set a new password for your AnytoolAI account. Active sessions will end after the change.",
       "fields": {
         "passwordLabel": "New password",
-        "passwordPlaceholder": "12–128 characters",
         "passwordConfirmLabel": "Repeat password",
         "passwordConfirmPlaceholder": "Enter the password again"
       },
-      "passwordRequirements": {
-        "label": "Password requirements",
-        "length": "12–128 characters",
-        "uppercase": "At least one uppercase Latin letter (A–Z)",
-        "lowercase": "At least one lowercase Latin letter (a–z)",
-        "digit": "At least one digit (0–9)",
-        "special": "At least one of {characters}"
-      },
+      "passwordLengthHint": "12–128 characters.",
       "validation": {
         "missingToken": "The password change link is invalid. Request a new link.",
-        "passwordPolicyNotMet": "The password does not meet all requirements.",
         "passwordMismatch": "The passwords do not match."
       },
       "notices": {
@@ -260,8 +242,8 @@
     "errors": {
       "invalidOrExpiredToken": "The link is invalid or has expired. Request a new link.",
       "rateLimited": "Too many password recovery attempts. Try again later.",
-      "invalidInput": "Check the email address and make sure the password meets all requirements.",
-      "passwordPolicyNotMet": "The password does not meet all requirements.",
+      "invalidInput": "Check the information you entered and try again.",
+      "passwordPolicyNotMet": "Your password must be 12–128 characters long.",
       "internalServer": "The service is temporarily unavailable. Try again later.",
       "contract": "The service returned an unexpected response. Try again.",
       "network": "Could not connect to the service. Check your connection and try again.",

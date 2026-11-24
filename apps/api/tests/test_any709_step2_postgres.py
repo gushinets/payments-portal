@@ -169,9 +169,19 @@ def test_any709_step2_late_fence_and_outer_key_drift(
         assert customer.binding_state == "identity_conflict"
 
 
-@pytest.mark.parametrize("failure", ["lost_reply", "malformed_success", "client_not_ready", "stale_session", "none"])
+@pytest.mark.parametrize(
+    ("failure", "payment_delay"),
+    [
+        ("lost_reply", None),
+        ("malformed_success", None),
+        ("client_not_ready", None),
+        ("stale_session", None),
+        ("none", None),
+        ("none", 0),
+    ],
+)
 def test_any709_step2_real_bootstrap_reuses_one_customer_and_never_persists_secrets(
-    migrated_database: Engine, postgres_session_factory: sessionmaker[Session], failure: str
+    migrated_database: Engine, postgres_session_factory: sessionmaker[Session], failure: str, payment_delay: int | None
 ) -> None:
     factory = postgres_session_factory
     seed(factory)
@@ -180,6 +190,7 @@ def test_any709_step2_real_bootstrap_reuses_one_customer_and_never_persists_secr
         kernel_base_url="",
         kernel_service_token="",
         kernel_mock_enabled=False,
+        lbx_customer_payment_delay_days=payment_delay,
     )
     posts = []
     outer = ""
@@ -193,6 +204,11 @@ def test_any709_step2_real_bootstrap_reuses_one_customer_and_never_persists_secr
             outer = posts[-1]["outer_id"]
             assert posts[-1]["email"] == "synthetic@example.com"
             assert posts[-1]["user_name"] == "Synthetic" and "user_surname" not in posts[-1]
+            if payment_delay is None:
+                assert "days_for_paying_orders" not in posts[-1]
+            else:
+                assert type(posts[-1]["days_for_paying_orders"]) is int
+                assert posts[-1]["days_for_paying_orders"] == payment_delay
             if failure == "lost_reply":
                 raise httpx.ReadTimeout("private transport exception", request=request)
             return httpx.Response(

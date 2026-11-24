@@ -12,6 +12,8 @@ from urllib.parse import quote, urlsplit
 from dotenv import load_dotenv
 from pydantic import Field, SecretStr, StringConstraints, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 from app.core.backend_consumers import BackendConsumer
 from app.core.url_validation import (
@@ -114,6 +116,7 @@ class Settings(BaseSettings):
     lbx_server_password: SecretStr = SecretStr("")
     lbx_widget_signing_secret: SecretStr = SecretStr("")
     lbx_seller_organization_id: str = ""
+    lbx_customer_payment_delay_days: int | None = Field(default=None, ge=0)
     lbx_currency_id: str = "1"
     lbx_currency: str = "RUB"
     lbx_connect_timeout_seconds: float = Field(default=1.0, gt=0, le=30, allow_inf_nan=False)
@@ -168,9 +171,9 @@ class Settings(BaseSettings):
                 validate_production_public_url(consumer.backend_base_url, "Backend origin")
         return self
 
-    @field_validator("paid_access_clock_skew_seconds", mode="before")
+    @field_validator("paid_access_clock_skew_seconds", "lbx_customer_payment_delay_days", mode="before")
     @classmethod
-    def optional_paid_clock(cls, value: object) -> object:
+    def optional_integer(cls, value: object) -> object:
         return None if value == "" else value
 
     @field_validator("smtp_use_tls", mode="before")
@@ -235,9 +238,21 @@ class Settings(BaseSettings):
 
     @field_validator("database_url")
     @classmethod
-    def require_database_url(cls, value: str) -> str:
+    def require_database_url(cls, value: str, info: ValidationInfo) -> str:
         if not value.strip():
             raise ValueError("DATABASE_URL is required")
+        if info.data.get("app_env") == AppEnv.PRODUCTION:
+            try:
+                url = make_url(value)
+                backend = url.get_backend_name()
+            except (ArgumentError, ValueError):
+                raise ValueError("Production DATABASE_URL must use PostgreSQL") from None
+            if backend != "postgresql":
+                raise ValueError("Production DATABASE_URL must use PostgreSQL")
+            if url.drivername == "postgresql":
+                return url.set(drivername="postgresql+psycopg").render_as_string(hide_password=False)
+            if url.drivername != "postgresql+psycopg":
+                raise ValueError("Production DATABASE_URL must use psycopg")
         return value
 
     @field_validator("cors_allow_origins")
