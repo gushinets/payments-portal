@@ -40,7 +40,10 @@ def main() -> None:
         encoding="utf-8",
     )
     update = subprocess.run(
-        ["apt-get", "update"], capture_output=True, text=True, check=True
+        ["apt-get", "--error-on=any", "update"],
+        capture_output=True,
+        text=True,
+        check=True,
     )
     simulation = subprocess.run(
         ["apt-get", "--simulate", "upgrade"], capture_output=True, text=True, check=True

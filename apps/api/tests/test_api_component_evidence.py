@@ -101,6 +101,37 @@ def test_upgrade_probe_distinguishes_planned_changes_from_summary() -> None:
     assert updates.planned_upgrades("Inst libc6 [old] (new Debian)\n1 upgraded\n") == ["Inst libc6 [old] (new Debian)"]
 
 
+def test_upgrade_probe_rejects_transient_index_failure(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from unittest.mock import Mock
+
+    spec = importlib.util.spec_from_file_location("inspect_api_updates", ROOT / "security/trivy/inspect-api-updates.py")
+    assert spec is not None and spec.loader is not None
+    updates = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(updates)
+    sources = Mock()
+    sources.glob.return_value = []
+    monkeypatch.setattr(updates, "Path", Mock(return_value=sources))
+    calls: list[list[str]] = []
+
+    def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        warning = "Some index files failed to download. They have been ignored, or old ones used instead."
+        failed = argv[-1] == "update" and "--error-on=any" in argv
+        if failed and kwargs.get("check"):
+            raise subprocess.CalledProcessError(100, argv, stderr=warning)
+        return subprocess.CompletedProcess(argv, 100 if failed else 0, stdout="", stderr=warning)
+
+    monkeypatch.setattr(updates.subprocess, "run", run)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        updates.main()
+
+    assert len(calls) == 1  # Never simulate upgrades or publish stale zero-upgrade evidence.
+    assert capsys.readouterr().out == ""
+
+
 def test_removal_evidence_only_simulates_and_never_forces(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[list[str]] = []
 
