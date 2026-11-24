@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from time import monotonic
 from uuid import UUID
 
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
@@ -250,11 +251,16 @@ def _try_handoff(
     if reusable_first_primary(db, subscription, link, window, _claim_time(db, claim)):
         return _claim_time(db, claim)
     # The regular queue upsert can wait on another owner. Undo the hint if that wait consumes the budget.
-    with db.begin_nested() as handoff:
-        work.hint_widget_reconciliation(db, subscription, window)
-        now = _claim_time(db, claim)
-        if now > allowed_until:
-            handoff.rollback()
+    try:
+        with db.begin_nested() as handoff:
+            work.hint_widget_reconciliation(db, subscription, window)
+            now = _claim_time(db, claim)
+            if now > allowed_until:
+                handoff.rollback()
+    except DBAPIError as error:
+        if getattr(error.orig, "sqlstate", None) == "55P03":
+            raise BillingRefused("billing_busy", 503) from None
+        raise
     return now
 
 

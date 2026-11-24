@@ -198,8 +198,8 @@ There is no separate process to launch or standalone worker command/container.
   claim/apply margin and refusal retry within the five-minute urgent cadence.
 - `BILLING_WORKER_SCAN_BATCH_SIZE=100`: local enrollment/repair batch, range 1–100.
 - `BILLING_WIDGET_ACTIVATION_WINDOW_SECONDS=300` sets the duration of new
-  activation windows. Startup accepts 1–3,600 seconds. The qualifying QA run
-  used 780 seconds. Saved windows retain their original deadline.
+  activation windows. Startup accepts 1–3,600 seconds. Saved windows retain
+  their original deadline.
 - `PAID_ACCESS_CLOCK_SKEW_SECONDS`: supported deployment clock budget, 1–299
   seconds with no default. Unset prevents new positive derivation while local
   reductions continue; existing allowance UTC bounds remain frozen.
@@ -363,8 +363,12 @@ regular work. Each attempt makes one logical point read of the linked LBX
 subscription. The worker skips missed 20-second slots anchored at Widget
 preparation and uses the first slot starting at least 40 seconds after an
 attempt that failed. A slot skipped before any source task could start
-preserves the previous attempt and its backoff. A closing read is due at the
-saved deadline, with at most five seconds of grace, including pickup delay.
+preserves the previous attempt and its backoff. The worker can make one
+closing read at the saved deadline if the purchase remains eligible and any
+backoff has elapsed by that deadline. The closing read and its handoff must
+fit within five seconds after the deadline, including any pickup delay.
+If the closing read cannot run, regular reconciliation continues on its own
+schedule.
 The ordinary read budget ends at the deadline. Each read and its bounded
 cleanup wait share a budget of at most five seconds. When applying this limit,
 the worker caps the cleanup reserve at 2.5 seconds and respects the original

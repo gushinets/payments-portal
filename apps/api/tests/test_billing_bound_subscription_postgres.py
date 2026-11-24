@@ -1293,6 +1293,59 @@ async def test_any897_local_refusal_after_widget_read_preserves_the_slot_cadence
         assert not await polling.tick(302)
 
 
+@pytest.mark.parametrize("activation_polling", [{"billing_widget_activation_window_seconds": 300}], indirect=True)
+async def test_any897_regular_queue_lock_timeout_preserves_widget_retry_and_closing_slots(
+    activation_polling: ActivationPolling, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    polling = activation_polling
+    factory = polling.factory
+    regular = reconciliation_schedule(factory)
+    regular_id, _, regular_generation = regular
+    prepared_at = polling.window.prepared_at
+    get_subscription = polling.worker.client.get_subscription
+    activate(polling.transport)
+
+    with factory() as locker, locker.begin():
+
+        async def read_then_lock(*, subscription_id: int, budget: PreflightBudget) -> Subscription:
+            point = await get_subscription(subscription_id=subscription_id, budget=budget)
+            assert locker.get(BillingWorkItem, regular_id, with_for_update=True) is not None
+            return point
+
+        with monkeypatch.context() as patch:
+            patch.setattr(polling.worker.client, "get_subscription", read_then_lock)
+            assert await polling.tick(240)
+
+    deferred = polling.job()
+    assert len(polling.transport.requests) == deferred.attempt_count == 1
+    assert deferred.last_attempt_started_at == prepared_at + timedelta(seconds=240)
+    assert deferred.last_error_classification == "billing_busy"
+    assert deferred.work_state == BillingWorkState.PENDING
+    assert deferred.lease_owner is None
+    assert deferred.next_attempt_at == prepared_at + timedelta(seconds=280)
+    assert reconciliation_schedule(factory) == regular
+    assert not await polling.tick(279)
+
+    polling.transport.subscriptions[0]["current_blocking"] = 1
+    assert await polling.tick(280)
+    retry = polling.job()
+    assert len(polling.transport.requests) == retry.attempt_count == 2
+    assert retry.last_error_classification is None
+    assert retry.next_attempt_at == polling.window.deadline_at
+    assert reconciliation_schedule(factory) == regular
+    assert not await polling.tick(299)
+
+    polling.transport.subscriptions[0]["current_blocking"] = 0
+    assert await polling.tick(300)
+    completed = polling.job()
+    assert len(polling.transport.requests) == completed.attempt_count == 3
+    assert completed.work_state == BillingWorkState.COMPLETED
+    assert WidgetActivationWindow.from_work(completed).completion.reason == (
+        WidgetActivationCompletionReason.ACTIVATION_DETECTED
+    )
+    assert reconciliation_schedule(factory) == (regular_id, polling.window.deadline_at, regular_generation + 1)
+
+
 @pytest.mark.parametrize("activation_polling", [{"preflight_cleanup_timeout_seconds": 5}], indirect=True)
 @pytest.mark.parametrize("slot", [20, 110], ids=["ordinary", "closing"])
 async def test_any897_maximum_cleanup_reserve_leaves_time_for_widget_read(
