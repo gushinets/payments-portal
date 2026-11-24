@@ -9,12 +9,62 @@ if [ "$configured_user" != "app" ]; then
   exit 1
 fi
 
-docker run --rm --entrypoint sh "$image_ref" -ec '
+docker run --rm --network none --entrypoint sh "$image_ref" -ec '
   resolved_uid=$(id -u)
   if [ "$resolved_uid" -eq 0 ]; then
     echo "Expected runtime user app to resolve to a non-root UID, got: $resolved_uid" >&2
     exit 1
   fi
+
+  # Build/account/mount tools are removed only from the production target.
+  for tool in apt apt-get adduser useradd groupadd passwd mount umount infocmp nsenter; do
+    if command -v "$tool" >/dev/null 2>&1; then
+      echo "Unexpected production runtime tool: $tool" >&2
+      exit 1
+    fi
+  done
+  for package in apt libapt-pkg7.0 adduser passwd mount; do
+    if dpkg-query -s "$package" 2>/dev/null | grep -q "^Status: install ok installed$"; then
+      echo "Unexpected production runtime package: $package" >&2
+      exit 1
+    fi
+  done
+  audit=$(dpkg --audit)
+  if [ -n "$audit" ]; then
+    echo "Production package audit failed" >&2
+    exit 1
+  fi
+  privileged_files=$(find /usr /opt /app -type f -perm /6000)
+  if [ -n "$privileged_files" ]; then
+    echo "Unexpected setuid/setgid production file" >&2
+    exit 1
+  fi
+  # Official python:slim already omits optional GUI Tk/Tcl dependencies.
+  native_files=$(find /opt/api-venv /usr/local/lib/python3.12/lib-dynload -type f -name "*.so" ! -name "_tkinter*")
+  while IFS= read -r library; do
+    [ -n "$library" ] || continue
+    dependencies=$(ldd "$library") || {
+      echo "Production native dependency inspection failed: $library" >&2
+      exit 1
+    }
+    case "$dependencies" in
+      *"not found"*)
+        echo "Production native shared-library dependency missing: $library" >&2
+        exit 1
+        ;;
+    esac
+  done <<EOF
+$native_files
+EOF
+  python -c "
+import bz2, ctypes, curses, greenlet, lzma, readline, sqlite3, ssl, uuid, zlib
+from zoneinfo import ZoneInfo
+assert ssl.create_default_context().get_ca_certs()
+assert ZoneInfo(\"Europe/Moscow\")
+for codec in (bz2, lzma, zlib):
+    assert codec.decompress(codec.compress(b\"runtime\")) == b\"runtime\"
+assert sqlite3.connect(\":memory:\").execute(\"select 1\").fetchone() == (1,)
+"
 
   set -- $(dpkg-query -W util-linux)
   installed=$2
@@ -22,6 +72,33 @@ docker run --rm --entrypoint sh "$image_ref" -ec '
     echo "Expected util-linux >= 2.41.5-0+deb13u1, got: $installed" >&2
     exit 1
   fi
+'
+
+docker run --rm --network none --entrypoint sh "$image_ref" -ec '
+  installer_files=$(find /usr/local /opt/api-venv \( -name pip -o -name pip3 -o -name pip3.12 \
+    -o -name "pip-*.dist-info" -o -name "pip-*.whl" -o -name ensurepip \) -print)
+  if [ -n "$installer_files" ]; then
+    printf "Unexpected production pip or bootstrap files:\n%s\n" "$installer_files" >&2
+    exit 1
+  fi
+
+  for interpreter in /usr/local/bin/python3.12 /opt/api-venv/bin/python; do
+    "$interpreter" -c "
+import sys
+from importlib import metadata, util
+
+for module in (\"pip\", \"ensurepip\"):
+    if util.find_spec(module) is not None:
+        sys.exit(f\"{sys.executable}: unexpected module {module}\")
+try:
+    metadata.version(\"pip\")
+except metadata.PackageNotFoundError:
+    pass
+else:
+    sys.exit(f\"{sys.executable}: unexpected installed pip distribution\")
+"
+  done
+  echo "Verified no pip or pip bootstrap in global Python or the API venv."
 '
 
 container_id=""
@@ -78,4 +155,4 @@ if [ "$response" != '{"status":"alive"}' ]; then
   exit 1
 fi
 
-echo "Verified patched, non-root API production image liveness."
+echo "Verified minimized, non-root API runtime libraries and liveness."

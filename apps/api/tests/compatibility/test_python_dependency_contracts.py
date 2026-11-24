@@ -87,6 +87,10 @@ def test_settings_accept_supported_app_environments(app_env: str) -> None:
         "APP_PUBLIC_BASE_URL": "https://payments.example.com",
         "CORS_ALLOW_ORIGINS": "https://payments.example.com",
     }
+    expected_database = (
+        "postgresql+psycopg://anytoolai:test@db/portal" if app_env == "production" else "sqlite+pysqlite:///:memory:"
+    )
+    environment["DATABASE_URL"] = expected_database
     with patch.dict(os.environ, environment, clear=True):
         loaded_settings = Settings(_env_file=None)
 
@@ -94,7 +98,7 @@ def test_settings_accept_supported_app_environments(app_env: str) -> None:
     assert loaded_settings.instance_tenant_id == "anytoolai"
     assert loaded_settings.instance_region == "ru"
     assert loaded_settings.app_public_base_url == "https://payments.example.com"
-    assert loaded_settings.database_url == "sqlite+pysqlite:///:memory:"
+    assert loaded_settings.database_url == expected_database
     assert loaded_settings.cors_allow_origins == ("https://payments.example.com",)
     assert loaded_settings.smtp_host == ""
     assert loaded_settings.smtp_port == 587
