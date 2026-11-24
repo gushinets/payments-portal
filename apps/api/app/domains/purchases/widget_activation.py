@@ -55,12 +55,14 @@ def awaiting_first_activation(
         return False
     if subscription.lifecycle_status == Lifecycle.INACTIVE:
         expected_reason = SubscriptionLifecycleReason.WAITING
-    elif (
-        existing_window
-        and subscription.lifecycle_status == Lifecycle.ACTIVE
-        and subscription.financial_access_status == Financial.BLOCKED
-    ):
-        expected_reason = SubscriptionLifecycleReason.FINANCIAL_BLOCK
+    elif existing_window and subscription.lifecycle_status == Lifecycle.ACTIVE:
+        if subscription.financial_access_status == Financial.BLOCKED:
+            expected_reason = SubscriptionLifecycleReason.FINANCIAL_BLOCK
+        elif subscription.financial_access_status == Financial.ALLOWED:
+            # Regular reconciliation can verify activation before inventory selects the first primary.
+            expected_reason = SubscriptionLifecycleReason.ACTIVE
+        else:
+            return False
     else:
         return False
     observation = (

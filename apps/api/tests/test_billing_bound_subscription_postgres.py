@@ -350,6 +350,68 @@ async def test_any897_activation_handoff_advances_real_reconciliation_and_first_
     assert await cabinet_status(cabinet) == (None, 1)
 
 
+@pytest.mark.parametrize("scenario", [True], indirect=True)
+@pytest.mark.parametrize(
+    "activation_polling",
+    [{"prepared_at": PERIOD_TEST_PREPARED_AT, "billing_widget_activation_window_seconds": 780}],
+    indirect=True,
+)
+@pytest.mark.parametrize("reconcile_during_read", [False, True], ids=["before-point-read", "during-point-read"])
+async def test_any897_keeps_checking_when_regular_reconciliation_confirms_activation_first(
+    activation_polling: ActivationPolling,
+    cabinet: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    reconcile_during_read: bool,
+) -> None:
+    polling = activation_polling
+    factory = polling.factory
+    monkeypatch.setattr(paid_read, "database_now", lambda db: polling.now)
+    _, regular_due, _ = reconciliation_schedule(factory)
+    due = (regular_due - polling.window.prepared_at).total_seconds()
+    point = polling.transport.subscriptions[0]
+    point["state"] = 2
+    prove_month(point, polling.window.prepared_at)
+
+    async def reconcile() -> None:
+        assert await polling.tick(due, WorkLane.URGENT)
+        assert snapshot(factory)[1:4] == (
+            ExternalSubscriptionLifecycleStatus.ACTIVE,
+            ExternalSubscriptionFinancialAccessStatus.ALLOWED,
+            ExternalSubscriptionCommercialAccessStatus.ELIGIBLE,
+        )
+        assert await cabinet_status(cabinet) == ("checking", 0)
+
+    if reconcile_during_read:
+        client = polling.worker.client
+        get_subscription = client.get_subscription
+
+        async def reconcile_before_point_returns(*, subscription_id: int, budget: PreflightBudget) -> Subscription:
+            response = await get_subscription(subscription_id=subscription_id, budget=budget)
+            patch.setattr(client, "get_subscription", get_subscription)
+            await reconcile()
+            polling.now += timedelta(milliseconds=500)
+            return response
+
+        with monkeypatch.context() as patch:
+            patch.setattr(client, "get_subscription", reconcile_before_point_returns)
+            assert await polling.tick(due - 0.5)
+    else:
+        await reconcile()
+        assert await polling.tick(due + 0.5)
+
+    assert await cabinet_status(cabinet) == ("checking", 0)
+    assert WidgetActivationWindow.from_work(polling.job()).completion.reason == (
+        WidgetActivationCompletionReason.ACTIVATION_DETECTED
+    )
+    with factory() as db:
+        assert db.scalar(select(BillingProductAccessScope.primary_subscription_id)) is None
+        assert db.scalar(select(PurchasedAllowance)) is None
+    assert await polling.tick(due + 1, WorkLane.URGENT)
+    assert await cabinet_status(cabinet) == (None, 1)
+    with factory() as db:
+        assert db.scalars(select(PurchasedAllowance)).one().quantity == 100
+
+
 @pytest.mark.parametrize("handoff", [False, True], ids=["closing-read", "handoff"])
 async def test_any897_cabinet_uses_saved_window_and_handoff_cutoffs_without_writes(
     activation_polling: ActivationPolling, cabinet: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, handoff: bool

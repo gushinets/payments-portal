@@ -82,6 +82,36 @@ it("reads local committed state again after closing the Widget", async () => {
   expect(paid).toHaveBeenCalledTimes(2);
 });
 
+it.each(["close", "close and focus"])("refreshes after %s during an older paid read", async (trigger) => {
+  vi.useFakeTimers();
+  const checking = emptyPaidState();
+  checking.products = [{
+    product_id: "proposal_ai", status: "no_paid_access", activation_check: "checking",
+    observed_at: null, effective_until: null,
+  }];
+  paid.mockResolvedValueOnce(Response.json(checking));
+  renderCabinet();
+  await act(async () => vi.advanceTimersByTimeAsync(1));
+  expect(screen.getByText(a.checking)).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: ru.Billing.pay }));
+  await act(async () => vi.advanceTimersByTimeAsync(1));
+  const closeWidget = screen.getByRole("button", { name: ru.Billing.close });
+
+  let finish!: (response: Response) => void;
+  paid.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }));
+  refresh();
+  fireEvent.click(closeWidget);
+  if (trigger === "close and focus") fireEvent.focus(window);
+  expect(paid).toHaveBeenCalledTimes(2);
+
+  await act(async () => finish(Response.json(checking)));
+  expect(paid).toHaveBeenCalledTimes(3);
+  expect(screen.getByText(a.confirmed)).toBeVisible();
+  const widgetRequests = fetcher.mock.calls.filter(([url]) =>
+    new URL(String(url)).pathname === "/api/billing/widget-bootstrap");
+  expect(widgetRequests).toHaveLength(1);
+});
+
 it("preserves independent paid products even if purchase inventory is unavailable", async () => {
   fetcher.mockImplementation(async (input) => new URL(String(input)).pathname === "/api/paid-access"
     ? Response.json(paidState({ grants: [{ product_id: "proposal_ai", valid_until: null }, { product_id: "brief_decoder", valid_until: null }] }))
