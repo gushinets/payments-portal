@@ -73,6 +73,7 @@ async def reconcile_subscription(
         configuration,
         subscription_id,
         io_timeout_seconds=admission.policy.total_timeout_seconds,
+        work_claim=work_claim,
     )
     if expected is not None:
         from app.domains.purchases.inventory import same_purchase

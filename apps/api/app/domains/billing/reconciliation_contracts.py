@@ -99,3 +99,7 @@ class ReconciliationResult:
     subject: ReconciliationSubject
     proof: SubscriptionProof
     purchase: Purchase
+
+
+class ReconciliationWakeupCovered(Exception):
+    """A Widget-only claim was finished using an already linked first-primary attempt."""

@@ -375,13 +375,15 @@ The worker compares the response's `agreement_id` with the saved agreement
 before interpreting the subscription state. A mismatch is treated as
 `lbx_scope_mismatch` and follows the standard read-failure backoff within the
 saved window. A timely active and unblocked response for the saved agreement
-completes the window and advances the existing regular reconciliation job in
-the same transaction. The worker rechecks the saved binding, claim and deadline
-before committing the hint.
-The hint preserves an in-flight regular reconciliation lease and advances its
-generation so the older attempt cannot consume the new wakeup. Paid access
-and purchased allowances are written by standard reconciliation and primary
-selection from their own authoritative proof.
+completes the window and can advance regular reconciliation in the same
+transaction. The worker rechecks the saved binding, claim and deadline before
+committing the hint. When fresh regular proof has already queued the linked
+first-primary inventory, it reuses that attempt. The hint preserves an
+in-flight lease. A later worker can finish the exact Widget wakeup without
+starting another source read once matching work has queued the linked selection.
+The regular reconciliation row carries the link without locking the Widget row.
+Paid access and purchased allowances are written by standard reconciliation and
+primary selection from their own authoritative proof.
 
 `external_create_recovery` is GET-only. Zero candidates remain uncertain; exactly
 one original point-proven candidate may bind; ambiguous/foreign candidates or

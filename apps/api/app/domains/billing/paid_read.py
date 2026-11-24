@@ -12,6 +12,7 @@ from app.core.backend_consumers import BackendConsumer
 from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.customers import authenticate
+from app.domains.billing.first_activation import ActivationWindowKey, ReconciliationQueuePayload, inventory_key
 from app.domains.billing.paid_contracts import EffectiveState
 from app.domains.billing.paid_deadlines import effective_deadline
 from app.domains.billing.paid_policy import MeteringPolicy
@@ -251,11 +252,22 @@ def _activation_status(
             window = None
         if window is not None and window.purchase_id == purchase_id:
             completion = window.completion
+            if completion is not None and completion.reason == WidgetActivationCompletionReason.PURCHASE_INELIGIBLE:
+                return None
+            link = ReconciliationQueuePayload.from_job(reconciliation).first_primary
+            if (
+                link is not None
+                and link.purchase_id == purchase_id
+                and link.window == ActivationWindowKey.from_job(job)
+            ):
+                phase = link.phase(inventory, now)
+                if phase == BillingWorkState.RUNNING or (
+                    phase == BillingWorkState.PENDING and now < link.queued_at + HANDOFF_PICKUP_GRACE
+                ):
+                    return ActivationCheckStatus.CHECKING
             if completion is None:
                 if now < window.deadline_at + CLOSING_GRACE:
                     return ActivationCheckStatus.CHECKING
-            elif completion.reason == WidgetActivationCompletionReason.PURCHASE_INELIGIBLE:
-                return None
             elif completion.reason == WidgetActivationCompletionReason.ACTIVATION_DETECTED and (
                 _handoff_in_progress(reconciliation, completion.at, now)
                 or _handoff_in_progress(inventory, completion.inventory_due_at, now)
@@ -303,7 +315,7 @@ def read_paid_access(factory: SessionFactory, configuration: Settings, token: st
         selected = primary_selections(db, subscription_ids) if subscription_ids else set()
         reviews = open_review_references(db, subscription_ids) if subscription_ids else set()
         subscription_keys = {key(sub) for _, sub in candidates.values()}
-        customer_keys = {f"{sub.external_billing_account_id}:{sub.customer_id}" for _, sub in candidates.values()}
+        customer_keys = {inventory_key(sub) for _, sub in candidates.values()}
         jobs = queries.activation_jobs(db, subscription_keys, customer_keys) if subscription_keys else {}
         # Sample database time after the local reads, which may themselves wait.
         # Never omit an overdue tuple while returning its old revision.
@@ -335,14 +347,13 @@ def read_paid_access(factory: SessionFactory, configuration: Settings, token: st
                     and str(pending.subscription_id) not in reviews
                 ):
                     subscription_key = key(pending)
-                    customer_key = f"{pending.external_billing_account_id}:{pending.customer_id}"
                     activation_check = _activation_status(
                         jobs.get((BillingWorkKind.WIDGET_ACTIVATION_CHECK, subscription_key)),
                         purchase_id,
                         proof,
                         now,
                         reconciliation=jobs.get((BillingWorkKind.SUBSCRIPTION_RECONCILIATION, subscription_key)),
-                        inventory=jobs.get((BillingWorkKind.CUSTOMER_INVENTORY, customer_key)),
+                        inventory=jobs.get((BillingWorkKind.CUSTOMER_INVENTORY, inventory_key(pending))),
                     )
             products.append(
                 ProductEvidence(

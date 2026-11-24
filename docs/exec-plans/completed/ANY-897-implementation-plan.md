@@ -64,10 +64,12 @@ continues with the tab closed. Use the Russian messages recorded in Linear.
    queue lease and matching enqueue generation before and after the point read.
    A response after its allowed deadline or from a stale attempt has no effect
    on the handoff. For the first current `state=2, current_blocking=0` response,
-   record the completion time and reason and call
-   `enroll_subscription(..., hint=True)` in the same transaction. This moves
-   even an existing pending reconciliation forward and preserves a new hint
-   when a reconciliation is already running.
+   record the completion time and reason and advance reconciliation in the same
+   transaction when a linked first-primary inventory is not already queued or
+   running on fresh authoritative evidence. A hint during reconciliation
+   preserves the running claim. An exact Widget wakeup can be finished before
+   claiming another source fence once that reconciliation has queued the
+   linked inventory. Independent reconciliation due times and hints still apply.
    A temporary financial block can occur during a saved window. Continue the
    check while the purchase remains eligible for first activation.
    End the accelerated job if access was already committed, the subscription
@@ -88,9 +90,11 @@ Add an optional `activation_check` field to each product in `GET /api/paid-acces
 Return `checking`, `unconfirmed` or `null` from the PostgreSQL record for the
 current purchase. Return `checking` during the saved window, including its
 closing read, and during the linked final reconciliation and first-primary
-inventory. The due time links each stage to its hint. A live claim keeps
-`checking` visible through the attempt, and a pending stage has a 60-second
-pickup grace. If the accelerated path ends with access still pending, return
+inventory. When regular reconciliation queues the first selection for the saved
+window, it records the purchase, window and inventory attempt in the subscription
+reconciliation row without locking the Widget row. A live claim keeps `checking`
+visible through the linked attempt, and a pending stage has a 60-second pickup
+grace. If the accelerated path ends with access still pending, return
 `unconfirmed`. Without a saved window, return `unconfirmed` for a current
 owned and linked purchase awaiting its first activation if the latest
 reconciliation observation still provides fresh matching waiting evidence

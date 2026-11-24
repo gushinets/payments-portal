@@ -13,6 +13,7 @@ from app.domains.billing.contracts import BillingRefused, CustomerOpen
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.customer_reviews import record_customer_review
 from app.domains.billing.work_contracts import WorkClaim, RecoveryEscalation
+from app.domains.billing.first_activation import InventoryHint
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import financial, service
@@ -32,6 +33,7 @@ from app.models import (
     User,
     ExternalBillingCustomerBindingState as Binding,
     ExternalBillingCustomer,
+    BillingWorkKind,
 )
 
 RECOVERY = "external_create_recovery"
@@ -79,12 +81,13 @@ def pause_expired_recovery(db: Session, op: ExternalCreateOperation, account: st
     return False
 
 
-def hint_inventory(db: Session, customer: ExternalBillingCustomer) -> datetime:
+def hint_inventory(db: Session, customer: ExternalBillingCustomer) -> InventoryHint:
     due = as_utc(billing_reconciliation.database_now(db))
+    key = f"{customer.external_billing_account_id}:{customer.customer_id}"
     coalesce(
         db,
         kind=INVENTORY,
-        key=f"{customer.external_billing_account_id}:{customer.customer_id}",
+        key=key,
         scope_kind="customer",
         reference=str(customer.customer_id),
         due=due,
@@ -92,7 +95,9 @@ def hint_inventory(db: Session, customer: ExternalBillingCustomer) -> datetime:
         payload={},
         hint=True,
     )
-    return due
+    row = work_queries.by_key(db, BillingWorkKind.CUSTOMER_INVENTORY, key)
+    assert row is not None  # The upsert above writes this key in the same transaction.
+    return InventoryHint(row.work_item_id, row.attempt_count + 1, due)
 
 
 def enroll_operation(db: Session, operation: ExternalCreateOperation, account: str, *, sent: bool = False) -> None:

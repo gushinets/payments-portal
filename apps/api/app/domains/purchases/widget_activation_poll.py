@@ -11,6 +11,7 @@ from app.core.settings import Settings
 from app.domains.billing import work
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.customers import lock_user
+from app.domains.billing.first_activation import ActivationWindowKey, ReconciliationQueuePayload, reusable_first_primary
 from app.domains.billing.reconciliation_contracts import SubscriptionLifecycleReason
 from app.domains.billing.work_contracts import WorkAttemptOutcome, WorkClaim
 from app.domains.catalog.publication import SessionFactory
@@ -24,7 +25,7 @@ from app.domains.purchases.widget_activation_window import (
     WidgetActivationWindow,
 )
 from app.infrastructure.preflight import PreflightDeadlineExceeded
-from app.infrastructure.queries import billing_reconciliation as queries, purchases
+from app.infrastructure.queries import billing_reconciliation as queries, billing_work, purchases
 from app.models import (
     BillingWorkItem,
     ExternalBillingCustomer,
@@ -205,11 +206,19 @@ def prepare_widget_activation_read(
 
 
 def _try_handoff(
-    db: Session, subscription: ExternalSubscription, claim: WorkClaim, allowed_until: datetime
+    db: Session,
+    subscription: ExternalSubscription,
+    window: ActivationWindowKey,
+    claim: WorkClaim,
+    allowed_until: datetime,
 ) -> datetime:
+    regular = billing_work.by_key(db, work.RECONCILIATION, work.key(subscription))
+    link = ReconciliationQueuePayload.from_job(regular).first_primary
+    if reusable_first_primary(db, subscription, link, window, _claim_time(db, claim)):
+        return _claim_time(db, claim)
     # The regular queue upsert can wait on another owner. Undo the hint if that wait consumes the budget.
     with db.begin_nested() as handoff:
-        work.enroll_subscription(db, subscription, hint=True)
+        work.hint_widget_reconciliation(db, subscription, window)
         now = _claim_time(db, claim)
         if now > allowed_until:
             handoff.rollback()
@@ -232,7 +241,7 @@ def finish_widget_activation_read(
             target = None
         now = _claim_time(db, claim)
         if target is not None and result == SubscriptionLifecycleReason.ACTIVE and now <= attempt.allowed_until:
-            now = _try_handoff(db, target, claim, attempt.allowed_until)
+            now = _try_handoff(db, target, ActivationWindowKey.from_job(row), claim, attempt.allowed_until)
         if result is None:
             row.attempt_count -= 1
             row.last_attempt_started_at = attempt.previous_started_at

@@ -65,35 +65,6 @@ class WidgetActivationWindow(BaseModel):
         return cls.model_validate(row.payload_document)
 
 
-def record_widget_inventory_hint(
-    db: Session,
-    *,
-    subscription_key: str,
-    purchase_id: UUID,
-    reconciliation_due_at: datetime,
-    inventory_due_at: datetime,
-) -> None:
-    """Carry an outstanding Widget handoff into the customer's first-primary job."""
-    row = billing_work.by_key(db, BillingWorkKind.WIDGET_ACTIVATION_CHECK, subscription_key, lock=True)
-    if row is None:
-        return
-    try:
-        window = WidgetActivationWindow.from_work(row)
-    except ValueError:
-        return
-    completion = window.completion
-    if (
-        window.purchase_id == purchase_id
-        and completion is not None
-        and completion.reason == WidgetActivationCompletionReason.ACTIVATION_DETECTED
-        and completion.inventory_due_at is None
-        and reconciliation_due_at <= completion.at
-    ):
-        row.payload_document = window.model_copy(
-            update={"completion": completion.model_copy(update={"inventory_due_at": inventory_due_at})}
-        ).model_dump(mode="json")
-
-
 def save_widget_activation_window(db: Session, opening: WidgetActivationOpening, *, duration_seconds: int) -> None:
     """Caller holds the verified purchase's user lock through commit."""
     kind = BillingWorkKind.WIDGET_ACTIVATION_CHECK

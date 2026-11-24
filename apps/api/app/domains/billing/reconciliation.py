@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused, CustomerOpen
+from app.domains.billing.first_activation import ReconciliationAttempt, record_first_primary_attempt
 from app.domains.billing.paid_access import apply_paid_source, commit_paid_state, resolve_access_end
 from app.domains.billing.paid_deadlines import effective_deadline
 from app.domains.billing.paid_policy import MeteringPolicy, PaidDecision, paid_decision
@@ -16,15 +17,21 @@ from app.domains.billing.reconciliation_contracts import (
     IdentityProof,
     ReconciliationSubject,
     ReconciliationResult,
+    ReconciliationWakeupCovered,
     SubscriptionProof,
 )
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
-from app.domains.purchases.widget_activation_window import record_widget_inventory_hint
 from app.infrastructure.queries import billing_reconciliation as queries, purchases
 from app.infrastructure.queries.billing_customers import customer_operation, open_customer_reviews
-from app.domains.billing.work import RECONCILIATION, key, schedule_reconciliation, verify_claim
+from app.domains.billing.work import (
+    RECONCILIATION,
+    finish_covered_widget_wakeup,
+    key,
+    schedule_reconciliation,
+    verify_claim,
+)
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.operator_contracts import ReviewResolution
 from app.models import (
@@ -52,7 +59,12 @@ def read_source_time(factory: SessionFactory) -> datetime:
 
 
 def claim_reconciliation(
-    factory: SessionFactory, configuration: Settings, subscription_id: UUID, *, io_timeout_seconds: float
+    factory: SessionFactory,
+    configuration: Settings,
+    subscription_id: UUID,
+    *,
+    io_timeout_seconds: float,
+    work_claim: WorkClaim | None = None,
 ) -> ReconciliationSubject:
     if not 0 < io_timeout_seconds <= 600:
         raise ValueError("invalid reconciliation I/O budget")
@@ -138,6 +150,15 @@ def claim_reconciliation(
         now = as_utc(queries.database_now(db))
         if current.reconciliation_lease_expires_at and as_utc(current.reconciliation_lease_expires_at) > now:
             raise BillingRefused("subscription_reconciliation_busy", 409)
+        if (
+            work_claim is not None
+            and work_claim.kind == RECONCILIATION
+            and purchase.state == PurchaseIntentState.LINKED
+            and scope.primary_subscription_id is None
+            and finish_covered_widget_wakeup(db, current, work_claim)
+        ):
+            db.commit()
+            raise ReconciliationWakeupCovered()
         current.reconciliation_lease_owner = str(uuid4())
         current.reconciliation_lease_expires_at = now + timedelta(seconds=io_timeout_seconds + APPLY_SAFETY_SECONDS)
         current.reconciliation_fencing_token += 1
@@ -233,6 +254,7 @@ def apply_reconciliation(
             raise BillingRefused("subscription_provenance_changed", 409)
         subscription_claim = None
         reconciliation_due_at = None
+        reconciliation_attempt = None
         if work_claim is not None:
             if work_claim.kind == RECONCILIATION and work_claim.reference == str(current.subscription_id):
                 subscription_claim = work_claim
@@ -241,6 +263,9 @@ def apply_reconciliation(
             queue_row = verify_claim(db, work_claim)
             if subscription_claim is not None:
                 reconciliation_due_at = as_utc(queue_row.next_attempt_at)
+                reconciliation_attempt = ReconciliationAttempt(
+                    generation=subscription_claim.generation, number=queue_row.attempt_count
+                )
             if (
                 subscription_claim is None
                 and queue_row.coalescing_key != f"{purchase.account_id}:{purchase.customer_id}"
@@ -451,15 +476,15 @@ def apply_reconciliation(
         ):
             from app.domains.billing.background_recovery import hint_inventory
 
-            inventory_due_at = hint_inventory(db, customer)
-            if reconciliation_due_at is not None:
-                record_widget_inventory_hint(
-                    db,
-                    subscription_key=key(current),
-                    purchase_id=purchase.id,
-                    reconciliation_due_at=reconciliation_due_at,
-                    inventory_due_at=inventory_due_at,
-                )
+            hint = hint_inventory(db, customer)
+            record_first_primary_attempt(
+                db,
+                subscription_key=key(current),
+                purchase_id=purchase.id,
+                hint=hint,
+                reconciliation_due_at=reconciliation_due_at,
+                reconciliation_attempt=reconciliation_attempt,
+            )
         db.flush()
         committed = service._snapshot(db, row)
         db.commit()
