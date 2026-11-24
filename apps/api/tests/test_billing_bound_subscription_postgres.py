@@ -7,6 +7,8 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from time import monotonic
+from types import SimpleNamespace
+from typing import Any
 from uuid import UUID
 
 import httpx
@@ -38,6 +40,7 @@ from app.domains.billing.reconciliation_contracts import ReconciliationSubject, 
 from app.domains.billing.work_contracts import DeliveryLane, WorkClaim, WorkLane
 from app.domains.purchases.contracts import Purchase
 from app.domains.purchases import widget_admission
+from app.domains.purchases import widget_activation
 from app.domains.purchases import widget_activation_poll
 from app.domains.purchases import widget_activation_window as activation_windows
 from app.domains.purchases.widget_activation import WidgetActivationOpening
@@ -47,6 +50,7 @@ from app.domains.purchases.widget_activation_window import (
     WidgetActivationWindow,
 )
 from app.infrastructure.persistence.billing_work import coalesce
+from app.infrastructure import preflight
 from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from app.infrastructure.queries import billing_reconciliation
 from app.domains.purchases import financial
@@ -64,6 +68,7 @@ from app.models import (
     BillingWorkState,
     ExternalSubscription,
     ExternalSubscriptionCommercialAccessStatus,
+    ExternalSubscriptionFinancialAccessStatus,
     ExternalSubscriptionLifecycleStatus,
     ManualReviewCase,
     PaidAccessState,
@@ -84,6 +89,7 @@ from apps.api.tests.test_billing_subscription_reconciliation_postgres import (
 from apps.api.tests.test_billing_worker_postgres import historical_link
 
 pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
+PERIOD_TEST_PREPARED_AT = datetime(2030, 11, 15, 12, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -170,7 +176,7 @@ async def payment_with_response_hook(
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=observe),
         base_url="http://portal.test",
-        headers={"Authorization": "Bearer " + TOKEN},
+        headers={"Authorization": "Bearer " + TOKEN, "X-Request-ID": "widget-opening-test"},
     ) as client:
         return await payment(client, purchase_id)
 
@@ -198,6 +204,17 @@ def activation_schedule(row: BillingWorkItem) -> tuple[UUID, WidgetActivationWin
     )
 
 
+def prove_month(point: dict[str, Any], prepared_at: datetime) -> None:
+    start = prepared_at.date().replace(day=1)
+    next_month = (start + timedelta(days=32)).replace(day=1)
+    point.update(
+        subscription_start_date=start.isoformat(),
+        subscription_instance_start_date=start.isoformat(),
+        last_tariffication_period_start=start.isoformat(),
+        last_tariffication_period_end=(next_month - timedelta(days=1)).isoformat(),
+    )
+
+
 @dataclass
 class ActivationPolling:
     factory: sessionmaker[Session]
@@ -220,18 +237,25 @@ async def activation_polling(
     portal: httpx.AsyncClient,
     postgres_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> AsyncIterator[ActivationPolling]:
     transport, sources, purchase = scenario
     factory = postgres_session_factory
     has_terms = purchase.accepted.technical_terms is not None
+    overrides = dict(getattr(request, "param", {}))
+    fixed_prepared_at = overrides.pop("prepared_at", None)
     config = step1_settings(
-        billing_widget_activation_window_seconds=110,
         purchase_test_terms_enabled=has_terms,
         paid_access_clock_skew_seconds=5 if has_terms else None,
+        **{"billing_widget_activation_window_seconds": 110, **overrides},
     )
     monkeypatch.setattr(billing_routes, "settings", config)
     worker = BillingWorker(config, factory, sources.require_lbx())
     try:
+        if fixed_prepared_at is not None:
+            monkeypatch.setattr(billing_reconciliation, "database_now", lambda db: fixed_prepared_at)
+            monkeypatch.setattr(widget_admission, "database_now", lambda db: fixed_prepared_at)
+            monkeypatch.setattr(activation_windows, "database_now", lambda db: fixed_prepared_at)
         if has_terms:
             with factory() as db:
                 for row in db.scalars(select(BillingWorkItem).where(BillingWorkItem.work_kind != work.RECONCILIATION)):
@@ -257,6 +281,7 @@ async def activation_polling(
 
 
 @pytest.mark.parametrize("scenario", [True], indirect=True)
+@pytest.mark.parametrize("activation_polling", [{"prepared_at": PERIOD_TEST_PREPARED_AT}], indirect=True)
 @pytest.mark.parametrize("period_proven", [True, False], ids=["proven-period", "missing-period"])
 @pytest.mark.parametrize("handoff_at", [40, 112], ids=["ordinary", "closing-grace"])
 async def test_any897_activation_handoff_advances_real_reconciliation_and_first_grant(
@@ -279,14 +304,7 @@ async def test_any897_activation_handoff_advances_real_reconciliation_and_first_
     point = polling.transport.subscriptions[0]
     point["state"] = 2
     if period_proven:
-        start = polling.window.prepared_at.date().replace(day=1)
-        next_month = (start + timedelta(days=32)).replace(day=1)
-        point.update(
-            subscription_start_date=start.isoformat(),
-            subscription_instance_start_date=start.isoformat(),
-            last_tariffication_period_start=start.isoformat(),
-            last_tariffication_period_end=(next_month - timedelta(days=1)).isoformat(),
-        )
+        prove_month(point, polling.window.prepared_at)
 
     assert await polling.tick(handoff_at)
     with factory() as db:
@@ -589,6 +607,41 @@ async def test_any897_closing_read_still_requires_backoff_and_eligibility(
     )
 
 
+@pytest.mark.parametrize(
+    "activation_polling",
+    [{"billing_widget_activation_window_seconds": 300}],
+    indirect=True,
+)
+async def test_any897_unstarted_ordinary_read_preserves_closing_read(activation_polling: ActivationPolling) -> None:
+    polling = activation_polling
+    assert await polling.tick(260)
+    before = polling.job()
+    assert await polling.tick(299.8)
+    skipped = polling.job()
+    assert len(polling.transport.requests) == 1
+    assert skipped.attempt_count == before.attempt_count
+    assert skipped.last_attempt_started_at == before.last_attempt_started_at
+    assert skipped.last_error_classification == before.last_error_classification
+    assert skipped.next_attempt_at == polling.window.deadline_at
+    activate(polling.transport)
+    assert await polling.tick(300)
+    assert len(polling.transport.requests) == 2
+    assert WidgetActivationWindow.from_work(polling.job()).completion.reason == (
+        WidgetActivationCompletionReason.ACTIVATION_DETECTED
+    )
+
+
+@pytest.mark.parametrize("activation_polling", [{"preflight_cleanup_timeout_seconds": 5}], indirect=True)
+@pytest.mark.parametrize("slot", [20, 110], ids=["ordinary", "closing"])
+async def test_any897_maximum_cleanup_reserve_leaves_time_for_widget_read(
+    activation_polling: ActivationPolling, slot: int
+) -> None:
+    polling = activation_polling
+    assert await polling.tick(slot)
+    assert len(polling.transport.requests) == 1
+    assert polling.job().last_error_classification is None
+
+
 async def test_any897_closing_timeout_retains_source_cleanup_ownership(
     activation_polling: ActivationPolling,
     monkeypatch: pytest.MonkeyPatch,
@@ -715,6 +768,51 @@ async def test_any897_blocked_or_ended_point_never_advances_reconciliation(
     else:
         assert completed is None
     assert reconciliation_schedule(polling.factory) == original
+
+
+@pytest.mark.parametrize("scenario", [True], indirect=True)
+@pytest.mark.parametrize("activation_polling", [{"prepared_at": PERIOD_TEST_PREPARED_AT}], indirect=True)
+async def test_any897_persisted_financial_block_keeps_existing_window_eligible(
+    activation_polling: ActivationPolling,
+    scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    cabinet: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    polling = activation_polling
+    factory = polling.factory
+    monkeypatch.setattr(paid_read, "database_now", lambda db: polling.now)
+    point = polling.transport.subscriptions[0]
+    point.update(state=2, current_blocking=1)
+    assert await polling.tick(20)
+    assert WidgetActivationWindow.from_work(polling.job()).completion is None
+
+    polling.now += timedelta(seconds=1)
+    await run(scenario[1], factory)
+    assert snapshot(factory)[1:4] == (
+        ExternalSubscriptionLifecycleStatus.ACTIVE,
+        ExternalSubscriptionFinancialAccessStatus.BLOCKED,
+        ExternalSubscriptionCommercialAccessStatus.ELIGIBLE,
+    )
+    assert await cabinet_status(cabinet) == ("checking", 0)
+    original = reconciliation_schedule(factory)
+
+    point.update(current_blocking=0)
+    prove_month(point, polling.window.prepared_at)
+    polling.transport.requests.clear()
+    assert await polling.tick(40)
+    assert len(polling.transport.requests) == 1
+    assert WidgetActivationWindow.from_work(polling.job()).completion.reason == (
+        WidgetActivationCompletionReason.ACTIVATION_DETECTED
+    )
+    advanced = reconciliation_schedule(factory)
+    assert advanced == (original[0], polling.now, original[2] + 1)
+    assert advanced[1] < original[1]
+    assert await cabinet_status(cabinet) == ("checking", 0)
+    assert await polling.tick(41, WorkLane.URGENT)
+    assert await polling.tick(42, WorkLane.URGENT)
+    assert await cabinet_status(cabinet) == (None, 1)
+    with factory() as db:
+        assert db.scalars(select(PurchasedAllowance)).one().quantity == 100
 
 
 async def test_any897_handoff_past_cutoff_rolls_back_hint_and_expires_window(
@@ -1012,6 +1110,33 @@ async def test_any897_migrated_queue_enforces_one_key_even_after_completion(
     assert activation_schedule(activation_job(factory)) == activation_schedule(completed)
 
 
+async def test_any897_activation_history_lookup_cannot_exhaust_widget_budget(
+    scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    widget_app: FastAPI,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent = False
+    looked_up_after_send: list[bool] = []
+    lookup = billing_reconciliation.has_primary_selection
+
+    def read_history(db: Session, subscription_id: UUID) -> bool:
+        looked_up_after_send.append(sent)
+        if not sent:
+            monkeypatch.setattr(preflight, "time", SimpleNamespace(monotonic=lambda: monotonic() + 120))
+        return lookup(db, subscription_id)
+
+    async def on_sent() -> None:
+        nonlocal sent
+        sent = True
+
+    monkeypatch.setattr(widget_activation.queries, "has_primary_selection", read_history)
+    response = await payment_with_response_hook(widget_app, scenario[2].id, on_sent)
+    assert response.status_code == 200, response.json()
+    assert looked_up_after_send == [True]
+    assert activation_job(postgres_session_factory).work_state == BillingWorkState.PENDING
+
+
 @pytest.mark.parametrize("after_response", ["write_fails", "scope_released", "unlinked", "activated"])
 async def test_any897_background_check_runs_after_widget_response_and_rechecks_purchase(
     scenario: tuple[PurchaseTransport, SourceResources, Purchase],
@@ -1042,6 +1167,11 @@ async def test_any897_background_check_runs_after_widget_response_and_rechecks_p
         writes.append(opening)
         assert db.in_transaction()
         assert db.scalar(select(func.current_setting("lock_timeout"))) != "0"
+        activation_windows.save_widget_activation_window(db, opening, duration_seconds=300)
+        db.flush()
+        assert db.scalar(
+            select(BillingWorkItem).where(BillingWorkItem.work_kind == BillingWorkKind.WIDGET_ACTIVATION_CHECK)
+        )
         raise RuntimeError("private test canary")
 
     widget_app.dependency_overrides[billing_routes.get_widget_activation_writer] = lambda: writer
@@ -1087,12 +1217,19 @@ async def test_any897_background_check_runs_after_widget_response_and_rechecks_p
     assert preparation_times == [opening.prepared_at]
     (failure,) = failures
     assert failure.structured["error_type"] == "RuntimeError" and "private test canary" not in caplog.text
+    assert failure.structured["request_id"] == response.headers["X-Request-ID"] == "widget-opening-test"
 
     # Activation is processed by the original scheduled job without another Widget open.
     activate(transport)
     with factory() as db:
         job = db.scalar(select(BillingWorkItem).where(BillingWorkItem.work_kind == work.RECONCILIATION))
-        assert job.work_state == "pending"
+        assert job.work_state == BillingWorkState.PENDING
+        assert (
+            db.scalar(
+                select(BillingWorkItem).where(BillingWorkItem.work_kind == BillingWorkKind.WIDGET_ACTIVATION_CHECK)
+            )
+            is None
+        )
         assert (job.work_item_id, job.enqueue_generation, job.next_attempt_at) == scheduled_work
         job.next_attempt_at = database_now(db) - timedelta(seconds=1)
         job.priority = 1
@@ -1111,7 +1248,8 @@ async def test_any897_background_check_runs_after_widget_response_and_rechecks_p
 
 
 @pytest.mark.parametrize(
-    "mode", ["account", "inactive", "active", "current_primary", "previous_primary", "operator_primary"]
+    "mode",
+    ["account", "inactive", "active", "financial_block", "current_primary", "previous_primary", "operator_primary"],
 )
 async def test_any897_only_waiting_first_activation_is_scheduled(
     scenario: tuple[PurchaseTransport, SourceResources, Purchase],
@@ -1127,6 +1265,8 @@ async def test_any897_only_waiting_first_activation_is_scheduled(
         transport.subscriptions[0]["state"] = -1
     elif mode == "active":
         activate(transport)
+    elif mode == "financial_block":
+        transport.subscriptions[0].update(state=2, current_blocking=1)
     elif mode in {"current_primary", "previous_primary", "operator_primary"}:
         activate(transport)
         basis = await run(sources, factory)
@@ -1163,14 +1303,17 @@ async def test_any897_only_waiting_first_activation_is_scheduled(
             db.commit()
 
     scheduled: list[Callable[..., object]] = []
+    writes: list[WidgetActivationOpening] = []
+    register = BackgroundTasks.add_task
 
     def add_task(tasks: BackgroundTasks, function: Callable[..., object], *args: object, **kwargs: object) -> None:
         scheduled.append(function)
+        register(tasks, function, *args, **kwargs)
 
     def writer(db: Session, opening: WidgetActivationOpening) -> None:
-        pytest.fail("an ineligible Widget opening reached the activation writer")
+        writes.append(opening)
 
-    monkeypatch.setattr("starlette.background.BackgroundTasks.add_task", add_task)
+    monkeypatch.setattr(BackgroundTasks, "add_task", add_task)
     widget_app.dependency_overrides[billing_routes.get_widget_activation_writer] = lambda: writer
     response = (
         await portal.post("/api/billing/widget-bootstrap", json={})
@@ -1178,7 +1321,12 @@ async def test_any897_only_waiting_first_activation_is_scheduled(
         else await payment(portal, purchase.id)
     )
     assert response.status_code == 200
-    assert scheduled == []
+    assert scheduled == (
+        [widget_activation.enqueue_widget_activation]
+        if mode in {"current_primary", "previous_primary", "operator_primary"}
+        else []
+    )
+    assert writes == []
 
 
 @pytest.mark.parametrize("entrypoint", ["payment", "advance", "worker", "operator"])

@@ -18,6 +18,7 @@ from app.models import (
     ExternalBillingCustomerBindingState as Binding,
     ExternalSubscription,
     ExternalSubscriptionCommercialAccessStatus as Commercial,
+    ExternalSubscriptionFinancialAccessStatus as Financial,
     ExternalSubscriptionLifecycleStatus as Lifecycle,
     PurchaseIntent,
     PurchaseIntentState,
@@ -43,11 +44,24 @@ class _LifecycleEvidence(BaseModel):
     reasons: tuple[str, ...]
 
 
-def awaiting_first_activation(db: Session, purchase: PurchaseIntent, subscription: ExternalSubscription) -> bool:
-    if (
-        subscription.lifecycle_status != Lifecycle.INACTIVE
-        or subscription.commercial_access_status != Commercial.ELIGIBLE
+def awaiting_first_activation(
+    db: Session,
+    purchase: PurchaseIntent,
+    subscription: ExternalSubscription,
+    *,
+    existing_window: bool = False,
+) -> bool:
+    if subscription.commercial_access_status != Commercial.ELIGIBLE:
+        return False
+    if subscription.lifecycle_status == Lifecycle.INACTIVE:
+        expected_reason = SubscriptionLifecycleReason.WAITING
+    elif (
+        existing_window
+        and subscription.lifecycle_status == Lifecycle.ACTIVE
+        and subscription.financial_access_status == Financial.BLOCKED
     ):
+        expected_reason = SubscriptionLifecycleReason.FINANCIAL_BLOCK
+    else:
         return False
     observation = (
         db.get(BillingStateObservation, subscription.latest_observation_id)
@@ -60,7 +74,7 @@ def awaiting_first_activation(db: Session, purchase: PurchaseIntent, subscriptio
         evidence = _LifecycleEvidence.model_validate(observation.evidence_document)
     except ValidationError:
         return False
-    if SubscriptionLifecycleReason.WAITING not in evidence.reasons:
+    if expected_reason not in evidence.reasons:
         return False
     scope = queries.scope(db, purchase.user_id, purchase.product_id)
     return (
@@ -71,7 +85,7 @@ def awaiting_first_activation(db: Session, purchase: PurchaseIntent, subscriptio
 
 
 def enqueue_widget_activation(
-    factory: SessionFactory, opening: WidgetActivationOpening, writer: WidgetActivationWriter
+    factory: SessionFactory, opening: WidgetActivationOpening, writer: WidgetActivationWriter, *, request_id: str
 ) -> None:
     try:
         with factory() as db:
@@ -107,6 +121,7 @@ def enqueue_widget_activation(
             "widget_activation_enqueue_failed",
             extra={
                 "structured": {
+                    "request_id": request_id,
                     "purchase_id": str(opening.purchase_id),
                     "subscription_id": str(opening.subscription_id),
                     "error_type": type(error).__name__,

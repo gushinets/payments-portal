@@ -808,14 +808,15 @@ current Widget session. Session changes or unmounts discard late responses and
 stop polling. The displayed result expires conservatively using server
 duration and the browser's monotonic clock.
 
-For a linked purchase awaiting first activation, the product's optional
+For a linked purchase eligible for first activation, the product's optional
 `activation_check` field reports `checking` during the saved window, including
 the closing read, and for up to 60 seconds after handoff to regular
-reconciliation. It reports `unconfirmed` if access is still pending after the
-applicable period ends, or when there is no saved window and fresh matching
-reconciliation evidence still shows the subscription waiting. The field is
-`null` when no activation status applies. Committed entries in `grants` determine
-the cabinet's paid access.
+reconciliation. It reports `unconfirmed` when the purchase remains eligible and
+access is still pending after that period. Without a saved window, fresh matching
+reconciliation evidence of a waiting subscription also yields `unconfirmed`.
+A window completed as `purchase_ineligible` yields `null`, as do other cases
+where no activation status applies. Committed entries in `grants` determine the
+cabinet's paid access.
 
 Per-product confirmed access, fresh authoritative absence and unavailable evidence
 remain distinct. Implicit revision zero with no product evidence is confirmed

@@ -9,7 +9,7 @@ from app.domains.purchases.contracts import PurchaseRefused
 from app.domains.billing.reconciliation_contracts import ReconciliationResult, SubscriptionLifecycleReason
 from app.infrastructure.queries.billing_reconciliation import database_now, open_reviews
 from app.domains.purchases.service import _locked, _snapshot, _verify_original_consent
-from app.domains.purchases.widget_activation import WidgetActivationOpening, awaiting_first_activation
+from app.domains.purchases.widget_activation import WidgetActivationOpening
 from app.infrastructure.queries import purchases
 from app.models import (
     ExternalSubscriptionLifecycleStatus as Lifecycle,
@@ -51,11 +51,7 @@ def recheck_payment_purchase(
             != tuple(op.admission_snapshot() for op in expected.operations)
         ):
             raise PurchaseRefused("purchase_not_prepared", 409)
-        if (
-            prepare_activation
-            and SubscriptionLifecycleReason.WAITING in result.proof.reasons
-            and awaiting_first_activation(db, row, subscription)
-        ):
+        if prepare_activation and SubscriptionLifecycleReason.WAITING in result.proof.reasons:
             return WidgetActivationOpening(
                 user_id=row.user_id,
                 purchase_id=row.purchase_intent_id,

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiErrorCode } from "@/shared/api/transport";
 import { subscribeToSessionChanges, useSessionOperation } from "@/shared/session/use-session-operation";
-import { newRequestId, reportBillingSessionRefusal, safeRequestId, type OnBillingSessionRefused } from "./errors";
+import { billingSessionRefusal, newRequestId, safeRequestId, type OnBillingSessionRefused } from "./errors";
 
 export const paidReadRefreshMs = 30_000;
 const noExpiry = () => null;
@@ -29,9 +29,14 @@ export function usePaidRead<T>(
   const { begin, cancel } = useSessionOperation();
   const stopped = useRef(false);
   const busy = useRef(false);
+  const refreshPending = useRef(false);
   const boundToken = useRef<string | null | undefined>(undefined);
-  const refresh = useCallback(async () => {
-    if (!enabled || stopped.current || busy.current || !isVisible()) return;
+  const refresh = useCallback(async function refreshPaidRead(afterCurrent = false): Promise<void> {
+    if (!enabled || stopped.current || !isVisible()) return;
+    if (busy.current) {
+      if (afterCurrent) refreshPending.current = true;
+      return;
+    }
     busy.current = true;
     setState({ status: PaidReadStatus.Loading });
     const operation = begin();
@@ -60,13 +65,21 @@ export function usePaidRead<T>(
       if (!operation.isCurrent()) return;
       const id = safeRequestId(error) || requestId;
       setState({ status: PaidReadStatus.Unavailable, requestId: id, deadlinePending: apiErrorCode(error) === "paid_access_deadline_pending" });
-      reportBillingSessionRefusal(error, id, onSessionRefused);
+      const refusal = billingSessionRefusal(error, id);
+      if (refusal) {
+        stopped.current = true;
+        onSessionRefused(refusal);
+      }
     } finally {
       if (operation.isLatest()) {
         busy.current = false;
+        const pending = refreshPending.current;
+        refreshPending.current = false;
         if (!operation.isCurrent()) {
           stopped.current = true;
           setState({ status: PaidReadStatus.Unavailable, requestId: "", deadlinePending: false });
+        } else if (pending) {
+          void refreshPaidRead();
         }
       }
     }
@@ -79,13 +92,17 @@ export function usePaidRead<T>(
     const interval = setInterval(() => void refresh(), paidReadRefreshMs);
     const onVisibility = () => {
       if (isVisible()) void refresh();
-      else setState({ status: PaidReadStatus.Loading });
+      else {
+        refreshPending.current = false;
+        setState({ status: PaidReadStatus.Loading });
+      }
     };
     const unsubscribe = subscribeToSessionChanges(() => {
       stopped.current = true;
       cancel();
       clearInterval(interval);
       busy.current = false;
+      refreshPending.current = false;
       setState({ status: PaidReadStatus.Unavailable, requestId: "", deadlinePending: false });
     });
     document.addEventListener("visibilitychange", onVisibility);
@@ -94,6 +111,7 @@ export function usePaidRead<T>(
       cancel();
       clearInterval(interval);
       busy.current = false;
+      refreshPending.current = false;
       unsubscribe();
       document.removeEventListener("visibilitychange", onVisibility);
     };

@@ -167,6 +167,14 @@ documents remain drafts.
    commits a reduction. Preparation and Widget callbacks never confirm access.
    No product-execution URL, plan badge or usage progress is invented.
 
+   ANY-897 shows “Checking activation” on the eligible purchase while its saved
+   check or handoff to regular reconciliation is in progress. If access is still
+   pending when that period ends, the cabinet shows “Activation has not been
+   confirmed yet” while the purchase remains eligible for first activation.
+   The visible cabinet refreshes local paid-access status when it regains focus,
+   including after returning from a separate payment window. See the
+   [cabinet paid-access runbook](../engineering/ANY-709-billing-runbook.md#authenticated-cabinet-paid-access-read).
+
 Account state is frontend component state: loading, signed out, session error
 with retry, or authenticated. Missing or expired sessions lead to the direct
 auth form when the account checks the session. Transient session failures offer
@@ -198,7 +206,7 @@ names and ownership decisions.
 | Product discovery and detail content | Portal API discovers enabled Kernel products and reads selected live LBX offers; PostgreSQL retains links/history | Kernel owns `product_id`; locale catalogs own surrounding UI copy |
 | Technical capability manifest and commercial catalog, tariffs, prices, periods, sellability | Kernel owns technical identity/capabilities; External Billing owns commercial truth; Portal stores immutable approved bindings/terms | ANY-664 delivered historical v1 source reads/publication. ANY-709 Step 1 adds direct links, enabled-product discovery and live selected offers; genuine Kernel enablement remains gated; ANY-709 now supplies purchase admission |
 | Purchase/payment Widget entry | External Billing with Portal orchestration and generated contracts | The product page handles review and consent. The cabinet verifies the selected purchase before opening payment |
-| Subscription/billing state | Step 7 preparation/history plus ANY-715 authoritative normalized observations with finite source trust | Preparation is not payment verification; reconciliation facts are not paid grants; no new UI state contract is claimed |
+| Subscription/billing state | Step 7 preparation/history plus ANY-715 authoritative normalized observations with finite source trust | Preparation establishes purchase readiness. Reconciliation supplies subscription facts for paid-access derivation |
 | Provider reconciliation/recovery | ANY-715 embedded polling, GET-only recovery/inventory and provider-free deadlines over authoritative External Billing reads | Step 8 implemented; polling-only; webhook receiver removed; verification scope/results are in the [completed ANY-715 plan](../exec-plans/completed/ANY-715-mvp-rebuild-plan.md#stage-6-verification-and-handoff--2026-11-06) |
 | Confirmed paid-access state and delivery | ANY-765 committed provider-neutral projection from shared authoritative observations | Local authenticated cabinet read, ANY-766 snapshot V3 and durable invalidation delivery implemented; Step 16 supplies focused paired local acceptance |
 | Actual usage and remaining quota | Each saved backend owner retains persisted usage; Portal `/api/paid-usage` selects and validates readback | ANY-766 Step 15 displays actual current/historical counters and read time; unobserved/unavailable states contain no invented counters |

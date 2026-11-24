@@ -35,6 +35,7 @@ from app.models import (
 
 ERROR_BACKOFF = timedelta(seconds=40)
 READ_LIMIT = timedelta(seconds=5)
+MAX_READ_CLEANUP_SECONDS = READ_LIMIT.total_seconds() / 2
 ATTEMPT_INTERRUPTED = "widget_activation_attempt_interrupted"
 
 
@@ -43,6 +44,9 @@ class WidgetActivationRead:
     provider_subscription_id: int
     allowed_until: datetime
     monotonic_deadline: float
+    started_at: datetime
+    previous_started_at: datetime | None
+    previous_error: str | None
 
 
 @dataclass(frozen=True)
@@ -50,7 +54,13 @@ class WidgetActivationReadFailure:
     code: str
 
 
-WidgetActivationResult = SubscriptionLifecycleReason | WidgetActivationReadFailure
+# None means the budget expired before any source task could be scheduled.
+WidgetActivationResult = SubscriptionLifecycleReason | WidgetActivationReadFailure | None
+
+
+def _slot_after(window: WidgetActivationWindow, started_at: datetime) -> datetime:
+    slot = (as_utc(started_at) - window.prepared_at) // ATTEMPT_INTERVAL + 1
+    return min(window.prepared_at + slot * ATTEMPT_INTERVAL, window.deadline_at)
 
 
 def _next_due(window: WidgetActivationWindow, row: BillingWorkItem) -> datetime:
@@ -62,7 +72,7 @@ def _next_due(window: WidgetActivationWindow, row: BillingWorkItem) -> datetime:
             slots, remainder = divmod(elapsed + ERROR_BACKOFF, ATTEMPT_INTERVAL)
             slot = slots + bool(remainder)
         else:
-            slot = elapsed // ATTEMPT_INTERVAL + 1
+            return _slot_after(window, start)
     return min(window.prepared_at + slot * ATTEMPT_INTERVAL, window.deadline_at)
 
 
@@ -114,7 +124,7 @@ def _eligible_subscription(
         sub is None
         or sub.purchase_intent_id != window.purchase_id
         or work.key(sub) != row.coalescing_key
-        or not awaiting_first_activation(db, purchase, sub)
+        or not awaiting_first_activation(db, purchase, sub, existing_window=True)
         or queries.open_reviews(db, sub.subscription_id)
     ):
         return None
@@ -177,7 +187,12 @@ def prepare_widget_activation_read(
             cutoff = window.deadline_at if now < window.deadline_at else window.deadline_at + CLOSING_GRACE
             allowed_until = min(cutoff, now + READ_LIMIT, claim.expires_at)
             attempt = WidgetActivationRead(
-                provider_id, allowed_until, sampled_at + (allowed_until - now).total_seconds()
+                provider_id,
+                allowed_until,
+                sampled_at + (allowed_until - now).total_seconds(),
+                now,
+                row.last_attempt_started_at,
+                row.last_error_classification,
             )
             row.attempt_count += 1
             row.last_attempt_started_at = now
@@ -213,23 +228,35 @@ def finish_widget_activation_read(
         now = _claim_time(db, claim)
         if target is not None and result == SubscriptionLifecycleReason.ACTIVE and now <= attempt.allowed_until:
             now = _try_handoff(db, target, claim, attempt.allowed_until)
-        if now > attempt.allowed_until:
+        if result is None:
+            row.attempt_count -= 1
+            row.last_attempt_started_at = attempt.previous_started_at
+            row.last_error_classification = attempt.previous_error
+        elif now > attempt.allowed_until:
             result = WidgetActivationReadFailure(PreflightDeadlineExceeded().code)
-        row.last_error_classification = result.code if isinstance(result, WidgetActivationReadFailure) else None
+        if result is not None:
+            row.last_error_classification = result.code if isinstance(result, WidgetActivationReadFailure) else None
 
         completion = None
         if target is None or result == SubscriptionLifecycleReason.ENDED:
             completion = WidgetActivationCompletionReason.PURCHASE_INELIGIBLE
         elif result == SubscriptionLifecycleReason.ACTIVE:
             completion = WidgetActivationCompletionReason.ACTIVATION_DETECTED
-        elif _exhausted(window, row, now):
+        elif _exhausted(window, row, now) or (result is None and attempt.started_at >= window.deadline_at):
             completion = WidgetActivationCompletionReason.WINDOW_EXPIRED
 
         if completion is not None:
             _complete(db, row, claim, window, now, completion)
             outcome = WorkAttemptOutcome.COMPLETED
         else:
-            work.finish(db, row, claim, due=_next_due(window, row), error=row.last_error_classification)
-            outcome = WorkAttemptOutcome.RETRY if row.last_error_classification else WorkAttemptOutcome.COMPLETED
+            due = _next_due(window, row)
+            if result is None:
+                due = max(due, _slot_after(window, attempt.started_at))
+            work.finish(db, row, claim, due=due, error=row.last_error_classification)
+            outcome = (
+                WorkAttemptOutcome.RETRY
+                if isinstance(result, WidgetActivationReadFailure)
+                else WorkAttemptOutcome.COMPLETED
+            )
         db.commit()
         return outcome

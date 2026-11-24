@@ -335,6 +335,12 @@ and verify separate application/database backups before updating retained data.
 Use the existing backup/recovery procedure and matching reader+database pair;
 never repair failure by downgrading, stamping or rewriting purchase history.
 
+The Portal image for ANY-897 applies migration `20261123_0014`, which enforces
+one Widget activation queue row per billing account and subscription. Any retained
+`widget_activation_check` row, including a completed job, blocks downgrade
+from that revision. If rollback is required, use the backup/recovery procedure
+to restore a verified database and matching application images.
+
 ### Paired compatibility and synchronized cutover
 
 The locally verified ANY-766 source pair used
@@ -391,12 +397,9 @@ Before installing this pair over the Step 8 baseline:
    and policy scope; 0010 partitions recipient/outbox/work keys and retires stale
    claims; 0011 adds exhaustion deduplication; 0012 retains allowance activation
    and introduces V2 internal evidence readers/writers; 0013 bounds new code
-   issuance while preserving expired-token recovery evidence. Revision 0014
-   enforces a unique queue key for Widget activation windows. Downgrade refuses retained
-   V2/activation evidence or issuance budgets. Any retained
-   `widget_activation_check` row, including a completed job, blocks downgrade
-   from 0014. Use the backup recovery in step 5 if a rollback is required. Keep
-   all old Portal APIs/workers stopped and start only updated binaries.
+   issuance while preserving expired-token recovery evidence. Downgrade refuses
+   retained V2/allowance activation evidence or issuance budgets. Keep all old
+   Portal APIs/workers stopped and start only updated binaries.
    Configure consumers before first API startup installs/verifies P/digest
    and recipient state. Do not run an old worker against migrated delivery keys.
 4. Use the selected Kernel images and its existing runner through the head above:

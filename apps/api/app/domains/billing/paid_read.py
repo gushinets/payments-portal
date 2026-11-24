@@ -278,7 +278,6 @@ def read_paid_access(factory: SessionFactory, configuration: Settings, token: st
             and sub is not None
             and sub.commercial_access_status == Commercial.ELIGIBLE
             and sub.lifecycle_status != Lifecycle.ENDED
-            and not (sub.lifecycle_status == Lifecycle.ACTIVE and sub.financial_access_status == Financial.BLOCKED)
             and product in scopes
             and scopes[product].primary_subscription_id is None
         }
@@ -305,7 +304,17 @@ def read_paid_access(factory: SessionFactory, configuration: Settings, token: st
             activation_check = None
             if candidate := candidates.get(product):
                 purchase_id, pending = candidate
-                if pending.subscription_id not in selected and str(pending.subscription_id) not in reviews:
+                active_block = pending.lifecycle_status == Lifecycle.ACTIVE and (
+                    pending.financial_access_status == Financial.BLOCKED
+                )
+                if (
+                    (
+                        not active_block
+                        or (proof is not None and SubscriptionLifecycleReason.FINANCIAL_BLOCK in proof.reasons)
+                    )
+                    and pending.subscription_id not in selected
+                    and str(pending.subscription_id) not in reviews
+                ):
                     activation_check = _activation_status(jobs.get(key(pending)), purchase_id, proof, now)
             products.append(
                 ProductEvidence(

@@ -24,8 +24,9 @@ continues with the tab closed. Use the Russian messages recorded in Linear.
    Use the existing lifecycle normalization, primary binding and retained
    selection evidence.
    Pass the server-verified identifiers and DB-clock `prepared_at` to the
-   callback, which rechecks eligibility and performs one short PostgreSQL write
-   with a lock-wait limit. Log enqueue failures. If the callback is lost or the
+   callback, which checks local eligibility and selection history and performs
+   one short PostgreSQL write with a lock-wait limit. Log enqueue failures with
+   the Widget response request ID. If the callback is lost or the
    write fails, the buyer can pay and the original scheduled reconciliation
    can grant access without a repeat visit. The cabinet shows accelerated
    checking only after the window is saved.
@@ -47,10 +48,11 @@ continues with the tab closed. Use the Russian messages recorded in Linear.
    for this kind. Use 20-second slots anchored at `prepared_at`, with the first
    read due at 20 seconds. Skip missed slots and allow at most one attempt per
    slot. After a failed attempt, the next eligible slot starts at least 40
-   seconds after that attempt started. Each attempt reads only the saved LBX
-   subscription. A logical read may include the LBX client's bounded transport
-   retries or reauthentication. Bound the wait to five seconds and retain
-   resource ownership through existing cleanup.
+   seconds after that attempt started. Skipping a slot before any source work
+   is scheduled preserves the last attempt and its backoff. Each attempt reads
+   only the saved LBX subscription. A logical read may include the LBX client's
+   bounded transport retries or reauthentication. Bound the wait to five
+   seconds and retain resource ownership through existing cleanup.
 
    Schedule one closing read at the saved deadline, subject to the same
    eligibility and error backoff. Allow that read and its handoff only through
@@ -66,6 +68,8 @@ continues with the tab closed. Use the Russian messages recorded in Linear.
    `enroll_subscription(..., hint=True)` in the same transaction. This moves
    even an existing pending reconciliation forward and preserves a new hint
    when a reconciliation is already running.
+   A temporary financial block can occur during a saved window. Continue the
+   check while the purchase remains eligible for first activation.
    End the accelerated job if access was already committed, the subscription
    ends or the purchase loses its binding. Regular reconciliation uses the
    stored LBX customer, agreement and subscription IDs and the accepted purchase
@@ -95,9 +99,11 @@ contracts using the repository generator.
 
 Refresh the local `GET /api/paid-access` read when the cabinet window regains
 focus while visible, including when returning from a separate payment window
-leaves the cabinet document visible throughout. Reuse the paid read's session
-and in-flight request guards, and keep refreshes on visibility changes, Widget
-closure and the 30-second visible polling interval. These actions read local
+leaves the cabinet document visible throughout. Coalesce focus events during
+an in-flight paid-access read into one follow-up for the visible current
+session. Reuse the paid read's session and in-flight request guards, and keep
+refreshes on visibility changes, Widget closure and the 30-second visible
+polling interval. These actions read local
 status without reopening the Widget or changing the server deadline or LBX
 schedule. The card updates automatically on the next successful read after the
 access revision is committed.
@@ -116,7 +122,9 @@ access revision is committed.
   restart and reopening after expiry. Combine lost and failed enqueue cases
   around the same assertions: the Widget succeeds, the cabinet shows
   `unconfirmed` when fresh waiting evidence exists, and the scheduled worker
-  grants access without another open.
+  grants access without another open. For partial enqueue failure, flush the
+  real queue write before injecting an error. Use a fresh session to verify
+  that the activation row was rolled back and the regular job kept its schedule.
   Test the normal lane, logical lookup count, backoff, closing read and atomic
   handoff of already scheduled work. Reject a response beyond its budget and
   one from a stale attempt. Retain the existing proof matrix for block,

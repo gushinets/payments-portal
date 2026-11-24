@@ -137,7 +137,7 @@ it("refreshes while visible, pauses while hidden and catches up on visibility", 
   expect(paid).toHaveBeenCalledTimes(3);
 });
 
-it("refreshes on window focus only while visible with no paid read in flight", async () => {
+it("coalesces visible focus events behind an older paid read", async () => {
   renderCabinet();
   await screen.findByText(a.confirmed);
   const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
@@ -150,9 +150,37 @@ it("refreshes on window focus only while visible with no paid read in flight", a
   fireEvent.focus(window);
   await waitFor(() => expect(paid).toHaveBeenCalledTimes(2));
   fireEvent.focus(window);
+  fireEvent.focus(window);
   expect(paid).toHaveBeenCalledTimes(2);
-  await act(async () => finish(Response.json(paidState())));
+  const checking = emptyPaidState();
+  checking.products = [{
+    product_id: "proposal_ai", status: "no_paid_access", activation_check: "checking", observed_at: null, effective_until: null,
+  }];
+  await act(async () => finish(Response.json(checking)));
+  expect(paid).toHaveBeenCalledTimes(3);
   expect(screen.getByText(a.confirmed)).toBeVisible();
+});
+
+it.each(["hidden", "new session", "session refusal", "unmount"])("drops the pending focus refresh after %s", async (change) => {
+  let finish!: (response: Response) => void;
+  paid.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }));
+  const view = renderCabinet();
+  await waitFor(() => expect(paid).toHaveBeenCalledTimes(1));
+  fireEvent.focus(window);
+  if (change === "hidden") {
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    fireEvent(document, new Event("visibilitychange"));
+  } else if (change === "new session") {
+    window.localStorage.setItem(sessionStorageKey, "different-session");
+    fireEvent(window, new Event(sessionChangedEvent));
+  } else if (change === "unmount") {
+    view.unmount();
+  }
+  const response = change === "session refusal"
+    ? Response.json({ detail: { code: "billing_session_required" } }, { status: 401 })
+    : Response.json(paidState());
+  await act(async () => finish(response));
+  expect(paid).toHaveBeenCalledTimes(1);
 });
 
 it("expires a successful view at its server deadline even before the next periodic refresh", async () => {

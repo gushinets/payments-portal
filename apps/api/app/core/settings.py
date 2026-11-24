@@ -111,7 +111,7 @@ class Settings(BaseSettings):
     # Leave room for the claim/apply margin and refusal retry within urgent cadence.
     billing_worker_io_timeout_seconds: float = Field(default=60, gt=0, le=240, allow_inf_nan=False)
     billing_worker_scan_batch_size: int = Field(default=100, ge=1, le=100)
-    billing_widget_activation_window_seconds: int = Field(default=300, gt=0)
+    billing_widget_activation_window_seconds: int = Field(default=300, gt=0, le=3600)
     lbx_base_url: str = ""
     lbx_server_username: SecretStr = SecretStr("")
     lbx_server_password: SecretStr = SecretStr("")

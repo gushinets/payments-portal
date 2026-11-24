@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from pydantic import ValidationError
 
 from app.core.settings import Settings, _load_settings_env_file
 from apps.api.tests.support.settings import (
@@ -18,6 +19,19 @@ from apps.api.tests.support.settings import (
     configure_api_test_environment,
 )
 from scripts import repo
+
+
+@pytest.mark.parametrize("seconds", [1, 300, 780, 3600])
+def test_widget_activation_accepts_supported_window(monkeypatch: pytest.MonkeyPatch, seconds: int) -> None:
+    monkeypatch.setenv("BILLING_WIDGET_ACTIVATION_WINDOW_SECONDS", str(seconds))
+    assert Settings(_env_file=None).billing_widget_activation_window_seconds == seconds
+
+
+@pytest.mark.parametrize("seconds", [-1, 0, 3601, 300000000000])
+def test_widget_activation_rejects_invalid_window(monkeypatch: pytest.MonkeyPatch, seconds: int) -> None:
+    monkeypatch.setenv("BILLING_WIDGET_ACTIVATION_WINDOW_SECONDS", str(seconds))
+    with pytest.raises(ValidationError, match="billing_widget_activation_window_seconds"):
+        Settings(_env_file=None)
 
 
 @pytest.mark.parametrize("variable,value", [("PYTEST_ADDOPTS", "-k selected"), ("PYTEST_PLUGINS", "hide_tests")])

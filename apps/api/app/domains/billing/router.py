@@ -91,9 +91,12 @@ async def widget_bootstrap(
             detail={"code": error.code, "request_id": request_id_context.get()},
             headers={"Cache-Control": "no-store"},
         ) from None
+    request_id = request_id_context.get()
     if result.activation_opening is not None:
         tasks = BackgroundTasks()
-        tasks.add_task(enqueue_widget_activation, factory, result.activation_opening, activation_writer)
+        tasks.add_task(
+            enqueue_widget_activation, factory, result.activation_opening, activation_writer, request_id=request_id
+        )
         request.state.after_response_tasks = tasks
     return WidgetBootstrapResponse(
         presentation="payment" if result.purchase_id is not None else "account",
@@ -114,5 +117,5 @@ async def widget_bootstrap(
         widget_origin=result.origin,
         sdk_url=result.origin + "/lbxwidget.js",
         serviceBaseUrl=result.origin + "/api/rest/v1/client",
-        request_id=request_id_context.get(),
+        request_id=request_id,
     )

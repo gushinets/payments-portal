@@ -17,6 +17,7 @@ from app.domains.billing import background_recovery as recovery, work
 from app.domains.billing.work_contracts import WorkAttemptOutcome, WorkClaim
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases.widget_activation_poll import (
+    MAX_READ_CLEANUP_SECONDS,
     WidgetActivationReadFailure,
     WidgetActivationResult,
     finish_widget_activation_read,
@@ -47,7 +48,7 @@ async def check_widget_activation(
     attempt = await delegate(prepare_widget_activation_read, factory, configuration, claim)
     if attempt is None:
         return WorkAttemptOutcome.COMPLETED
-    budget.limit_deadline(attempt.monotonic_deadline)
+    budget.limit_deadline(attempt.monotonic_deadline, max_cleanup_seconds=MAX_READ_CLEANUP_SECONDS)
     result: WidgetActivationResult
     try:
         point = await timely_point(
@@ -55,7 +56,9 @@ async def check_widget_activation(
         )
         _, _, result = subscription_lifecycle(point)
         budget.check()
-    except (LbxError, PreflightDeadlineExceeded) as failure:
+    except PreflightDeadlineExceeded as failure:
+        result = WidgetActivationReadFailure(failure.code) if budget.source_scheduled else None
+    except LbxError as failure:
         result = WidgetActivationReadFailure(failure.code)
     return await delegate(finish_widget_activation_read, factory, configuration, claim, attempt, result)
 

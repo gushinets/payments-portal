@@ -23,7 +23,7 @@ export function usePaidAccess(
     let hadFocus = document.hasFocus();
     const onFocus = () => {
       hadFocus = true;
-      void refresh();
+      void refresh(true);
     };
     window.addEventListener("focus", onFocus);
     // A payment popup can return focus to the cross-origin Widget frame

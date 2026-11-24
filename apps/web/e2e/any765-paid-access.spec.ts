@@ -51,6 +51,7 @@ test("authenticated cabinet shows committed access independently per product wit
   await expect(cards.filter({ hasText: "proposal_ai" }).getByText("Приобретённый лимит: 100 generation", { exact: true })).toBeVisible();
   await expect(cards.filter({ hasText: "brief_decoder" }).getByText(a.unavailable)).toBeVisible();
   await expect(page.getByText(a.usageUnavailable)).toHaveCount(2);
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const accessibility = await new AxeBuilder({ page }).analyze();
   expect(accessibility.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
@@ -107,6 +108,7 @@ test("payment popup return refreshes visible cabinet before the next poll", asyn
   const brief = cards.filter({ hasText: "brief_decoder" });
   await expect(proposal.getByRole("status").filter({ hasText: a.checking })).toBeVisible();
   await expect(brief.getByText(a.unavailable)).toBeVisible();
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
   const accessibility = await new AxeBuilder({ page }).analyze();
   expect(accessibility.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath("paid-cabinet-checking.png"), fullPage: true });
