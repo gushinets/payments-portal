@@ -72,6 +72,13 @@ The PR description records verification of the new build and hosted revision.
 The historical scanner observations above still identify their original
 revisions.
 
+### SMTP rollout follow-up
+
+A full `image-up` now imports the selected backend image's settings through
+the migration service before stopping the running API. A production relay
+configured with TLS disabled is rejected at this point, before migration or
+service replacement. The frontend-only path still updates only the web service.
+
 ## Remaining actions
 
 Four individual false-positive proposals and seven intentional-use

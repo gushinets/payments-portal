@@ -98,9 +98,11 @@ def test_image_update_keeps_selected_networks(
     assert not model["networks"]["backend"].get("external", False)
     assert [calls[0][i + 1] for i, value in enumerate(calls[0]) if value == "-f"] == files
     assert all(call[: len(calls[0]) - 3] == calls[0][:-3] for call in calls[1:])
-    assert [call[-1] for call in calls[1:]] == (
-        ["web"] if frontend_only else ["api", "postgres", "migrate", "api", "web"]
-    )
+    if frontend_only:
+        assert [call[-1] for call in calls[1:]] == ["web"]
+    else:
+        assert calls[1][-3:] == ["migrate", "-c", "import app.core.settings"]
+        assert [call[-1] for call in calls[2:]] == ["api", "postgres", "migrate", "api", "web"]
 
 
 @pytest.mark.parametrize("contents", [None, "services: [invalid]"])
@@ -129,6 +131,7 @@ def test_image_up_parser_accepts_optional_network_overlay() -> None:
 def fake_compose(
     monkeypatch: pytest.MonkeyPatch,
     *,
+    reject_settings: bool = False,
     fail_migration: bool = False,
     unhealthy_web: bool = False,
     api_ref: str = "portal-api:reviewed",
@@ -150,6 +153,8 @@ def fake_compose(
                     }
                 ),
             )
+        if reject_settings and "--entrypoint" in command:
+            raise subprocess.CalledProcessError(1, command)
         if fail_migration and command[-1] == "migrate":
             raise subprocess.CalledProcessError(1, command)
         if unhealthy_web and command[-1] == "web" and "--wait" in command:
@@ -160,13 +165,26 @@ def fake_compose(
     return calls
 
 
+def test_invalid_candidate_settings_refused_before_stopping_api(
+    monkeypatch: pytest.MonkeyPatch, selection: argparse.Namespace
+) -> None:
+    calls = fake_compose(monkeypatch, reject_settings=True)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        image_deploy.deploy(selection)
+
+    assert len(calls) == 2
+    assert calls[0][-3:] == ["config", "--format", "json"]
+    assert calls[1][-3:] == ["migrate", "-c", "import app.core.settings"]
+
+
 def test_migration_failure_leaves_admission_closed(
     monkeypatch: pytest.MonkeyPatch, selection: argparse.Namespace
 ) -> None:
     calls = fake_compose(monkeypatch, fail_migration=True)
     with pytest.raises(subprocess.CalledProcessError):
         image_deploy.deploy(selection)
-    assert calls[1][-2:] == ["stop", "api"]
+    assert calls[2][-2:] == ["stop", "api"]
     assert calls[-1][-4:] == ["run", "--rm", "--no-deps", "migrate"]
     assert not any("up" in call and call[-1] == "api" for call in calls)
     assert not any("--volumes" in call or "--build" in call for call in calls)
@@ -183,7 +201,22 @@ def test_frontend_update_touches_only_web(monkeypatch: pytest.MonkeyPatch, selec
 def test_install_migrates_before_ready_backend(monkeypatch: pytest.MonkeyPatch, selection: argparse.Namespace) -> None:
     calls = fake_compose(monkeypatch)
     image_deploy.deploy(selection)
-    assert [call[-1] for call in calls[1:]] == ["api", "postgres", "migrate", "api", "web"]
+    assert calls[1][len(calls[0]) - 3 :] == [
+        "run",
+        "--rm",
+        "--no-deps",
+        "--pull",
+        "never",
+        "--no-TTY",
+        "--env",
+        "PYTHONPATH=apps/api",
+        "--entrypoint",
+        "python",
+        "migrate",
+        "-c",
+        "import app.core.settings",
+    ]
+    assert [call[-1] for call in calls[2:]] == ["api", "postgres", "migrate", "api", "web"]
     assert "--wait" in calls[-2]
 
 

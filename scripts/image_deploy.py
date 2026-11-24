@@ -73,6 +73,22 @@ def deploy(args: argparse.Namespace) -> None:
             ]
         else:
             commands = [
+                # Check the candidate's settings with the migration service's image and environment.
+                (
+                    "run",
+                    "--rm",
+                    "--no-deps",
+                    "--pull",
+                    "never",
+                    "--no-TTY",
+                    "--env",
+                    "PYTHONPATH=apps/api",
+                    "--entrypoint",
+                    "python",
+                    "migrate",
+                    "-c",
+                    "import app.core.settings",
+                ),
                 # The API owns the embedded billing worker. Stop all old writes first.
                 ("stop", "api"),
                 ("up", "-d", "--no-build", "--pull", "never", "--wait", "postgres"),
