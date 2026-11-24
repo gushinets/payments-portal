@@ -1,6 +1,6 @@
 # ANY-896 — Accept generated passwords in registration and reset
 
-Status: planned
+Status: implementation and verification complete. The PR is still in review.
 
 [Linear issue and agreed policy](https://linear.app/paveldik/issue/ANY-896/accept-password-manager-passwords-in-portal-registration-and-reset#comment-3693e348-8ee4-4494-9556-03bae85ad6d4)
 
