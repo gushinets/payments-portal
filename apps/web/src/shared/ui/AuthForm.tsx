@@ -111,7 +111,7 @@ export function AuthForm({
   const [personalConsent, setPersonalConsent] = useState(false);
   const [offerConsent, setOfferConsent] = useState(false);
   const submittingRef = useRef(false);
-  const passwordRequirementsId = useId();
+  const passwordHintId = useId();
 
   function selectMode(nextMode: AuthMode) {
     setMode(nextMode);
@@ -234,14 +234,8 @@ export function AuthForm({
           className="input"
           type="password"
           autoComplete={mode === "register" ? "new-password" : "current-password"}
-          placeholder={
-            mode === "register"
-              ? t("fields.newPasswordPlaceholder")
-              : t("fields.passwordPlaceholder")
-          }
-          aria-describedby={
-            mode === "register" ? passwordRequirementsId : undefined
-          }
+          placeholder={mode === "login" ? t("fields.passwordPlaceholder") : undefined}
+          aria-describedby={mode === "register" ? passwordHintId : undefined}
           value={password}
           onChange={(event) => setPassword(event.target.value)}
         />
@@ -259,23 +253,9 @@ export function AuthForm({
 
       {mode === "register" ? (
         <>
-          <div
-            className="password-requirements"
-            id={passwordRequirementsId}
-          >
-            <p>{t("passwordRequirements.label")}</p>
-            <ul>
-              <li>{t("passwordRequirements.length")}</li>
-              <li>{t("passwordRequirements.uppercase")}</li>
-              <li>{t("passwordRequirements.lowercase")}</li>
-              <li>{t("passwordRequirements.digit")}</li>
-              <li>
-                {t("passwordRequirements.special", {
-                  characters: "!@#$%^&*()-_=+[]{}:,.?"
-                })}
-              </li>
-            </ul>
-          </div>
+          <p className="password-hint" id={passwordHintId}>
+            {t("passwordLengthHint")}
+          </p>
 
           <label className="field-label">
             {t("fields.passwordConfirmLabel")}
