@@ -76,9 +76,10 @@ def test_cached_base_reinstall_uses_versions_from_current_index(tmp_path: Path) 
     dockerfile = (ROOT / "apps/api/Dockerfile").read_text(encoding="utf-8")
     production = dockerfile.split("FROM base AS production\n", 1)[1]
     layer = production.split("RUN ", 1)[1].split("\n\n", 1)[0].replace("\\\n", "")
-    transaction = layer[layer.index("apt-get update") : layer.index("&& test ! -e /usr/bin/infocmp")]
+    transaction = layer[layer.index("apt-get ") : layer.index("&& test ! -e /usr/bin/infocmp")]
     stubs = r"""
 apt-get() {
+  if test "$1" = --error-on=any; then shift; fi
   printf '%s\n' "$*" >> commands.log
   case "$1" in
     update) touch refreshed-index ;;
@@ -98,3 +99,30 @@ dpkg-query() {
     assert result.returncode == 0, result.stderr
     commands = (tmp_path / "commands.log").read_text(encoding="utf-8").splitlines()
     assert [line.split()[0] for line in commands] == ["update", "upgrade", "install"]
+
+
+@pytest.mark.parametrize("stage", ["base", "production"])
+def test_build_aborts_on_partial_index_refresh(tmp_path: Path, stage: str) -> None:
+    dockerfile = (ROOT / "apps/api/Dockerfile").read_text(encoding="utf-8")
+    source = dockerfile if stage == "base" else dockerfile.split("FROM base AS production\n", 1)[1]
+    layer = source.split("RUN ", 1)[1].split("\n\n", 1)[0].replace("\\\n", "")
+    transaction = layer[layer.index("apt-get ") :]
+    stubs = r"""
+apt-get() {
+  printf '%s\n' "$*" >> commands.log
+  if [[ "$*" == *update* ]]; then
+    echo "Security index fetch failed; stable index remains available" >&2
+    [[ "$*" != *--error-on=any* ]] # Plain APT accepts this partial refresh.
+  fi
+}
+dpkg-query() { printf no:no; }
+dpkg() { printf '%s\n' "dpkg $*" >> commands.log; }
+dpkg-statoverride() { :; }
+rm() { :; }
+test() { return 0; }
+"""
+    result = run_shell(stubs + "\n" + transaction, tmp_path)
+    assert result.returncode != 0
+    assert "Security index fetch failed" in result.stderr
+    commands = (tmp_path / "commands.log").read_text(encoding="utf-8").splitlines()
+    assert len(commands) == 1  # No upgrade, reinstall or purge after a partial refresh.

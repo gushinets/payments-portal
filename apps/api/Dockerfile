@@ -5,7 +5,7 @@ ENV PYTHONUNBUFFERED=1
 ENV VIRTUAL_ENV=/opt/api-venv
 ENV PATH="/opt/api-venv/bin:$PATH"
 
-RUN apt-get update \
+RUN apt-get --error-on=any update \
     && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
@@ -57,7 +57,7 @@ RUN groupadd --system app \
     && useradd --system --gid app --home-dir /app --no-create-home app \
     && install -d -o app -g app -m 0700 /run/payments-portal \
     && printf '%s\n' 'path-exclude=/usr/bin/infocmp' 'path-exclude=/usr/bin/nsenter' > /etc/dpkg/dpkg.cfg.d/99-api-runtime-exclusions \
-    && apt-get update \
+    && apt-get --error-on=any update \
     && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes --no-install-recommends \
     && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends --reinstall \
          "ncurses-bin=$(dpkg-query -W -f='${Version}' ncurses-bin)" \
