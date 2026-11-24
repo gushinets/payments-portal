@@ -18,6 +18,9 @@ dependency-installation policy ownership. No merge or residual-risk approval.
 - [x] Reconcile the existing PR with main, preserve both test suites and verify
   mergeability. Review 17 original keys and N01 independently and correct the
   ledger for upstream changes and review evidence.
-- [ ] Record canonical and hosted verification results and hand off the PR.
+- [x] Record canonical and hosted verification results and hand off the PR.
+- [x] Apply the targeted upstream patch for the local production build failure
+  found in verification. Preserve prior verification and record the follow-up
+  results in PR #190.
 - [ ] Revalidate the original keys on main after a human-approved merge. Sonar
   issue administration remains pending for the documented per-issue dispositions.

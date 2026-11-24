@@ -59,6 +59,19 @@ reviewed. The workflow stayed disabled and live SMTP was outside the tests.
 - The follow-up evidence and environment-example wording do not change
   application or workflow code.
 
+### Windows production build follow-up
+
+The full local check on `f41d7ed369b8c4cbb365253254358a121464ed45` passed
+its fast phase and stopped when Next.js 16.4.2 raised `SecurityFatalError`
+during the production build. The build follow-up reuses the exact dependency
+manifest and generated lockfile changes from [Dependabot PR #176](https://github.com/gushinets/payments-portal/pull/176).
+It pins Next.js 16.4.5, the [upstream security release](https://github.com/vercel/next.js/releases/tag/v16.4.5).
+With a clean lockfile install on Windows, both development-origin tests and
+`npm run build:web` passed with the standard advisory check enabled.
+The PR description records verification of the new build and hosted revision.
+The historical scanner observations above still identify their original
+revisions.
+
 ## Remaining actions
 
 Four individual false-positive proposals and seven intentional-use
