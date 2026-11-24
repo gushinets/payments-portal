@@ -381,7 +381,18 @@ committing the hint. When fresh regular proof has already queued the linked
 first-primary inventory, it reuses that attempt. The hint preserves an
 in-flight lease. A later worker can finish the exact Widget wakeup without
 starting another source read once matching work has queued the linked selection.
-The regular reconciliation row carries the link without locking the Widget row.
+
+When Widget advances a pending reconciliation, a live inventory attempt can
+also cover that wakeup if its saved `next_attempt_at` was at or before the
+activation signal. The worker reuses fresh authoritative subscription proof from
+the exact inventory attempt while its lease is live and its enqueue generation
+and the subscription fence still match. Consuming the redundant wakeup restores
+the original reconciliation due time and priority. When that due time has
+arrived or a newer reconciliation hint has changed the generation, the regular
+check still runs.
+
+The reconciliation row records wakeup coverage independently of the cabinet's
+inventory link, without locking the Widget row.
 Paid access and purchased allowances are written by standard reconciliation and
 primary selection from their own authoritative proof.
 

@@ -70,7 +70,11 @@ continues with the tab closed. Use the Russian messages recorded in Linear.
    running on fresh authoritative evidence. A hint during reconciliation
    preserves the running claim. An exact Widget wakeup can be finished before
    claiming another source fence once that reconciliation has queued the
-   linked inventory. Independent reconciliation due times and hints still apply.
+   linked inventory. A wakeup for a previously pending reconciliation can also
+   use fresh proof from a live inventory attempt whose saved `next_attempt_at`
+   was at or before the activation signal.
+   Follow the [worker rules for wakeup coverage](../../engineering/billing-background-operations.md#enrollment-cadence-and-recovery)
+   to restore the original schedule and honor independent reconciliation work.
    A temporary financial block can occur during a saved window. Continue the
    check while the purchase remains eligible for first activation.
    End the accelerated job if access was already committed, the subscription
