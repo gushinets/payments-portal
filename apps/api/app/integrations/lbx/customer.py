@@ -48,6 +48,7 @@ class NewCustomer(PrivateDto):
     user_name: str | None = None
     user_surname: str | None = None
     user_patronymic: str | None = None
+    days_for_paying_orders: Annotated[int, Field(ge=0)] | None = None
 
     def request_document(self) -> dict[str, Any]:
         alphabet = string.ascii_letters + string.digits

@@ -39,21 +39,13 @@
       "emailLabel": "Email",
       "passwordLabel": "Password",
       "passwordPlaceholder": "Inserisci la password",
-      "newPasswordPlaceholder": "Da 12 a 128 caratteri",
       "passwordConfirmLabel": "Ripeti la password",
       "passwordConfirmPlaceholder": "Inserisci di nuovo la password",
       "firstNameLabel": "Nome (facoltativo)",
       "surnameLabel": "Cognome (facoltativo)",
       "patronymicLabel": "Patronimico (facoltativo)"
     },
-    "passwordRequirements": {
-      "label": "Requisiti della password",
-      "length": "Da 12 a 128 caratteri",
-      "uppercase": "Almeno una lettera latina maiuscola (A–Z)",
-      "lowercase": "Almeno una lettera latina minuscola (a–z)",
-      "digit": "Almeno una cifra (0–9)",
-      "special": "Almeno uno dei caratteri {characters}"
-    },
+    "passwordLengthHint": "Da 12 a 128 caratteri.",
     "forgotPasswordAction": "Hai dimenticato la password?",
     "actions": {
       "createAccount": "Crea account",
@@ -63,7 +55,6 @@
     "validation": {
       "invalidEmail": "Inserisci un indirizzo email valido.",
       "passwordTooShort": "La password deve contenere almeno 8 caratteri.",
-      "passwordPolicyNotMet": "La password non soddisfa tutti i requisiti.",
       "passwordMismatch": "Le password non corrispondono.",
       "personalConsentRequired": "Devi acconsentire al trattamento dei dati personali.",
       "offerConsentRequired": "Devi accettare i termini dell’offerta pubblica."
@@ -78,7 +69,7 @@
       "invalidCredentials": "L’email o la password non sono corrette.",
       "missingPersonalConsent": "Devi acconsentire al trattamento dei dati personali.",
       "missingOfferConsent": "Devi accettare i termini dell’offerta pubblica.",
-      "passwordPolicyNotMet": "La password non soddisfa tutti i requisiti.",
+      "passwordPolicyNotMet": "La password deve contenere da 12 a 128 caratteri.",
       "internalServer": "Il servizio è temporaneamente non disponibile. Riprova più tardi.",
       "contract": "Il servizio ha restituito una risposta imprevista. Riprova.",
       "network": "Impossibile connettersi al servizio. Controlla la connessione e riprova.",
@@ -232,21 +223,12 @@
       "description": "Imposta una nuova password per il tuo account AnytoolAI. Dopo la modifica, le sessioni attive verranno terminate.",
       "fields": {
         "passwordLabel": "Nuova password",
-        "passwordPlaceholder": "Da 12 a 128 caratteri",
         "passwordConfirmLabel": "Ripeti la password",
         "passwordConfirmPlaceholder": "Inserisci di nuovo la password"
       },
-      "passwordRequirements": {
-        "label": "Requisiti della password",
-        "length": "Da 12 a 128 caratteri",
-        "uppercase": "Almeno una lettera latina maiuscola (A–Z)",
-        "lowercase": "Almeno una lettera latina minuscola (a–z)",
-        "digit": "Almeno una cifra (0–9)",
-        "special": "Almeno uno dei caratteri {characters}"
-      },
+      "passwordLengthHint": "Da 12 a 128 caratteri.",
       "validation": {
         "missingToken": "Il link per modificare la password non è valido. Richiedi un nuovo link.",
-        "passwordPolicyNotMet": "La password non soddisfa tutti i requisiti.",
         "passwordMismatch": "Le password non corrispondono."
       },
       "notices": {
@@ -260,8 +242,8 @@
     "errors": {
       "invalidOrExpiredToken": "Il link non è valido o è scaduto. Richiedi un nuovo link.",
       "rateLimited": "Troppi tentativi di recupero della password. Riprova più tardi.",
-      "invalidInput": "Controlla l’indirizzo email e assicurati che la password soddisfi tutti i requisiti.",
-      "passwordPolicyNotMet": "La password non soddisfa tutti i requisiti.",
+      "invalidInput": "Controlla i dati inseriti e riprova.",
+      "passwordPolicyNotMet": "La password deve contenere da 12 a 128 caratteri.",
       "internalServer": "Il servizio è temporaneamente non disponibile. Riprova più tardi.",
       "contract": "Il servizio ha restituito una risposta imprevista. Riprova.",
       "network": "Impossibile connettersi al servizio. Controlla la connessione e riprova.",

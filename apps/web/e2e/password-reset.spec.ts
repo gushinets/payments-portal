@@ -100,11 +100,11 @@ test("password reset confirmation submits token and new password", async ({ page
 });
 
 test("password reset confirmation relies on backend new-password policy", async ({ page }) => {
+  const password = " α\u0301βγδεζηθικ ";
   const requests: unknown[] = [];
   await page.route("**/api/auth/password-reset/confirm", async (route) => {
-    const payload = route.request().postDataJSON();
-    requests.push(payload);
-    if (payload.password === "Aa1!aaaaaaa") {
+    requests.push(route.request().postDataJSON());
+    if (requests.length === 1) {
       await route.fulfill({
         status: 400,
         contentType: "application/json",
@@ -120,19 +120,25 @@ test("password reset confirmation relies on backend new-password policy", async 
   });
 
   await page.goto("/ru/reset-password#token=shared-policy-token");
-  await page.getByLabel("Новый пароль").fill("Aa1!aaaaaaa");
-  await page.getByLabel("Повторите пароль").fill("Aa1!aaaaaaa");
+  await expect(page).toHaveURL(/\/ru\/reset-password$/);
+  const newPassword = page.getByLabel("Новый пароль", { exact: true });
+  const confirmation = page.getByLabel("Повторите пароль");
+  await expect(newPassword).toHaveAccessibleDescription("От 12 до 128 символов.");
+  await expect(newPassword).toHaveAttribute("autocomplete", "new-password");
+  await expect(confirmation).toHaveAttribute("autocomplete", "new-password");
+  await newPassword.fill("Aa1!aaaaaaa");
+  await confirmation.fill("Aa1!aaaaaaa");
   await page.getByRole("button", { name: "Сменить пароль" }).click();
 
   await expect(
-    page.getByText("Пароль не соответствует всем требованиям.")
+    page.getByText("Пароль должен содержать от 12 до 128 символов.")
   ).toBeVisible();
   expect(requests).toEqual([
     { token: "shared-policy-token", password: "Aa1!aaaaaaa" }
   ]);
 
-  await page.getByLabel("Новый пароль").fill("Valid-reset-123!");
-  await page.getByLabel("Повторите пароль").fill("Valid-reset-123!");
+  await newPassword.fill(password);
+  await confirmation.fill(password);
   await page.getByRole("button", { name: "Сменить пароль" }).click();
 
   await expect(
@@ -140,7 +146,7 @@ test("password reset confirmation relies on backend new-password policy", async 
   ).toBeVisible();
   expect(requests).toEqual([
     { token: "shared-policy-token", password: "Aa1!aaaaaaa" },
-    { token: "shared-policy-token", password: "Valid-reset-123!" }
+    { token: "shared-policy-token", password }
   ]);
 });
 
