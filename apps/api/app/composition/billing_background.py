@@ -68,7 +68,14 @@ async def check_widget_activation(
         result = WidgetActivationReadFailure(failure.code) if budget.source_scheduled else None
     except LbxError as failure:
         result = WidgetActivationReadFailure(failure.code)
-    return await delegate(finish_widget_activation_read, factory, configuration, claim, attempt, result)
+    try:
+        return await delegate(finish_widget_activation_read, factory, configuration, claim, attempt, result)
+    except BillingRefused as error:
+        if error.code != "billing_busy":
+            raise
+        return await delegate(
+            defer_widget_activation_read, factory, claim, attempt=attempt, source_scheduled=budget.source_scheduled
+        )
 
 
 async def recover_operation(

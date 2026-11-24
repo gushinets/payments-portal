@@ -357,7 +357,8 @@ async def test_any897_activation_handoff_advances_real_reconciliation_and_first_
     [
         {
             "prepared_at": PERIOD_TEST_PREPARED_AT,
-            "billing_widget_activation_window_seconds": 300,
+            # Keep an ordinary inventory retry inside the saved window for all queue jitter values.
+            "billing_widget_activation_window_seconds": 360,
             "billing_worker_io_timeout_seconds": 120,
         }
     ],
@@ -521,19 +522,35 @@ async def test_any897_keeps_checking_when_regular_reconciliation_confirms_activa
 
 @pytest.mark.parametrize("scenario", [True], indirect=True)
 @pytest.mark.parametrize(
-    "activation_polling",
-    [{"prepared_at": PERIOD_TEST_PREPARED_AT, "billing_widget_activation_window_seconds": 780}],
-    indirect=True,
+    "activation_polling, widget_probe_at, delay",
+    [
+        pytest.param(
+            {"prepared_at": PERIOD_TEST_PREPARED_AT, "billing_widget_activation_window_seconds": 780},
+            None,
+            None,
+            id="selected-product",
+        ),
+        pytest.param({"prepared_at": PERIOD_TEST_PREPARED_AT}, 22, None, id="inventory-running"),
+        pytest.param({"prepared_at": PERIOD_TEST_PREPARED_AT}, 20, None, id="inventory-queued"),
+        pytest.param({"prepared_at": PERIOD_TEST_PREPARED_AT}, 20, "lease", id="reclaimed-with-widget-wakeup"),
+        pytest.param({"prepared_at": PERIOD_TEST_PREPARED_AT}, 20, "deadline", id="late-start-with-widget-wakeup"),
+    ],
+    indirect=["activation_polling"],
 )
 async def test_any897_widget_hint_does_not_restart_healthy_two_product_inventory(
     activation_polling: ActivationPolling,
+    cabinet: httpx.AsyncClient,
     scenario: tuple[PurchaseTransport, SourceResources, Purchase],
     monkeypatch: pytest.MonkeyPatch,
+    widget_probe_at: int | None,
+    delay: str | None,
 ) -> None:
     polling = activation_polling
     factory = polling.factory
-    regular_id, regular_due, _ = reconciliation_schedule(factory)
-    due = (regular_due - polling.window.prepared_at).total_seconds()
+    regular_id, regular_due, regular_generation = reconciliation_schedule(factory)
+    prepared_at = polling.window.prepared_at
+    due = (regular_due - prepared_at).total_seconds()
+    started_by_sibling = widget_probe_at is not None
     template = scenario[2]
     legacy_meaning = template.accepted.meaning.model_copy(update={"expected_technical_terms_digest": None})
     historical_link(
@@ -549,12 +566,25 @@ async def test_any897_widget_hint_does_not_restart_healthy_two_product_inventory
                 BillingWorkItem.work_kind == work.RECONCILIATION, BillingWorkItem.work_item_id != regular_id
             )
         ).one()
-        sibling.next_attempt_at = regular_due + timedelta(days=1)
+        if started_by_sibling:
+            assert due > 23
+            due = 18
+            sibling.next_attempt_at = prepared_at + timedelta(seconds=due)
+            sibling.priority = 1
+        else:
+            sibling.next_attempt_at = regular_due + timedelta(days=1)
     for point in polling.transport.subscriptions:
         point["state"] = 2
-        prove_month(point, polling.window.prepared_at)
+        prove_month(point, prepared_at)
     assert await polling.tick(due, WorkLane.URGENT)
-    assert await polling.tick(due + 0.5)
+    if not started_by_sibling:
+        assert await polling.tick(due + 0.5)
+    elif widget_probe_at == 20:
+        assert await polling.tick(widget_probe_at)
+        with factory() as db:
+            regular = db.get(BillingWorkItem, regular_id)
+            assert regular is not None
+            assert (regular.next_attempt_at, regular.enqueue_generation) == (polling.now, regular_generation + 1)
 
     entered, release = asyncio.Event(), asyncio.Event()
     original = polling.worker.client.discover_subscriptions
@@ -565,10 +595,50 @@ async def test_any897_widget_hint_does_not_restart_healthy_two_product_inventory
         return await original(**kwargs)
 
     monkeypatch.setattr(polling.worker.client, "discover_subscriptions", pause_discovery)
-    inventory = asyncio.create_task(polling.tick(due + 1, WorkLane.URGENT))
+    pickup = 21 if started_by_sibling else due + 1
+    if delay == "lease":
+        first = asyncio.create_task(polling.tick(pickup, WorkLane.URGENT))
+        try:
+            await asyncio.wait_for(entered.wait(), 5)
+            with factory() as db:
+                attempt = db.scalars(
+                    select(BillingWorkItem).where(BillingWorkItem.work_kind == BillingWorkKind.CUSTOMER_INVENTORY)
+                ).one()
+                assert attempt.attempt_count == 1 and attempt.lease_expires_at is not None
+                pickup = (attempt.lease_expires_at - prepared_at).total_seconds()
+        finally:
+            # Lose the worker during discovery and let another worker reclaim the same queued work.
+            first.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await first
+            entered.clear()
+    elif delay == "deadline":
+        pickup = (polling.window.deadline_at + activation_windows.CLOSING_GRACE - prepared_at).total_seconds()
+
+    inventory = asyncio.create_task(polling.tick(pickup, WorkLane.URGENT))
     try:
         await asyncio.wait_for(entered.wait(), 5)
-        extra = await polling.tick(due + 2, WorkLane.URGENT)
+        if started_by_sibling:
+            with factory() as db:
+                attempt = db.scalars(
+                    select(BillingWorkItem).where(BillingWorkItem.work_kind == BillingWorkKind.CUSTOMER_INVENTORY)
+                ).one()
+                assert attempt.next_attempt_at == prepared_at + timedelta(seconds=18)
+                assert attempt.last_attempt_started_at == prepared_at + timedelta(seconds=pickup)
+                assert attempt.attempt_count == (2 if delay == "lease" else 1)
+        if delay is not None:
+            assert prepared_at + timedelta(seconds=pickup + 2) < regular_due
+            monkeypatch.setattr(paid_read, "database_now", lambda db: polling.now)
+            response = await cabinet.get("/api/paid-access")
+            assert response.status_code == 200
+            body = response.json()
+            (selected,) = [product for product in body["products"] if product["product_id"] == "proposal_ai"]
+            assert (selected["activation_check"], body["access_revision"]) == ("unconfirmed", 0)
+        if widget_probe_at == 22:
+            assert await polling.tick(widget_probe_at)
+        requests_before = len(polling.transport.requests)
+        extra = await polling.tick(pickup + 2 if started_by_sibling else pickup + 1, WorkLane.URGENT)
+        repeated_source_read = len(polling.transport.requests) != requests_before
     finally:
         release.set()
         assert await inventory
@@ -580,7 +650,16 @@ async def test_any897_widget_hint_does_not_restart_healthy_two_product_inventory
             "brief_decoder",
         }
         assert state.access_revision == 1
-    assert not extra
+        assert (
+            db.scalar(select(PurchasedAllowance.quantity).where(PurchasedAllowance.product_id == "proposal_ai")) == 100
+        )
+        if started_by_sibling:
+            regular = db.get(BillingWorkItem, regular_id)
+            assert regular is not None
+            assert regular.next_attempt_at == regular_due
+            assert regular.enqueue_generation == regular_generation + int(widget_probe_at == 20)
+    assert not repeated_source_read
+    assert extra == (widget_probe_at == 20)
 
 
 @pytest.mark.parametrize("scenario", [True], indirect=True)
@@ -757,6 +836,92 @@ async def test_any897_cabinet_tracks_only_the_linked_inventory_attempt(
     retry = work.claim_work(polling.factory, polling.worker.configuration, WorkLane.URGENT)
     assert retry is not None and retry.id == claim.id and retry.owner != claim.owner
     assert await cabinet_status(cabinet) == ("unconfirmed", 0)
+
+
+@pytest.mark.parametrize("scenario", [True], indirect=True)
+@pytest.mark.parametrize("activation_polling", [{"prepared_at": PERIOD_TEST_PREPARED_AT}], indirect=True)
+@pytest.mark.parametrize("reclaim", [True, False], ids=["expired-lease", "after-widget-deadline"])
+async def test_any897_cabinet_does_not_relink_ordinary_inventory_attempt(
+    activation_polling: ActivationPolling,
+    cabinet: httpx.AsyncClient,
+    scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    monkeypatch: pytest.MonkeyPatch,
+    reclaim: bool,
+) -> None:
+    polling = activation_polling
+    factory = polling.factory
+    window = polling.window
+    _, original_due, _ = reconciliation_schedule(factory)
+    monkeypatch.setattr(paid_read, "database_now", lambda db: polling.now)
+    purchase = scenario[2]
+    inventory_due = window.prepared_at + timedelta(seconds=18)
+    with factory() as db, db.begin():
+        coalesce(
+            db,
+            kind=BillingWorkKind.CUSTOMER_INVENTORY,
+            key=f"{purchase.account_id}:{purchase.customer_id}",
+            scope_kind="customer",
+            reference=str(purchase.customer_id),
+            due=inventory_due,
+            priority=1,
+            payload={},
+            hint=True,
+        )
+    activate(polling.transport)
+    prove_month(polling.transport.subscriptions[0], window.prepared_at)
+
+    entered, release = asyncio.Event(), asyncio.Event()
+    discover = polling.worker.client.discover_subscriptions
+
+    async def pause_discovery(**kwargs: Any) -> tuple[Subscription, ...]:
+        entered.set()
+        await release.wait()
+        return await discover(**kwargs)
+
+    monkeypatch.setattr(polling.worker.client, "discover_subscriptions", pause_discovery)
+    previous_owner = None
+    if reclaim:
+        first = asyncio.create_task(polling.tick(19, WorkLane.URGENT))
+        try:
+            await asyncio.wait_for(entered.wait(), 5)
+            assert await polling.tick(20)
+            assert await cabinet_status(cabinet) == ("checking", 0)
+            with factory() as db:
+                row = db.scalars(
+                    select(BillingWorkItem).where(BillingWorkItem.work_kind == BillingWorkKind.CUSTOMER_INVENTORY)
+                ).one()
+                assert row.lease_expires_at is not None and row.lease_owner is not None
+                previous_owner = row.lease_owner
+                pickup_at = row.lease_expires_at
+        finally:
+            # Simulate losing the worker during source I/O. The queue lease must expire naturally.
+            first.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await first
+        entered.clear()
+    else:
+        pickup_at = window.deadline_at + activation_windows.CLOSING_GRACE
+        assert WidgetActivationWindow.from_work(polling.job()).completion is None
+
+    assert pickup_at < original_due
+    polling.now = pickup_at
+    assert await cabinet_status(cabinet) == ("unconfirmed", 0)
+    inventory = asyncio.create_task(polling.tick((pickup_at - window.prepared_at).total_seconds(), WorkLane.URGENT))
+    try:
+        await asyncio.wait_for(entered.wait(), 5)
+        with factory() as db:
+            row = db.scalars(
+                select(BillingWorkItem).where(BillingWorkItem.work_kind == BillingWorkKind.CUSTOMER_INVENTORY)
+            ).one()
+            assert row.next_attempt_at == inventory_due
+            assert row.last_attempt_started_at == pickup_at
+            assert row.attempt_count == (2 if reclaim else 1)
+            assert row.lease_owner is not None and row.lease_owner != previous_owner
+        assert await cabinet_status(cabinet) == ("unconfirmed", 0)
+    finally:
+        release.set()
+        assert await inventory
+    assert await cabinet_status(cabinet) == (None, 1)
 
 
 @pytest.mark.parametrize("handoff", [False, True], ids=["closing-read", "handoff"])
@@ -1075,6 +1240,57 @@ async def test_any897_local_refusal_preserves_the_last_widget_source_attempt(
             WidgetActivationCompletionReason.WINDOW_EXPIRED
         )
         assert not await polling.tick(301)
+
+
+@pytest.mark.parametrize("activation_polling", [{"billing_widget_activation_window_seconds": 300}], indirect=True)
+@pytest.mark.parametrize("busy_at", [240, 300], ids=["ordinary-slot", "closing-slot"])
+async def test_any897_local_refusal_after_widget_read_preserves_the_slot_cadence(
+    activation_polling: ActivationPolling, monkeypatch: pytest.MonkeyPatch, busy_at: int
+) -> None:
+    polling = activation_polling
+    factory = polling.factory
+    regular = reconciliation_schedule(factory)
+    assert await polling.tick(220)
+    get_subscription = polling.worker.client.get_subscription
+    if busy_at == 300:
+        activate(polling.transport)
+
+    with factory() as locker, locker.begin():
+
+        async def read_then_lock(*, subscription_id: int, budget: PreflightBudget) -> Subscription:
+            point = await get_subscription(subscription_id=subscription_id, budget=budget)
+            user_id = locker.scalar(select(ExternalSubscription.user_id))
+            assert locker.get(User, user_id, with_for_update=True) is not None
+            polling.now += timedelta(seconds=1)
+            return point
+
+        with monkeypatch.context() as patch:
+            patch.setattr(polling.worker.client, "get_subscription", read_then_lock)
+            assert await polling.tick(busy_at)
+
+    after = polling.job()
+    assert len(polling.transport.requests) == after.attempt_count == 2
+    assert after.last_attempt_started_at == polling.window.prepared_at + timedelta(seconds=busy_at)
+    assert after.last_error_classification == "billing_busy"
+    assert after.lease_owner is None
+    assert reconciliation_schedule(factory) == regular
+    if busy_at == 240:
+        assert after.work_state == BillingWorkState.PENDING
+        assert after.next_attempt_at == polling.window.prepared_at + timedelta(seconds=280)
+        assert not await polling.tick(260)
+        activate(polling.transport)
+        assert await polling.tick(300)
+        assert len(polling.transport.requests) == 3
+        assert WidgetActivationWindow.from_work(polling.job()).completion.reason == (
+            WidgetActivationCompletionReason.ACTIVATION_DETECTED
+        )
+        assert reconciliation_schedule(factory)[1] == polling.now
+    else:
+        assert after.work_state == BillingWorkState.COMPLETED
+        assert WidgetActivationWindow.from_work(after).completion.reason == (
+            WidgetActivationCompletionReason.WINDOW_EXPIRED
+        )
+        assert not await polling.tick(302)
 
 
 @pytest.mark.parametrize("activation_polling", [{"preflight_cleanup_timeout_seconds": 5}], indirect=True)

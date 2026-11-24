@@ -13,7 +13,7 @@ from app.domains.billing.first_activation import (
     ReconciliationAttempt,
     ReconciliationQueuePayload,
     WidgetReconciliationWakeup,
-    reusable_first_primary,
+    widget_wakeup_is_covered,
 )
 from app.domains.billing.paid_policy import MeteringPolicy
 from app.domains.billing.customers import lock_user
@@ -114,12 +114,10 @@ def finish_covered_widget_wakeup(db: Session, sub: ExternalSubscription, claim: 
     now = as_utc(billing_reconciliation.database_now(db))
     if (
         wakeup is None
-        or first_primary is None
         or row.enqueue_generation != claim.generation
         or wakeup.generation != claim.generation
         or (wakeup.original_due_at is not None and wakeup.original_due_at <= now)
-        or (wakeup.running_attempt is not None and first_primary.reconciliation_attempt != wakeup.running_attempt)
-        or not reusable_first_primary(db, sub, first_primary, wakeup.window, now)
+        or not widget_wakeup_is_covered(db, sub, wakeup, first_primary, now)
     ):
         return False
     widget = queries.by_key(db, BillingWorkKind.WIDGET_ACTIVATION_CHECK, key(sub))

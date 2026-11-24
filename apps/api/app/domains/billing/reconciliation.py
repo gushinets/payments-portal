@@ -5,7 +5,11 @@ from uuid import UUID, uuid4
 
 from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused, CustomerOpen
-from app.domains.billing.first_activation import ReconciliationAttempt, record_first_primary_attempt
+from app.domains.billing.first_activation import (
+    InventoryAttempt,
+    ReconciliationAttempt,
+    record_first_activation_inventory,
+)
 from app.domains.billing.paid_access import apply_paid_source, commit_paid_state, resolve_access_end
 from app.domains.billing.paid_deadlines import effective_deadline
 from app.domains.billing.paid_policy import MeteringPolicy, PaidDecision, paid_decision
@@ -38,6 +42,7 @@ from app.models import (
     BillingProductAccessScope,
     BillingStateObservation,
     BillingStateObservationKind,
+    BillingWorkKind,
     ExternalBillingCustomerBindingState as Binding,
     ExternalCreateOperationKind as Kind,
     ExternalCreateOperationState as State,
@@ -255,10 +260,13 @@ def apply_reconciliation(
         subscription_claim = None
         reconciliation_due_at = None
         reconciliation_attempt = None
+        inventory_attempt = None
         if work_claim is not None:
             if work_claim.kind == RECONCILIATION and work_claim.reference == str(current.subscription_id):
                 subscription_claim = work_claim
-            elif work_claim.kind != "customer_inventory" or work_claim.reference != str(purchase.customer_id):
+            elif work_claim.kind != BillingWorkKind.CUSTOMER_INVENTORY or work_claim.reference != str(
+                purchase.customer_id
+            ):
                 raise BillingRefused("billing_work_stale", 409)
             queue_row = verify_claim(db, work_claim)
             if subscription_claim is not None:
@@ -266,11 +274,10 @@ def apply_reconciliation(
                 reconciliation_attempt = ReconciliationAttempt(
                     generation=subscription_claim.generation, number=queue_row.attempt_count
                 )
-            if (
-                subscription_claim is None
-                and queue_row.coalescing_key != f"{purchase.account_id}:{purchase.customer_id}"
-            ):
+            elif queue_row.coalescing_key != f"{purchase.account_id}:{purchase.customer_id}":
                 raise BillingRefused("billing_work_stale", 409)
+            else:
+                inventory_attempt = InventoryAttempt.from_claim(queue_row, work_claim, subject.fence)
         latest = (
             db.get(BillingStateObservation, current.latest_observation_id) if current.latest_observation_id else None
         )
@@ -472,19 +479,20 @@ def apply_reconciliation(
             clock_skew_seconds is not None
             and scope.primary_subscription_id is None
             and paid_decision(proof, review=bool(conflict or known_review or customer_conflict)) == PaidDecision.GRANT
-            and (work_claim is None or work_claim.kind != "customer_inventory")
         ):
-            from app.domains.billing.background_recovery import hint_inventory
+            if work_claim is None or subscription_claim is not None:
+                from app.domains.billing.background_recovery import hint_inventory
 
-            hint = hint_inventory(db, customer)
-            record_first_primary_attempt(
-                db,
-                subscription_key=key(current),
-                purchase_id=purchase.id,
-                hint=hint,
-                reconciliation_due_at=reconciliation_due_at,
-                reconciliation_attempt=reconciliation_attempt,
-            )
+                inventory_attempt = hint_inventory(db, customer)
+            if inventory_attempt is not None:
+                record_first_activation_inventory(
+                    db,
+                    subscription_key=key(current),
+                    purchase_id=purchase.id,
+                    inventory=inventory_attempt,
+                    reconciliation_due_at=reconciliation_due_at,
+                    reconciliation_attempt=reconciliation_attempt,
+                )
         db.flush()
         committed = service._snapshot(db, row)
         db.commit()

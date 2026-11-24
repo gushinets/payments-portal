@@ -205,13 +205,31 @@ def prepare_widget_activation_read(
         return attempt
 
 
-def defer_widget_activation_read(factory: SessionFactory, claim: WorkClaim) -> WorkAttemptOutcome:
-    # Preparation rolled back before LBX I/O. Ownership of the queue row is enough to skip the slot.
+def _restore_unstarted_attempt(row: BillingWorkItem, attempt: WidgetActivationRead) -> None:
+    row.attempt_count -= 1
+    row.last_attempt_started_at = attempt.previous_started_at
+    row.last_error_classification = attempt.previous_error
+
+
+def defer_widget_activation_read(
+    factory: SessionFactory,
+    claim: WorkClaim,
+    *,
+    attempt: WidgetActivationRead | None = None,
+    source_scheduled: bool = False,
+) -> WorkAttemptOutcome:
+    # Local processing rolled back. The queue owner can schedule the next slot without the user lock.
     with factory() as db:
         row = _verify_claim(db, claim)
         window = WidgetActivationWindow.from_work(row)
         now = _claim_time(db, claim)
-        if _exhausted(window, row, now) or claim.started_at >= window.deadline_at:
+        if attempt is not None:
+            if source_scheduled:
+                row.last_error_classification = "billing_busy"
+            else:
+                _restore_unstarted_attempt(row, attempt)
+        started_at = attempt.started_at if attempt is not None else claim.started_at
+        if _exhausted(window, row, now) or started_at >= window.deadline_at:
             _complete(db, row, claim, window, now, WidgetActivationCompletionReason.WINDOW_EXPIRED)
         else:
             due = max(_next_due(window, row), _slot_after(window, now))
@@ -258,9 +276,7 @@ def finish_widget_activation_read(
         if target is not None and result == SubscriptionLifecycleReason.ACTIVE and now <= attempt.allowed_until:
             now = _try_handoff(db, target, ActivationWindowKey.from_job(row), claim, attempt.allowed_until)
         if result is None:
-            row.attempt_count -= 1
-            row.last_attempt_started_at = attempt.previous_started_at
-            row.last_error_classification = attempt.previous_error
+            _restore_unstarted_attempt(row, attempt)
         elif now > attempt.allowed_until:
             result = WidgetActivationReadFailure(PreflightDeadlineExceeded().code)
         if result is not None:
