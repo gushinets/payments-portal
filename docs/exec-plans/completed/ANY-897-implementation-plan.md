@@ -1,6 +1,6 @@
 # ANY-897 — Automatic paid access activation after LBX payment
 
-Status: **DONE** — implementation and planned verification complete.
+Status: **DONE** — implementation complete.
 
 [Linear ticket and QA baseline](https://linear.app/paveldik/issue/ANY-897/reduce-the-wait-for-paid-access-after-lbx-payment)
 

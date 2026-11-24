@@ -167,10 +167,12 @@ documents remain drafts.
    commits a reduction. Preparation and Widget callbacks never confirm access.
    No product-execution URL, plan badge or usage progress is invented.
 
-   ANY-897 shows “Checking activation” on the eligible purchase while its saved
-   check or handoff to regular reconciliation is in progress. If access is still
-   pending when that period ends, the cabinet shows “Activation has not been
-   confirmed yet” while the purchase remains eligible for first activation.
+   For a purchase eligible for first activation, ANY-897 shows “Checking
+   activation” during the saved window and for up to 60 seconds after handoff
+   to regular reconciliation. If access is still pending and the purchase
+   remains eligible, the cabinet shows “Activation has not been confirmed yet”
+   after that period. The same message appears if no window was saved and fresh
+   matching local reconciliation evidence shows that the subscription is waiting.
    The visible cabinet refreshes local paid-access status when it regains focus,
    including after returning from a separate payment window. See the
    [cabinet paid-access runbook](../engineering/ANY-709-billing-runbook.md#authenticated-cabinet-paid-access-read).

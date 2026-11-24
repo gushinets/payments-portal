@@ -66,8 +66,8 @@ through the existing work table; it stores no Portal usage ledger.
 A fresh database has exactly 30 application tables: ten retained
 identity/session/legal tables, fifteen original external-billing persistence
 tables, one current product-link pointer, one purchase mutex, one session
-delegation table, one backend policy guard and one code-issuance budget table. Alembic has twelve revisions in
-one linear chain and one current head. Revision
+delegation table, one backend policy guard and one code-issuance budget table.
+The Alembic chain above is linear and has one current head. Revision
 `20261029_0003` belongs to ANY-709, `20261028_0005` to ANY-715 and
 `20261031_0006` to ANY-765 and `20261110_0007`/`20261110_0008`/`20261111_0009`/`20261111_0010` to ANY-766.
 Revision `20261110_0007` adds only `kernel_session_delegations`; revision
