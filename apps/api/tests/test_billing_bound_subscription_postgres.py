@@ -1040,6 +1040,43 @@ async def test_any897_unstarted_ordinary_read_preserves_closing_read(activation_
     )
 
 
+@pytest.mark.parametrize("activation_polling", [{"billing_widget_activation_window_seconds": 300}], indirect=True)
+@pytest.mark.parametrize("busy_at", [280, 300], ids=["ordinary-slot", "closing-slot"])
+async def test_any897_local_refusal_preserves_the_last_widget_source_attempt(
+    activation_polling: ActivationPolling, busy_at: int
+) -> None:
+    polling = activation_polling
+    assert await polling.tick(260)
+    before = polling.job()
+    with polling.factory() as db, db.begin():
+        user_id = db.scalar(select(ExternalSubscription.user_id))
+        assert db.get(User, user_id, with_for_update=True) is not None
+        assert await polling.tick(busy_at)
+
+    after = polling.job()
+    assert len(polling.transport.requests) == 1
+    assert after.attempt_count == before.attempt_count
+    assert after.last_attempt_started_at == before.last_attempt_started_at
+    assert after.last_error_classification == before.last_error_classification
+    assert after.lease_owner is None
+    if busy_at == 280:
+        assert after.work_state == BillingWorkState.PENDING
+        assert after.next_attempt_at == polling.window.deadline_at
+        assert not await polling.tick(299)
+        activate(polling.transport)
+        assert await polling.tick(300)
+        assert len(polling.transport.requests) == 2
+        assert WidgetActivationWindow.from_work(polling.job()).completion.reason == (
+            WidgetActivationCompletionReason.ACTIVATION_DETECTED
+        )
+    else:
+        assert after.work_state == BillingWorkState.COMPLETED
+        assert WidgetActivationWindow.from_work(after).completion.reason == (
+            WidgetActivationCompletionReason.WINDOW_EXPIRED
+        )
+        assert not await polling.tick(301)
+
+
 @pytest.mark.parametrize("activation_polling", [{"preflight_cleanup_timeout_seconds": 5}], indirect=True)
 @pytest.mark.parametrize("slot", [20, 110], ids=["ordinary", "closing"])
 async def test_any897_maximum_cleanup_reserve_leaves_time_for_widget_read(

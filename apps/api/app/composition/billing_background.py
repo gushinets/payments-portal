@@ -20,6 +20,7 @@ from app.domains.purchases.widget_activation_poll import (
     MAX_READ_CLEANUP_SECONDS,
     WidgetActivationReadFailure,
     WidgetActivationResult,
+    defer_widget_activation_read,
     finish_widget_activation_read,
     prepare_widget_activation_read,
 )
@@ -45,7 +46,12 @@ async def check_widget_activation(
     budget: PreflightBudget,
     delegate: Callable[..., Awaitable[Any]],
 ) -> WorkAttemptOutcome:
-    attempt = await delegate(prepare_widget_activation_read, factory, configuration, claim)
+    try:
+        attempt = await delegate(prepare_widget_activation_read, factory, configuration, claim)
+    except BillingRefused as error:
+        if error.code != "billing_busy":
+            raise
+        return await delegate(defer_widget_activation_read, factory, claim)
     if attempt is None:
         return WorkAttemptOutcome.COMPLETED
     budget.limit_deadline(attempt.monotonic_deadline, max_cleanup_seconds=MAX_READ_CLEANUP_SECONDS)

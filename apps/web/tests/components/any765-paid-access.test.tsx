@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AccountBilling } from "@/features/billing";
 import { paidAccessRefreshMs } from "@/features/billing/use-paid-access";
+import pt from "@/messages/pt.json";
 import ru from "@/messages/ru.json";
 import { sessionChangedEvent, sessionStorageKey } from "@/shared/api/auth";
 import { emptyPaidState, paidState } from "../fixtures/paid-access";
@@ -165,6 +166,42 @@ it("refreshes while visible, pauses while hidden and catches up on visibility", 
   visibility.mockReturnValue("visible");
   await act(async () => document.dispatchEvent(new Event("visibilitychange")));
   expect(paid).toHaveBeenCalledTimes(3);
+});
+
+it("queues one paid read when visibility returns during an older request", async () => {
+  vi.useFakeTimers();
+  let finish!: (response: Response) => void;
+  paid.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }));
+  renderCabinet();
+  await act(async () => vi.advanceTimersByTimeAsync(1));
+  expect(paid).toHaveBeenCalledTimes(1);
+
+  const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+  fireEvent(document, new Event("visibilitychange"));
+  visibility.mockReturnValue("visible");
+  fireEvent(document, new Event("visibilitychange"));
+  fireEvent(document, new Event("visibilitychange"));
+  expect(paid).toHaveBeenCalledTimes(1);
+
+  const checking = emptyPaidState();
+  checking.products = [{
+    product_id: "proposal_ai", status: "no_paid_access", activation_check: "checking",
+    observed_at: null, effective_until: null,
+  }];
+  await act(async () => finish(Response.json(checking)));
+  expect(paid).toHaveBeenCalledTimes(2);
+  expect(screen.getByText(a.confirmed)).toBeVisible();
+});
+
+it("shows the checking status in Brazilian Portuguese", async () => {
+  const checking = emptyPaidState();
+  checking.products = [{
+    product_id: "proposal_ai", status: "no_paid_access", activation_check: "checking",
+    observed_at: null, effective_until: null,
+  }];
+  paid.mockResolvedValueOnce(Response.json(checking));
+  renderWithIntl(<AccountBilling userId={purchaseUser.user_id} emailVerified />, { locale: "pt", messages: pt });
+  expect(await screen.findByText("Verificando a ativação")).toBeVisible();
 });
 
 it("coalesces visible focus events behind an older paid read", async () => {

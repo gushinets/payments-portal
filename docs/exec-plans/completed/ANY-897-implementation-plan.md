@@ -49,10 +49,11 @@ continues with the tab closed. Use the Russian messages recorded in Linear.
    read due at 20 seconds. Skip missed slots and allow at most one attempt per
    slot. After a failed attempt, the next eligible slot starts at least 40
    seconds after that attempt started. Skipping a slot before any source work
-   is scheduled preserves the last attempt and its backoff. Each attempt reads
-   only the saved LBX subscription. A logical read may include the LBX client's
-   bounded transport retries or reauthentication. Bound the wait to five
-   seconds and retain resource ownership through existing cleanup.
+   is scheduled preserves the last attempt and its backoff. Local lock contention
+   before the read follows the same slot rules. Each attempt reads only the saved
+   LBX subscription. A logical read may include the LBX client's bounded transport
+   retries or reauthentication. Bound the wait to five seconds and retain resource
+   ownership through existing cleanup.
 
    Schedule one closing read at the saved deadline, subject to the same
    eligibility and error backoff. Allow that read and its handoff only through
@@ -103,16 +104,15 @@ under the existing source trust rules. Read that evidence locally and return
 known conflicts take precedence. Regenerate the OpenAPI and TypeScript
 contracts using the repository generator.
 
-Refresh the local `GET /api/paid-access` read when the cabinet window regains
-focus while visible, including when returning from a separate payment window
-leaves the cabinet document visible throughout. Coalesce focus events during
-an in-flight paid-access read into one follow-up for the visible current
-session. Reuse the paid read's session and in-flight request guards, and keep
-refreshes on visibility changes, Widget closure and the 30-second visible
-polling interval. These actions read local
-status without reopening the Widget or changing the server deadline or LBX
-schedule. The card updates automatically on the next successful read after the
-access revision is committed.
+Refresh the local `GET /api/paid-access` read when the cabinet becomes visible
+or regains focus while visible, including when returning from a separate
+payment window leaves the cabinet document visible throughout. Coalesce these
+events during an in-flight paid-access read into one follow-up for the visible
+current session. Reuse the paid read's session and in-flight request guards,
+and keep refreshes on Widget closure and the 30-second visible poll. These
+actions read local status without reopening the Widget or changing the server
+deadline or LBX schedule. The card updates automatically on the next successful
+read after the access revision is committed.
 
 ## Verification
 

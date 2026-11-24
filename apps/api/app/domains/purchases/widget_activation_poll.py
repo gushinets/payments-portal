@@ -205,6 +205,21 @@ def prepare_widget_activation_read(
         return attempt
 
 
+def defer_widget_activation_read(factory: SessionFactory, claim: WorkClaim) -> WorkAttemptOutcome:
+    # Preparation rolled back before LBX I/O. Ownership of the queue row is enough to skip the slot.
+    with factory() as db:
+        row = _verify_claim(db, claim)
+        window = WidgetActivationWindow.from_work(row)
+        now = _claim_time(db, claim)
+        if _exhausted(window, row, now) or claim.started_at >= window.deadline_at:
+            _complete(db, row, claim, window, now, WidgetActivationCompletionReason.WINDOW_EXPIRED)
+        else:
+            due = max(_next_due(window, row), _slot_after(window, now))
+            work.finish(db, row, claim, due=due, error=row.last_error_classification)
+        db.commit()
+        return WorkAttemptOutcome.REFUSED
+
+
 def _try_handoff(
     db: Session,
     subscription: ExternalSubscription,

@@ -91,7 +91,7 @@ export function usePaidRead<T>(
     queueMicrotask(() => void refresh());
     const interval = setInterval(() => void refresh(), paidReadRefreshMs);
     const onVisibility = () => {
-      if (isVisible()) void refresh();
+      if (isVisible()) void refresh(true);
       else {
         refreshPending.current = false;
         setState({ status: PaidReadStatus.Loading });
