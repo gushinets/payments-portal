@@ -10,6 +10,8 @@ and legal baseline established by `ANY-510`, as retained in the clean
 persistence baseline, plus the email-verification and new-password extensions
 implemented by `ANY-538` / 4C. It is the durable predecessor contract for
 `ANY-541` / 4D and later 4F work.
+`ANY-896` updated the [new-password policy](#new-password-policy) for registration
+and password-reset confirmation.
 
 For target billing ownership and behavior, it is subordinate, in order, to
 [ADR 0005](decisions/0005-external-billing-boundary.md), the accepted
@@ -109,11 +111,11 @@ be persisted or logged.
 ### New-password policy
 
 Registration and password-reset confirmation apply one shared backend policy
-to new passwords: 12 through 128 Unicode code points, at least one ASCII
-uppercase letter `A-Z`, one ASCII lowercase letter `a-z`, one ASCII digit
-`0-9`, and one character from `!@#$%^&*()-_=+[]{}:,.?`. Values are not trimmed,
-normalized, escaped, or otherwise mutated. Login continues to validate existing
-credentials and does not retroactively apply the new-password policy.
+to new passwords: 12 through 128 Unicode code points inclusive, with no required
+character classes. The backend uses the submitted string as-is, including any
+leading or trailing spaces and decomposed Unicode. Checking new passwords
+against a list of common or compromised values is deferred. Login continues
+to verify existing credentials against their stored hashes.
 
 The backend/domain `password_meets_policy()` decision is the only current
 business and security authority. Web registration and reset surfaces display

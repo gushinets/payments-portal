@@ -39,21 +39,13 @@
       "emailLabel": "E-mail",
       "passwordLabel": "Mot de passe",
       "passwordPlaceholder": "Saisissez votre mot de passe",
-      "newPasswordPlaceholder": "De 12 à 128 caractères",
       "passwordConfirmLabel": "Répéter le mot de passe",
       "passwordConfirmPlaceholder": "Saisissez à nouveau le mot de passe",
       "firstNameLabel": "Prénom (facultatif)",
       "surnameLabel": "Nom (facultatif)",
       "patronymicLabel": "Patronyme (facultatif)"
     },
-    "passwordRequirements": {
-      "label": "Exigences du mot de passe",
-      "length": "De 12 à 128 caractères",
-      "uppercase": "Au moins une lettre latine majuscule (A–Z)",
-      "lowercase": "Au moins une lettre latine minuscule (a–z)",
-      "digit": "Au moins un chiffre (0–9)",
-      "special": "Au moins un caractère parmi {characters}"
-    },
+    "passwordLengthHint": "De 12 à 128 caractères.",
     "forgotPasswordAction": "Mot de passe oublié ?",
     "actions": {
       "createAccount": "Créer un compte",
@@ -63,7 +55,6 @@
     "validation": {
       "invalidEmail": "Saisissez une adresse e-mail valide.",
       "passwordTooShort": "Le mot de passe doit contenir au moins 8 caractères.",
-      "passwordPolicyNotMet": "Le mot de passe ne respecte pas toutes les exigences.",
       "passwordMismatch": "Les mots de passe ne correspondent pas.",
       "personalConsentRequired": "Vous devez consentir au traitement des données personnelles.",
       "offerConsentRequired": "Vous devez accepter les conditions de l’offre publique."
@@ -78,7 +69,7 @@
       "invalidCredentials": "L’e-mail ou le mot de passe est incorrect.",
       "missingPersonalConsent": "Vous devez consentir au traitement des données personnelles.",
       "missingOfferConsent": "Vous devez accepter les conditions de l’offre publique.",
-      "passwordPolicyNotMet": "Le mot de passe ne respecte pas toutes les exigences.",
+      "passwordPolicyNotMet": "Le mot de passe doit comporter entre 12 et 128 caractères.",
       "internalServer": "Le service est temporairement indisponible. Réessayez plus tard.",
       "contract": "Le service a renvoyé une réponse inattendue. Réessayez.",
       "network": "Impossible de se connecter au service. Vérifiez votre connexion et réessayez.",
@@ -232,21 +223,12 @@
       "description": "Définissez un nouveau mot de passe pour votre compte AnytoolAI. Les sessions actives seront fermées après la modification.",
       "fields": {
         "passwordLabel": "Nouveau mot de passe",
-        "passwordPlaceholder": "De 12 à 128 caractères",
         "passwordConfirmLabel": "Répétez le mot de passe",
         "passwordConfirmPlaceholder": "Saisissez de nouveau le mot de passe"
       },
-      "passwordRequirements": {
-        "label": "Exigences du mot de passe",
-        "length": "De 12 à 128 caractères",
-        "uppercase": "Au moins une lettre latine majuscule (A–Z)",
-        "lowercase": "Au moins une lettre latine minuscule (a–z)",
-        "digit": "Au moins un chiffre (0–9)",
-        "special": "Au moins un caractère parmi {characters}"
-      },
+      "passwordLengthHint": "De 12 à 128 caractères.",
       "validation": {
         "missingToken": "Le lien de changement de mot de passe n’est pas valide. Demandez un nouveau lien.",
-        "passwordPolicyNotMet": "Le mot de passe ne respecte pas toutes les exigences.",
         "passwordMismatch": "Les mots de passe ne correspondent pas."
       },
       "notices": {
@@ -260,8 +242,8 @@
     "errors": {
       "invalidOrExpiredToken": "Le lien n’est pas valide ou a expiré. Demandez un nouveau lien.",
       "rateLimited": "Trop de tentatives de récupération du mot de passe. Réessayez plus tard.",
-      "invalidInput": "Vérifiez l’adresse e-mail et assurez-vous que le mot de passe respecte toutes les exigences.",
-      "passwordPolicyNotMet": "Le mot de passe ne respecte pas toutes les exigences.",
+      "invalidInput": "Vérifiez les informations saisies et réessayez.",
+      "passwordPolicyNotMet": "Le mot de passe doit comporter entre 12 et 128 caractères.",
       "internalServer": "Le service est temporairement indisponible. Réessayez plus tard.",
       "contract": "Le service a renvoyé une réponse inattendue. Réessayez.",
       "network": "Impossible de contacter le service. Vérifiez votre connexion et réessayez.",
