@@ -29,7 +29,7 @@ from app.infrastructure.preflight import (
     PreflightDeadlineExceeded,
 )
 from app.integrations.lbx.client import LbxServerClient
-from app.integrations.lbx.errors import LbxError
+from app.integrations.lbx.errors import LbxError, LbxScopeMismatch
 from app.integrations.lbx.financial import subscription_lifecycle
 from app.integrations.lbx.reconciliation import timely_point
 from app.infrastructure.sentry import report_billing_recovery_exhausted
@@ -54,6 +54,8 @@ async def check_widget_activation(
         point = await timely_point(
             lambda: client.get_subscription(subscription_id=attempt.provider_subscription_id, budget=budget), budget
         )
+        if point.agreement_id != attempt.provider_agreement_id:
+            raise LbxScopeMismatch()
         _, _, result = subscription_lifecycle(point)
         budget.check()
     except PreflightDeadlineExceeded as failure:

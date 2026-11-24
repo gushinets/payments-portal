@@ -42,6 +42,7 @@ ATTEMPT_INTERRUPTED = "widget_activation_attempt_interrupted"
 @dataclass(frozen=True)
 class WidgetActivationRead:
     provider_subscription_id: int
+    provider_agreement_id: int
     allowed_until: datetime
     monotonic_deadline: float
     started_at: datetime
@@ -134,8 +135,7 @@ def _eligible_subscription(
     return sub
 
 
-def _provider_subscription_id(subscription: ExternalSubscription | None) -> int | None:
-    provider_id = subscription.external_subscription_id if subscription is not None else None
+def _provider_id(provider_id: str | None) -> int | None:
     if provider_id is None or not provider_id.isascii() or not provider_id.isdecimal() or len(provider_id) > 20:
         return None
     numeric = int(provider_id)
@@ -171,7 +171,8 @@ def prepare_widget_activation_read(
 ) -> WidgetActivationRead | None:
     with factory() as db:
         row, window, target = _locked_target(db, configuration, claim)
-        provider_id = _provider_subscription_id(target)
+        subscription_id = _provider_id(target.external_subscription_id) if target is not None else None
+        agreement_id = _provider_id(target.external_agreement_id) if target is not None else None
         # A delay obtaining the locks, committing, or resuming the waiter consumes the same budget.
         sampled_at = monotonic()
         now = _claim_time(db, claim)
@@ -181,18 +182,19 @@ def prepare_widget_activation_read(
             _complete(db, row, claim, window, now, WidgetActivationCompletionReason.WINDOW_EXPIRED)
         elif now < due:
             work.finish(db, row, claim, due=due, error=row.last_error_classification)
-        elif provider_id is None:
+        elif subscription_id is None or agreement_id is None:
             _complete(db, row, claim, window, now, WidgetActivationCompletionReason.PURCHASE_INELIGIBLE)
         else:
             cutoff = window.deadline_at if now < window.deadline_at else window.deadline_at + CLOSING_GRACE
             allowed_until = min(cutoff, now + READ_LIMIT, claim.expires_at)
             attempt = WidgetActivationRead(
-                provider_id,
-                allowed_until,
-                sampled_at + (allowed_until - now).total_seconds(),
-                now,
-                row.last_attempt_started_at,
-                row.last_error_classification,
+                provider_subscription_id=subscription_id,
+                provider_agreement_id=agreement_id,
+                allowed_until=allowed_until,
+                monotonic_deadline=sampled_at + (allowed_until - now).total_seconds(),
+                started_at=now,
+                previous_started_at=row.last_attempt_started_at,
+                previous_error=row.last_error_classification,
             )
             row.attempt_count += 1
             row.last_attempt_started_at = now
@@ -223,7 +225,10 @@ def finish_widget_activation_read(
 ) -> WorkAttemptOutcome:
     with factory() as db:
         row, window, target = _locked_target(db, configuration, claim)
-        if target is not None and target.external_subscription_id != str(attempt.provider_subscription_id):
+        if target is not None and (
+            target.external_subscription_id != str(attempt.provider_subscription_id)
+            or target.external_agreement_id != str(attempt.provider_agreement_id)
+        ):
             target = None
         now = _claim_time(db, claim)
         if target is not None and result == SubscriptionLifecycleReason.ACTIVE and now <= attempt.allowed_until:

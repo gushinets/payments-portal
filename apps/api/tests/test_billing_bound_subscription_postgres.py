@@ -54,7 +54,7 @@ from app.infrastructure import preflight
 from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from app.infrastructure.queries import billing_reconciliation
 from app.domains.purchases import financial
-from app.integrations.lbx.errors import LbxUnavailable
+from app.integrations.lbx.errors import LbxScopeMismatch, LbxUnavailable
 from app.integrations.lbx.financial import Subscription
 from app.integrations.lbx.reconciliation import read_subscription_proof
 from app.jobs.billing import BillingWorker
@@ -830,6 +830,41 @@ async def test_any897_blocked_or_ended_point_never_advances_reconciliation(
     else:
         assert completed is None
     assert reconciliation_schedule(polling.factory) == original
+
+
+@pytest.mark.parametrize("state", [2, 3], ids=["active", "ended"])
+async def test_any897_point_with_mismatched_agreement_retries_without_handoff(
+    activation_polling: ActivationPolling,
+    cabinet: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    state: int,
+) -> None:
+    polling = activation_polling
+    monkeypatch.setattr(paid_read, "database_now", lambda db: polling.now)
+    original = reconciliation_schedule(polling.factory)
+    point = polling.transport.subscriptions[0]
+    agreement_id = point["agreement_id"]
+    point.update(agreement_id=agreement_id + 1, state=state, current_blocking=0)
+
+    assert await polling.tick(20)
+    job = polling.job()
+    assert WidgetActivationWindow.from_work(job) == polling.window
+    assert job.work_state == BillingWorkState.PENDING
+    assert job.last_error_classification == LbxScopeMismatch().code
+    assert job.next_attempt_at == polling.window.prepared_at + timedelta(seconds=60)
+    assert reconciliation_schedule(polling.factory) == original
+    assert await cabinet_status(cabinet) == ("checking", 0)
+
+    point.update(agreement_id=agreement_id, state=2)
+    assert not await polling.tick(40)
+    assert await polling.tick(60)
+    assert WidgetActivationWindow.from_work(polling.job()).completion == WidgetActivationCompletion(
+        reason=WidgetActivationCompletionReason.ACTIVATION_DETECTED, at=polling.now
+    )
+    assert reconciliation_schedule(polling.factory) == (original[0], polling.now, original[2] + 1)
+    assert [(request.method, request.url.path) for request in polling.transport.requests] == [
+        ("GET", f"/api/rest/v1/subscriptions/{point['subscription_id']}"),
+    ] * 2
 
 
 @pytest.mark.parametrize("scenario", [True], indirect=True)
