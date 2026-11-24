@@ -10,6 +10,8 @@ and legal baseline established by `ANY-510`, as retained in the clean
 persistence baseline, plus the email-verification and new-password extensions
 implemented by `ANY-538` / 4C. It is the durable predecessor contract for
 `ANY-541` / 4D and later 4F work.
+`ANY-896` updated the [new-password policy](#new-password-policy) for registration
+and password-reset confirmation.
 
 For target billing ownership and behavior, it is subordinate, in order, to
 [ADR 0005](decisions/0005-external-billing-boundary.md), the accepted

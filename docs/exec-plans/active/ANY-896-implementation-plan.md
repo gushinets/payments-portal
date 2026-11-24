@@ -25,10 +25,9 @@ token and session behavior. The change requires no migration.
    punctuation is `~`, and a password with leading and trailing spaces and
    decomposed Unicode, without ASCII letters or digits. Before editing
    `password_meets_policy()`, record the validator rejection and HTTP `400`
-   with `password_policy_not_met` in both flows. The previous local HTTP run
-   stalled in `TestClient`. If it stalls again, diagnose the test environment
-   or repeat the run in a working isolated environment. Form and documentation
-   work can proceed while HTTP verification is blocked.
+   with `password_policy_not_met` in both flows. If `TestClient` stalls, diagnose
+   the test environment or repeat the run in a working isolated environment.
+   Form and documentation work can proceed while HTTP verification is blocked.
 2. Reduce `password_meets_policy()` to a length check using the existing
    bounds. Remove the class checks and punctuation constant. The two callers
    continue to pass the submitted string to hashing and return the existing
