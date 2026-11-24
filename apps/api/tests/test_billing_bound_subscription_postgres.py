@@ -54,6 +54,7 @@ from app.infrastructure import preflight
 from app.infrastructure.preflight import PreflightBudget, PreflightDeadlineExceeded
 from app.infrastructure.queries import billing_reconciliation
 from app.domains.purchases import financial
+from app.integrations.lbx.dto import LbxRead, LbxTariff
 from app.integrations.lbx.errors import LbxScopeMismatch, LbxUnavailable
 from app.integrations.lbx.financial import Subscription
 from app.integrations.lbx.reconciliation import read_subscription_proof
@@ -353,6 +354,92 @@ async def test_any897_activation_handoff_advances_real_reconciliation_and_first_
 @pytest.mark.parametrize("scenario", [True], indirect=True)
 @pytest.mark.parametrize(
     "activation_polling",
+    [
+        {
+            "prepared_at": PERIOD_TEST_PREPARED_AT,
+            "billing_widget_activation_window_seconds": 300,
+            "billing_worker_io_timeout_seconds": 120,
+        }
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize("stage", ["reconciliation", "inventory", "inventory-retry"])
+async def test_any897_cabinet_keeps_checking_during_live_handoff_work(
+    activation_polling: ActivationPolling, cabinet: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, stage: str
+) -> None:
+    polling = activation_polling
+    monkeypatch.setattr(paid_read, "database_now", lambda db: polling.now)
+    _, original_due, _ = reconciliation_schedule(polling.factory)
+    activate(polling.transport)
+    prove_month(polling.transport.subscriptions[0], polling.window.prepared_at)
+    assert await polling.tick(20)
+
+    entered, release = asyncio.Event(), asyncio.Event()
+    client = polling.worker.client
+    get_tariff = client.get_tariff
+    discover_subscriptions = client.discover_subscriptions
+
+    async def pause_tariff(*, tariff_id: int, budget: PreflightBudget) -> LbxRead[LbxTariff]:
+        entered.set()
+        await release.wait()
+        return await get_tariff(tariff_id=tariff_id, budget=budget)
+
+    async def pause_discovery(
+        *, user_id: int, budget: PreflightBudget, agreement_id: int | None = None
+    ) -> tuple[Subscription, ...]:
+        entered.set()
+        await release.wait()
+        if stage == "inventory-retry":
+            raise LbxUnavailable()
+        return await discover_subscriptions(user_id=user_id, budget=budget, agreement_id=agreement_id)
+
+    async def read_during_tick(start: float, read_at: float, expected: str) -> None:
+        entered.clear()
+        release.clear()
+        task = asyncio.create_task(polling.tick(start, WorkLane.URGENT))
+        try:
+            await asyncio.wait_for(entered.wait(), 5)
+            polling.now = polling.window.prepared_at + timedelta(seconds=read_at)
+            requests = len(polling.transport.requests)
+            assert await cabinet_status(cabinet) == (expected, 0)
+            assert len(polling.transport.requests) == requests
+        finally:
+            release.set()
+            progressed = await task
+        assert progressed
+
+    if stage == "reconciliation":
+        with monkeypatch.context() as patch:
+            patch.setattr(client, "get_tariff", pause_tariff)
+            await read_during_tick(21, 81, "checking")
+        assert await cabinet_status(cabinet) == ("checking", 0)
+        assert await polling.tick(82, WorkLane.URGENT)
+    else:
+        assert await polling.tick(21, WorkLane.URGENT)
+        assert await cabinet_status(cabinet) == ("checking", 0)
+        monkeypatch.setattr(client, "discover_subscriptions", pause_discovery)
+        await read_during_tick(22, 82, "checking")
+
+    if stage == "inventory-retry":
+        assert await cabinet_status(cabinet) == ("unconfirmed", 0)
+        with polling.factory() as db:
+            inventory = db.scalars(
+                select(BillingWorkItem).where(BillingWorkItem.work_kind == BillingWorkKind.CUSTOMER_INVENTORY)
+            ).one()
+            assert inventory.last_error_classification == "inventory_incomplete"
+            retry = (inventory.next_attempt_at - polling.window.prepared_at).total_seconds()
+        await read_during_tick(retry, retry, "unconfirmed")
+        return
+
+    assert polling.now < original_due
+    assert await cabinet_status(cabinet) == (None, 1)
+    with polling.factory() as db:
+        assert db.scalars(select(PurchasedAllowance)).one().quantity == 100
+
+
+@pytest.mark.parametrize("scenario", [True], indirect=True)
+@pytest.mark.parametrize(
+    "activation_polling",
     [{"prepared_at": PERIOD_TEST_PREPARED_AT, "billing_widget_activation_window_seconds": 780}],
     indirect=True,
 )
@@ -422,7 +509,7 @@ async def test_any897_cabinet_uses_saved_window_and_handoff_cutoffs_without_writ
     if handoff:
         polling.transport.subscriptions[0]["state"] = 2
         assert await polling.tick(20)
-        cutoff = polling.now + activation_windows.HANDOFF_DISPLAY
+        cutoff = polling.now + activation_windows.HANDOFF_PICKUP_GRACE
         polling.transport.requests.clear()
     before = activation_schedule(polling.job())
     polling.now = cutoff - timedelta(microseconds=1)

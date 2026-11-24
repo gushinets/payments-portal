@@ -79,18 +79,20 @@ def pause_expired_recovery(db: Session, op: ExternalCreateOperation, account: st
     return False
 
 
-def hint_inventory(db: Session, customer: ExternalBillingCustomer) -> None:
+def hint_inventory(db: Session, customer: ExternalBillingCustomer) -> datetime:
+    due = as_utc(billing_reconciliation.database_now(db))
     coalesce(
         db,
         kind=INVENTORY,
         key=f"{customer.external_billing_account_id}:{customer.customer_id}",
         scope_kind="customer",
         reference=str(customer.customer_id),
-        due=as_utc(billing_reconciliation.database_now(db)),
+        due=due,
         priority=1,
         payload={},
         hint=True,
     )
+    return due
 
 
 def enroll_operation(db: Session, operation: ExternalCreateOperation, account: str, *, sent: bool = False) -> None:

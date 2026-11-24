@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from sqlalchemy import select, union
+from sqlalchemy import or_, select, union
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -85,15 +85,24 @@ def sources(
     )
 
 
-def activation_jobs(db: Session, keys: set[str]) -> dict[str, BillingWorkItem]:
+def activation_jobs(
+    db: Session, subscription_keys: set[str], customer_keys: set[str]
+) -> dict[tuple[str, str], BillingWorkItem]:
     return {
-        row.coalescing_key: row
+        (row.work_kind, row.coalescing_key): row
         for row in db.scalars(
             select(BillingWorkItem).where(
-                BillingWorkItem.work_kind == BillingWorkKind.WIDGET_ACTIVATION_CHECK,
-                BillingWorkItem.coalescing_key.in_(keys),
+                or_(
+                    BillingWorkItem.work_kind.in_(
+                        (BillingWorkKind.WIDGET_ACTIVATION_CHECK, BillingWorkKind.SUBSCRIPTION_RECONCILIATION)
+                    )
+                    & BillingWorkItem.coalescing_key.in_(subscription_keys),
+                    (BillingWorkItem.work_kind == BillingWorkKind.CUSTOMER_INVENTORY)
+                    & BillingWorkItem.coalescing_key.in_(customer_keys),
+                )
             )
         )
+        if row.coalescing_key is not None
     }
 
 

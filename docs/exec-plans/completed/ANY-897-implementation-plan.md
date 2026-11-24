@@ -38,7 +38,7 @@ continues with the tab closed. Use the Russian messages recorded in Linear.
    `prepared_at` and the configured duration. Start QA at five minutes. Reuse
    the job for repeats. To start another window,
    require a new explicit opening whose `prepared_at` is at or after the prior
-   deadline plus five seconds and, if a handoff occurred, its 60-second display
+   deadline plus five seconds and, if a handoff occurred, its 60-second pickup
    deadline. Require fresh eligibility, no live worker lease and time remaining
    in the new window at enqueue. Compare the captured opening timestamp with
    these bounds so a delayed callback from an earlier opening cannot start a new
@@ -87,8 +87,10 @@ and the existing [paid access reconciliation rules](../../engineering/billing-ba
 Add an optional `activation_check` field to each product in `GET /api/paid-access`.
 Return `checking`, `unconfirmed` or `null` from the PostgreSQL record for the
 current purchase. Return `checking` during the saved window, including its
-closing read, and for 60 seconds from handoff to regular reconciliation. When
-the applicable period expires and access is still pending, return
+closing read, and during the linked final reconciliation and first-primary
+inventory. The due time links each stage to its hint. A live claim keeps
+`checking` visible through the attempt, and a pending stage has a 60-second
+pickup grace. If the accelerated path ends with access still pending, return
 `unconfirmed`. Without a saved window, return `unconfirmed` for a current
 owned and linked purchase awaiting its first activation if the latest
 reconciliation observation still provides fresh matching waiting evidence

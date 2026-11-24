@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.domains.identity.services.auth import as_utc
@@ -16,7 +16,7 @@ from app.models import BillingWorkItem, BillingWorkKind, BillingWorkScope, Billi
 WINDOW_SCHEMA = "widget-activation-window:v1"
 ATTEMPT_INTERVAL = timedelta(seconds=20)
 CLOSING_GRACE = timedelta(seconds=5)
-HANDOFF_DISPLAY = timedelta(seconds=60)
+HANDOFF_PICKUP_GRACE = timedelta(seconds=60)
 
 
 class WidgetActivationCompletionReason(StrEnum):
@@ -30,6 +30,7 @@ class WidgetActivationCompletion(BaseModel):
 
     reason: WidgetActivationCompletionReason
     at: AwareDatetime
+    inventory_due_at: AwareDatetime | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class WidgetActivationWindow(BaseModel):
@@ -54,7 +55,7 @@ class WidgetActivationWindow(BaseModel):
             self.completion is not None
             and self.completion.reason == WidgetActivationCompletionReason.ACTIVATION_DETECTED
         ):
-            return max(after_close, self.completion.at + HANDOFF_DISPLAY)
+            return max(after_close, self.completion.at + HANDOFF_PICKUP_GRACE)
         return after_close
 
     @classmethod
@@ -62,6 +63,35 @@ class WidgetActivationWindow(BaseModel):
         if row.payload_schema_version != WINDOW_SCHEMA:
             raise ValueError("Unknown Widget activation window schema")
         return cls.model_validate(row.payload_document)
+
+
+def record_widget_inventory_hint(
+    db: Session,
+    *,
+    subscription_key: str,
+    purchase_id: UUID,
+    reconciliation_due_at: datetime,
+    inventory_due_at: datetime,
+) -> None:
+    """Carry an outstanding Widget handoff into the customer's first-primary job."""
+    row = billing_work.by_key(db, BillingWorkKind.WIDGET_ACTIVATION_CHECK, subscription_key, lock=True)
+    if row is None:
+        return
+    try:
+        window = WidgetActivationWindow.from_work(row)
+    except ValueError:
+        return
+    completion = window.completion
+    if (
+        window.purchase_id == purchase_id
+        and completion is not None
+        and completion.reason == WidgetActivationCompletionReason.ACTIVATION_DETECTED
+        and completion.inventory_due_at is None
+        and reconciliation_due_at <= completion.at
+    ):
+        row.payload_document = window.model_copy(
+            update={"completion": completion.model_copy(update={"inventory_due_at": inventory_due_at})}
+        ).model_dump(mode="json")
 
 
 def save_widget_activation_window(db: Session, opening: WidgetActivationOpening, *, duration_seconds: int) -> None:

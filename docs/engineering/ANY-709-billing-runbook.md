@@ -810,10 +810,12 @@ duration and the browser's monotonic clock.
 
 For a linked purchase eligible for first activation, the product's optional
 `activation_check` field reports `checking` during the saved window, including
-the closing read, and for up to 60 seconds after handoff to regular
-reconciliation. It reports `unconfirmed` when the purchase remains eligible and
-access is still pending after that period. Without a saved window, fresh matching
-reconciliation evidence of a waiting subscription also yields `unconfirmed`.
+the closing read, and while the accelerated reconciliation or first-primary
+inventory job holds a live claim. Each queued stage also has up to 60 seconds
+to be picked up. It reports `unconfirmed` when the purchase remains eligible
+and access is still pending after the check or handoff. Without a saved window,
+fresh matching reconciliation evidence of a waiting subscription also yields
+`unconfirmed`.
 A window completed as `purchase_ineligible` yields `null`, as do other cases
 where no activation status applies. Committed entries in `grants` determine the
 cabinet's paid access.

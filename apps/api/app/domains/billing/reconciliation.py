@@ -21,9 +21,10 @@ from app.domains.billing.reconciliation_contracts import (
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
+from app.domains.purchases.widget_activation_window import record_widget_inventory_hint
 from app.infrastructure.queries import billing_reconciliation as queries, purchases
 from app.infrastructure.queries.billing_customers import customer_operation, open_customer_reviews
-from app.domains.billing.work import RECONCILIATION, schedule_reconciliation, verify_claim
+from app.domains.billing.work import RECONCILIATION, key, schedule_reconciliation, verify_claim
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.operator_contracts import ReviewResolution
 from app.models import (
@@ -231,12 +232,15 @@ def apply_reconciliation(
         ):
             raise BillingRefused("subscription_provenance_changed", 409)
         subscription_claim = None
+        reconciliation_due_at = None
         if work_claim is not None:
             if work_claim.kind == RECONCILIATION and work_claim.reference == str(current.subscription_id):
                 subscription_claim = work_claim
             elif work_claim.kind != "customer_inventory" or work_claim.reference != str(purchase.customer_id):
                 raise BillingRefused("billing_work_stale", 409)
             queue_row = verify_claim(db, work_claim)
+            if subscription_claim is not None:
+                reconciliation_due_at = as_utc(queue_row.next_attempt_at)
             if (
                 subscription_claim is None
                 and queue_row.coalescing_key != f"{purchase.account_id}:{purchase.customer_id}"
@@ -447,7 +451,15 @@ def apply_reconciliation(
         ):
             from app.domains.billing.background_recovery import hint_inventory
 
-            hint_inventory(db, customer)
+            inventory_due_at = hint_inventory(db, customer)
+            if reconciliation_due_at is not None:
+                record_widget_inventory_hint(
+                    db,
+                    subscription_key=key(current),
+                    purchase_id=purchase.id,
+                    reconciliation_due_at=reconciliation_due_at,
+                    inventory_due_at=inventory_due_at,
+                )
         db.flush()
         committed = service._snapshot(db, row)
         db.commit()

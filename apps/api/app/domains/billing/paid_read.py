@@ -32,7 +32,7 @@ from app.domains.purchases.evidence import accepted
 from app.domains.purchases.technical_terms import AcceptedTechnicalTerms
 from app.domains.purchases.widget_activation_window import (
     CLOSING_GRACE,
-    HANDOFF_DISPLAY,
+    HANDOFF_PICKUP_GRACE,
     WidgetActivationCompletionReason,
     WidgetActivationWindow,
 )
@@ -43,6 +43,8 @@ from app.models import (
     BillingProductAccessScope,
     BillingStateObservation,
     BillingWorkItem,
+    BillingWorkKind,
+    BillingWorkState,
     ExternalBillingCustomerBindingState as Binding,
     ExternalSubscriptionCommercialAccessStatus as Commercial,
     ExternalSubscriptionFinancialAccessStatus as Financial,
@@ -223,8 +225,24 @@ def _negative(proof: _RetainedProof | None, now: datetime) -> bool:
     )
 
 
+def _handoff_in_progress(job: BillingWorkItem | None, due_at: datetime | None, now: datetime) -> bool:
+    # Claiming leaves the due time intact. A completed attempt moves it past
+    # the original hint, even when the same recurring row later runs again.
+    if job is None or due_at is None or as_utc(job.next_attempt_at) > due_at:
+        return False
+    if job.work_state == BillingWorkState.RUNNING:
+        return job.lease_expires_at is not None and now < as_utc(job.lease_expires_at)
+    return job.work_state == BillingWorkState.PENDING and now < due_at + HANDOFF_PICKUP_GRACE
+
+
 def _activation_status(
-    job: BillingWorkItem | None, purchase_id: UUID, proof: _RetainedProof | None, now: datetime
+    job: BillingWorkItem | None,
+    purchase_id: UUID,
+    proof: _RetainedProof | None,
+    now: datetime,
+    *,
+    reconciliation: BillingWorkItem | None,
+    inventory: BillingWorkItem | None,
 ) -> ActivationCheckStatus | None:
     if job is not None:
         try:
@@ -238,9 +256,9 @@ def _activation_status(
                     return ActivationCheckStatus.CHECKING
             elif completion.reason == WidgetActivationCompletionReason.PURCHASE_INELIGIBLE:
                 return None
-            elif (
-                completion.reason == WidgetActivationCompletionReason.ACTIVATION_DETECTED
-                and now < completion.at + HANDOFF_DISPLAY
+            elif completion.reason == WidgetActivationCompletionReason.ACTIVATION_DETECTED and (
+                _handoff_in_progress(reconciliation, completion.at, now)
+                or _handoff_in_progress(inventory, completion.inventory_due_at, now)
             ):
                 return ActivationCheckStatus.CHECKING
             return ActivationCheckStatus.UNCONFIRMED
@@ -284,8 +302,9 @@ def read_paid_access(factory: SessionFactory, configuration: Settings, token: st
         subscription_ids = {sub.subscription_id for _, sub in candidates.values()}
         selected = primary_selections(db, subscription_ids) if subscription_ids else set()
         reviews = open_review_references(db, subscription_ids) if subscription_ids else set()
-        job_keys = {key(sub) for _, sub in candidates.values()}
-        jobs = queries.activation_jobs(db, job_keys) if job_keys else {}
+        subscription_keys = {key(sub) for _, sub in candidates.values()}
+        customer_keys = {f"{sub.external_billing_account_id}:{sub.customer_id}" for _, sub in candidates.values()}
+        jobs = queries.activation_jobs(db, subscription_keys, customer_keys) if subscription_keys else {}
         # Sample database time after the local reads, which may themselves wait.
         # Never omit an overdue tuple while returning its old revision.
         now = as_utc(database_now(db))
@@ -315,7 +334,16 @@ def read_paid_access(factory: SessionFactory, configuration: Settings, token: st
                     and pending.subscription_id not in selected
                     and str(pending.subscription_id) not in reviews
                 ):
-                    activation_check = _activation_status(jobs.get(key(pending)), purchase_id, proof, now)
+                    subscription_key = key(pending)
+                    customer_key = f"{pending.external_billing_account_id}:{pending.customer_id}"
+                    activation_check = _activation_status(
+                        jobs.get((BillingWorkKind.WIDGET_ACTIVATION_CHECK, subscription_key)),
+                        purchase_id,
+                        proof,
+                        now,
+                        reconciliation=jobs.get((BillingWorkKind.SUBSCRIPTION_RECONCILIATION, subscription_key)),
+                        inventory=jobs.get((BillingWorkKind.CUSTOMER_INVENTORY, customer_key)),
+                    )
             products.append(
                 ProductEvidence(
                     product,
