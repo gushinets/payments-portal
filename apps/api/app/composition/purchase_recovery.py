@@ -17,7 +17,11 @@ from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.customer_conflicts import record_customer_conflict
 from app.domains.billing.operator_contracts import OriginalOperationProof, ReviewResolution
 from app.domains.billing.operator_review import digest
-from app.domains.billing.reconciliation_contracts import CommercialProof, IdentityProof, SubscriptionCandidateSubject
+from app.domains.billing.reconciliation_contracts import (
+    CommercialProof,
+    IdentityProof,
+    SubscriptionCandidateSubject,
+)
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases import financial, service
 from app.domains.purchases.contracts import FinancialOperation, FinancialRequestDocument, Purchase, PurchaseRefused
@@ -36,7 +40,8 @@ from app.integrations.lbx.financial import (
     prove_effective_terms,
     subscription_lifecycle,
 )
-from app.integrations.lbx.reconciliation import normalize_subscription, timely_point
+from app.integrations.lbx.reconciliation import normalize_subscription
+from app.integrations.lbx.subscription_points import timely_point
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State
 from app.models import ExternalSubscriptionLifecycleStatus as Lifecycle
 
@@ -151,6 +156,21 @@ async def find_financial(
     return ids[0], agreement, point
 
 
+def is_live_original_subscription(
+    purchase: Purchase, agreement: Agreement, point: Subscription, *, agreement_id: int
+) -> bool:
+    """Check the point fact before tariff policy is available."""
+    try:
+        prove_effective_terms(
+            point, agreement_id=agreement_id, selection=purchase.accepted.selection, offer=purchase.accepted.offer
+        )
+        return subscription_lifecycle(point)[0] in {Lifecycle.ACTIVE, Lifecycle.INACTIVE} and not agreement_is_closed(
+            agreement
+        )
+    except LbxError:
+        return False  # Full normalization classifies failed proof.
+
+
 async def recover_one(
     sources: SourceResources,
     configuration: Settings,
@@ -239,19 +259,8 @@ async def recover_one(
             subscription_read_at = await delegate(read_source_time, factory)
             # Effective terms are proven by the subscription point response.
             # Later tariff policy is required for binding, not to retain this identity.
-            try:
-                prove_effective_terms(
-                    point,
-                    agreement_id=int(agreement_op.bound_id),
-                    selection=purchase.accepted.selection,
-                    offer=purchase.accepted.offer,
-                )
-                lifecycle = subscription_lifecycle(point)[0]
-            except LbxError:
-                pass  # The existing normalization below classifies failed proof.
-            else:
-                if lifecycle in {Lifecycle.ACTIVE, Lifecycle.INACTIVE} and not agreement_is_closed(agreement):
-                    await retain_point(operation, provider_id, subscription_read_at)
+            if is_live_original_subscription(purchase, agreement, point, agreement_id=int(agreement_op.bound_id)):
+                await retain_point(operation, provider_id, subscription_read_at)
             tariff = await timely_point(
                 lambda: client.get_tariff(tariff_id=purchase.accepted.selection.tariff_id, budget=budget), budget
             )

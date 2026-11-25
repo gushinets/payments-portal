@@ -6,10 +6,10 @@ from uuid import UUID
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError, model_validator
 from sqlalchemy.orm import Session
 
-from app.domains.billing.contracts import CustomerOpen
+from app.domains.billing.contracts import BillingRefused, CustomerOpen
 from app.domains.billing.customer_reviews import customer_admission_reviews
 from app.domains.billing.customers import lock_customer
-from app.domains.billing.work import verify_operation_claim
+from app.domains.billing.work import verify_claim, verify_operation_claim
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
@@ -116,6 +116,7 @@ def retain_original_point(
     work_claim: WorkClaim | None = None,
 ) -> bool:
     """Keep a bounded conflict witness even if the caller cannot bind the candidate."""
+    from app.domains.billing.background_recovery import INVENTORY
     from app.domains.billing.late_purchase_reviews import require_bindable
     from app.domains.purchases.inventory import same_purchase
 
@@ -124,10 +125,17 @@ def retain_original_point(
         operations = purchases.operations(db, purchase.id, lock=True)
         if not same_purchase(service._snapshot(db, row), purchase):
             return True  # A changed attempt is handled by the existing writer.
-        require_current_customer(db, row, purchase, customer)
+        account = require_current_customer(db, row, purchase, customer)
         op = next(item for item in operations if item.create_operation_id == point.operation_id)
         if work_claim is not None:
-            verify_operation_claim(db, work_claim, recovering_id)
+            if work_claim.kind == INVENTORY:
+                if (
+                    work_claim.reference != str(customer.customer_id)
+                    or verify_claim(db, work_claim).coalescing_key != f"{account}:{customer.customer_id}"
+                ):
+                    raise BillingRefused("billing_work_stale", 409)
+            else:
+                verify_operation_claim(db, work_claim, recovering_id)
         if op.bound_external_object_id is None:
             require_bindable(db, op, point.external_object_id)
         elif op.bound_external_object_id != point.external_object_id:

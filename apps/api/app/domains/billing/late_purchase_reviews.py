@@ -103,7 +103,9 @@ class ReleasedOriginal:
     subscription_ids: frozenset[str]
 
 
-def _original(db: Session, row: PurchaseIntent, *, include_late_cases: bool = False) -> ReleasedOriginal:
+def _original(
+    db: Session, row: PurchaseIntent, *, include_late_cases: bool = False, case_subscription_ids: set[str] | None = None
+) -> ReleasedOriginal:
     purchase = service._snapshot(db, row)
     case = billing_operator.purchase_resolution_audit(db, purchase.id, reason=TERMINAL_REASON, schema=SCHEMA)
     proofs = (
@@ -118,8 +120,10 @@ def _original(db: Session, row: PurchaseIntent, *, include_late_cases: bool = Fa
         op.kind: {value for value in (op.bound_id, proofs.get(op.id)) if value is not None}
         for op in purchase.operations
     }
-    if include_late_cases:
-        points = queries.purchase_object_ids(db, purchase.id, reason=REASON, schema=CASE_SCHEMA)
+    if include_late_cases or case_subscription_ids:
+        points = queries.purchase_object_ids(
+            db, purchase.id, reason=REASON, schema=CASE_SCHEMA, subscription_ids=case_subscription_ids
+        )
         if len(points) > 100:
             raise PurchaseInventoryIncomplete()
         for kind, external_id in points:
@@ -157,10 +161,12 @@ def released_owners(
             agreement_number,
             audit_reason=TERMINAL_REASON,
             audit_schema=SCHEMA,
+            case_reason=REASON,
+            case_schema=CASE_SCHEMA,
         )
         if len(rows) > 100:
             raise PurchaseInventoryIncomplete()
-        return tuple(_original(db, row) for row in rows)
+        return tuple(_original(db, row, case_subscription_ids=subscription_ids) for row in rows)
 
 
 def record_late_object(

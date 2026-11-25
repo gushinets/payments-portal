@@ -8,6 +8,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.sql.selectable import Exists
 
 from app.models import (
+    ExternalBillingCustomer as Customer,
     ExternalCreateOperation as Operation,
     ExternalCreateOperationKind as Kind,
     ManualReviewCase as Case,
@@ -68,22 +69,27 @@ def has_terminal_closure(
     return bool(db.scalar(select(query.exists())))
 
 
-def purchase_object_ids(db: Session, purchase_id: UUID, *, reason: str, schema: str) -> list[tuple[str, str]]:
+def _subscription_case_ids(identities: set[str]) -> ColumnElement[bool]:
     evidence = Case.evidence_document
-    return [
-        tuple(row)
-        for row in db.execute(
-            select(evidence["kind"].as_string(), evidence["external_object_id"].as_string())
-            .where(
-                Case.scope_kind == "purchase_intent",
-                Case.scope_reference == str(purchase_id),
-                Case.reason_code == reason,
-                Case.evidence_schema_version == schema,
-            )
-            .distinct()
-            .limit(101)
-        )
-    ]
+    return and_(
+        evidence["kind"].as_string() == Kind.SUBSCRIPTION.value,
+        evidence["external_object_id"].as_string().in_(identities),
+    )
+
+
+def purchase_object_ids(
+    db: Session, purchase_id: UUID, *, reason: str, schema: str, subscription_ids: set[str] | None = None
+) -> list[tuple[str, str]]:
+    evidence = Case.evidence_document
+    query = select(evidence["kind"].as_string(), evidence["external_object_id"].as_string()).where(
+        Case.scope_kind == "purchase_intent",
+        Case.scope_reference == str(purchase_id),
+        Case.reason_code == reason,
+        Case.evidence_schema_version == schema,
+    )
+    if subscription_ids is not None:
+        query = query.where(_subscription_case_ids(subscription_ids))
+    return [tuple(row) for row in db.execute(query.distinct().limit(101))]
 
 
 def product_cases(
@@ -163,6 +169,8 @@ def released_owners(
     *,
     audit_reason: str,
     audit_schema: str,
+    case_reason: str,
+    case_schema: str,
 ) -> list[Purchase]:
     def matches(kind: Kind, identities: set[str]) -> ColumnElement[bool]:
         by_number = kind == Kind.AGREEMENT and agreement_number is not None
@@ -175,16 +183,23 @@ def released_owners(
             ),
         )
 
+    operation_matches = exists().where(
+        Operation.purchase_intent_id == Purchase.purchase_intent_id,
+        or_(matches(Kind.AGREEMENT, agreement_ids), matches(Kind.SUBSCRIPTION, subscription_ids)),
+    )
+    case_matches = exists().where(
+        *_purchase_cases(case_reason, case_schema),
+        _subscription_case_ids(subscription_ids),
+    )
     return list(
         db.scalars(
             select(Purchase)
+            .join(Customer, Customer.customer_id == Purchase.customer_id)
             .where(
                 Purchase.customer_id == customer_id,
+                Purchase.external_billing_account_id == Customer.external_billing_account_id,
                 Purchase.state.in_((State.RESOLVED_EXTERNAL_TERMINAL, State.RESOLVED_NO_EXTERNAL_EFFECT)),
-                exists().where(
-                    Operation.purchase_intent_id == Purchase.purchase_intent_id,
-                    or_(matches(Kind.AGREEMENT, agreement_ids), matches(Kind.SUBSCRIPTION, subscription_ids)),
-                ),
+                or_(operation_matches, case_matches),
             )
             .order_by(Purchase.purchase_intent_id)
             .limit(101)

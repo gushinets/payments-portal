@@ -9,6 +9,8 @@ from uuid import UUID
 
 from starlette.concurrency import run_in_threadpool
 
+from app.composition.purchase_late_objects import review_redirected_subscription
+from app.composition.purchase_recovery import is_live_original_subscription
 from app.composition.sources import SourceResources
 from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused
@@ -25,13 +27,19 @@ from app.domains.billing.reconciliation_contracts import (
 )
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases import service
-from app.domains.purchases.contracts import Purchase, PurchaseRefused
+from app.domains.purchases.contracts import FinancialOperation, Purchase, PurchaseRefused
 from app.domains.purchases.inventory_contracts import InventoryStale
+from app.domains.purchases.recovery_evidence import OriginalPointFact, retain_original_point
 from app.infrastructure.preflight import PreflightAdmission, PreflightBudget, PreflightDeadlineExceeded
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.operator_contracts import ReviewResolution
 from app.integrations.lbx.client import LbxServerClient
+from app.integrations.lbx.errors import LbxError
+from app.integrations.lbx.financial import prove_agreement
+from app.integrations.lbx.reconciliation import complete_subscription_proof
 from app.integrations.lbx.reconciliation import read_subscription_proof as read_lbx_subscription_proof
+from app.integrations.lbx.subscription_points import read_subscription_points
+from app.models import ExternalCreateOperationKind as Kind
 
 
 async def read_subscription_proof(
@@ -53,6 +61,74 @@ async def read_subscription_proof(
         check_agreement_inventory=check_agreement_inventory,
         read_time=partial(delegate, read_source_time, factory),
     )
+
+
+async def read_inventory_original_subscription(
+    client: LbxServerClient,
+    subject: SubscriptionCandidateSubject,
+    operation: FinancialOperation,
+    configuration: Settings,
+    *,
+    factory: SessionFactory,
+    budget: PreflightBudget,
+    work_claim: WorkClaim | None,
+    delegate: Callable[..., Awaitable[Any]],
+) -> SubscriptionProof | None:
+    """Retain the exact fact before tariff I/O. Return no proof on an ownership conflict."""
+    point_clock = partial(delegate, read_source_time, factory)
+    points = await read_subscription_points(client, subject, budget=budget, read_time=point_clock)
+    point, read_at = points.subscription, points.subscription_read_at
+    customer = subject.customer
+    if (
+        point is not None
+        and read_at is not None
+        and points.user is not None
+        and points.user.outer_id == customer.outer_key
+    ):
+        agreement_id = int(subject.agreement_id)
+        if point.agreement_id != agreement_id:
+            original = await review_redirected_subscription(
+                client,
+                factory,
+                customer,
+                subject.provider_subscription_id,
+                point,
+                read_finished_at=read_at,
+                budget=budget,
+                delegate=delegate,
+            )
+            if original is not None:
+                return None
+        elif points.agreement is not None:
+            try:
+                prove_agreement(
+                    points.agreement,
+                    user_id=int(customer.provider_id),
+                    seller_id=subject.purchase.accepted.seller_id,
+                    number=subject.agreement_key,
+                )
+            except LbxError:
+                pass  # Full normalization classifies failed proof.
+            else:
+                if is_live_original_subscription(subject.purchase, points.agreement, point, agreement_id=agreement_id):
+                    fact = OriginalPointFact(
+                        operation_id=operation.id,
+                        operation_kind=Kind.SUBSCRIPTION,
+                        external_object_id=subject.provider_subscription_id,
+                        fact="live",
+                        point_read_finished_at=read_at,
+                    )
+                    if not await delegate(
+                        retain_original_point,
+                        factory,
+                        subject.purchase,
+                        customer,
+                        fact,
+                        recovering_id=operation.id,
+                        work_claim=work_claim,
+                    ):
+                        return None
+    return await complete_subscription_proof(client, configuration, points, budget=budget, read_time=point_clock)
 
 
 async def reconcile_subscription(

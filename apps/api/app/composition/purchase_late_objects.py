@@ -9,7 +9,12 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.errors import AppError
 from app.domains.billing.contracts import CustomerOpen
-from app.domains.billing.late_purchase_reviews import LateObjectEvidence, ReleasedOriginal, record_late_object
+from app.domains.billing.late_purchase_reviews import (
+    LateObjectEvidence,
+    ReleasedOriginal,
+    record_late_object,
+    released_owners,
+)
 from app.domains.billing.reconciliation import read_source_time
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases.contracts import PurchaseInventoryIncomplete, PurchaseRefused
@@ -31,7 +36,8 @@ from app.integrations.lbx.financial import (
     agreement_is_closed,
     subscription_lifecycle,
 )
-from app.integrations.lbx.reconciliation import MAX_RELEVANT_SUBSCRIPTIONS, timely_point
+from app.integrations.lbx.reconciliation import MAX_RELEVANT_SUBSCRIPTIONS
+from app.integrations.lbx.subscription_points import timely_point
 from app.models import ExternalCreateOperationKind as Kind, ExternalSubscriptionLifecycleStatus as Lifecycle
 
 
@@ -41,6 +47,72 @@ async def candidate_point[T](read: Callable[[], Awaitable[T]], budget: Preflight
         return await timely_point(read, budget)
     except (LbxResponseInvalid, LbxUnavailable, LbxTimeout, LbxRateLimited, LbxAttemptsExhausted, LbxProviderRejected):
         return None
+
+
+def historical_subscription_matches(
+    history: tuple[ReleasedOriginal, ...], provider_id: str, agreement_id: str | None
+) -> list[ReleasedOriginal]:
+    return [old for old in history if provider_id in old.subscription_ids] or [
+        old for old in history if agreement_id in old.agreement_ids
+    ]
+
+
+def historical_subscription_owner(
+    history: tuple[ReleasedOriginal, ...], provider_id: str, agreement_id: str | None
+) -> ReleasedOriginal | None:
+    matches = historical_subscription_matches(history, provider_id, agreement_id)
+    if len(matches) > 1:
+        raise PurchaseInventoryIncomplete()
+    return matches[0] if matches else None
+
+
+async def released_subscription_owner(
+    factory: SessionFactory,
+    customer: CustomerOpen,
+    point: Subscription,
+    delegate: Callable[..., Awaitable[Any]],
+    *,
+    agreement_number: str | None = None,
+) -> ReleasedOriginal | None:
+    agreement_id, provider_id = str(point.agreement_id), str(point.subscription_id)
+    owners = await delegate(
+        released_owners, factory, customer.customer_id, {agreement_id}, {provider_id}, agreement_number=agreement_number
+    )
+    original = historical_subscription_owner(owners, provider_id, agreement_id)
+    if original is not None or agreement_number is None:
+        return original
+    if len(owners) > 1:
+        raise PurchaseInventoryIncomplete()
+    return owners[0] if owners else None
+
+
+async def review_redirected_subscription(
+    client: LbxServerClient,
+    factory: SessionFactory,
+    customer: CustomerOpen,
+    provider_id: str,
+    point: Subscription,
+    *,
+    read_finished_at: datetime,
+    budget: PreflightBudget,
+    delegate: Callable[..., Awaitable[Any]],
+) -> ReleasedOriginal | None:
+    """Follow the actual point relationship when discovery named a different agreement."""
+    if str(point.subscription_id) != provider_id:
+        raise LbxScopeMismatch()
+    original = await released_subscription_owner(factory, customer, point, delegate)
+    if original is not None:
+        await review_historical_subscription(
+            client,
+            factory,
+            original,
+            customer,
+            point,
+            read_finished_at=read_finished_at,
+            budget=budget,
+            delegate=delegate,
+        )
+    return original
 
 
 async def review_historical_subscription(
@@ -73,6 +145,28 @@ async def review_historical_subscription(
     if failure is not None:
         raise failure
     return agreement is not None
+
+
+async def record_inventory_late_subscription(
+    factory: SessionFactory,
+    customer: CustomerOpen,
+    point: Subscription,
+    agreement: Agreement,
+    *,
+    read_finished_at: datetime,
+    delegate: Callable[..., Awaitable[Any]],
+) -> bool:
+    if agreement.agreement_number is None:
+        return False
+    original = await released_subscription_owner(
+        factory, customer, point, delegate, agreement_number=agreement.agreement_number
+    )
+    if original is None:
+        return False
+    await record_subscription(
+        factory, original, customer, point, agreement, read_finished_at=read_finished_at, delegate=delegate
+    )
+    return True
 
 
 def prove_original_agreement(original: ReleasedOriginal, customer: CustomerOpen, agreement: Agreement) -> None:
