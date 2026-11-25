@@ -277,10 +277,20 @@ def _live_inventory_wait(
 
 
 def handle_widget_wakeup(
-    db: Session, sub: ExternalSubscription, scope: BillingProductAccessScope, claim: WorkClaim
+    db: Session,
+    sub: ExternalSubscription,
+    scope: BillingProductAccessScope,
+    claim: WorkClaim,
+    *,
+    source_busy: bool,
 ) -> WorkAttemptOutcome | None:
     from app.domains.billing import work
 
+    if source_busy:
+        # A busy ordinary attempt keeps its source refusal without locking the queue.
+        queued = ReconciliationQueuePayload.from_job(db.get(BillingWorkItem, claim.id)).widget_wakeup
+        if queued is None or queued.original_due_at is None or scope.primary_subscription_id is not None:
+            return None
     row = work.verify_claim(db, claim)
     subscription_key = work.key(sub)
     if claim.kind != work.RECONCILIATION or row.coalescing_key != subscription_key:
@@ -299,7 +309,6 @@ def handle_widget_wakeup(
     if signal_at is None:
         return None
 
-    source_busy = sub.reconciliation_lease_expires_at is not None and as_utc(sub.reconciliation_lease_expires_at) > now
     covered = False
     if not source_busy:
         if scope.primary_subscription_id is None:

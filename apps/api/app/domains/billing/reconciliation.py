@@ -152,17 +152,21 @@ def claim_reconciliation(
             or current.external_agreement_id != agreement.bound_external_object_id
         ):
             raise BillingRefused("subscription_provenance_unproven", 409)
+        now = as_utc(queries.database_now(db))
+        lease_expires_at = current.reconciliation_lease_expires_at
+        source_busy = lease_expires_at is not None and as_utc(lease_expires_at) > now
         if (
             work_claim is not None
             and work_claim.kind == RECONCILIATION
             and purchase.state == PurchaseIntentState.LINKED
         ):
-            outcome = handle_widget_wakeup(db, current, scope, work_claim)
+            outcome = handle_widget_wakeup(db, current, scope, work_claim, source_busy=source_busy)
             if outcome is not None:
                 db.commit()
                 raise ReconciliationWakeupHandled(outcome)
-        now = as_utc(queries.database_now(db))
-        if current.reconciliation_lease_expires_at and as_utc(current.reconciliation_lease_expires_at) > now:
+            if not source_busy:
+                now = as_utc(queries.database_now(db))
+        if source_busy:
             raise BillingRefused("subscription_reconciliation_busy", 409)
         current.reconciliation_lease_owner = str(uuid4())
         current.reconciliation_lease_expires_at = now + timedelta(seconds=io_timeout_seconds + APPLY_SAFETY_SECONDS)
