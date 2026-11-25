@@ -252,6 +252,10 @@ def claim_work(
         )
         if row is None:
             return None
+        if row.work_kind == BillingWorkKind.SUBSCRIPTION_RECONCILIATION and row.work_state == BillingWorkState.RUNNING:
+            # An expired claim can be reclaimed with the same due time and generation.
+            payload = ReconciliationQueuePayload.from_job(row)
+            row.payload_document = payload.model_copy(update={"last_reclaimed_at": now}).model_dump(mode="json")
         row.lease_owner = str(uuid4())
         row.lease_expires_at = now + timedelta(seconds=configuration.billing_worker_io_timeout_seconds + 30)
         if row.work_kind != BillingWorkKind.WIDGET_ACTIVATION_CHECK:

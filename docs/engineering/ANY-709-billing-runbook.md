@@ -814,9 +814,11 @@ the closing read, and while the accelerated reconciliation or the specific
 first-primary inventory attempt linked to the window holds a live claim. Each
 queued stage also has up to 60 seconds to be picked up. When the accelerated
 path ends, it reports `unconfirmed` while the purchase remains eligible and
-access is still pending. That status stays visible if ordinary inventory is
-then reclaimed after the linked attempt's lease expires or first picked up at
-or after the saved deadline plus the five-second closing grace. Without a saved
+access is still pending. Reclaiming the expired lease of the accelerated
+reconciliation keeps that status through the retry and any first-primary
+selection it queues. Ordinary inventory also keeps that status when it is
+reclaimed after the linked attempt's lease expires or first picked up at or
+after the saved deadline plus the five-second closing grace. Without a saved
 window, fresh matching reconciliation evidence of a waiting subscription also
 yields `unconfirmed`.
 A window completed as `purchase_ineligible` yields `null`, as do other cases

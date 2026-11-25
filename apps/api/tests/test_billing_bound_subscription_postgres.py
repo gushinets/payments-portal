@@ -791,6 +791,53 @@ async def test_any897_covered_pending_wakeup_restores_the_original_reconciliatio
 
 @pytest.mark.parametrize("scenario", [True], indirect=True)
 @pytest.mark.parametrize("activation_polling", [{"prepared_at": PERIOD_TEST_PREPARED_AT}], indirect=True)
+async def test_any897_cabinet_stays_unconfirmed_when_reconciliation_handoff_is_reclaimed(
+    activation_polling: ActivationPolling,
+    cabinet: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    polling = activation_polling
+    factory = polling.factory
+    monkeypatch.setattr(paid_read, "database_now", lambda db: polling.now)
+    activate(polling.transport)
+    prove_month(polling.transport.subscriptions[0], polling.window.prepared_at)
+    closing_slot = (polling.window.deadline_at - polling.window.prepared_at).total_seconds()
+    assert await polling.tick(closing_slot)
+    assert await cabinet_status(cabinet) == ("checking", 0)
+
+    polling.now += timedelta(seconds=1)
+    original = work.claim_work(factory, polling.worker.configuration, WorkLane.URGENT)
+    assert original is not None and original.kind == BillingWorkKind.SUBSCRIPTION_RECONCILIATION
+    original_schedule = reconciliation_schedule(factory)
+    assert await cabinet_status(cabinet) == ("checking", 0)
+    # The original worker disappears without finishing the claim.
+    polling.now = original.expires_at
+    assert polling.now > WidgetActivationWindow.from_work(polling.job()).reopen_at()
+    assert await cabinet_status(cabinet) == ("unconfirmed", 0)
+
+    retry = work.claim_work(factory, polling.worker.configuration, WorkLane.URGENT)
+    assert retry is not None and retry.id == original.id and retry.owner != original.owner
+    assert reconciliation_schedule(factory) == original_schedule
+    assert await cabinet_status(cabinet) == ("unconfirmed", 0)
+
+    await orchestration.reconcile_subscription(
+        polling.worker.client,
+        polling.worker.admissions[WorkLane.URGENT],
+        polling.worker.configuration,
+        factory=factory,
+        subscription_id=UUID(retry.reference),
+        work_claim=retry,
+    )
+    # Inventory queued by the reclaimed attempt also belongs to ordinary recovery.
+    assert await cabinet_status(cabinet) == ("unconfirmed", 0)
+    assert await polling.tick((polling.now - polling.window.prepared_at).total_seconds() + 1, WorkLane.URGENT)
+    assert await cabinet_status(cabinet) == (None, 1)
+    with factory() as db:
+        assert db.scalars(select(PurchasedAllowance)).one().quantity == 100
+
+
+@pytest.mark.parametrize("scenario", [True], indirect=True)
+@pytest.mark.parametrize("activation_polling", [{"prepared_at": PERIOD_TEST_PREPARED_AT}], indirect=True)
 @pytest.mark.parametrize("reopen", [False, True], ids=["expired-lease", "reopened-window"])
 async def test_any897_cabinet_tracks_only_the_linked_inventory_attempt(
     activation_polling: ActivationPolling,

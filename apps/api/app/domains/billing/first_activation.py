@@ -125,6 +125,10 @@ class ReconciliationQueuePayload(BaseModel):
 
     first_primary: FirstPrimaryAttempt | None = Field(default=None, exclude_if=lambda value: value is None)
     widget_wakeup: WidgetReconciliationWakeup | None = Field(default=None, exclude_if=lambda value: value is None)
+    last_reclaimed_at: AwareDatetime | None = Field(default=None, exclude_if=lambda value: value is None)
+
+    def was_reclaimed_since(self, handoff_at: datetime) -> bool:
+        return self.last_reclaimed_at is not None and self.last_reclaimed_at >= handoff_at
 
     @classmethod
     def from_job(cls, job: BillingWorkItem | None) -> "ReconciliationQueuePayload":
@@ -306,9 +310,11 @@ def record_first_activation_inventory(
             source=inventory.source_proof,
         )
         wakeup = wakeup.model_copy(update={"inventory_coverage": coverage})
-    link = _cabinet_inventory_link(
-        window, window_key, payload.first_primary, inventory, reconciliation_due_at, reconciliation_attempt
-    )
+    link = None
+    if reconciliation_attempt is None or completion is None or not payload.was_reclaimed_since(completion.at):
+        link = _cabinet_inventory_link(
+            window, window_key, payload.first_primary, inventory, reconciliation_due_at, reconciliation_attempt
+        )
     if link is not None or wakeup is not payload.widget_wakeup:
         job.payload_document = payload.model_copy(
             update={"first_primary": link if link is not None else payload.first_primary, "widget_wakeup": wakeup}

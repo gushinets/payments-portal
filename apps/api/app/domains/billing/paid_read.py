@@ -227,8 +227,7 @@ def _negative(proof: _RetainedProof | None, now: datetime) -> bool:
 
 
 def _handoff_in_progress(job: BillingWorkItem | None, due_at: datetime | None, now: datetime) -> bool:
-    # Claiming leaves the due time intact. A completed attempt moves it past
-    # the original hint, even when the same recurring row later runs again.
+    # A finished attempt moves the due time past the original hint.
     if job is None or due_at is None or as_utc(job.next_attempt_at) > due_at:
         return False
     if job.work_state == BillingWorkState.RUNNING:
@@ -254,7 +253,8 @@ def _activation_status(
             completion = window.completion
             if completion is not None and completion.reason == WidgetActivationCompletionReason.PURCHASE_INELIGIBLE:
                 return None
-            link = ReconciliationQueuePayload.from_job(reconciliation).first_primary
+            reconciliation_payload = ReconciliationQueuePayload.from_job(reconciliation)
+            link = reconciliation_payload.first_primary
             if (
                 link is not None
                 and link.purchase_id == purchase_id
@@ -269,7 +269,10 @@ def _activation_status(
                 if now < window.deadline_at + CLOSING_GRACE:
                     return ActivationCheckStatus.CHECKING
             elif completion.reason == WidgetActivationCompletionReason.ACTIVATION_DETECTED and (
-                _handoff_in_progress(reconciliation, completion.at, now)
+                (
+                    not reconciliation_payload.was_reclaimed_since(completion.at)
+                    and _handoff_in_progress(reconciliation, completion.at, now)
+                )
                 or _handoff_in_progress(inventory, completion.inventory_due_at, now)
             ):
                 return ActivationCheckStatus.CHECKING
