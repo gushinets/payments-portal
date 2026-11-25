@@ -186,7 +186,11 @@ async def test_late_case_survives_omission_and_fences_replacement(
     assert service.read_purchase(factory, replacement.user_id, replacement.id).held
     assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
     assert inspect_evidence(factory, config, old.user_id, replacement.id)["blocking_late_reviews"] == [
-        {"purchase_intent_id": str(old.id), "review_case_id": str(case_id)}
+        {
+            "purchase_intent_id": str(old.id),
+            "review_case_id": str(case_id),
+            "expected_case_digest": expected_digest,
+        }
     ]
 
     other_token, token_hash, expires = make_session_token()
@@ -329,14 +333,18 @@ async def test_new_late_id_survives_failed_agreement_read_and_list_omission(
             "456",
         )
         assert request.evidence.confirmed_at < evidence.read_finished_at <= reads[0]
-        case_id = case.review_case_id
+        case_id, expected_digest = case.review_case_id, case_digest(case)
 
     transport.hide.add("/subscriptions")
     with pytest.raises(PurchaseRefused, match="purchase_existing_subscription_review"):
         await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=replacement.id)
     assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
     assert inspect_evidence(factory, config, replacement.user_id, replacement.id)["blocking_late_reviews"] == [
-        {"purchase_intent_id": str(old.id), "review_case_id": str(case_id)}
+        {
+            "purchase_intent_id": str(old.id),
+            "review_case_id": str(case_id),
+            "expected_case_digest": expected_digest,
+        }
     ]
     before_recovery = len(transport.requests)
     await recover_financial(
@@ -998,6 +1006,7 @@ async def test_quiesced_write_refuses_active_work_and_replays_from_audit(
 
     original_before = inspect_evidence(factory, config, original_purchase.user_id, original_purchase.id)
     actor_before = inspect_evidence(factory, config, actor.user_id, actor.id)
+    assert original_before["customer_work_active"] and actor_before["customer_work_active"]
     with pytest.raises(PurchaseRefused, match="billing_busy"):
         execute()
     assert inspect_evidence(factory, config, original_purchase.user_id, original_purchase.id) == original_before
@@ -1013,6 +1022,10 @@ async def test_quiesced_write_refuses_active_work_and_replays_from_audit(
                 item.work_state = BillingWorkState.PENDING
             else:
                 item.lease_expires_at = now - timedelta(seconds=1)
+
+    assert not inspect_evidence(factory, config, original_purchase.user_id, original_purchase.id)[
+        "customer_work_active"
+    ]
     result = execute()
     assert not result.already_resolved
     if closure is None:

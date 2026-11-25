@@ -12,7 +12,7 @@ from app.infrastructure.queries import billing_operator as queries, billing_reco
 from app.infrastructure.queries.billing_customers import diagnostic_user
 from app.infrastructure.queries.billing_background import operation_subject
 from app.domains.billing.customer_scope import connection_account
-from app.domains.billing.terminal_resolution import state_digest
+from app.domains.billing.terminal_resolution import locally_proven_not_sent, state_digest
 from app.domains.purchases.recovery_evidence import retained_points
 
 
@@ -83,10 +83,9 @@ def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: 
         reviews = queries.reviews(
             db, purchase.id, purchase.customer_id, sub.subscription_id if sub else None, include_paid_diagnostics=True
         )
+        operation_rows = {op.create_operation_id: op for op in purchases.operations(db, purchase.id)}
         original_points = {
-            op.create_operation_id: points.model_dump(mode="json")
-            for op in purchases.operations(db, purchase.id)
-            if (points := retained_points(db, op)) is not None
+            op_id: points for op_id, op in operation_rows.items() if (points := retained_points(db, op)) is not None
         }
         blockers = blocking_cases(db, purchase)
         now = as_utc(billing_reconciliation.database_now(db))
@@ -95,8 +94,13 @@ def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: 
             "state": purchase.state,
             "reason": purchase.reason,
             "scope_held": purchase.held,
+            "customer_work_active": queries.customer_work_active(db, purchase.customer_id, purchase.account_id, now),
             "blocking_late_reviews": [
-                {"purchase_intent_id": case.scope_reference, "review_case_id": str(case.review_case_id)}
+                {
+                    "purchase_intent_id": case.scope_reference,
+                    "review_case_id": str(case.review_case_id),
+                    "expected_case_digest": case_digest(case),
+                }
                 for case in blockers[:100]
             ],
             "blocking_late_reviews_truncated": len(blockers) > 100,
@@ -110,7 +114,12 @@ def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: 
                     "request_correlation_key": op.key,
                     "external_object_id": op.bound_id,
                     "receipt_candidate_id": op.candidate_id,
-                    "original_point_facts": original_points.get(op.id),
+                    "original_point_facts": original_points[op.id].model_dump(mode="json")
+                    if op.id in original_points
+                    else None,
+                    "locally_proven_not_sent": locally_proven_not_sent(
+                        db, operation_rows[op.id], op, original_points.get(op.id)
+                    ),
                     "bound": op.bound_id is not None,
                     "receipt_saved": op.candidate_id is not None,
                     "deadline": op.deadline.isoformat() if op.deadline else None,

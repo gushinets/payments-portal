@@ -23,7 +23,7 @@ from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
 from app.domains.purchases.financial import RECOVERY_WINDOW
-from app.domains.purchases.recovery_evidence import ProviderId, retained_points
+from app.domains.purchases.recovery_evidence import ProviderId, RetainedOriginalPointFacts, retained_points
 from app.domains.purchases.contracts import (
     FINANCIAL_REVIEW_SCHEMA,
     FinancialOperation,
@@ -145,8 +145,13 @@ def state_digest(db: Session, row: PurchaseIntent) -> str:
     )
 
 
-def _locally_unsent(db: Session, op: ExternalCreateOperation, snapshot: FinancialOperation) -> bool:
-    if snapshot.bound_id is not None or snapshot.candidate_id is not None:
+def locally_proven_not_sent(
+    db: Session,
+    op: ExternalCreateOperation,
+    snapshot: FinancialOperation,
+    points: RetainedOriginalPointFacts | None,
+) -> bool:
+    if points is not None or snapshot.bound_id is not None or snapshot.candidate_id is not None:
         return False
     if op.operation_state in {OperationState.PENDING, OperationState.PROVEN_NOT_SENT}:
         return True
@@ -185,7 +190,7 @@ def _verify_proof(
 
     snapshot = service._operation(db, op)
     points = retained_points(db, op)
-    unsent = points is None and _locally_unsent(db, op, snapshot)
+    unsent = locally_proven_not_sent(db, op, snapshot, points)
     if item.outcome == TerminalEvidenceKind.NOT_SENT:
         if not unsent:
             raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)

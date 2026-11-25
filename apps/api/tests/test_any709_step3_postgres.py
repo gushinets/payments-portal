@@ -11,6 +11,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from threading import Event, get_ident
 from uuid import UUID, uuid4
 
@@ -1370,8 +1371,15 @@ async def test_any709_step3_widget_rechecks_after_client_io(
 
 
 async def test_any709_step3_changed_terms_after_possible_send_never_release_or_replace(
-    migrated_database: Engine, postgres_session_factory: sessionmaker[Session]
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
+    from app.cli import billing_purchases
+    from app.core import database
+
     factory = postgres_session_factory
     transport = setup_purchase(factory)
     transport.fail_create = "/agreements"
@@ -1437,8 +1445,45 @@ async def test_any709_step3_changed_terms_after_possible_send_never_release_or_r
 
         transport.agreements[0]["close_date"] = "2026-10-27"
         confirmed = terminal_request(factory, config, review, original_proof, no_subscription, confirmed=True)
-        done = terminal.resolve_purchase(factory, config, confirmed, PRINCIPAL)
+        evidence_file = tmp_path / "completion.json"
+        evidence_file.write_text(confirmed.evidence.model_dump_json(), encoding="utf-8")
+
+        def forbidden_source(*args: object) -> None:
+            pytest.fail("inspect and terminal resolution must not initialize source clients")
+
+        monkeypatch.setattr(billing_purchases, "source_resources", forbidden_source)
+        monkeypatch.setattr(billing_purchases, "Settings", lambda: config)
+        monkeypatch.setattr(billing_purchases, "resolve_operator_principal", lambda: PRINCIPAL)
+        monkeypatch.setattr(database, "SessionLocal", factory)
+        scope = ["--user-id", str(purchase.user_id), "--purchase-id", str(purchase.id)]
+        capsys.readouterr()
+        assert await asyncio.to_thread(billing_purchases.main, ["inspect", *scope]) == 0
+        inspected = json.loads(capsys.readouterr().out)
+        assert inspected["state"] == "manual_review" and not inspected["customer_work_active"]
+        assert [operation["create_operation_id"] for operation in inspected["operations"]] == [
+            str(original.id),
+            str(subscription.id),
+        ]
+        assert [operation["locally_proven_not_sent"] for operation in inspected["operations"]] == [False, True]
+        resolve = [
+            "resolve-purchase",
+            *scope,
+            "--expected-digest",
+            inspected["expected_resolution_digest"],
+            "--evidence-file",
+            str(evidence_file),
+            "--reason",
+            confirmed.reason,
+            "--reference",
+            confirmed.reference,
+        ]
+        assert await asyncio.to_thread(billing_purchases.main, resolve) == 0
+        done = terminal.TerminalResult.model_validate_json(capsys.readouterr().out)
         assert done.state == IntentState.RESOLVED_EXTERNAL_TERMINAL
+        assert not done.already_resolved
+        assert await asyncio.to_thread(billing_purchases.main, resolve) == 0
+        replay = terminal.TerminalResult.model_validate_json(capsys.readouterr().out)
+        assert replay == done.model_copy(update={"already_resolved": True})
         retained = service.read_purchase(factory, purchase.user_id, purchase.id)
         assert not retained.held and retained.accepted == purchase.accepted
         assert all(old.fence != new.fence for old, new in zip(review.operations, retained.operations, strict=True))

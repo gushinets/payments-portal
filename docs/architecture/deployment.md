@@ -351,10 +351,40 @@ API value for shell or overlay overrides before running a full `image-up`.
 The setting applies when the API saves a new window. Existing windows retain
 their saved deadlines.
 
+### Quiesced purchase maintenance (ANY-821)
+
+Apply Portal revision `20261123_0821` with the normal migration service before
+terminal maintenance. Use the compatible migration and API/worker images, a
+one-off CLI from the selected API image, and a web image that understands
+`resolved_external_terminal`. The downgrade guard refuses retained terminal
+purchase history, open late-object cases and audited exact late-object closures.
+Use a matching verified application/database backup pair for an incompatible
+rollback.
+
+1. Before maintenance, `inspect`, attempt GET-only `recover`, then `inspect`
+   again as described in the [operator runbook](../engineering/billing-background-operations.md#audited-purchase-completion-any-821).
+2. Close ingress and pause rollout, scheduling and automatic restart. Stop the
+   API service with the same Compose project and file selection as the running
+   installation. This also stops the embedded worker. Stop and drain every
+   additional API and worker replica that can affect the operation. Finish
+   related one-off commands and keep PostgreSQL running. Keep the API and
+   workers stopped through the terminal commit.
+3. Use `docker compose … run --rm --no-deps` with the selected `api` service
+   to run the one-off CLI. Set `PYTHONPATH=/app/apps/api` and use
+   `python -m app.cli.billing_purchases`. Mount any evidence file read-only at a
+   path readable by that service's OS user. Run `inspect` and verify
+   `customer_work_active: false`. Obtain final LBX evidence, then run
+   `resolve-purchase` or exact case closure with the inspected digest. Replay
+   the identical command from the same OS principal if the result is uncertain.
+4. Restart compatible API/worker and web processes, verify readiness, then
+   verify the saved link, terminal status and fresh replacement admission.
+   Restore ingress and restart automation under the deployment's normal
+   acceptance procedure.
+
 ### Paired compatibility and synchronized cutover
 
-The locally verified ANY-766 source pair used
-Portal migration head `20261113_0013`, Kernel head `0022`, consumer identity V2,
+The ANY-766 cutover baseline requires Portal revision `20261113_0013`,
+Kernel head `0022`, consumer identity V2,
 AccessSnapshot V3, manifest/invalidation/usage/exhaustion V1. Source baselines are
 Portal `2e328bb59af690ec3a4599da0ce4556f9bedce76` and Kernel
 `c153aaa200770ee156537e30fea1ebb3d085b434`, plus their review corrections.

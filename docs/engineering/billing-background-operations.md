@@ -602,10 +602,14 @@ not that payment or positive source proof was established. Exit 1 returns only
 
 - `inspect`: local read-only evidence; no source I/O, row changes or leases.
   Output includes original operations/fences, current subscription facts/trust,
-  financial request correlation keys, known bound/receipt IDs, recent observation
-  summaries, work and review IDs/digests. It also shows `expected_resolution_digest`
-  and `blocking_late_reviews` for the current purchase. Work/review lists
-  cap at 100 with truncation flags; observations contain the latest 20 records.
+  financial request correlation keys, known bound/receipt IDs, retained exact
+  `original_point_facts` (including any conflict), recent observation summaries,
+  and work and review IDs/digests. `expected_resolution_digest` identifies the
+  inspected purchase state. Each entry in `blocking_late_reviews` gives the
+  original purchase ID, exact case ID and `expected_case_digest`.
+  `customer_work_active` reports the activity tested by the maintenance guard.
+  Work/review lists cap at 100 with truncation flags; observations contain the
+  latest 20 records.
   No customer keys, raw requests, credentials or accepted amounts are exposed.
 - `inspect-operation --operation-id <local-operation-uuid>`: resolve the opaque
   operation reference from Sentry locally. It checks configured origin/account
@@ -630,7 +634,8 @@ not that payment or positive source proof was established. Exit 1 returns only
 - `resolve-purchase`: audited terminal purchase completion or closure of an exact
   late-object case. Requires `--expected-digest`, `--evidence-file`, `--reason`
   and `--reference`. Add `--case-id` to close a late-object case. Reason and
-  reference are single-line text, each up to 500 characters.
+  reference are single-line text, each up to 500 characters. The evidence file
+  is a local JSON document of at most 32 KiB.
 
 Examples; replace placeholders with local IDs and current expectations:
 
@@ -722,13 +727,15 @@ source-scope conflict does not.
 
 ### Audited purchase completion (ANY-821)
 
-Run `inspect` on the original purchase and attempt GET-only `recover` first. If
-recovery cannot finish the purchase, keep its hold until both original financial
-operations have proof. Use the operation IDs, request correlation keys and any
-saved bound or receipt IDs from inspection when obtaining LBX confirmation.
+Run `inspect` on the original purchase, attempt GET-only `recover`, then run
+`inspect` again, including after a recovery error. If recovery cannot finish the
+purchase, keep its hold until both original financial operations have proof.
+Use the operation IDs, request correlation keys and any saved bound or receipt
+IDs from inspection when obtaining LBX confirmation.
 
 - `not_sent` uses local proof that the operation was never sent or that its
-  transport proved no send. Provide only the operation ID and outcome.
+  transport proved no send. Check `locally_proven_not_sent: true` on that
+  operation in `inspect`, then provide only its ID and the outcome.
 - `no_external_effect` after a possible send requires an approved LBX
   operation-level contract proving that the exact request had no effect and
   cannot materialize later. The command refuses that outcome while the contract
@@ -742,11 +749,13 @@ saved bound or receipt IDs from inspection when obtaining LBX confirmation.
   that lacks that clock.
 
 Both purchase resolution and exact case closure require quiesced maintenance.
-Before obtaining final evidence, stop all affected Portal API and worker
-replicas and prevent restarts. Let same-customer inventory, advance, recovery,
-reconciliation, and one-off operator source commands finish. Keep PostgreSQL
-available and keep the processes stopped through commit. The commands perform
-no LBX I/O.
+Follow the [deployment procedure](../architecture/deployment.md#quiesced-purchase-maintenance-any-821)
+to stop admission and every affected Portal API and worker replica, let related
+one-off commands finish, and disable automatic restart. Keep PostgreSQL
+available. With the writers stopped, run `inspect` again and verify
+`customer_work_active: false`. Then obtain final evidence and use the digest
+from that inspection. Keep the writers stopped through commit. `inspect` and
+`resolve-purchase` use local state. The terminal command does not contact LBX.
 
 For a new write, the commands return `billing_busy` if same-customer work has
 a live lease, a running claim lacks a lease, or reconciliation holds a live
@@ -755,8 +764,9 @@ obtain fresh evidence before retrying. A paired expired lease gives the old
 claim no authority to write. An exact retry by the same principal reads the
 saved audit after verifying ownership.
 
-For a possible send, record the actual shutdown as `senders_stopped_at` and the
-time covered by the provider proof as `confirmed_at`. For separate proofs, use
+For a possible send, record when all affected senders stopped and drained as
+`senders_stopped_at`. Record the time covered by the provider proof as
+`confirmed_at`. For separate proofs, use
 the earliest applicable confirmation time. Use timezone-aware timestamps.
 Reinspect and obtain fresh proof if a binding or authoritative live read
 supersedes the confirmation. When both operations are locally proven unsent,
@@ -788,25 +798,31 @@ Copy `expected_resolution_digest` from `inspect` into `--expected-digest`:
 
 The committed decision releases only the original purchase hold, invalidates
 its old work and keeps terms, consent, operation identities and object history.
-After an uncertain CLI result, repeat the exact successful command with the same
-OS principal, digest, evidence, reason and reference. Its saved result returns
-with `already_resolved: true`, including after restart or a replacement purchase.
-The user can open the original purchase link in the cabinet and start a fresh
-review with current terms and consent.
+If the CLI outcome is uncertain, repeat the identical command with the same OS
+principal, digest, evidence, reason and reference before restarting. A committed
+decision returns its saved result with `already_resolved: true`, including on
+later exact replay. After restarting compatible processes, verify that the
+original link in the cabinet shows the terminal result and cannot open its
+payment Widget. The product link starts a new review with the current offer,
+fingerprint and documents. Confirming it requires fresh consent and uses a new
+idempotency key. Ordinary admission still applies.
 
 ### Close an exact late-object case
 
 `recover` or ordinary inventory can record a case on the completed purchase
 when point proof identifies a disputed object. The case continues to block
 affected admission if a later list omits that object. In the replacement's
-`inspect` output, `blocking_late_reviews` identifies the original purchase and
-case. Inspect the original for `late_object` and `expected_case_digest`. Use the
-original purchase ID and the exact `--case-id`, and pass the case digest as
+`inspect` output, `blocking_late_reviews` identifies the original purchase,
+case and digest. Inspect the original for `late_object` and the current
+`expected_case_digest`. Use the original purchase ID and the exact `--case-id`,
+and pass the case digest as
 `--expected-digest`.
 
-After stop and drain, obtain proof of irreversible termination for the exact
-disputed object. The confirmation must cover the case's latest recorded
-evidence. Use this evidence file shape:
+After stop and drain, verify `customer_work_active: false` and obtain proof of
+irreversible termination for the exact disputed object. The confirmation must
+cover the latest case evidence and any newer committed authoritative live/open
+read of that object, including reads with incomplete pricing. Use this evidence
+file shape:
 
 ```json
 {"outcome":"external_terminal","external_object_id":"456","confirmed_at":"2026-11-23T00:10:00Z"}
@@ -820,9 +836,9 @@ evidence. Use this evidence file shape:
 ```
 
 A changed relationship alone leaves a live competitor blocked. Closing the
-case keeps the original terminal audit. The replacement goes through fresh
-ordinary admission with complete customer inventory. A later contradictory
-point read can open a new case.
+case keeps the original terminal audit and permanently excludes the exact ID
+from first binding. A distinct ID goes through ordinary admission with complete
+customer inventory. A later contradictory point read can open a new case.
 
 ## Alerts and outage diagnosis
 

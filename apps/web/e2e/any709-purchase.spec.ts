@@ -174,10 +174,16 @@ test("a saved purchase link leads through operator completion to a fresh replace
   const state = await syntheticBilling(page);
   const originalId = savedPurchase.purchase_intent_id;
   const replacementId = "55555555-5555-4555-8555-555555555555";
-  state.owned = { ...savedPurchase, state: "manual_review", reason: "purchase_outcome_unknown" };
+  state.advanceState = "manual_review";
   const panel = await openProduct(page);
+  await panel.getByRole("button", { name: ru.Purchase.buy, exact: true }).click();
+  await panel.getByRole("checkbox").check();
+  await panel.getByRole("button", { name: ru.Purchase.confirm }).click();
   const statusLink = panel.getByRole("link", { name: ru.Purchase.statusLink });
   await expect(statusLink).toHaveAttribute("href", `/ru/account?purchase=${originalId}#billing`);
+  expect(state.confirmations).toHaveLength(1);
+  const originalKey = state.confirmations[0].key;
+  expect(originalKey).toEqual(expect.any(String));
   await statusLink.click();
   const billing = page.getByRole("region", { name: ru.Billing.title });
   await expect(billing.getByRole("combobox")).toHaveValue(originalId);
@@ -185,6 +191,9 @@ test("a saved purchase link leads through operator completion to a fresh replace
 
   state.owned = { ...savedPurchase, state: "resolved_external_terminal", scope_held: false };
   await billing.getByRole("button", { name: ru.Purchase.refresh }).click();
+  await expect(billing.getByText(ru.Purchase.states.resolved_external_terminal)).toBeVisible();
+  await page.reload();
+  await expect(billing.getByRole("combobox")).toHaveValue(originalId);
   await expect(billing.getByText(ru.Purchase.states.resolved_external_terminal)).toBeVisible();
   await expect(billing.getByRole("button", { name: ru.Billing.open, exact: true })).toBeDisabled();
   await expect(page.locator("iframe")).toHaveCount(0);
@@ -194,40 +203,56 @@ test("a saved purchase link leads through operator completion to a fresh replace
   expect((await new AxeBuilder({ page }).include("#billing").analyze()).violations).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath("terminal-purchase.png"), fullPage: true });
 
-  state.review = { ...purchaseReview, terms: { ...purchaseReview.terms, recurring_amount: "150" }, expected_fingerprint: "sha256:" + "d".repeat(64) };
+  const newDocument = {
+    ...purchaseReview.documents[0],
+    document_version_id: "66666666-6666-4666-8666-666666666666",
+    acceptance_text_hash: "f".repeat(64),
+    version: "synthetic-v2",
+    acceptance_text: "Я принимаю обновлённые тестовые условия оферты."
+  };
+  state.review = {
+    ...purchaseReview,
+    terms: { ...purchaseReview.terms, recurring_amount: "150" },
+    expected_fingerprint: "sha256:" + "d".repeat(64),
+    documents: [newDocument]
+  };
   state.nextPurchaseId = replacementId;
+  state.advanceState = "linked";
   state.lateCaseOpen = true;
   await billing.getByRole("link", { name: ru.Purchase.buy, exact: true }).click();
   await panel.getByRole("button", { name: ru.Purchase.buy, exact: true }).click();
-  await expect(panel.getByRole("checkbox")).not.toBeChecked();
+  const freshConsent = panel.getByRole("checkbox", { name: newDocument.acceptance_text });
+  await expect(freshConsent).not.toBeChecked();
   await expect(panel.getByText("150 RUB", { exact: true })).toBeVisible();
   await expect(panel.getByRole("button", { name: ru.Purchase.confirm })).toBeDisabled();
-  expect(state.confirmations).toEqual([]);
-  expect(state.advances).toBe(0);
+  expect(state.confirmations).toHaveLength(1);
+  expect(state.advances).toBe(1);
   await page.evaluate(() => document.fonts.ready);
   expect((await new AxeBuilder({ page }).include(".purchase-panel").analyze()).violations).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath("replacement-consent.png"), fullPage: true });
 
-  await panel.getByRole("checkbox").check();
+  await freshConsent.check();
   const firstAdvance = page.waitForResponse(response => new URL(response.url()).pathname.endsWith(`/${replacementId}/advance`));
   await panel.getByRole("button", { name: ru.Purchase.confirm }).click();
   expect((await firstAdvance).status()).toBe(409);
   await expect(panel.getByRole("alert")).toContainText(ru.Billing.errors.purchaseConflict);
   await expect(panel.getByText(ru.Purchase.reference.replace("{id}", replacementId))).toBeVisible();
   await expect(panel.getByRole("button", { name: ru.Purchase.buy, exact: true })).toHaveCount(0);
-  expect(state.confirmations).toEqual([expect.objectContaining({
+  expect(state.confirmations).toHaveLength(2);
+  expect(state.confirmations[1]).toEqual(expect.objectContaining({
     key: expect.any(String), body: expect.objectContaining({
       expected_fingerprint: state.review.expected_fingerprint,
       documents: state.review.documents.map(({ document_version_id, acceptance_text_hash }) => ({ document_version_id, acceptance_text_hash })),
     }),
-  })]);
-  expect(state.advances).toBe(1);
+  }));
+  expect(state.confirmations[1].key).not.toBe(originalKey);
+  expect(state.advances).toBe(2);
 
   state.lateCaseOpen = false;
   await panel.getByRole("button", { name: ru.Purchase.continue, exact: true }).click();
   await expect(panel.getByRole("link", { name: ru.Billing.pay })).toHaveAttribute("href", `/ru/account?purchase=${replacementId}#billing`);
-  expect(state.confirmations).toHaveLength(1);
-  expect(state.advances).toBe(2);
+  expect(state.confirmations).toHaveLength(2);
+  expect(state.advances).toBe(3);
   expect(state.bootstraps).toEqual([]);
 });
 
