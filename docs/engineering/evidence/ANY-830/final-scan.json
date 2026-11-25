@@ -1,0 +1,260 @@
+{
+  "pr": {
+    "key": "190",
+    "branch": "codex/any-830-sonar-audit",
+    "base": "main",
+    "analysisDate": "2026-11-22T16:21:38+03:00",
+    "status": {
+      "qualityGateStatus": "OK",
+      "bugs": 0,
+      "vulnerabilities": 0,
+      "codeSmells": 0
+    },
+    "revision": "36679b064752340a2fdf2d8f3c31c32c418ae40f",
+    "pullRequestId": "3c0163b4-7230-4350-90e3-97784c9a10b9",
+    "pullRequestUuidV1": "AaIDa1CukJctEnst80vF"
+  },
+  "task": {
+    "id": "AaIDa9w3JK9YuMfKiQig",
+    "componentId": "AaIDa1CukJctEnst80vF",
+    "analysisId": "b4048339-4031-4cac-8ddf-bd8e68771ac3",
+    "status": "SUCCESS",
+    "pullRequest": "190",
+    "executedAt": "2026-11-22T16:22:11+03:00",
+    "warningCount": 3
+  },
+  "pr_gate": {
+    "status": "OK",
+    "conditions": [
+      {
+        "status": "OK",
+        "metricKey": "new_reliability_rating",
+        "comparator": "GT",
+        "periodIndex": 1,
+        "errorThreshold": "1",
+        "actualValue": "1"
+      },
+      {
+        "status": "OK",
+        "metricKey": "new_security_rating",
+        "comparator": "GT",
+        "periodIndex": 1,
+        "errorThreshold": "1",
+        "actualValue": "1"
+      },
+      {
+        "status": "OK",
+        "metricKey": "new_maintainability_rating",
+        "comparator": "GT",
+        "periodIndex": 1,
+        "errorThreshold": "1",
+        "actualValue": "1"
+      },
+      {
+        "status": "OK",
+        "metricKey": "new_duplicated_lines_density",
+        "comparator": "GT",
+        "periodIndex": 1,
+        "errorThreshold": "3",
+        "actualValue": "0.0"
+      },
+      {
+        "status": "OK",
+        "metricKey": "new_security_hotspots_reviewed",
+        "comparator": "LT",
+        "periodIndex": 1,
+        "errorThreshold": "100",
+        "actualValue": "100.0"
+      }
+    ],
+    "periods": [],
+    "ignoredConditions": false
+  },
+  "pr_count": 0,
+  "pr_issues": [],
+  "pr_new_count": 0,
+  "pr_new_issues": [],
+  "main": {
+    "key": "509b5422-b252-414b-9b02-0c7a0250c118",
+    "date": "2026-11-21T22:17:59+03:00",
+    "revision": "236c852e88b5374dcc0c34baae4981bbc78c87c7"
+  },
+  "main_open_count": 28,
+  "main_gate": {
+    "status": "OK",
+    "conditions": [
+      {
+        "status": "OK",
+        "metricKey": "new_reliability_rating",
+        "comparator": "GT",
+        "periodIndex": 1,
+        "errorThreshold": "1",
+        "actualValue": "1"
+      },
+      {
+        "status": "OK",
+        "metricKey": "new_security_rating",
+        "comparator": "GT",
+        "periodIndex": 1,
+        "errorThreshold": "1",
+        "actualValue": "1"
+      },
+      {
+        "status": "OK",
+        "metricKey": "new_maintainability_rating",
+        "comparator": "GT",
+        "periodIndex": 1,
+        "errorThreshold": "1",
+        "actualValue": "1"
+      },
+      {
+        "status": "OK",
+        "metricKey": "new_duplicated_lines_density",
+        "comparator": "GT",
+        "periodIndex": 1,
+        "errorThreshold": "3",
+        "actualValue": "0.4"
+      },
+      {
+        "status": "OK",
+        "metricKey": "new_security_hotspots_reviewed",
+        "comparator": "LT",
+        "periodIndex": 1,
+        "errorThreshold": "100",
+        "actualValue": "100.0"
+      }
+    ],
+    "periods": [
+      {
+        "index": 1,
+        "mode": "previous_version",
+        "date": "2026-10-23T18:40:02+03:00"
+      }
+    ],
+    "ignoredConditions": false
+  },
+  "main_metrics": [
+    {
+      "metric": "alert_status",
+      "value": "OK"
+    },
+    {
+      "metric": "security_rating",
+      "value": "5.0",
+      "bestValue": false
+    },
+    {
+      "metric": "vulnerabilities",
+      "value": "27",
+      "bestValue": false
+    },
+    {
+      "metric": "security_hotspots",
+      "value": "0",
+      "bestValue": true
+    },
+    {
+      "metric": "security_review_rating",
+      "value": "1.0",
+      "bestValue": true
+    }
+  ],
+  "github": {
+    "revision": "36679b064752340a2fdf2d8f3c31c32c418ae40f",
+    "state": "open",
+    "mergeable": true,
+    "base": "236c852e88b5374dcc0c34baae4981bbc78c87c7",
+    "sonar_check": {
+      "name": "SonarCloud Code Analysis",
+      "status": "completed",
+      "conclusion": "success",
+      "id": 137222450667,
+      "details_url": "https://sonarcloud.io/dashboard?id=gushinets_payments-portal&pullRequest=190"
+    }
+  },
+  "main_original_statuses": [
+    {
+      "key": "AaFpbACIysG4pTvpybzF",
+      "status": "OPEN"
+    },
+    {
+      "key": "AaFpbAB2ysG4pTvpybyu",
+      "status": "OPEN"
+    },
+    {
+      "key": "AaFpbAB2ysG4pTvpybyv",
+      "status": "OPEN"
+    },
+    {
+      "key": "AaFpbABBysG4pTvpybyp",
+      "status": "OPEN"
+    },
+    {
+      "key": "AaFpbACBysG4pTvpyby4",
+      "status": "OPEN"
+    },
+    {
+      "key": "AaFpbAB2ysG4pTvpybyw",
+      "status": "OPEN"
+    },
+    {
+      "key": "AaFpbAA6ysG4pTvpybym",
+      "status": "OPEN"
+    },
+    {
+      "key": "AaFpbACBysG4pTvpyby-",
+      "status": "OPEN"
+    },
+    {
+      "key": "AaFpbAB2ysG4pTvpybyq",
+      "status": "OPEN"
+    },
+    {
+      "key": "AaFpbAB_ysG4pTvpybyx",
+      "status": "OPEN"
+    },
+    {
+      "key": "AaFpbAB_ysG4pTvpybyy",
+      "status": "OPEN"
+    },
+    {
+      "key": "AaFpbAB_ysG4pTvpybyz",
+      "status": "OPEN"
+    },
+    {
+      "key": "AaFpbAB_ysG4pTvpyby0",
+      "status": "OPEN"
+    },
+    {
+      "key": "AaFpbACFysG4pTvpybzE",
+      "status": "OPEN"
+    },
+    {
+      "key": "AaFpbACDysG4pTvpybzB",
+      "status": "OPEN"
+    },
+    {
+      "key": "AaFpbACDysG4pTvpyby_",
+      "status": "OPEN"
+    },
+    {
+      "key": "AaFpbAAWysG4pTvpybyj",
+      "status": "OPEN"
+    }
+  ],
+  "main_security_impact_counts": {
+    "BLOCKER": 3,
+    "HIGH": 3,
+    "MEDIUM": 16,
+    "LOW": 6
+  },
+  "sources": [
+    "api/project_pull_requests/list",
+    "api/ce/component",
+    "api/qualitygates/project_status",
+    "api/issues/search",
+    "api/project_analyses/search",
+    "api/measures/component",
+    "GitHub commit check runs"
+  ]
+}

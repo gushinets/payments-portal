@@ -11,7 +11,12 @@ from unittest.mock import patch
 import pytest
 
 from app.core.settings import Settings, _load_settings_env_file
-from apps.api.tests.support.settings import DEFAULT_API_TEST_ENV, api_test_environment, configure_api_test_environment
+from apps.api.tests.support.settings import (
+    DEFAULT_API_TEST_ENV,
+    PRODUCTION_SETTINGS_DATABASE_URL,
+    api_test_environment,
+    configure_api_test_environment,
+)
 from scripts import repo
 
 
@@ -140,6 +145,9 @@ def test_enabled_runtime_dotenv_keeps_environment_precedence(tmp_path: Path, app
     environment = {
         **DEFAULT_API_TEST_ENV,
         "APP_ENV": app_env,
+        "DATABASE_URL": PRODUCTION_SETTINGS_DATABASE_URL
+        if app_env == "production"
+        else DEFAULT_API_TEST_ENV["DATABASE_URL"],
         "APP_PUBLIC_BASE_URL": "https://portal.example.test",
         "CORS_ALLOW_ORIGINS": "https://portal.example.test",
         "SMTP_USERNAME": "explicit-user",

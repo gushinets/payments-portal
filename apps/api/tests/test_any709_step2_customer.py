@@ -81,6 +81,24 @@ def test_any709_step2_invalid_name(field: str, value: object) -> None:
         )
 
 
+@pytest.mark.parametrize(("configured", "expected"), [(None, None), ("", None), ("0", 0), ("5", 5)])
+def test_lbx_customer_payment_delay_setting(
+    monkeypatch: pytest.MonkeyPatch, configured: str | None, expected: int | None
+) -> None:
+    name = "LBX_CUSTOMER_PAYMENT_DELAY_DAYS"
+    if configured is None:
+        monkeypatch.delenv(name, raising=False)
+    else:
+        monkeypatch.setenv(name, configured)
+    assert step1_settings().lbx_customer_payment_delay_days == expected
+
+
+def test_lbx_customer_payment_delay_rejects_negative_days(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LBX_CUSTOMER_PAYMENT_DELAY_DAYS", "-1")
+    with pytest.raises(ValidationError, match="lbx_customer_payment_delay_days"):
+        step1_settings()
+
+
 def test_any709_step2_credentials_are_transient_and_jwt_is_type7() -> None:
     command = NewCustomer(outer_id="opaque", email="synthetic@example.com", user_patronymic="Synthetic")
     body = command.request_document()

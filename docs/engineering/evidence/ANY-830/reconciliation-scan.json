@@ -1,0 +1,144 @@
+{
+  "observed_at": "2026-11-24T18:33:48+03:00",
+  "main": {
+    "analysis_id": "a8ff1bc4-68b1-4a7b-9043-28cdddb8bc2e",
+    "revision": "550263e644b49baa01d313de32ddaf1db0016b08",
+    "analysis_date": "2026-11-24T18:17:02+03:00",
+    "quality_gate": "OK",
+    "security_rating": "5.0",
+    "open_or_confirmed_security_issues": 25,
+    "legacy_vulnerabilities": 24,
+    "original_keys": [
+      {
+        "key": "AaFpbAA6ysG4pTvpybym",
+        "rule": "python:S2068",
+        "component": "gushinets_payments-portal:apps/api/app/domains/identity/passwords.py",
+        "line": null,
+        "issueStatus": "FIXED"
+      },
+      {
+        "key": "AaFpbAAWysG4pTvpybyj",
+        "rule": "javascript:S1313",
+        "component": "gushinets_payments-portal:apps/web/next.config.mjs",
+        "line": 7,
+        "issueStatus": "OPEN"
+      },
+      {
+        "key": "AaFpbAB_ysG4pTvpyby0",
+        "rule": "githubactions:S8233",
+        "component": "gushinets_payments-portal:.github/workflows/ai-pr-review.yml",
+        "line": 12,
+        "issueStatus": "OPEN"
+      },
+      {
+        "key": "AaFpbAB_ysG4pTvpybyx",
+        "rule": "githubactions:S8264",
+        "component": "gushinets_payments-portal:.github/workflows/ai-pr-review.yml",
+        "line": 8,
+        "issueStatus": "OPEN"
+      },
+      {
+        "key": "AaFpbAB_ysG4pTvpybyy",
+        "rule": "githubactions:S8264",
+        "component": "gushinets_payments-portal:.github/workflows/ai-pr-review.yml",
+        "line": 10,
+        "issueStatus": "OPEN"
+      },
+      {
+        "key": "AaFpbAB_ysG4pTvpybyz",
+        "rule": "githubactions:S8233",
+        "component": "gushinets_payments-portal:.github/workflows/ai-pr-review.yml",
+        "line": 11,
+        "issueStatus": "OPEN"
+      },
+      {
+        "key": "AaFpbAB2ysG4pTvpybyq",
+        "rule": "python:S2068",
+        "component": "gushinets_payments-portal:scripts/repo.py",
+        "line": 477,
+        "issueStatus": "OPEN"
+      },
+      {
+        "key": "AaFpbAB2ysG4pTvpybyu",
+        "rule": "secrets:S6698",
+        "component": "gushinets_payments-portal:scripts/repo.py",
+        "line": 482,
+        "issueStatus": "OPEN"
+      },
+      {
+        "key": "AaFpbAB2ysG4pTvpybyv",
+        "rule": "pythonsecurity:S2083",
+        "component": "gushinets_payments-portal:scripts/repo.py",
+        "line": 3624,
+        "issueStatus": "OPEN"
+      },
+      {
+        "key": "AaFpbAB2ysG4pTvpybyw",
+        "rule": "pythonsecurity:S8705",
+        "component": "gushinets_payments-portal:scripts/repo.py",
+        "line": 4281,
+        "issueStatus": "OPEN"
+      },
+      {
+        "key": "AaFpbABBysG4pTvpybyp",
+        "rule": "python:S4830",
+        "component": "gushinets_payments-portal:apps/api/app/core/email.py",
+        "line": 29,
+        "issueStatus": "OPEN"
+      },
+      {
+        "key": "AaFpbACBysG4pTvpyby-",
+        "rule": "yaml:S2068",
+        "component": "gushinets_payments-portal:.github/workflows/ci.yml",
+        "line": 96,
+        "issueStatus": "OPEN"
+      },
+      {
+        "key": "AaFpbACBysG4pTvpyby4",
+        "rule": "githubactions:S8482",
+        "component": "gushinets_payments-portal:.github/workflows/ci.yml",
+        "line": 204,
+        "issueStatus": "OPEN"
+      },
+      {
+        "key": "AaFpbACDysG4pTvpyby_",
+        "rule": "kubernetes:S6864",
+        "component": "gushinets_payments-portal:security/trivy/fixtures/non-compose/insecure-pod.yaml",
+        "line": 7,
+        "issueStatus": "OPEN"
+      },
+      {
+        "key": "AaFpbACDysG4pTvpybzB",
+        "rule": "kubernetes:S6865",
+        "component": "gushinets_payments-portal:security/trivy/fixtures/non-compose/insecure-pod.yaml",
+        "line": 6,
+        "issueStatus": "OPEN"
+      },
+      {
+        "key": "AaFpbACFysG4pTvpybzE",
+        "rule": "shell:S5332",
+        "component": "gushinets_payments-portal:security/trivy/verify-api-runtime.sh",
+        "line": 140,
+        "issueStatus": "OPEN"
+      },
+      {
+        "key": "AaFpbACIysG4pTvpybzF",
+        "rule": "secrets:S6698",
+        "component": "gushinets_payments-portal:docker-compose.yml",
+        "line": 46,
+        "issueStatus": "OPEN"
+      }
+    ]
+  },
+  "pull_request": {
+    "number": "190",
+    "revision": "6e3c8a2c39d0c017b57820116c9a5e21a4ae20ae",
+    "analysis_id": "b456d12f-d4a0-44c4-b045-a1ed743930e1",
+    "compute_task": "AaIOLkLflROuuN-CHiAZ",
+    "compute_status": "SUCCESS",
+    "completed_at": "2026-11-24T18:30:44+03:00",
+    "quality_gate": "OK",
+    "issues": 0,
+    "new_code_issues": 0
+  }
+}

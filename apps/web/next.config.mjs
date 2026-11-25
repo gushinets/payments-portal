@@ -4,7 +4,7 @@ import createNextIntlPlugin from "next-intl/plugin";
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
 
 const allowedDevOrigins = (
-  process.env.NEXT_ALLOWED_DEV_ORIGINS ?? "192.168.1.102"
+  process.env.NEXT_ALLOWED_DEV_ORIGINS ?? ""
 )
   .split(",")
   .map((origin) => origin.trim())

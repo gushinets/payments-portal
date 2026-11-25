@@ -39,21 +39,13 @@
       "emailLabel": "E-Mail",
       "passwordLabel": "Passwort",
       "passwordPlaceholder": "Passwort eingeben",
-      "newPasswordPlaceholder": "12–128 Zeichen",
       "passwordConfirmLabel": "Passwort wiederholen",
       "passwordConfirmPlaceholder": "Passwort erneut eingeben",
       "firstNameLabel": "Vorname (optional)",
       "surnameLabel": "Nachname (optional)",
       "patronymicLabel": "Vatersname (optional)"
     },
-    "passwordRequirements": {
-      "label": "Passwortanforderungen",
-      "length": "12–128 Zeichen",
-      "uppercase": "Mindestens ein lateinischer Großbuchstabe (A–Z)",
-      "lowercase": "Mindestens ein lateinischer Kleinbuchstabe (a–z)",
-      "digit": "Mindestens eine Ziffer (0–9)",
-      "special": "Mindestens eines der Zeichen {characters}"
-    },
+    "passwordLengthHint": "12–128 Zeichen.",
     "forgotPasswordAction": "Passwort vergessen?",
     "actions": {
       "createAccount": "Konto erstellen",
@@ -63,7 +55,6 @@
     "validation": {
       "invalidEmail": "Geben Sie eine gültige E-Mail-Adresse ein.",
       "passwordTooShort": "Das Passwort muss mindestens 8 Zeichen enthalten.",
-      "passwordPolicyNotMet": "Das Passwort erfüllt nicht alle Anforderungen.",
       "passwordMismatch": "Die Passwörter stimmen nicht überein.",
       "personalConsentRequired": "Sie müssen der Verarbeitung personenbezogener Daten zustimmen.",
       "offerConsentRequired": "Sie müssen die Bedingungen des öffentlichen Angebots akzeptieren."
@@ -78,7 +69,7 @@
       "invalidCredentials": "E-Mail-Adresse oder Passwort ist falsch.",
       "missingPersonalConsent": "Sie müssen der Verarbeitung personenbezogener Daten zustimmen.",
       "missingOfferConsent": "Sie müssen die Bedingungen des öffentlichen Angebots akzeptieren.",
-      "passwordPolicyNotMet": "Das Passwort erfüllt nicht alle Anforderungen.",
+      "passwordPolicyNotMet": "Das Passwort muss 12 bis 128 Zeichen lang sein.",
       "internalServer": "Der Dienst ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.",
       "contract": "Der Dienst hat eine unerwartete Antwort zurückgegeben. Versuchen Sie es erneut.",
       "network": "Verbindung zum Dienst fehlgeschlagen. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
@@ -232,21 +223,12 @@
       "description": "Legen Sie ein neues Passwort für Ihr AnytoolAI-Konto fest. Aktive Sitzungen werden nach der Änderung beendet.",
       "fields": {
         "passwordLabel": "Neues Passwort",
-        "passwordPlaceholder": "12–128 Zeichen",
         "passwordConfirmLabel": "Passwort wiederholen",
         "passwordConfirmPlaceholder": "Passwort erneut eingeben"
       },
-      "passwordRequirements": {
-        "label": "Passwortanforderungen",
-        "length": "12–128 Zeichen",
-        "uppercase": "Mindestens ein lateinischer Großbuchstabe (A–Z)",
-        "lowercase": "Mindestens ein lateinischer Kleinbuchstabe (a–z)",
-        "digit": "Mindestens eine Ziffer (0–9)",
-        "special": "Mindestens eines der Zeichen {characters}"
-      },
+      "passwordLengthHint": "12–128 Zeichen.",
       "validation": {
         "missingToken": "Der Link zum Ändern des Passworts ist ungültig. Fordern Sie einen neuen Link an.",
-        "passwordPolicyNotMet": "Das Passwort erfüllt nicht alle Anforderungen.",
         "passwordMismatch": "Die Passwörter stimmen nicht überein."
       },
       "notices": {
@@ -260,8 +242,8 @@
     "errors": {
       "invalidOrExpiredToken": "Der Link ist ungültig oder abgelaufen. Fordern Sie einen neuen Link an.",
       "rateLimited": "Zu viele Versuche zur Passwortwiederherstellung. Versuchen Sie es später erneut.",
-      "invalidInput": "Prüfen Sie die E-Mail-Adresse und stellen Sie sicher, dass das Passwort alle Anforderungen erfüllt.",
-      "passwordPolicyNotMet": "Das Passwort erfüllt nicht alle Anforderungen.",
+      "invalidInput": "Prüfen Sie Ihre Eingaben und versuchen Sie es erneut.",
+      "passwordPolicyNotMet": "Das Passwort muss 12 bis 128 Zeichen lang sein.",
       "internalServer": "Der Dienst ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.",
       "contract": "Der Dienst hat eine unerwartete Antwort zurückgegeben. Versuchen Sie es erneut.",
       "network": "Verbindung zum Dienst fehlgeschlagen. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",

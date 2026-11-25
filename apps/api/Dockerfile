@@ -1,11 +1,11 @@
-FROM python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a AS base
+FROM python:3.12-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV VIRTUAL_ENV=/opt/api-venv
 ENV PATH="/opt/api-venv/bin:$PATH"
 
-RUN apt-get update \
+RUN apt-get --error-on=any update \
     && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
@@ -47,9 +47,42 @@ FROM base AS production
 
 COPY --from=production-dependencies /opt/api-venv /opt/api-venv
 
+# Production excludes two unused optional executables through supported dpkg filters.
+# Essential packages, ownership records, checksums and required libraries stay.
+# Create the runtime identity before removing build/account/mount tooling.
+# Keep essential/protected packages, dpkg metadata and native runtime libraries.
+# API runtime has no OS account-switching/PAM-login contract; retain commands
+# but track removal of unnecessary setid privileges through dpkg overrides.
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /app --no-create-home app \
-    && install -d -o app -g app -m 0700 /run/payments-portal
+    && install -d -o app -g app -m 0700 /run/payments-portal \
+    && printf '%s\n' 'path-exclude=/usr/bin/infocmp' 'path-exclude=/usr/bin/nsenter' > /etc/dpkg/dpkg.cfg.d/99-api-runtime-exclusions \
+    && apt-get --error-on=any update \
+    && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes --no-install-recommends \
+    && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends --reinstall \
+         "ncurses-bin=$(dpkg-query -W -f='${Version}' ncurses-bin)" \
+         "util-linux=$(dpkg-query -W -f='${Version}' util-linux)" \
+    && test ! -e /usr/bin/infocmp && test ! -e /usr/bin/nsenter \
+    && rm -rf /var/lib/apt/lists/* \
+    && runtime_build_packages="apt libapt-pkg7.0 sqv debian-archive-keyring adduser passwd mount libbsd0 libhogweed6t64 libnettle8t64 liblz4-1 libxxhash0 libseccomp2 libsemanage2 libsemanage-common libsepol2" \
+    && for package in $runtime_build_packages; do \
+         test "$(dpkg-query -W -f='${Essential}:${Protected}' "$package")" = "no:no" || { \
+           echo "Refusing removal of essential/protected or unknown package: $package" >&2; exit 1; \
+         }; \
+       done \
+    && dpkg --purge $runtime_build_packages \
+    && dpkg-statoverride --update --add root root 0755 /usr/bin/su \
+    && dpkg-statoverride --update --add root root 0755 /usr/bin/newgrp \
+    && dpkg-statoverride --update --add root shadow 0755 /usr/sbin/unix_chkpwd \
+    && package_audit=$(dpkg --audit) \
+    && test -z "$package_audit"
+
+# The shared CPython base supplies pip. Runtime uses the uv-built environment
+# and has no installer or offline pip bootstrap requirement.
+RUN rm -f /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.12 \
+    && rm -rf /usr/local/lib/python3.12/site-packages/pip \
+        /usr/local/lib/python3.12/site-packages/pip-*.dist-info \
+        /usr/local/lib/python3.12/ensurepip
 
 COPY apps/api/alembic.ini ./apps/api/alembic.ini
 COPY apps/api/alembic ./apps/api/alembic

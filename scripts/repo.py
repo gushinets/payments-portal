@@ -242,7 +242,11 @@ def port_is_free(port: int) -> bool:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             sock.bind(("127.0.0.1", port))
-        except OSError:
+        except OSError as exc:
+            print(
+                f"Port {port} bind failed: errno={exc.errno} ({exc.strerror})",
+                file=sys.stderr,
+            )
             return False
     return True
 
@@ -511,6 +515,7 @@ def write_runtime(config: RuntimeConfig) -> None:
         "PREFLIGHT_TOTAL_TIMEOUT_SECONDS",
         "LBX_BASE_URL", "LBX_SERVER_USERNAME", "LBX_SERVER_PASSWORD",
         "LBX_WIDGET_SIGNING_SECRET", "LBX_SELLER_ORGANIZATION_ID",
+        "LBX_CUSTOMER_PAYMENT_DELAY_DAYS",
         "LBX_CURRENCY_ID", "LBX_CURRENCY",
         "LBX_CONNECT_TIMEOUT_SECONDS", "LBX_READ_TIMEOUT_SECONDS",
         "LBX_MAX_RESPONSE_BYTES", "LBX_MAX_GET_ATTEMPTS",

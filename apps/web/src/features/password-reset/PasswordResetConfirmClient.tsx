@@ -96,30 +96,15 @@ export function PasswordResetConfirmClient() {
               className="input"
               type="password"
               autoComplete="new-password"
-              placeholder={t("confirm.fields.passwordPlaceholder")}
-              aria-describedby="reset-password-requirements"
+              aria-describedby="reset-password-hint"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
           </label>
 
-          <div
-            className="password-requirements"
-            id="reset-password-requirements"
-          >
-            <p>{t("confirm.passwordRequirements.label")}</p>
-            <ul>
-              <li>{t("confirm.passwordRequirements.length")}</li>
-              <li>{t("confirm.passwordRequirements.uppercase")}</li>
-              <li>{t("confirm.passwordRequirements.lowercase")}</li>
-              <li>{t("confirm.passwordRequirements.digit")}</li>
-              <li>
-                {t("confirm.passwordRequirements.special", {
-                  characters: "!@#$%^&*()-_=+[]{}:,.?"
-                })}
-              </li>
-            </ul>
-          </div>
+          <p className="password-hint" id="reset-password-hint">
+            {t("confirm.passwordLengthHint")}
+          </p>
 
           <label className="field-label">
             {t("confirm.fields.passwordConfirmLabel")}

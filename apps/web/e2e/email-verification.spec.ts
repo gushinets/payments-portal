@@ -61,16 +61,14 @@ test("registration shows guidance but leaves password-policy authority to the AP
   await page.goto("/ru/account");
   const scope = page.getByRole("main");
   await completeRegistrationForm(scope, "policy@example.com", "Aa1!aaaaaaa");
-  await expect(scope.getByText("Требования к паролю")).toBeVisible();
-  await expect(
-    scope.getByText("Не менее одного символа из !@#$%^&*()-_=+[]{}:,.?", {
-      exact: true
-    })
-  ).toBeVisible();
+  const password = scope.getByLabel("Пароль", { exact: true });
+  await expect(password).toHaveAccessibleDescription("От 12 до 128 символов.");
+  await expect(password).toHaveAttribute("autocomplete", "new-password");
+  await expect(scope.getByLabel("Повторите пароль")).toHaveAttribute("autocomplete", "new-password");
   await scope.getByRole("button", { name: /Создать аккаунт/ }).click();
 
   await expect(
-    scope.getByText("Пароль не соответствует всем требованиям.")
+    scope.getByText("Пароль должен содержать от 12 до 128 символов.")
   ).toBeVisible();
   expect(requests).toEqual([
     {
@@ -82,10 +80,10 @@ test("registration shows guidance but leaves password-policy authority to the AP
   ]);
 });
 
-test("registration preserves valid Unicode, spaces, quotes, and semicolons", async ({
+test("registration submits decomposed Unicode and surrounding spaces verbatim", async ({
   page
 }) => {
-  const password = 'Valid1! Юникод "quote";';
+  const password = " α\u0301βγδεζηθικ ";
   const requests: unknown[] = [];
   const user = mockUser("unicode@example.com");
 

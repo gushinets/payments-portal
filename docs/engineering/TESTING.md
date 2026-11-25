@@ -14,6 +14,18 @@ Last verified: 2026-11-19
 - Browser: Playwright journeys against an isolated full stack.
 - Runtime: assertions against structured logs, metrics, and traces.
 
+The disposable Linux browser CI runner reserves its exact worktree ports with
+`python -m scripts.ci_browser_ports reserve` before dependency/browser traffic.
+This preserves existing kernel reservations and excludes the harness ports from
+automatic outgoing TCP allocation; readback is required. A preexisting connection
+may take up to70 seconds to release its port. Persistent collisions fail normally;
+no process is killed and ordinary `repo.py up` collision checks remain enabled.
+The `browser-port-diagnostics-<run>-<attempt>` artifact records reservations,
+ephemeral range, bind errno and scoped TCP state/process identity. It excludes
+environment dumps. On failure, the workflow captures another socket snapshot.
+This helper may change reservations only on a GitHub Actions Linux runner;
+local/deployed host networking and production Compose ports are unchanged.
+
 Choose the cheapest layer that protects the actual invariant. Keep calculation
 and input-variant matrices in fast tests, with representative integration paths
 to prove wiring. A pure text predicate belongs in a unit/component test; retain
