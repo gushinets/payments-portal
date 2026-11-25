@@ -10,10 +10,9 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationErro
 from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
-from app.domains.billing.customer_scope import connection_account
-from app.domains.billing.customers import lock_customer, lock_user
 from app.domains.billing.operator_review import digest, operation_digest, case_digest
 from app.domains.billing.paid_access import reduce_paid_access
+from app.domains.billing.purchase_maintenance import guard_maintenance_write, lock_owned_purchase, maintenance_session
 from app.domains.billing.reconciliation_contracts import (
     PREPARED_SUBSCRIPTION_SCHEMA,
     RECONCILIATION_READ_SCHEMAS,
@@ -31,7 +30,6 @@ from app.domains.purchases.contracts import (
     FinancialReviewEvidence,
     PurchaseRefused,
 )
-from app.infrastructure.persistence.billing_connections import ConnectionScopeBusy, billing_lock_key, lock_billing_key
 from app.infrastructure.queries import (
     billing_operator as queries,
     billing_reconciliation,
@@ -174,18 +172,6 @@ def _locally_unsent(db: Session, op: ExternalCreateOperation, snapshot: Financia
     return False
 
 
-def lock_financial_object(db: Session, account_id: str, kind: Kind, external_id: str) -> None:
-    """Serialize the writers that can first record a provider object's identity."""
-    if db.get_bind().dialect.name != "postgresql":
-        return
-    try:
-        lock_billing_key(
-            db, billing_lock_key("payments-portal/financial-object/v1", account_id, kind.value, external_id)
-        )
-    except ConnectionScopeBusy:
-        raise PurchaseRefused("billing_busy", 503) from None
-
-
 def _verify_proof(
     db: Session,
     op: ExternalCreateOperation,
@@ -221,7 +207,6 @@ def _verify_proof(
         known_ids.add(points.primary.external_object_id)
     if unsent or (known_ids and known_ids != {external_id}):
         raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
-    lock_financial_object(db, op.external_billing_account_id, op.operation_kind, external_id)
     if queries.other_financial_binding(db, op, external_id) or late_purchase_reviews.other_audited_owner(
         db, op, external_id, reason=TERMINAL_REASON, schema=SCHEMA
     ):
@@ -270,47 +255,45 @@ def resolve_purchase(
 ) -> TerminalResult:
     if not re.fullmatch(r"os-euid:[0-9]+", principal):
         raise PurchaseRefused("mapping_operator_identity_unavailable", 403)
-    purchase = service.inspect_purchase(factory, configuration, request.user_id, request.purchase_id)
     command = digest({"request": request.model_dump(mode="json"), "principal": principal})
-    with factory() as db:
-        lock_user(db, purchase.user_id)
-        customer = lock_customer(db, purchase.customer_id)
-        row = purchases.owned(db, purchase.user_id, purchase.id, lock=True)
-        if row is None:
-            raise PurchaseRefused("purchase_not_found", 404)
+    with maintenance_session(factory) as db:
+        row, _ = lock_owned_purchase(
+            db, configuration, request.user_id, request.purchase_id, stale_code="purchase_resolution_stale"
+        )
+        purchase_id = row.purchase_intent_id
         # Replay consults the original audit before checking a hold that may
         # now belong to a different purchase.
-        case = queries.purchase_resolution_audit(db, purchase.id, reason=TERMINAL_REASON, schema=SCHEMA)
+        case = queries.purchase_resolution_audit(db, purchase_id, reason=TERMINAL_REASON, schema=SCHEMA)
         if case is not None:
             audit = TerminalAudit.model_validate(case.resolution_document)
             if audit.command_digest == command:
                 return TerminalResult(
                     review_case_id=case.review_case_id,
-                    purchase_intent_id=purchase.id,
+                    purchase_intent_id=purchase_id,
                     state=audit.after_state,
                     already_resolved=True,
                 )
+        supplied = {item.operation_id: item for item in request.evidence.operations}
+        identities = purchases.operation_kinds(db, purchase_id)
+        if set(identities.values()) != {Kind.AGREEMENT, Kind.SUBSCRIPTION} or set(supplied) != set(identities):
+            raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
+        objects = {
+            (identities[op_id], item.external_object_id)
+            for op_id, item in supplied.items()
+            if item.external_object_id is not None
+        }
+        current = guard_maintenance_write(db, row, objects, stale_code="purchase_resolution_stale")
+        operations, sub, hold = current.operations, current.subscription, current.hold
         if (
-            customer.external_billing_account_id != connection_account(db, configuration)
-            or customer.provider_origin not in {None, configuration.lbx_provider_origin}
-            or purchase.account_id != customer.external_billing_account_id
-            or row.customer_id != customer.customer_id
+            identities != {op.create_operation_id: op.operation_kind for op in operations}
             or state_digest(db, row) != request.expected_digest
         ):
             raise PurchaseRefused("purchase_resolution_stale", 409)
-        service._verify_original_consent(db, row, purchase.accepted)
-        hold = purchases.hold(db, row.user_id, row.product_id)
-        if row.state.resolved or hold is None or hold.purchase_intent_id != purchase.id:
+        service._verify_original_consent(db, row, service.accepted(row))
+        if row.state.resolved or hold is None or hold.purchase_intent_id != purchase_id:
             raise PurchaseRefused("purchase_scope_released", 409)
-        operations = purchases.operations(db, purchase.id, lock=True)
-        sub = purchases.linked_subscription(db, purchase.id)
         sub_id = sub.subscription_id if sub else None
-        supplied = {item.operation_id: item for item in request.evidence.operations}
-        if {op.operation_kind for op in operations} != {Kind.AGREEMENT, Kind.SUBSCRIPTION} or set(supplied) != {
-            op.create_operation_id for op in operations
-        }:
-            raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
-        now = as_utc(billing_reconciliation.database_now(db))
+        now = current.now
         for op in operations:
             _verify_proof(db, op, supplied[op.create_operation_id], request.evidence, sub, now)
 
@@ -331,19 +314,15 @@ def resolve_purchase(
         case = ManualReviewCase(
             reason_code=TERMINAL_REASON,
             scope_kind="purchase_intent",
-            scope_reference=str(purchase.id),
+            scope_reference=str(purchase_id),
             evidence_schema_version=SCHEMA,
             evidence_document={"expected_digest": request.expected_digest},
             case_state="open",
         )
         db.add(case)
-        owned_scopes = {("purchase_intent", str(purchase.id))}
-        owned_scopes.update(("create_operation", str(op.create_operation_id)) for op in operations)
-        if sub_id is not None:
-            owned_scopes.add(("subscription", str(sub_id)))
-        cases = queries.reviews(db, purchase.id, purchase.customer_id, sub_id, open_only=True, lock=True, limit=None)
+        cases = queries.reviews(db, purchase_id, row.customer_id, sub_id, open_only=True, lock=True, limit=None)
         for previous in [*cases, case]:
-            if (previous.scope_kind, previous.scope_reference) in owned_scopes:
+            if (previous.scope_kind, previous.scope_reference) in current.owned_scopes:
                 previous.case_state = "resolved"
                 previous.resolved_at = now
                 previous.resolved_by_principal = principal
@@ -356,17 +335,16 @@ def resolve_purchase(
         if sub_id is not None and scope is not None and scope.primary_subscription_id == sub_id:
             scope.primary_subscription_id = None
             scope.primary_retired_at = now
-        for work in queries.work(db, tuple(reference for _, reference in owned_scopes), limit=None, lock=True):
-            if (work.scope_kind, work.scope_reference) in owned_scopes:
-                work.work_state = BillingWorkState.INVALID
-                work.enqueue_generation += 1
-                work.lease_owner = None
-                work.lease_expires_at = None
-                work.last_error_classification = "purchase_resolved"
+        for work in current.work:
+            work.work_state = BillingWorkState.INVALID
+            work.enqueue_generation += 1
+            work.lease_owner = None
+            work.lease_expires_at = None
+            work.last_error_classification = "purchase_resolved"
 
         db.flush()
         result = TerminalResult(
-            review_case_id=case.review_case_id, purchase_intent_id=purchase.id, state=row.state, already_resolved=False
+            review_case_id=case.review_case_id, purchase_intent_id=purchase_id, state=row.state, already_resolved=False
         )
         db.commit()
         return result

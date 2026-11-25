@@ -748,6 +748,13 @@ reconciliation, and one-off operator source commands finish. Keep PostgreSQL
 available and keep the processes stopped through commit. The commands perform
 no LBX I/O.
 
+For a new write, the commands return `billing_busy` if same-customer work has
+a live lease, a running claim lacks a lease, or reconciliation holds a live
+lease. Finish or recover the work through its normal path, drain again, and
+obtain fresh evidence before retrying. A paired expired lease gives the old
+claim no authority to write. An exact retry by the same principal reads the
+saved audit after verifying ownership.
+
 For a possible send, record the actual shutdown as `senders_stopped_at` and the
 time covered by the provider proof as `confirmed_at`. For separate proofs, use
 the earliest applicable confirmation time. Use timezone-aware timestamps.

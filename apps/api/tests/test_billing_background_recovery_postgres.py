@@ -232,6 +232,11 @@ async def test_late_case_survives_omission_and_fences_replacement(
         token=other_token,
     )
     assert other_claim.may_send
+    other_work_id = job(factory, "external_create_recovery", other_claim.id).work_item_id
+    with factory.begin() as db:
+        other_work = db.get(BillingWorkItem, other_work_id)
+        other_work.lease_owner = "other-customer-work"
+        other_work.lease_expires_at = datetime.now(UTC) + timedelta(minutes=1)
 
     closure = late.ClosureRequest(
         user_id=old.user_id,
@@ -260,6 +265,8 @@ async def test_late_case_survives_omission_and_fences_replacement(
     result = late.close_case(factory, config, closure, "os-euid:1000")
     assert result.review_case_id == case_id and result.state == finished.state
     assert late.close_case(factory, config, closure, "os-euid:1000").already_resolved
+    with factory() as db:
+        assert db.get(BillingWorkItem, other_work_id).lease_owner == "other-customer-work"
     assert terminal.resolve_purchase(factory, config, request, "os-euid:1000").review_case_id == finished.review_case_id
     assert service.read_purchase(factory, old.user_id, old.id) == terminal_purchase
     transport.hide.clear()
@@ -750,3 +757,159 @@ async def test_billing_background_recovery_legacy_null_window_uses_original_dead
         recovery.enroll_operation(db, db.get(ExternalCreateOperation, op.id), purchase.account_id)
         db.commit()
     assert job(factory, recovery.DEADLINE, op.id).next_attempt_at == original(factory, op.id)[3]
+
+
+@pytest.mark.parametrize("action", ["resolve", "close-case"])
+@pytest.mark.parametrize("activity", ["recovery", "inventory", "reconciliation", "ambiguous-recovery"])
+async def test_quiesced_write_refuses_active_work_and_replays_from_audit(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+    migrated_database: Engine,
+    action: str,
+    activity: str,
+) -> None:
+    from sqlalchemy import create_engine
+
+    from app.domains.billing.contracts import BillingRefused
+    from app.domains.billing.purchase_maintenance import lock_financial_object
+    from app.domains.billing.reconciliation import claim_reconciliation, read_source_time
+    from app.domains.billing.work_contracts import WorkClaim
+    from app.infrastructure.queries.billing_customers import recovery_work
+    from app.models import BillingWorkState, ExternalBillingCustomer
+
+    transport, sources, original_purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    original_purchase = synthetic_prepare(factory, transport, original_purchase, uncertain=False)
+    transport.agreements[0]["close_date"], transport.subscriptions[0]["state"] = "2026-10-27", 3
+    actor = original_purchase
+    closure = None
+    if action == "close-case":
+        terminal.resolve_purchase(
+            factory,
+            config,
+            terminal_object_request(factory, config, original_purchase, subscription_id="567"),
+            "os-euid:1000",
+        )
+        replacement = await accept(sources, factory, key="maintenance-replacement")
+        actor = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=replacement.id)
+        assert actor.state == "linked"
+        transport.agreements[0]["close_date"], transport.subscriptions[0]["state"] = None, 2
+        await recover_financial(
+            sources,
+            config,
+            factory=factory,
+            user_id=original_purchase.user_id,
+            purchase_id=original_purchase.id,
+            operation_id=original_purchase.operations[1].id,
+        )
+        transport.subscriptions[0]["state"] = 3
+        with factory() as db:
+            case = db.scalars(select(ManualReviewCase).where(ManualReviewCase.reason_code == late.REASON)).one()
+            closure = late.ClosureRequest(
+                user_id=original_purchase.user_id,
+                purchase_id=original_purchase.id,
+                case_id=case.review_case_id,
+                expected_digest=case_digest(case),
+                reason="Late object ended",
+                reference="Synthetic confirmation",
+                evidence=late.ClosureEvidence(
+                    outcome=late.ClosureKind.EXTERNAL_TERMINAL,
+                    external_object_id="567",
+                    confirmed_at=read_source_time(factory),
+                ),
+            )
+
+    subscription_id = service.linked_subscription_id(factory, actor)
+    now = read_source_time(factory)
+    work_id = None
+    claim = None
+    if activity == "reconciliation":
+        claim_reconciliation(factory, config, subscription_id, io_timeout_seconds=60)
+    else:
+        with factory.begin() as db:
+            if activity == "inventory":
+                recovery.hint_inventory(db, db.get(ExternalBillingCustomer, actor.customer_id))
+                item = db.scalars(
+                    select(BillingWorkItem).where(
+                        BillingWorkItem.scope_kind == "customer",
+                        BillingWorkItem.scope_reference == str(actor.customer_id),
+                    )
+                ).one()
+            else:
+                item = recovery_work(db, actor.operations[1].id)
+                item.work_state = BillingWorkState.RUNNING
+            if activity != "ambiguous-recovery":
+                item.lease_owner = "synthetic-active-work"
+                item.lease_expires_at = now + timedelta(minutes=1)
+            work_id = item.work_item_id
+            if activity == "recovery":
+                claim = WorkClaim(
+                    work_id,
+                    item.work_kind,
+                    item.scope_reference,
+                    item.lease_owner,
+                    item.enqueue_generation,
+                    now,
+                    item.lease_expires_at,
+                    item.recipient_id,
+                )
+
+    request = terminal_object_request(factory, config, original_purchase, subscription_id="567")
+
+    def execute(session_factory: sessionmaker[Session] = factory) -> terminal.TerminalResult:
+        if closure is not None:
+            return late.close_case(session_factory, config, closure, "os-euid:1000")
+        return terminal.resolve_purchase(session_factory, config, request, "os-euid:1000")
+
+    original_before = inspect_evidence(factory, config, original_purchase.user_id, original_purchase.id)
+    actor_before = inspect_evidence(factory, config, actor.user_id, actor.id)
+    with pytest.raises(PurchaseRefused, match="billing_busy"):
+        execute()
+    assert inspect_evidence(factory, config, original_purchase.user_id, original_purchase.id) == original_before
+    assert inspect_evidence(factory, config, actor.user_id, actor.id) == actor_before
+
+    with factory.begin() as db:
+        if activity == "reconciliation":
+            sub = db.get(ExternalSubscription, subscription_id)
+            sub.reconciliation_lease_expires_at = now - timedelta(seconds=1)
+        else:
+            item = db.get(BillingWorkItem, work_id)
+            if activity == "ambiguous-recovery":
+                item.work_state = BillingWorkState.PENDING
+            else:
+                item.lease_expires_at = now - timedelta(seconds=1)
+    result = execute()
+    assert not result.already_resolved
+    if closure is None:
+        assert not service.read_purchase(factory, original_purchase.user_id, original_purchase.id).held
+        if claim is not None:
+            with factory() as db:
+                item = db.get(BillingWorkItem, work_id)
+                assert item.work_state == BillingWorkState.INVALID
+                assert item.enqueue_generation == claim.generation + 1
+                assert item.lease_owner is None and item.lease_expires_at is None
+                with pytest.raises(BillingRefused, match="billing_work_stale"):
+                    work.verify_claim(db, claim)
+        actor = await accept(sources, factory, key="maintenance-replacement")
+    else:
+        assert service.read_purchase(factory, actor.user_id, actor.id) == actor
+
+    with factory.begin() as db:
+        recovery.hint_inventory(db, db.get(ExternalBillingCustomer, actor.customer_id))
+        inventory = db.scalars(
+            select(BillingWorkItem).where(
+                BillingWorkItem.scope_kind == "customer", BillingWorkItem.scope_reference == str(actor.customer_id)
+            )
+        ).one()
+        inventory.lease_owner = "replacement-inventory"
+        inventory.lease_expires_at = read_source_time(factory) + timedelta(minutes=1)
+    restarted = create_engine(migrated_database.url)
+    try:
+        with factory() as locker:
+            lock_financial_object(locker, original_purchase.account_id, Kind.SUBSCRIPTION, "567")
+            assert execute(sessionmaker(restarted, autoflush=False)) == result.model_copy(
+                update={"already_resolved": True}
+            )
+    finally:
+        restarted.dispose()
+    assert service.read_purchase(factory, actor.user_id, actor.id) == actor

@@ -11,6 +11,8 @@ from app.models import (
     BillingStateObservation,
     BillingStateObservationKind,
     BillingWorkItem,
+    BillingWorkScope,
+    BillingWorkState,
     ExternalCreateOperation,
     ExternalCreateOperationKind as Kind,
     ExternalSubscription,
@@ -186,6 +188,40 @@ def observations(db: Session, subscription_id: UUID) -> list[BillingStateObserva
     )
 
 
+def customer_work_active(db: Session, customer_id: UUID, account: str, now: datetime) -> bool:
+    """Find same-customer work with a live lease or an unaccounted running claim."""
+    item = BillingWorkItem
+    sub = ExternalSubscription
+    customer_ops = select(cast(ExternalCreateOperation.create_operation_id, Text)).where(
+        ExternalCreateOperation.customer_id == customer_id,
+        ExternalCreateOperation.external_billing_account_id == account,
+    )
+    customer_subs = select(cast(sub.subscription_id, Text)).where(
+        sub.customer_id == customer_id, sub.external_billing_account_id == account
+    )
+    customer_purchases = select(cast(PurchaseIntent.purchase_intent_id, Text)).where(
+        PurchaseIntent.customer_id == customer_id, PurchaseIntent.external_billing_account_id == account
+    )
+    active_work = exists().where(
+        or_(
+            and_(item.scope_kind == BillingWorkScope.CUSTOMER, item.scope_reference == str(customer_id)),
+            and_(item.scope_kind == BillingWorkScope.CREATE_OPERATION, item.scope_reference.in_(customer_ops)),
+            and_(item.scope_kind == BillingWorkScope.SUBSCRIPTION, item.scope_reference.in_(customer_subs)),
+            and_(item.scope_kind == "purchase_intent", item.scope_reference.in_(customer_purchases)),
+        ),
+        or_(
+            item.lease_expires_at > now,
+            and_(item.work_state == BillingWorkState.RUNNING, item.lease_expires_at.is_(None)),
+        ),
+    )
+    active_reconciliation = exists().where(
+        sub.customer_id == customer_id,
+        sub.external_billing_account_id == account,
+        sub.reconciliation_lease_expires_at > now,
+    )
+    return bool(db.scalar(select(or_(active_work, active_reconciliation))))
+
+
 def work(
     db: Session, references: tuple[str, ...], *, limit: int | None = 101, lock: bool = False
 ) -> list[BillingWorkItem]:
@@ -196,5 +232,5 @@ def work(
         .limit(limit)
     )
     if lock:
-        query = query.with_for_update()
+        query = query.with_for_update().execution_options(populate_existing=True)
     return list(db.scalars(query))

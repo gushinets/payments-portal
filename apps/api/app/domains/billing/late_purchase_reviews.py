@@ -10,26 +10,28 @@ from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
 from app.domains.billing.contracts import CustomerOpen
-from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.customers import lock_customer, lock_user
 from app.domains.billing.operator_review import case_digest
+from app.domains.billing.purchase_maintenance import (
+    guard_maintenance_write,
+    lock_financial_object,
+    lock_owned_purchase,
+    maintenance_session,
+)
 from app.domains.billing.terminal_resolution import (
     SafeText,
     SCHEMA,
     TERMINAL_REASON,
     TerminalAudit,
     TerminalResult,
-    lock_financial_object,
 )
 from app.domains.catalog.mapping_evidence import Digest
 from app.domains.catalog.publication import SessionFactory
-from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
 from app.domains.purchases.contracts import Purchase, PurchaseInventoryIncomplete, PurchaseRefused
 from app.domains.purchases.recovery_evidence import ProviderId
 from app.infrastructure.queries import (
     billing_operator,
-    billing_reconciliation,
     late_purchase_reviews as queries,
     purchases,
 )
@@ -218,22 +220,20 @@ def close_case(
 ) -> TerminalResult:
     if not re.fullmatch(r"os-euid:[0-9]+", principal):
         raise PurchaseRefused("mapping_operator_identity_unavailable", 403)
-    original = service.inspect_purchase(factory, configuration, request.user_id, request.purchase_id)
-    with factory() as db:
-        lock_user(db, original.user_id)
-        customer = lock_customer(db, original.customer_id)
-        row = purchases.owned(db, original.user_id, original.id, lock=True)
-        case = billing_operator.review(db, request.case_id, lock=True)
+    with maintenance_session(factory) as db:
+        row, customer = lock_owned_purchase(
+            db, configuration, request.user_id, request.purchase_id, stale_code="billing_review_stale"
+        )
+        purchase_id = row.purchase_intent_id
+        case = billing_operator.review(db, request.case_id)
         if (
-            row is None
-            or not row.state.resolved
+            not row.state.resolved
+            or customer.provider_origin != configuration.lbx_provider_origin
             or case is None
             or (case.scope_kind, case.scope_reference, case.reason_code, case.evidence_schema_version)
-            != ("purchase_intent", str(original.id), REASON, CASE_SCHEMA)
+            != ("purchase_intent", str(purchase_id), REASON, CASE_SCHEMA)
         ):
             raise PurchaseRefused("billing_review_stale", 409)
-        evidence = LateObjectEvidence.model_validate(case.evidence_document)
-        lock_financial_object(db, original.account_id, evidence.kind, evidence.external_object_id)
         if case.case_state != "open":
             if (
                 case.resolution_schema_version == CLOSURE_SCHEMA
@@ -242,19 +242,25 @@ def close_case(
             ):
                 return TerminalResult(
                     review_case_id=case.review_case_id,
-                    purchase_intent_id=original.id,
+                    purchase_intent_id=purchase_id,
                     state=row.state,
                     already_resolved=True,
                 )
             raise PurchaseRefused("billing_review_stale", 409)
+        evidence = LateObjectEvidence.model_validate(case.evidence_document)
         if (
             request.expected_digest != case_digest(case)
             or request.evidence.external_object_id != evidence.external_object_id
-            or customer.external_billing_account_id != connection_account(db, configuration)
-            or customer.provider_origin != configuration.lbx_provider_origin
         ):
             raise PurchaseRefused("billing_review_stale", 409)
-        now = as_utc(billing_reconciliation.database_now(db))
+        current = guard_maintenance_write(
+            db, row, {(evidence.kind, evidence.external_object_id)}, stale_code="billing_review_stale"
+        )
+        case = billing_operator.review(db, request.case_id, lock=True)
+        if case is None or case.case_state != "open" or request.expected_digest != case_digest(case):
+            raise PurchaseRefused("billing_review_stale", 409)
+        service._verify_original_consent(db, row, service.accepted(row))
+        now = current.now
         if not evidence.read_finished_at <= request.evidence.confirmed_at <= now:
             raise PurchaseRefused("purchase_resolution_confirmation_required", 409)
         case.case_state = "resolved"
@@ -264,7 +270,7 @@ def close_case(
         case.resolution_document = ClosureAudit(request=request).model_dump(mode="json")
         result = TerminalResult(
             review_case_id=case.review_case_id,
-            purchase_intent_id=original.id,
+            purchase_intent_id=purchase_id,
             state=row.state,
             already_resolved=False,
         )
