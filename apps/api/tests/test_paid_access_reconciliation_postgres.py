@@ -17,17 +17,24 @@ from app.composition.purchases import advance_purchase, confirm_purchase, review
 from app.composition.reconciliation import reconcile_subscription
 from app.composition.sources import SourceResources, source_resources
 from app.core.settings import Settings
-from app.domains.billing.reconciliation_contracts import ReconciliationResult
+from app.domains.billing import terminal_resolution as terminal
+from app.domains.billing.contracts import BillingRefused
+from app.domains.billing.reconciliation_contracts import IdentityProof, ReconciliationResult
+from app.domains.purchases import service
+from app.domains.purchases.contracts import PurchaseRefused
 from app.integrations.lbx.errors import LbxUnavailable
 from app.models import (
     AccessInvalidationOutbox,
     BillingProductAccessScope,
     BillingStateObservation,
+    BillingStateObservationKind,
     BillingWorkItem,
     ExternalSubscription,
     PaidAccessState,
     PurchasedAllowance,
+    PurchaseIntentState,
 )
+from apps.api.tests.factories.billing_operator import terminal_request
 from apps.api.tests.factories.purchase_terms import reviewed_meaning
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.support.any709_step3 import PurchaseTransport
@@ -106,6 +113,58 @@ async def reconcile(scenario: Scenario, *, config: Settings | None = None) -> Re
         factory=scenario.factory,
         subscription_id=scenario.subscription_id,
     )
+
+
+async def test_terminal_resolution_requires_fresh_confirmation_and_reduces_paid_access(paid_source: Scenario) -> None:
+    factory, config = paid_source.factory, paid_source.config
+    first = await reconcile(paid_source)
+    purchase = first.purchase
+    proofs = tuple(
+        terminal.OperationEvidence(
+            operation_id=op.id, outcome=terminal.TerminalEvidenceKind.EXTERNAL_TERMINAL, external_object_id=op.bound_id
+        )
+        for op in purchase.operations
+    )
+    original = terminal_request(factory, config, purchase, *proofs, confirmed=True)
+    before = persisted(factory)
+    assert before[2][1]["grants"] and before[4]
+    with factory() as db:
+        activations = list(
+            db.scalars(
+                select(BillingStateObservation.observation_id).where(
+                    BillingStateObservation.observation_kind == BillingStateObservationKind.ALLOWANCE_ACTIVATION
+                )
+            )
+        )
+    assert activations
+
+    paid_source.transport.subscriptions[0].pop("total_price")
+    later = await reconcile(paid_source)
+    assert later.proof.identity == IdentityProof.MATCH and not later.proof.complete
+    fresh = terminal_request(factory, config, purchase, *proofs, confirmed=True)
+    old_confirmation = fresh.model_copy(update={"evidence": original.evidence})
+    with pytest.raises(PurchaseRefused, match="purchase_resolution_confirmation_required"):
+        terminal.resolve_purchase(factory, config, old_confirmation, "os-euid:1000")
+    assert service.read_purchase(factory, purchase.user_id, purchase.id).held
+    assert persisted(factory)[2:5] == before[2:5]
+
+    paid_source.transport.agreements[0]["close_date"] = "2026-10-28"
+    paid_source.transport.subscriptions[0]["state"] = 3
+    confirmed = terminal_request(factory, config, purchase, *proofs, confirmed=True)
+    count = len(paid_source.transport.requests)
+    result = terminal.resolve_purchase(factory, config, confirmed, "os-euid:1000")
+    assert result.state == PurchaseIntentState.RESOLVED_EXTERNAL_TERMINAL
+    after = persisted(factory)
+    assert after[1][0] is None
+    assert after[2] == (before[2][0] + 1, {"grants": [], "allowances": []})
+    assert after[3][0] == after[2][0] and after[4] == before[4]
+    with factory() as db:
+        assert all(db.get(BillingStateObservation, identity) is not None for identity in activations)
+        assert db.get(BillingStateObservation, later.observation_id) is not None
+        assert db.get(ExternalSubscription, paid_source.subscription_id).latest_observation_id == first.observation_id
+    with pytest.raises(BillingRefused, match="purchase_scope_released"):
+        await reconcile(paid_source)
+    assert len(paid_source.transport.requests) == count
 
 
 def persisted(factory: sessionmaker[Session]) -> tuple:

@@ -31,6 +31,7 @@ from app.domains.billing.customers import (
     reserve_customer,
 )
 from app.domains.catalog.publication import SessionFactory
+from app.domains.purchases.contracts import Purchase
 from app.domains.purchases.widget_activation import WidgetActivationOpening
 from app.infrastructure.preflight import PreflightBudget, PreflightCleanupPending, PreflightDeadlineExceeded
 from app.integrations.lbx._transport import customer_diagnostics
@@ -72,6 +73,7 @@ async def _find_customer(
     *,
     budget: PreflightBudget,
     work_claim: WorkClaim | None = None,
+    purchase: Purchase | None = None,
     delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
 ) -> CustomerOpen | None:
     """Search candidates, then require original paired identity before binding."""
@@ -86,7 +88,7 @@ async def _find_customer(
                 email_ids.update(await client.discover_users_by_email(email=email, budget=budget))
             candidates = tuple(sorted(email_ids))
     if len(candidates) > 1:
-        await delegate(apply_customer_read, factory, current, ambiguous=True, work_claim=work_claim)
+        await delegate(apply_customer_read, factory, current, ambiguous=True, work_claim=work_claim, purchase=purchase)
     if not candidates:
         return None
     point = await client.get_user(user_id=candidates[0], budget=budget)
@@ -98,6 +100,7 @@ async def _find_customer(
         provider_id=str(point.user_id),
         outer_key=point.outer_id,
         work_claim=work_claim,
+        purchase=purchase,
     )
 
 
@@ -192,6 +195,7 @@ async def ensure_customer(
     token: str,
     current: CustomerOpen,
     budget: PreflightBudget,
+    purchase: Purchase | None = None,
 ) -> CustomerOpen:
     """Bounded customer recovery; failed reads never authorize a CREATE."""
     command = NewCustomer(
@@ -213,7 +217,7 @@ async def ensure_customer(
                 raise BillingRefused("billing_identity_conflict", 409)
             current = replace(current, email=command.email)
             try:
-                found = await _find_customer(client, factory, current, budget=budget)
+                found = await _find_customer(client, factory, current, budget=budget, purchase=purchase)
                 if found is None and not email_taken and failure is None:
                     await client.prepare_customer_create(budget=budget)
             except LbxError as error:
@@ -327,7 +331,9 @@ async def bootstrap_account(
                             raise
                         raise BillingAccountFailure("billing_client_not_ready") from None
                     if str(ready.user_id) != current.provider_id or ready.outer_id not in {None, current.outer_key}:
-                        await run_in_threadpool(apply_customer_read, factory, current, ambiguous=True)
+                        await run_in_threadpool(
+                            apply_customer_read, factory, current, ambiguous=True, purchase=payment_purchase
+                        )
                         raise BillingAccountFailure("billing_identity_conflict", 409)
                     budget.check()
                     activation_opening = None

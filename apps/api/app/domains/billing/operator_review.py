@@ -261,6 +261,10 @@ def authorize_resolution(
 
     if resolution.inventory is None:
         raise PurchaseRefused("billing_review_proof_incomplete", 409)
+    if resolution.request.resolution == "select-primary":
+        from app.domains.billing.late_purchase_reviews import require_clear
+
+        require_clear(db, resolution.purchase)
     resolution.inventory.require_clear(
         resolution.purchase, original=True, primary=resolution.request.resolution == "select-primary"
     )

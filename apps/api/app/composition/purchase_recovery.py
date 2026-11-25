@@ -158,12 +158,19 @@ async def recover_one(
         try:
             user = await timely_point(lambda: client.get_user(user_id=int(customer.provider_id), budget=budget), budget)
         except LbxScopeMismatch:
-            await delegate(record_customer_conflict, factory, customer, work_claim)
+            await delegate(record_customer_conflict, factory, customer, work_claim, attempts=(purchase,))
             raise PurchaseRefused("billing_identity_conflict", 409) from None
         if user.outer_id is None:
             raise LbxResponseInvalid()
         if user.outer_id != customer.outer_key:
-            await delegate(record_customer_conflict, factory, customer, work_claim, provider_id=customer.provider_id)
+            await delegate(
+                record_customer_conflict,
+                factory,
+                customer,
+                work_claim,
+                attempts=(purchase,),
+                provider_id=customer.provider_id,
+            )
             raise PurchaseRefused("billing_identity_conflict", 409)
         found = await find_financial(
             client, purchase, operation, customer, budget=budget, require_discovery=resolution is not None
@@ -303,6 +310,25 @@ async def recover_financial(
 
     purchase = await delegate(service.inspect_purchase, factory, configuration, user_id, purchase_id)
     _connection(purchase, configuration)
+    if not purchase.held and purchase.state.resolved and work_claim is None and sources.billing is not None:
+        from app.composition.purchase_late_objects import recover_released
+        from app.domains.billing.late_purchase_reviews import released_original
+
+        original = await delegate(released_original, factory, purchase)
+        if original is not None:
+            await delegate(service.verify_original_consent, factory, purchase)
+            current = await delegate(service.customer_for_purchase, factory, configuration, purchase)
+            async with _budget(sources.billing, budget) as active_budget:
+                await recover_released(
+                    sources.require_lbx(),
+                    factory,
+                    original,
+                    current,
+                    operation_id=operation_id,
+                    budget=active_budget,
+                    delegate=delegate,
+                )
+            return await delegate(service.read_purchase, factory, user_id, purchase_id)
     if not purchase.held or sources.billing is None:
         raise PurchaseRefused("purchase_scope_released", 409)
     await delegate(service.verify_original_consent, factory, purchase)

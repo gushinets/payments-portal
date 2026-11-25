@@ -15,7 +15,8 @@ from app.domains.billing.first_activation import (
 from app.domains.billing.paid_access import apply_paid_source, commit_paid_state, resolve_access_end
 from app.domains.billing.paid_deadlines import effective_deadline
 from app.domains.billing.paid_policy import MeteringPolicy, PaidDecision, paid_decision
-from app.domains.billing.customers import lock_customer, lock_user, mark_customer_identity_conflict
+from app.domains.billing.customers import lock_customer, lock_user
+from app.domains.billing.customer_reviews import record_customer_conflict
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.reconciliation_contracts import (
     RECONCILIATION_SCHEMA,
@@ -330,11 +331,12 @@ def apply_reconciliation(
         conflict = None
         customer_conflict = "customer_identity_conflict" in proof.reasons
         if customer_conflict:
-            mark_customer_identity_conflict(
+            record_customer_conflict(
                 db,
                 customer,
                 customer_op,
                 provider_id=subject.customer.provider_id if "customer_original_key_mismatch" in proof.reasons else None,
+                ambiguous=False,
             )
         if proof.identity == IdentityProof.CONFLICT and (
             not customer_conflict or "subscription_identity_conflict" in proof.reasons

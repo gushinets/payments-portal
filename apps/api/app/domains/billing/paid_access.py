@@ -316,7 +316,7 @@ def _dependency_blocked(db: Session, subscription: ExternalSubscription) -> bool
     return (
         customer is None
         or customer.binding_state != Binding.BOUND
-        or (purchase is not None and purchase.state == PurchaseIntentState.MANUAL_REVIEW)
+        or (purchase is not None and (purchase.state == PurchaseIntentState.MANUAL_REVIEW or purchase.state.resolved))
         or any(op.operation_state == OperationState.MANUAL_REVIEW for op in operations)
     )
 

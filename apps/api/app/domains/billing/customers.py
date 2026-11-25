@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import secrets
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy.exc import IntegrityError
@@ -43,6 +44,9 @@ from app.models import (
     ExternalCreateOperationState as State,
     User,
 )
+
+if TYPE_CHECKING:
+    from app.domains.purchases.contracts import Purchase
 
 
 RECOVERY_WINDOW = timedelta(hours=2)
@@ -328,17 +332,6 @@ def finish_customer_attempt(factory: SessionFactory, expected: CustomerOpen) -> 
         db.commit()
 
 
-def mark_customer_identity_conflict(
-    db: Session,
-    customer: ExternalBillingCustomer,
-    operation: ExternalCreateOperation,
-    *,
-    provider_id: str | None = None,
-) -> None:
-    """Caller owns the transaction; preserve only proven original-ID recovery."""
-    record_customer_conflict(db, customer, operation, provider_id=provider_id, ambiguous=False)
-
-
 def apply_customer_read(
     factory: SessionFactory,
     expected: CustomerOpen,
@@ -347,6 +340,7 @@ def apply_customer_read(
     outer_key: str | None = None,
     ambiguous: bool = False,
     work_claim: WorkClaim | None = None,
+    purchase: Purchase | None = None,
 ) -> CustomerOpen:
     """Apply point proof only against its current fence; lists alone never bind."""
     with factory() as db:
@@ -386,6 +380,10 @@ def apply_customer_read(
             and (outer_key != customer.billing_customer_key or customer.provider_customer_id not in {None, provider_id})
         )
         if conflict:
+            if purchase is not None:
+                from app.domains.purchases.inventory import require_current_attempt
+
+                require_current_attempt(db, purchase, customer.customer_id)
             record_customer_conflict(db, customer, operation, provider_id=provider_id, ambiguous=ambiguous)
             reduce_paid_access(db, customer.user_id)
             if work_claim is not None:

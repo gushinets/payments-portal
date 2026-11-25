@@ -7,6 +7,7 @@ import { purchaseStatus } from "@/shared/api/purchases";
 import { subscribeToSessionChanges, useSessionOperation } from "@/shared/session/use-session-operation";
 import { newRequestId, purchaseReadRefusal, reportBillingSessionRefusal, safeRequestId, type PurchaseReadRefusal } from "./errors";
 import { claimPaymentOpening } from "./payment-opening";
+import { isResolvedPurchase } from "./purchase-state";
 import { useAccountPurchases } from "./use-account-purchases";
 import { WidgetStatus, useBillingWidget } from "./use-billing-widget";
 import { purchaseNeedsStatus, usePurchaseStatusPoll } from "./use-purchase-status-poll";
@@ -45,6 +46,8 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   // undefined permits a visible single-purchase default; null explicitly selects account viewing.
   const [selectedId, setSelectedId] = useState<string | null | undefined>(initialPurchaseId);
   const [selectionState, setSelectionState] = useState<SelectionState>({ status: initialPurchaseId && emailVerified ? "loading" : "ready" });
+  const [detailAttempt, setDetailAttempt] = useState(0);
+  const [recheckFailure, setRecheckFailure] = useState<{ purchaseId: string; requestId: string }>();
   const sessionRefused = selectionState.status === "error" && selectionState.sessionRefused === true;
   const canRead = emailVerified && !sessionRefused;
   const rememberFocus = useCallback(() => {
@@ -89,14 +92,15 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
       const readStartedAt = performance.now();
       const result = await purchaseStatus(operation.token, purchaseId, requestId);
       if (operation.isCurrent()) {
-        if (result.purchase_intent_id === purchaseId) applyStatus(result, readStartedAt);
-        if (!result.scope_held || result.purchase_intent_id !== purchaseId) {
+        if (result.purchase_intent_id !== purchaseId || (!result.scope_held && !isResolvedPurchase(result.state))) {
           consumeOpening?.();
           setSelectionState({ status: "error", requestId });
           return;
         }
-        if (result.state !== "linked") consumeOpening?.();
-        setSelectionState({ status: "ready", openPayment: result.state === "linked" ? consumeOpening : undefined });
+        applyStatus(result, readStartedAt);
+        const payable = result.scope_held && result.state === "linked";
+        if (!payable) consumeOpening?.();
+        setSelectionState({ status: "ready", openPayment: payable ? consumeOpening : undefined });
       }
     }
     void load(initialPurchaseId).catch((error: unknown) => {
@@ -114,11 +118,12 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
       setSelectionState({ status: "error", requestId: safeRequestId(error) || requestId });
     });
     return cancel;
-  }, [applyStatus, begin, cancel, canRead, handleRefusal, initialPurchaseId, userId]);
+  }, [applyStatus, begin, cancel, canRead, detailAttempt, handleRefusal, initialPurchaseId, userId]);
 
   useEffect(() => subscribeToSessionChanges(() => {
     cancel();
     setSelectedId(null);
+    setRecheckFailure(undefined);
     setSelectionState({ status: "error", requestId: "" });
   }), [cancel]);
 
@@ -131,6 +136,11 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   const selectionId = selection?.purchase_intent_id;
   const selectionBlocked = selectionState.status !== "ready" || (!!selectedId && !selection);
   const checking = selection?.checking === true;
+  const released = selection && isResolvedPurchase(selection.state);
+  const savedManualReview = !!initialPurchaseId && initialPurchaseId === selectionId && selection?.state === "manual_review";
+  const recheckRequestId = checking && recheckFailure && recheckFailure.purchaseId === selectionId
+    ? recheckFailure.requestId
+    : undefined;
   const canPay = !selectionBlocked && selection?.state === "linked" && !checking;
   const widgetStatus = widget.state.status;
   const widgetOpen = widgetStatus === WidgetStatus.Open;
@@ -180,16 +190,22 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
     }
   }, [canPay, checking, initialPurchaseId, openWidget, selectionId, selectionState]);
 
-  const statusTarget = canRead && !selectionBlocked ? selection : undefined;
+  const statusTarget = canRead && !selectionBlocked && !released ? selection : undefined;
   const poll = usePurchaseStatusPoll(
     statusTarget,
     undefined,
-    applyStatus,
+    (status, readStartedAt) => {
+      applyStatus(status, readStartedAt);
+      setRecheckFailure(undefined);
+    },
     handleRefusal,
     {
       enabled: statusTarget !== undefined && (checking || purchaseNeedsStatus(statusTarget)),
       initialDelayMs: checking ? 0 : undefined,
-      acceptLateSessionRefusal: true
+      acceptLateSessionRefusal: true,
+      onReadError: (requestId) => {
+        if (checking && selectionId) setRecheckFailure({ purchaseId: selectionId, requestId });
+      }
     }
   );
   const paidOnlyProducts = [...new Set([
@@ -207,8 +223,19 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
     cancel();
     widget.close();
     poll.clearPause();
+    setRecheckFailure(undefined);
     setSelectedId(id || null);
     setSelectionState({ status: "ready" });
+  }
+
+  function retryDetail() {
+    setSelectionState({ status: "loading" });
+    setDetailAttempt(attempt => attempt + 1);
+  }
+
+  function retryRecheck() {
+    setRecheckFailure(undefined);
+    poll.retry();
   }
 
   function manage(id: string) {
@@ -243,14 +270,28 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
           <p>{b((selectionState.status === "error" ? selectionState.message : undefined) ?? "selectionUnavailable")}</p>
           {selectionState.status === "error" && selectionState.requestId && <p>{b("requestId", { id: selectionState.requestId })}</p>}
           {sessionRefused && <button ref={retrySessionButton} className="btn-secondary" type="button" onClick={() => window.location.reload()}>{p("retry")}</button>}
+          {!sessionRefused && initialPurchaseId && selectedId === initialPurchaseId && <button className="btn-secondary" type="button" onClick={retryDetail}>{p("refresh")}</button>}
         </div>}
         {!sessionRefused && selection && <p className="billing-selected-product">{b("selectedProduct", { product: selection.product_id })}</p>}
-        {!selectionBlocked && checking && !poll.paused && <p role="status">{p("loading")}</p>}
+        {!selectionBlocked && checking && !poll.paused && !recheckRequestId && <p role="status">{p("loading")}</p>}
+        {!selectionBlocked && recheckRequestId && <div className="notice error" role="alert">
+          <p>{b("selectionUnavailable")}</p>
+          <p>{b("requestId", { id: recheckRequestId })}</p>
+          <button className="btn-secondary" type="button" onClick={retryRecheck}>{p("refresh")}</button>
+        </div>}
         {poll.paused && <p role="status">{p("statusPollingPaused")}</p>}
-        {!selectionBlocked && selection && !canPay && <p>{!checking && b("preparationRequired")} <Link ref={continueLinkRef} href={`/products/${encodeURIComponent(selection.product_id)}`}>{p("continue")}</Link></p>}
+        {!selectionBlocked && selection && released && <>
+          <p role="status">{p(`states.${selection.state}`)}</p>
+          <p>{p("resolvedNext")} <Link href={`/products/${encodeURIComponent(selection.product_id)}`}>{p("buy")}</Link></p>
+        </>}
+        {!selectionBlocked && savedManualReview && <>
+          <p role="status">{p("states.manual_review")}</p>
+          <button className="btn-secondary" type="button" onClick={retryDetail}>{p("refresh")}</button>
+        </>}
+        {!selectionBlocked && selection && !canPay && !released && !savedManualReview && <p>{!checking && b("preparationRequired")} <Link ref={continueLinkRef} href={`/products/${encodeURIComponent(selection.product_id)}`}>{p("continue")}</Link></p>}
       </div>}
       <div aria-live="polite">
-        {paymentTarget && <div ref={paymentNotice} className="notice">
+        {paymentTarget && !checking && <div ref={paymentNotice} className="notice">
           <p>{b("paymentTarget", { agreement: paymentTarget.agreement_reference, seller: paymentTarget.seller_reference })}</p>
           <p>{b("paymentTargetNote")}</p>
         </div>}
@@ -258,8 +299,8 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
       <button ref={paymentButton} className="btn-primary" type="button" aria-describedby={widgetOpen ? "billing-refresh-hint" : undefined} disabled={!emailVerified || selectionBlocked || (!!selection && !canPay) || widget.loading} onClick={openSelected}>
         {widget.loading ? b("loading") : widgetOpen ? b("refresh") : canPay ? b("pay") : b("open")}
       </button>
-      {widgetOpen && <p id="billing-refresh-hint" className="card-copy">{b("refreshHint")}</p>}
-      <WidgetView widget={widget} onClose={refreshPaid} />
+      {widgetOpen && <p id="billing-refresh-hint" className="card-copy" hidden={checking}>{b("refreshHint")}</p>}
+      <div hidden={checking}><WidgetView widget={widget} onClose={refreshPaid} /></div>
     </section>
     {!sessionRefused && <section className="account-products-panel" aria-label={t("title")}>
       <div className="account-products-heading">
@@ -291,7 +332,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
           <div className="account-product-actions">
             <Link className="btn-secondary" href={`/products/${encodeURIComponent(item.product_id)}`}>{t("detailAction")}</Link>
             {item.state === "linked" && !item.checking
-              ? <button className="btn-secondary" type="button" disabled={!emailVerified} onClick={() => manage(item.purchase_intent_id)}>{p("manage")}</button>
+              ? <button className="btn-secondary" type="button" disabled={!emailVerified || (item.purchase_intent_id === initialPurchaseId && selectionState.status !== "ready")} onClick={() => manage(item.purchase_intent_id)}>{p("manage")}</button>
               : <Link ref={item.purchase_intent_id === selectionId ? continueLinkRef : undefined} className="btn-secondary" href={`/products/${encodeURIComponent(item.product_id)}`}>{p("continue")}</Link>}
           </div>
         </article>)}

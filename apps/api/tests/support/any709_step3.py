@@ -11,6 +11,8 @@ import httpx
 from apps.api.tests.support.any709_step1 import recording
 from apps.api.tests.support.kernel import manifest_fixture
 
+PORTAL_TOKEN = "isolated-portal-token"
+
 
 class PurchaseTransport:
     def __init__(self) -> None:

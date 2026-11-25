@@ -46,8 +46,17 @@ class PurchaseIntentState(StrEnum):
     AWAITING_EXTERNAL_RESULT = "awaiting_external_result"
     LINKED = "linked"
     RESOLVED_NO_EXTERNAL_EFFECT = "resolved_no_external_effect"
+    RESOLVED_EXTERNAL_TERMINAL = "resolved_external_terminal"
     FAILED_BEFORE_EXTERNAL_EFFECT = "failed_before_external_effect"
     MANUAL_REVIEW = "manual_review"
+
+    @property
+    def resolved(self) -> bool:
+        return self in {
+            self.RESOLVED_NO_EXTERNAL_EFFECT,
+            self.RESOLVED_EXTERNAL_TERMINAL,
+            self.FAILED_BEFORE_EXTERNAL_EFFECT,
+        }
 
 
 class ExternalCreateOperationState(StrEnum):

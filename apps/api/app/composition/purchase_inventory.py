@@ -6,11 +6,13 @@ from typing import Any
 
 from starlette.concurrency import run_in_threadpool
 
+from app.composition.purchase_late_objects import record_subscription
 from app.composition.reconciliation import read_subscription_proof, reconcile_subscription
 from app.domains.billing.reconciliation import read_source_time
 from app.core.errors import AppError
 from app.core.settings import Settings
 from app.domains.billing.discovery import DiscoveredCandidate, ProductDiscovery, scope_versions
+from app.domains.billing.late_purchase_reviews import released_owners
 from app.domains.billing.paid_policy import CandidateConclusion as Conclusion, PaidDecision, paid_decision
 from app.domains.billing.background_recovery import customer_snapshot
 from app.domains.billing.contracts import CustomerOpen
@@ -166,26 +168,53 @@ async def collect_inventory(
             complete = False
     try:
         if reuse is None:
+            attempts = (expected,) if expected is not None else ()
             try:
                 user = await timely_point(
                     lambda: client.get_user(user_id=int(current.provider_id), budget=budget), budget
                 )
             except LbxScopeMismatch:
-                await delegate(record_customer_conflict, factory, current, work_claim)
+                await delegate(record_customer_conflict, factory, current, work_claim, attempts=attempts)
                 raise
             if user.outer_id is None:
                 raise LbxResponseInvalid()
             if user.outer_id != current.outer_key:
-                await delegate(record_customer_conflict, factory, current, work_claim, provider_id=current.provider_id)
+                await delegate(
+                    record_customer_conflict,
+                    factory,
+                    current,
+                    work_claim,
+                    attempts=attempts,
+                    provider_id=current.provider_id,
+                )
                 raise LbxScopeMismatch()
         rows = await timely_point(
             lambda: client.discover_subscriptions(user_id=int(current.provider_id), budget=budget), budget
         )
+        history = (
+            await delegate(
+                released_owners,
+                factory,
+                current.customer_id,
+                {str(row.agreement_id) for row in rows},
+                {str(row.subscription_id) for row in rows} | conflicting_bindings,
+            )
+            if rows or conflicting_bindings
+            else ()
+        )
+        retired_agreements = {identity: old for old in history for identity in old.agreement_ids}
+        retired_subscriptions = {identity: old for old in history for identity in old.subscription_ids}
         tariffs = {purchase.accepted.selection.tariff_id for purchase in initial}
         relevant: dict[str, Subscription | None] = {
             str(row.subscription_id): row
             for row in rows
-            if (row.tariff_id in tariffs or str(row.subscription_id) in bindings or str(row.agreement_id) in agreements)
+            if (
+                row.tariff_id in tariffs
+                or str(row.subscription_id) in bindings
+                or str(row.agreement_id) in agreements
+                or str(row.subscription_id) in retired_subscriptions
+                or str(row.agreement_id) in retired_agreements
+            )
         }
         # Canonical contradictions need point checks even when discovery omits
         # the known ID. Do not invent listing fields or treat it as UNKNOWN.
@@ -213,6 +242,44 @@ async def collect_inventory(
                     if candidate is not None and item.accepted.selection.tariff_id == candidate.tariff_id
                 }
             )
+            historical = retired_subscriptions.get(provider_id) or (
+                retired_agreements.get(str(candidate.agreement_id)) if candidate is not None else None
+            )
+            if historical is not None:
+                affected.add(historical.purchase.accepted.selection.product_id)
+                point = await _candidate_point(
+                    lambda: client.get_subscription(subscription_id=int(provider_id), budget=budget), budget
+                )
+                if point is not None:
+                    historical = retired_subscriptions.get(provider_id) or retired_agreements.get(
+                        str(point.agreement_id)
+                    )
+                    if historical is not None:
+                        agreement = await _candidate_point(
+                            lambda: client.get_agreement(agreement_id=point.agreement_id, budget=budget), budget
+                        )
+                        if agreement is not None or provider_id in historical.subscription_ids:
+                            await record_subscription(
+                                factory, historical, current, provider_id, point, agreement, delegate=delegate
+                            )
+                        if agreement is not None and (
+                            candidate is None
+                            or (point.tariff_id, point.agreement_id)
+                            == (
+                                candidate.tariff_id,
+                                candidate.agreement_id,
+                            )
+                        ):
+                            continue
+                        affected.add(historical.purchase.accepted.selection.product_id)
+                    affected.update(
+                        item.accepted.selection.product_id
+                        for item in initial
+                        if item.accepted.selection.tariff_id == point.tariff_id
+                    )
+                complete = False
+                product_complete.update(dict.fromkeys(affected, False))
+                continue
             for product in affected:
                 candidates[product].append(
                     DiscoveredCandidate(
@@ -277,6 +344,9 @@ async def collect_inventory(
                                 factory,
                                 current,
                                 work_claim,
+                                attempts=(owner, expected)
+                                if expected is not None and expected.id != owner.id
+                                else (owner,),
                                 provider_id=current.provider_id
                                 if "customer_original_key_mismatch" in proof.reasons
                                 else None,
@@ -323,6 +393,24 @@ async def collect_inventory(
             if agreement.user_id != int(current.provider_id):
                 complete = False
                 continue
+            if agreement.agreement_number is not None:
+                retired = await delegate(
+                    released_owners,
+                    factory,
+                    current.customer_id,
+                    {str(point.agreement_id)},
+                    {provider_id},
+                    agreement_number=agreement.agreement_number,
+                )
+                if retired:
+                    await record_subscription(
+                        factory, retired[0], current, provider_id, point, agreement, delegate=delegate
+                    )
+                    for product in affected:
+                        candidates[product][-1] = candidates[product][-1].model_copy(
+                            update={"conclusion": Conclusion.INELIGIBLE}
+                        )
+                    continue
             if agreement_is_closed(agreement) or subscription_lifecycle(point)[0] == Lifecycle.ENDED:
                 for product in affected:
                     candidates[product][-1] = candidates[product][-1].model_copy(

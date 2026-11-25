@@ -1,6 +1,6 @@
 """Local versions and admission effects for the shared scoped inventory."""
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
@@ -8,7 +8,7 @@ from app.domains.billing.customers import lock_customer
 from app.domains.billing.customer_reviews import customer_admission_reviews
 from app.domains.catalog.publication import SessionFactory
 from app.domains.purchases import service
-from app.domains.purchases.contracts import Purchase
+from app.domains.purchases.contracts import Purchase, PurchaseRefused
 from app.domains.purchases.inventory_contracts import InventoryResult, InventoryStale
 from app.infrastructure.queries import purchases as queries
 from app.infrastructure.queries.billing_customers import customer_operation
@@ -24,6 +24,22 @@ def same_purchase(current: Purchase, expected: Purchase) -> bool:
         and tuple(op.admission_snapshot() for op in current.operations)
         == tuple(op.admission_snapshot() for op in expected.operations)
     )
+
+
+def require_current_attempt(db: Session, purchase: Purchase, customer_id: UUID) -> None:
+    row = service._locked(db, purchase)
+    queries.operations(db, purchase.id, lock=True)
+    if row.customer_id != customer_id or not same_purchase(service._snapshot(db, row), purchase):
+        raise PurchaseRefused("purchase_pending", 409)
+
+
+def require_financial_admission(db: Session, purchase: Purchase, inventory: InventoryResult | None) -> None:
+    from app.domains.billing.late_purchase_reviews import require_clear
+
+    require_clear(db, purchase)
+    if inventory is not None:
+        inventory.require_clear(purchase)
+        validate_inventory(db, inventory)
 
 
 def validate_inventory(db: Session, result: InventoryResult) -> None:

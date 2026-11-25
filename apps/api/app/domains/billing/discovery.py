@@ -164,6 +164,7 @@ def select_primaries(
     metering_policy: MeteringPolicy,
 ) -> tuple[BillingStateObservation, ...]:
     """Caller holds user/purchase locks. Reuse committed receipts, never reapply facts."""
+    from app.domains.billing.late_purchase_reviews import blocking_cases
     from app.domains.purchases.inventory_contracts import InventoryStale
 
     causes = []
@@ -198,6 +199,9 @@ def select_primaries(
         }
         candidates = {item.identity: PrimaryCandidate(item.identity, item.conclusion) for item in product.candidates}
         for sub in local:
+            owner = purchases.owned(db, cause.user_id, sub.purchase_intent_id) if sub.purchase_intent_id else None
+            if owner is not None and owner.state.resolved:
+                continue  # Retained local history does not supply a new primary candidate.
             source = sources.get(sub.subscription_id)
             if source is not None:
                 candidate = next(
@@ -227,6 +231,8 @@ def select_primaries(
             continue
         for sub in eligible:
             purchase = sources[sub.subscription_id].purchase
+            if blocking_cases(db, purchase):
+                continue
             if scope.primary_retired_at is not None and as_utc(purchase.created_at) <= as_utc(scope.primary_retired_at):
                 primary_review(db, sub)
                 continue

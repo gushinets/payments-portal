@@ -14,6 +14,7 @@ import {
 } from "./errors";
 import { requestPaymentOpening } from "./payment-opening";
 import { PurchaseTerms } from "./PurchaseTerms";
+import { isResolvedPurchase } from "./purchase-state";
 import { purchaseNeedsStatus, usePurchaseStatusPoll } from "./use-purchase-status-poll";
 
 type PurchaseState =
@@ -40,8 +41,7 @@ function advanceOutcomeUnknown(purchase: PurchaseIntentResponse | null): boolean
 }
 
 function purchaseReleased(purchase: PurchaseIntentResponse): boolean {
-  return !purchase.scope_held &&
-    (purchase.state === "resolved_no_external_effect" || purchase.state === "failed_before_external_effect");
+  return !purchase.scope_held && isResolvedPurchase(purchase.state);
 }
 
 function hasMixedHoldStatus(purchase: PurchaseIntentResponse): boolean {
@@ -260,7 +260,9 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     });
   }
 
-  async function inspectCommandOutcome(token: string, id: string, current: () => boolean, commandError: unknown, purchaseId?: string) {
+  async function inspectCommandOutcome(
+    token: string, id: string, current: () => boolean, commandError: unknown, purchaseId?: string, requireRelease = false
+  ) {
     let saved: PurchaseIntentResponse | null = null;
     try {
       saved = purchaseId
@@ -275,6 +277,7 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     }
     if (!current()) return;
     if (saved && hasMixedHoldStatus(saved)) saved = null;
+    if (requireRelease && (!saved || !purchaseReleased(saved))) throw commandError;
     if (saved) showPurchase(saved);
     // A saved intent proves confirmation. Advance also needs evidence of preparation.
     const pending = purchaseId ? advanceOutcomeUnknown(saved) : !saved;
@@ -287,8 +290,10 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
     try {
       result = await advancePurchase(token, purchase.purchase_intent_id, id);
     } catch (error) {
-      if (!commandOutcomeUncertain(error) && apiErrorCode(error) !== "preflight_deadline_exceeded") throw error;
-      if (current()) await inspectCommandOutcome(token, id, current, error, purchase.purchase_intent_id);
+      const code = apiErrorCode(error);
+      const scopeReleased = error instanceof ApiError && error.status === 409 && code === "purchase_scope_released";
+      if (!scopeReleased && !commandOutcomeUncertain(error) && code !== "preflight_deadline_exceeded") throw error;
+      if (current()) await inspectCommandOutcome(token, id, current, error, purchase.purchase_intent_id, scopeReleased);
       return;
     }
     if (!current() || hasMixedHoldStatus(result)) return;
@@ -384,13 +389,14 @@ function PurchasePanel({ productId, offerAvailable, user, headingLevel }: { prod
       {!linked && <>
         {purchase.reason && <p>{t(purchase.reason === "terms_changed" ? "termsChanged" : purchase.reason === "purchase_pending" ? "pending" : "reviewRequired")}</p>}
         <p className="catalog-product-id">{t("reference", { id: purchase.purchase_intent_id })}</p>
+        <Link href={`/account?purchase=${encodeURIComponent(purchase.purchase_intent_id)}#billing`}>{t("statusLink")}</Link>
       </>}
       <details><summary>{t("acceptedTerms")}</summary><PurchaseTerms review={purchase.accepted} /></details>
       {!linked && <>
         {resumable && !readRefused &&
           <button ref={resumeButton} className="btn-primary" type="button" aria-disabled={working}
             onClick={() => void run((token, id, current) => prepare(token, purchase, id, current), pendingAdvanceFailure)}>{t(needsRecovery ? "recover" : "continue")}</button>}
-        <p>{t("awaitingVerification")}</p>
+        <p>{t(released ? "resolvedNext" : "awaitingVerification")}</p>
       </>}
     </div>}
     {!linked && user.email_verified && <>

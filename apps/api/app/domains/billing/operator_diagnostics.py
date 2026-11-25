@@ -12,6 +12,7 @@ from app.infrastructure.queries import billing_operator as queries, billing_reco
 from app.infrastructure.queries.billing_customers import diagnostic_user
 from app.infrastructure.queries.billing_background import operation_subject
 from app.domains.billing.customer_scope import connection_account
+from app.domains.billing.terminal_resolution import state_digest
 
 
 def inspect_operation(factory: SessionFactory, configuration: Settings, operation_id: UUID) -> dict:
@@ -52,10 +53,16 @@ def inspect_operation(factory: SessionFactory, configuration: Settings, operatio
 
 
 def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: UUID, purchase_id: UUID) -> dict:
+    from app.domains.billing.late_purchase_reviews import CASE_SCHEMA, REASON, LateObjectEvidence, blocking_cases
+
     with factory() as db:
         if (
             diagnostic_user(
-                db, user_id=user_id, tenant_id=configuration.instance_tenant_id, region=configuration.instance_region
+                db,
+                user_id=user_id,
+                tenant_id=configuration.instance_tenant_id,
+                region=configuration.instance_region,
+                consistent_snapshot=True,
             )
             is None
         ):
@@ -75,18 +82,28 @@ def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: 
         reviews = queries.reviews(
             db, purchase.id, purchase.customer_id, sub.subscription_id if sub else None, include_paid_diagnostics=True
         )
+        blockers = blocking_cases(db, purchase)
         now = as_utc(billing_reconciliation.database_now(db))
         return {
             "purchase_intent_id": str(purchase.id),
             "state": purchase.state,
             "reason": purchase.reason,
             "scope_held": purchase.held,
+            "blocking_late_reviews": [
+                {"purchase_intent_id": case.scope_reference, "review_case_id": str(case.review_case_id)}
+                for case in blockers[:100]
+            ],
+            "blocking_late_reviews_truncated": len(blockers) > 100,
+            "expected_resolution_digest": state_digest(db, row),
             "operations": [
                 {
                     "create_operation_id": str(op.id),
                     "kind": op.kind,
                     "state": op.state,
                     "send_fence": str(op.fence) if op.fence else None,
+                    "request_correlation_key": op.key,
+                    "external_object_id": op.bound_id,
+                    "receipt_candidate_id": op.candidate_id,
                     "bound": op.bound_id is not None,
                     "receipt_saved": op.candidate_id is not None,
                     "deadline": op.deadline.isoformat() if op.deadline else None,
@@ -157,6 +174,15 @@ def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: 
                     "schema": case.evidence_schema_version,
                     "resolution_schema": case.resolution_schema_version,
                     "resolved_at": case.resolved_at.isoformat() if case.resolved_at else None,
+                    **(
+                        {
+                            "late_object": LateObjectEvidence.model_validate(case.evidence_document).model_dump(
+                                mode="json"
+                            )
+                        }
+                        if (case.reason_code, case.evidence_schema_version) == (REASON, CASE_SCHEMA)
+                        else {}
+                    ),
                 }
                 for case in reviews[:100]
             ],

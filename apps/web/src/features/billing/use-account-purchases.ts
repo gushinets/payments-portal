@@ -5,6 +5,7 @@ import type { AccountPurchaseResponse, PurchaseIntentResponse } from "@/generate
 import { accountPurchases } from "@/shared/api/purchases";
 import { subscribeToSessionChanges, useSessionOperation } from "@/shared/session/use-session-operation";
 import { newRequestId, reportBillingSessionRefusal, safeRequestId, type OnBillingSessionRefused } from "./errors";
+import { isResolvedPurchase } from "./purchase-state";
 
 type ReadState = { status: "loading" | "ready" } | { status: "error"; requestId: string };
 type PurchaseSummary = Pick<AccountPurchaseResponse, "purchase_intent_id" | "product_id" | "state">;
@@ -79,6 +80,8 @@ export function useAccountPurchases(enabled: boolean, onSessionRefused: OnBillin
   }
 
   const applyStatus = useCallback(({ purchase_intent_id, product_id, state, scope_held }: PurchaseIntentResponse, readStartedAt: number) => {
+    // The purchase row and its hold can be sampled on either side of release.
+    if (!scope_held && !isResolvedPurchase(state)) return;
     const read = { startedAt: readStartedAt, finishedAt: performance.now() };
     setObserved((previous) => {
       const current = previous.get(purchase_intent_id);
@@ -103,7 +106,8 @@ export function useAccountPurchases(enabled: boolean, onSessionRefused: OnBillin
     const item = items.find((purchase) => purchase.purchase_intent_id === purchaseId);
     if (item) return item;
     const status = observed.get(purchaseId);
-    if (!status?.scope_held) return;
+    if (!status) return;
+    if (!status.scope_held) return status;
     if (!listed.completeRead || readFollows(status.read, listed.completeRead)) return status;
     if (!readFollows(listed.completeRead, status.read)) return { ...status, checking: true };
   }

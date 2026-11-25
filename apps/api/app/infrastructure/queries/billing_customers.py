@@ -54,9 +54,14 @@ def lock_user(db: Session, user_id: UUID) -> User:
         raise
 
 
-def diagnostic_user(db: Session, *, user_id: UUID, tenant_id: str, region: str) -> User | None:
+def diagnostic_user(
+    db: Session, *, user_id: UUID, tenant_id: str, region: str, consistent_snapshot: bool = False
+) -> User | None:
     if db.get_bind().dialect.name == "postgresql":
-        db.execute(text("SET TRANSACTION READ ONLY"))
+        if consistent_snapshot:
+            db.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
+        else:
+            db.execute(text("SET TRANSACTION READ ONLY"))
     _bound_transaction(db)
     return db.scalar(select(User).where(User.id == user_id, User.tenant_id == tenant_id, User.region == region))
 

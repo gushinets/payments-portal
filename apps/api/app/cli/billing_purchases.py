@@ -7,6 +7,7 @@ import asyncio
 import json
 import sys
 from collections.abc import Mapping
+from pathlib import Path
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -22,6 +23,8 @@ from app.core.settings import Settings
 from app.domains.billing.operator_contracts import ResolutionRequest
 from app.domains.billing.operator_diagnostics import inspect_evidence, inspect_operation
 from app.domains.billing.access_invalidation import inspect_delivery
+from app.domains.billing.late_purchase_reviews import ClosureEvidence, ClosureRequest, close_case
+from app.domains.billing.terminal_resolution import TerminalEvidence, TerminalRequest, resolve_purchase
 from app.infrastructure.sentry import Operation, report_exception
 
 
@@ -34,10 +37,16 @@ def parser() -> argparse.ArgumentParser:
         action = commands.add_parser(command, help="Inspect/retry parked local backend invalidation delivery")
         action.add_argument("--user-id", required=True, type=UUID)
         action.add_argument("--recipient-id", required=True)
-    for command in ("inspect", "recover", "reconcile", "resolve-review"):
+    for command in ("inspect", "recover", "reconcile", "resolve-review", "resolve-purchase"):
         action = commands.add_parser(command)
         action.add_argument("--user-id", required=True, type=UUID)
         action.add_argument("--purchase-id", required=True, type=UUID)
+        if command == "resolve-purchase":
+            action.add_argument("--case-id", type=UUID)
+            action.add_argument("--expected-digest", required=True)
+            action.add_argument("--evidence-file", required=True, type=Path)
+            action.add_argument("--reason", required=True)
+            action.add_argument("--reference", required=True)
         if command == "resolve-review":
             action.add_argument(
                 "--resolution", required=True, choices=("restore-original", "bind-original", "select-primary")
@@ -57,6 +66,24 @@ def resolution_request(arguments: argparse.Namespace) -> ResolutionRequest:
     return ResolutionRequest.model_validate({key: value for key, value in vars(arguments).items() if key != "command"})
 
 
+def terminal_request(arguments: argparse.Namespace) -> TerminalRequest | ClosureRequest:
+    try:
+        with arguments.evidence_file.open("rb") as stream:
+            content = stream.read(32769)
+        if len(content) > 32768:
+            raise AppError("purchase_resolution_arguments_invalid")
+        values = {
+            key: value for key, value in vars(arguments).items() if key not in {"command", "evidence_file", "case_id"}
+        }
+        if arguments.case_id is not None:
+            return ClosureRequest.model_validate(
+                {**values, "case_id": arguments.case_id, "evidence": ClosureEvidence.model_validate_json(content)}
+            )
+        return TerminalRequest.model_validate({**values, "evidence": TerminalEvidence.model_validate_json(content)})
+    except (OSError, ValidationError):
+        raise AppError("purchase_resolution_arguments_invalid") from None
+
+
 async def _run(arguments: argparse.Namespace, configuration: Settings, principal: str) -> Mapping[str, object]:
     # CLI serialization joins the typed delivery result and legacy command
     # documents; it does not consume or redefine those commands' nested shapes.
@@ -71,6 +98,13 @@ async def _run(arguments: argparse.Namespace, configuration: Settings, principal
             recipient_id=arguments.recipient_id,
             retry=arguments.command == "retry-invalidation",
         )
+    if arguments.command == "resolve-purchase":
+        request = terminal_request(arguments)
+        if isinstance(request, ClosureRequest):
+            result = await run_in_threadpool(close_case, SessionLocal, configuration, request, principal)
+        else:
+            result = await run_in_threadpool(resolve_purchase, SessionLocal, configuration, request, principal)
+        return result.model_dump(mode="json")
     if arguments.command == "inspect-operation":
         return await run_in_threadpool(inspect_operation, SessionLocal, configuration, arguments.operation_id)
     if arguments.command == "inspect":

@@ -285,7 +285,13 @@ async def advance_purchase(
                     raise PurchaseRefused("purchase_review_required", 409)
             else:
                 current = await ensure_customer(
-                    sources.require_lbx(), configuration, factory=factory, token=token, current=current, budget=budget
+                    sources.require_lbx(),
+                    configuration,
+                    factory=factory,
+                    token=token,
+                    current=current,
+                    budget=budget,
+                    purchase=purchase,
                 )
                 customer_ready = True
                 result = await _prepare(

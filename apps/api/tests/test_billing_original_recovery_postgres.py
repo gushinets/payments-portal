@@ -14,13 +14,17 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.composition.billing import bootstrap_account
 from app.composition.purchases import advance_purchase, recover_financial
 from app.composition.sources import source_resources
+from app.domains.billing import terminal_resolution as completion
 from app.domains.billing.contracts import BillingRefused
+from app.domains.purchases import service
+from app.domains.purchases.contracts import PurchaseRefused
 from app.models import (
     BillingStateObservation,
     ExternalCreateOperation,
     ExternalSubscription,
     ManualReviewCase,
 )
+from apps.api.tests.factories.billing_operator import terminal_request
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.test_billing_background_recovery_postgres import background_scenario as background_scenario
 from apps.api.tests.test_any709_step3_postgres import TOKEN, accept, setup_purchase
@@ -110,6 +114,7 @@ async def test_operator_collects_original_point_evidence_once_and_keeps_zero_pos
 
     transport, sources, purchase = background_scenario
     factory = postgres_session_factory
+    config = step1_settings()
     purchase = synthetic_prepare(factory, transport, purchase, uncertain=True)
     operation = next(op for op in purchase.operations if op.kind == "subscription")
     financial.financial_pending(factory, purchase, operation, conflict=True)
@@ -119,6 +124,20 @@ async def test_operator_collects_original_point_evidence_once_and_keeps_zero_pos
         transport.subscriptions[0].update(
             state=-2, current_blocking=0, last_tariffication_period_start=None, last_tariffication_period_end=None
         )
+    agreement, subscription = purchase.operations
+    proofs = (
+        completion.OperationEvidence(
+            operation_id=agreement.id,
+            outcome=completion.TerminalEvidenceKind.EXTERNAL_TERMINAL,
+            external_object_id=agreement.bound_id,
+        ),
+        completion.OperationEvidence(
+            operation_id=subscription.id,
+            outcome=completion.TerminalEvidenceKind.EXTERNAL_TERMINAL,
+            external_object_id="567",
+        ),
+    )
+    early = terminal_request(factory, config, purchase, *proofs, confirmed=True)
     request = resolution_request(
         purchase, inspect_evidence(factory, step1_settings(), purchase.user_id, purchase.id), bind=True
     )
@@ -136,6 +155,13 @@ async def test_operator_collects_original_point_evidence_once_and_keeps_zero_pos
         assert case.case_state == "resolved" and case.resolved_by_principal == "os-euid:1000"
         assert case.resolution_document["proof"]["subscription"]["lifecycle"] == sub.lifecycle_status
         assert case.resolution_document["observation_id"] == str(sub.latest_observation_id)
+    if not terminal:
+        refreshed = terminal_request(factory, config, purchase, *proofs, confirmed=True)
+        old_confirmation = refreshed.model_copy(update={"evidence": early.evidence})
+        with pytest.raises(PurchaseRefused, match="purchase_resolution_confirmation_required"):
+            completion.resolve_purchase(factory, config, old_confirmation, "os-euid:1000")
+        assert service.read_purchase(factory, purchase.user_id, purchase.id).held
+        assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
 
 
 async def test_concurrent_first_bind_discards_candidate_and_uses_claimed_known_subscription_path(

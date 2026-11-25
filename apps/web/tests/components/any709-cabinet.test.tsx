@@ -306,18 +306,74 @@ it("keeps explicit account viewing when a delayed inventory later finds one purc
   expect(payloads()).toEqual([{}]);
 });
 
-it("refuses released purchase deep links while retaining owned history separately", async () => {
+it("shows a released deep link separately from held purchases", async () => {
   let resolveList!: (response: Response) => void;
   list.mockReturnValueOnce(new Promise<Response>((resolve) => { resolveList = resolve; }));
   status.mockResolvedValueOnce(json({ ...savedPurchase, state: "failed_before_external_effect", scope_held: false, reason: "terms_changed" }));
   renderCabinet(first.purchase_intent_id);
-  expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.selectionUnavailable);
+  expect(await screen.findByText(ru.Purchase.states.failed_before_external_effect)).toBeVisible();
+  expect(screen.getByRole("link", { name: ru.Purchase.buy })).toHaveAttribute("href", "/ru/products/proposal_ai");
   await act(async () => resolveList(json({ purchases: [{ ...first, state: "created" }], next_cursor: null })));
   expect(screen.queryByRole("article")).not.toBeInTheDocument();
   expect(screen.getByText(ru.Account.products.empty)).toBeVisible();
   expect(screen.getByRole("button", { name: ru.Billing.open })).toBeDisabled();
   expect(bootstrap).not.toHaveBeenCalled();
 });
+
+it("refreshes a saved purchase in manual review and shows its terminal result", async () => {
+  status.mockImplementation(async () => json({ ...savedPurchase, state: "manual_review" }));
+  renderCabinet(first.purchase_intent_id);
+  const billing = screen.getByRole("region", { name: ru.Billing.title });
+  expect(await within(billing).findByText(ru.Purchase.states.manual_review)).toBeVisible();
+
+  status.mockImplementation(async () => json({ ...savedPurchase, state: "resolved_external_terminal", scope_held: false }));
+  fireEvent.click(within(billing).getByRole("button", { name: ru.Purchase.refresh }));
+
+  expect(await within(billing).findByText(ru.Purchase.states.resolved_external_terminal)).toBeVisible();
+  expect(within(billing).getByRole("link", { name: ru.Purchase.buy })).toHaveAttribute("href", "/ru/products/proposal_ai");
+  expect(bootstrap).not.toHaveBeenCalled();
+});
+
+it("refuses a purchase deep link with a nonterminal state and a missing hold", async () => {
+  status.mockResolvedValue(json({ ...savedPurchase, state: "linked", scope_held: false }));
+  renderCabinet(first.purchase_intent_id);
+  expect(await screen.findByRole("alert")).toHaveTextContent(ru.Billing.selectionUnavailable);
+  expect(screen.getByRole("button", { name: ru.Billing.open })).toBeDisabled();
+  expect(bootstrap).not.toHaveBeenCalled();
+});
+
+it.each([
+  { label: "omitted", listed: [] },
+  { label: "changed", listed: [{ ...first, state: "manual_review" }] },
+] satisfies { label: string; listed: AccountPurchaseResponse[] }[])(
+  "suspends stale payment until the $label purchase detail can be checked again", async ({ listed }) => {
+    let finishList!: (value: Response) => void;
+    let finishStatus!: (value: Response) => void;
+    list.mockImplementationOnce(() => new Promise<Response>(resolve => { finishList = resolve; }));
+    status.mockImplementationOnce(async () => json(savedPurchase));
+    status.mockImplementationOnce(() => new Promise<Response>(resolve => { finishStatus = resolve; }));
+    status.mockImplementationOnce(async () => json({ ...savedPurchase, state: "resolved_external_terminal", scope_held: false }));
+    renderCabinet(first.purchase_intent_id);
+    await waitFor(() => expect(screen.getByRole("button", { name: ru.Billing.pay })).toBeEnabled());
+    open(ru.Billing.pay);
+    await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
+    await act(async () => finishList(json({ purchases: listed, next_cursor: null })));
+    await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
+    expect(document.querySelector("iframe")).not.toBeVisible();
+    expect(screen.getByRole("button", { name: ru.Billing.refresh })).toBeDisabled();
+    await act(async () => finishStatus(json({ detail: { code: "unavailable", request_id: "status-recheck" } }, 503)));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("status-recheck");
+    expect(document.querySelector("iframe")).not.toBeVisible();
+    fireEvent.click(within(alert).getByRole("button", { name: ru.Purchase.refresh }));
+    expect(await screen.findByText(ru.Purchase.states.resolved_external_terminal)).toBeVisible();
+    expect(screen.getByRole("link", { name: ru.Purchase.buy })).toHaveAttribute("href", "/ru/products/proposal_ai");
+    expect(document.querySelector("iframe")).toBeNull();
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(status).toHaveBeenCalledTimes(3);
+    expect(payloads()).toEqual([{ purchase_intent_id: first.purchase_intent_id }]);
+  }
+);
 
 it.each(["inventory", "deep-link"])("retains a safe server request ID for %s failures and clears it after recovery", async (source) => {
   const correlation = "synthetic-cabinet-correlation";
@@ -572,7 +628,7 @@ it.each([
   focused.focus();
   expect(focused).toHaveFocus();
   await act(async () => inventory.resolve(json({ purchases: [{ ...first, state: "manual_review" }], next_cursor: null })));
-  await screen.findByText(result === "manual_review" ? ru.Billing.preparationRequired : ru.Billing.selectionUnavailable, {
+  await screen.findByText(result === "manual_review" ? ru.Purchase.states.manual_review : ru.Billing.selectionUnavailable, {
     selector: "p", exact: false
   });
   if (phase === "opening") await act(async () => opening.resolve(json(widgetResponse(true))));
@@ -582,7 +638,7 @@ it.each([
   expect(selector()).toHaveFocus();
 });
 
-it("keeps an open payment Widget during a transient purchase status failure", async () => {
+it("keeps the payment Widget mounted through a transient status failure and resumes it after a fresh check", async () => {
   const inventory = Promise.withResolvers<Response>();
   list.mockReturnValueOnce(inventory.promise);
   status.mockResolvedValueOnce(json(savedPurchase)).mockResolvedValueOnce(json({ detail: { code: "unavailable" } }, 503));
@@ -592,7 +648,10 @@ it("keeps an open payment Widget during a transient purchase status failure", as
 
   await act(async () => inventory.resolve(json({ purchases: [{ ...first, state: "manual_review" }], next_cursor: null })));
   await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
-  expect(document.querySelector("iframe")).toBeVisible();
+  const iframe = document.querySelector("iframe");
+  expect(iframe).not.toBeVisible();
+  await waitFor(() => expect(iframe).toBeVisible(), { timeout: 4000 });
+  expect(mount).toHaveBeenCalledTimes(1);
   expect(dispose).not.toHaveBeenCalled();
 });
 

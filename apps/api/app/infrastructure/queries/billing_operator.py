@@ -1,16 +1,19 @@
 """Bounded local evidence reads and review locks for privileged operations."""
 
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Text, and_, cast, or_, select
+from sqlalchemy import Text, and_, cast, or_, select, exists
 from sqlalchemy.orm import Session
 
 from app.models import (
     BillingProductAccessScope,
     BillingStateObservation,
+    BillingStateObservationKind,
     BillingWorkItem,
     ExternalCreateOperation,
     ExternalSubscription,
+    ExternalSubscriptionLifecycleStatus as Lifecycle,
     ManualReviewCase,
     PurchaseIntent,
 )
@@ -32,6 +35,7 @@ def reviews(
     open_only: bool = False,
     lock: bool = False,
     include_paid_diagnostics: bool = False,
+    limit: int | None = 101,
 ) -> list[ManualReviewCase]:
     operations = select(ExternalCreateOperation.create_operation_id).where(
         (ExternalCreateOperation.purchase_intent_id == purchase_id)
@@ -79,8 +83,69 @@ def reviews(
     if lock:
         query = query.with_for_update().execution_options(populate_existing=True)
     return list(
-        db.scalars(query.order_by(ManualReviewCase.created_at.desc(), ManualReviewCase.review_case_id).limit(101))
+        db.scalars(query.order_by(ManualReviewCase.created_at.desc(), ManualReviewCase.review_case_id).limit(limit))
     )
+
+
+def purchase_resolution_audit(db: Session, purchase_id: UUID, *, reason: str, schema: str) -> ManualReviewCase | None:
+    return db.scalar(
+        select(ManualReviewCase).where(
+            ManualReviewCase.scope_kind == "purchase_intent",
+            ManualReviewCase.scope_reference == str(purchase_id),
+            ManualReviewCase.reason_code == reason,
+            ManualReviewCase.evidence_schema_version == schema,
+            ManualReviewCase.resolution_schema_version == schema,
+            ManualReviewCase.case_state == "resolved",
+        )
+    )
+
+
+def other_financial_binding(db: Session, operation: ExternalCreateOperation, external_id: str) -> bool:
+    return bool(
+        db.scalar(
+            select(
+                exists().where(
+                    ExternalCreateOperation.external_billing_account_id == operation.external_billing_account_id,
+                    ExternalCreateOperation.operation_kind == operation.operation_kind,
+                    ExternalCreateOperation.bound_external_object_id == external_id,
+                    ExternalCreateOperation.create_operation_id != operation.create_operation_id,
+                )
+            )
+        )
+    )
+
+
+def has_newer_live_subscription_read(
+    db: Session,
+    subscription_id: UUID,
+    confirmed_at: datetime,
+    *,
+    schemas: tuple[str, ...],
+    preparation_schema: str,
+    matched_identity: str,
+) -> bool:
+    observation = BillingStateObservation
+    evidence = observation.evidence_document
+    first_binding = evidence["original_proof"]["subscription"]
+    live = (Lifecycle.ACTIVE.value, Lifecycle.INACTIVE.value)
+    live_read = exists().where(
+        observation.subscription_id == subscription_id,
+        observation.observation_kind == BillingStateObservationKind.AUTHORITATIVE_SUBSCRIPTION_READ,
+        observation.observed_at > confirmed_at,
+        or_(
+            and_(
+                observation.evidence_schema_version.in_(schemas),
+                evidence["identity"].as_string() == matched_identity,
+                evidence["lifecycle"].as_string().in_(live),
+            ),
+            and_(
+                observation.evidence_schema_version == preparation_schema,
+                first_binding["identity"].as_string() == matched_identity,
+                first_binding["lifecycle"].as_string().in_(live),
+            ),
+        ),
+    )
+    return bool(db.scalar(select(live_read)))
 
 
 def subscription(db: Session, purchase_id: UUID) -> ExternalSubscription | None:
@@ -98,12 +163,15 @@ def observations(db: Session, subscription_id: UUID) -> list[BillingStateObserva
     )
 
 
-def work(db: Session, references: tuple[str, ...]) -> list[BillingWorkItem]:
-    return list(
-        db.scalars(
-            select(BillingWorkItem)
-            .where(BillingWorkItem.scope_reference.in_(references))
-            .order_by(BillingWorkItem.work_item_id)
-            .limit(101)
-        )
+def work(
+    db: Session, references: tuple[str, ...], *, limit: int | None = 101, lock: bool = False
+) -> list[BillingWorkItem]:
+    query = (
+        select(BillingWorkItem)
+        .where(BillingWorkItem.scope_reference.in_(references))
+        .order_by(BillingWorkItem.work_item_id)
+        .limit(limit)
     )
+    if lock:
+        query = query.with_for_update()
+    return list(db.scalars(query))
