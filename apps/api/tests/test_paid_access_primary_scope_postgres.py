@@ -10,12 +10,15 @@ from app.composition.billing_operator import resolve_review
 from app.composition.backend_consumers import initialize_backend_consumers
 from app.composition.purchase_inventory import collect_inventory
 from app.composition.purchases import advance_purchase, confirm_purchase, recover_financial
+from app.composition.reconciliation import reconcile_subscription
 from app.composition.sources import SourceResources
 from app.core.errors import AppError
 from app.domains.billing import late_purchase_reviews as late, terminal_resolution as terminal
 from app.domains.billing.operator_diagnostics import inspect_evidence
+from app.domains.billing.operator_review import case_digest
+from app.domains.billing.reconciliation_contracts import CommercialProof, IdentityProof
 from app.domains.purchases import service
-from app.domains.purchases.contracts import Purchase, PurchaseInventoryIncomplete
+from app.domains.purchases.contracts import Purchase, PurchaseInventoryIncomplete, PurchaseRefused
 from app.infrastructure.preflight import PreflightBudget
 from app.integrations.lbx.errors import LbxUnavailable
 from app.integrations.lbx.financial import Subscription
@@ -209,7 +212,35 @@ async def test_open_late_case_fences_first_primary_even_with_existing_binding(
         )
         case = db.scalars(select(ManualReviewCase).where(ManualReviewCase.reason_code == late.REASON)).one()
         assert case.case_state == "open" and case.scope_reference == str(old.id)
-        case_id = case.review_case_id
+        closure = late.ClosureRequest(
+            user_id=old.user_id,
+            purchase_id=old.id,
+            case_id=case.review_case_id,
+            expected_digest=case_digest(case),
+            reason="Exact object terminated",
+            reference="Synthetic confirmation",
+            evidence=late.ClosureEvidence(
+                outcome=late.ClosureKind.EXTERNAL_TERMINAL,
+                external_object_id="567",
+                confirmed_at=datetime.now(UTC),
+            ),
+        )
+    # A newer canonical GET must veto closure even when tariff policy fails and
+    # ordinary discovery never refreshes the late case.
+    with monkeypatch.context() as fault:
+
+        async def unavailable_tariff(*, tariff_id: int, budget: PreflightBudget) -> None:
+            raise LbxUnavailable()
+
+        fault.setattr(client, "get_tariff", unavailable_tariff)
+        observation = await reconcile_subscription(
+            client, sources.billing, config, factory=factory, subscription_id=sub_id
+        )
+    assert observation.proof.identity == IdentityProof.MATCH
+    assert observation.proof.commercial == CommercialProof.INCOMPLETE
+    assert observation.proof.subscription_read_finished_at > closure.evidence.confirmed_at
+    with pytest.raises(PurchaseRefused, match="purchase_resolution_confirmation_required"):
+        late.close_case(factory, config, closure, "os-euid:1000")
     scenario = Scenario(factory, config, transport, sources, sub_id)
     await run_inventory(scenario)
     assert {entry["product_id"] for entry in effective(factory)[1]["grants"]} == {"brief_decoder"}
@@ -224,5 +255,5 @@ async def test_open_late_case_fences_first_primary_even_with_existing_binding(
             )
             is None
         )
-        assert db.get(ManualReviewCase, case_id).case_state == "open"
+        assert db.get(ManualReviewCase, closure.case_id).case_state == "open"
     assert transport.creates("/agreements") == transport.creates("/subscriptions") == 1

@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from sqlalchemy import Text, and_, cast, exists, or_, select
+from sqlalchemy import Select, Text, and_, cast, exists, or_, select
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.sql.selectable import Exists
@@ -25,9 +25,9 @@ def _purchase_cases(reason: str, schema: str) -> tuple[ColumnElement[bool], ...]
     )
 
 
-def object_cases(db: Session, account: str, kind: Kind, external_id: str, *, reason: str, schema: str) -> list[Case]:
+def _object_cases(account: str, kind: Kind, external_id: str, *, reason: str, schema: str) -> Select[tuple[Case]]:
     document = Case.evidence_document
-    query = (
+    return (
         select(Case)
         .join(Purchase, Case.scope_reference == cast(Purchase.purchase_intent_id, Text))
         .where(
@@ -35,10 +35,55 @@ def object_cases(db: Session, account: str, kind: Kind, external_id: str, *, rea
             Purchase.external_billing_account_id == account,
             document["kind"].as_string() == kind.value,
             document["external_object_id"].as_string() == external_id,
-            Case.case_state == "open",
         )
     )
-    return list(db.scalars(query))
+
+
+def object_cases(db: Session, account: str, kind: Kind, external_id: str, *, reason: str, schema: str) -> list[Case]:
+    return list(
+        db.scalars(
+            _object_cases(account, kind, external_id, reason=reason, schema=schema).where(Case.case_state == "open")
+        )
+    )
+
+
+def has_terminal_closure(
+    db: Session,
+    account: str,
+    kind: Kind,
+    external_id: str,
+    *,
+    reason: str,
+    schema: str,
+    closure_schema: str,
+    closure_outcome: str,
+) -> bool:
+    evidence = Case.resolution_document["request"]["evidence"]
+    query = _object_cases(account, kind, external_id, reason=reason, schema=schema).where(
+        Case.case_state == "resolved",
+        Case.resolution_schema_version == closure_schema,
+        evidence["outcome"].as_string() == closure_outcome,
+        evidence["external_object_id"].as_string() == external_id,
+    )
+    return bool(db.scalar(select(query.exists())))
+
+
+def purchase_object_ids(db: Session, purchase_id: UUID, *, reason: str, schema: str) -> list[tuple[str, str]]:
+    evidence = Case.evidence_document
+    return [
+        tuple(row)
+        for row in db.execute(
+            select(evidence["kind"].as_string(), evidence["external_object_id"].as_string())
+            .where(
+                Case.scope_kind == "purchase_intent",
+                Case.scope_reference == str(purchase_id),
+                Case.reason_code == reason,
+                Case.evidence_schema_version == schema,
+            )
+            .distinct()
+            .limit(101)
+        )
+    ]
 
 
 def product_cases(

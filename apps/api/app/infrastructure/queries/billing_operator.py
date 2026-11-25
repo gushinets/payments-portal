@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import Text, and_, cast, or_, select, exists
+from sqlalchemy import Select, Text, and_, cast, or_, select, exists
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -120,7 +120,7 @@ def other_financial_binding(db: Session, operation: ExternalCreateOperation, ext
 
 def has_newer_live_financial_point(
     db: Session,
-    subscription_id: UUID,
+    subscriptions: UUID | Select[tuple[UUID]],
     kind: Kind,
     external_id: str,
     confirmed_at: datetime,
@@ -130,6 +130,11 @@ def has_newer_live_financial_point(
     matched_identity: str,
 ) -> bool:
     observation = BillingStateObservation
+    subscription_scope = (
+        observation.subscription_id == subscriptions
+        if isinstance(subscriptions, UUID)
+        else observation.subscription_id.in_(subscriptions)
+    )
     evidence = observation.evidence_document
     sources = (
         (observation.evidence_schema_version.in_(schemas), evidence),
@@ -162,7 +167,7 @@ def has_newer_live_financial_point(
         db.scalar(
             select(
                 exists().where(
-                    observation.subscription_id == subscription_id,
+                    subscription_scope,
                     ExternalSubscription.subscription_id == observation.subscription_id,
                     link == external_id,
                     observation.observation_kind == BillingStateObservationKind.AUTHORITATIVE_SUBSCRIPTION_READ,
@@ -170,6 +175,13 @@ def has_newer_live_financial_point(
                 )
             )
         )
+    )
+
+
+def customer_subscription_ids(customer_id: UUID, account: str) -> Select[tuple[UUID]]:
+    return select(ExternalSubscription.subscription_id).where(
+        ExternalSubscription.customer_id == customer_id,
+        ExternalSubscription.external_billing_account_id == account,
     )
 
 

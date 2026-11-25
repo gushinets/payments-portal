@@ -3,9 +3,10 @@
 import re
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
@@ -17,6 +18,11 @@ from app.domains.billing.purchase_maintenance import (
     lock_financial_object,
     lock_owned_purchase,
     maintenance_session,
+)
+from app.domains.billing.reconciliation_contracts import (
+    PREPARED_SUBSCRIPTION_SCHEMA,
+    RECONCILIATION_READ_SCHEMAS,
+    IdentityProof,
 )
 from app.domains.billing.terminal_resolution import (
     SafeText,
@@ -44,12 +50,23 @@ CLOSURE_SCHEMA = "purchase-late-object-closure:v1"
 
 
 class LateObjectEvidence(BaseModel):
+    """A timely live/open read of the exact provider object."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
-    kind: Kind
+    kind: Literal[Kind.AGREEMENT, Kind.SUBSCRIPTION]
     external_object_id: ProviderId
+    fact: Literal["open", "live"] = Field(
+        default_factory=lambda data: "open" if data["kind"] == Kind.AGREEMENT else "live"
+    )
     competing_tariff_id: int | None = Field(default=None, gt=0)
     read_finished_at: AwareDatetime
     agreement_id: ProviderId | None = None
+
+    @model_validator(mode="after")
+    def matching_fact(self) -> "LateObjectEvidence":
+        if self.fact != ("open" if self.kind == Kind.AGREEMENT else "live"):
+            raise ValueError("point fact does not match object kind")
+        return self
 
 
 class ClosureKind(StrEnum):
@@ -86,7 +103,7 @@ class ReleasedOriginal:
     subscription_ids: frozenset[str]
 
 
-def _original(db: Session, row: PurchaseIntent) -> ReleasedOriginal:
+def _original(db: Session, row: PurchaseIntent, *, include_late_cases: bool = False) -> ReleasedOriginal:
     purchase = service._snapshot(db, row)
     case = billing_operator.purchase_resolution_audit(db, purchase.id, reason=TERMINAL_REASON, schema=SCHEMA)
     proofs = (
@@ -98,10 +115,16 @@ def _original(db: Session, row: PurchaseIntent) -> ReleasedOriginal:
         else {}
     )
     identities = {
-        op.kind: frozenset(value for value in (op.bound_id, proofs.get(op.id)) if value is not None)
+        op.kind: {value for value in (op.bound_id, proofs.get(op.id)) if value is not None}
         for op in purchase.operations
     }
-    return ReleasedOriginal(purchase, identities[Kind.AGREEMENT], identities[Kind.SUBSCRIPTION])
+    if include_late_cases:
+        points = queries.purchase_object_ids(db, purchase.id, reason=REASON, schema=CASE_SCHEMA)
+        if len(points) > 100:
+            raise PurchaseInventoryIncomplete()
+        for kind, external_id in points:
+            identities[Kind(kind)].add(external_id)
+    return ReleasedOriginal(purchase, frozenset(identities[Kind.AGREEMENT]), frozenset(identities[Kind.SUBSCRIPTION]))
 
 
 def released_original(factory: SessionFactory, purchase: Purchase) -> ReleasedOriginal | None:
@@ -110,7 +133,7 @@ def released_original(factory: SessionFactory, purchase: Purchase) -> ReleasedOr
         if row is None or not row.state.resolved:
             return None
         return (
-            _original(db, row)
+            _original(db, row, include_late_cases=True)
             if billing_operator.purchase_resolution_audit(db, purchase.id, reason=TERMINAL_REASON, schema=SCHEMA)
             is not None
             else None
@@ -170,8 +193,10 @@ def record_late_object(
             reason=REASON,
             schema=CASE_SCHEMA,
         )
-        active = next((case for case in cases if case.scope_reference == str(purchase.id)), None)
-        if active is not None:
+        if cases:
+            if len(cases) != 1 or cases[0].scope_reference != str(purchase.id):
+                raise PurchaseInventoryIncomplete()
+            [active] = cases
             previous = LateObjectEvidence.model_validate(active.evidence_document)
             if evidence.read_finished_at > previous.read_finished_at:
                 active.evidence_document = evidence.model_dump(mode="json")
@@ -211,7 +236,16 @@ def require_bindable(db: Session, operation: ExternalCreateOperation, external_i
     lock_financial_object(db, account_id, kind, external_id)
     if queries.object_cases(db, account_id, kind, external_id, reason=REASON, schema=CASE_SCHEMA):
         raise PurchaseRefused("purchase_existing_subscription_review", 409)
-    if queries.other_audited_owner(db, operation, external_id, reason=TERMINAL_REASON, schema=SCHEMA):
+    if queries.has_terminal_closure(
+        db,
+        account_id,
+        kind,
+        external_id,
+        reason=REASON,
+        schema=CASE_SCHEMA,
+        closure_schema=CLOSURE_SCHEMA,
+        closure_outcome=ClosureKind.EXTERNAL_TERMINAL.value,
+    ) or queries.other_audited_owner(db, operation, external_id, reason=TERMINAL_REASON, schema=SCHEMA):
         raise PurchaseRefused("purchase_review_required", 409)
 
 
@@ -261,7 +295,17 @@ def close_case(
             raise PurchaseRefused("billing_review_stale", 409)
         service._verify_original_consent(db, row, service.accepted(row))
         now = current.now
-        if not evidence.read_finished_at <= request.evidence.confirmed_at <= now:
+        confirmed = request.evidence.confirmed_at
+        if not evidence.read_finished_at <= confirmed <= now or billing_operator.has_newer_live_financial_point(
+            db,
+            billing_operator.customer_subscription_ids(customer.customer_id, customer.external_billing_account_id),
+            evidence.kind,
+            evidence.external_object_id,
+            confirmed,
+            schemas=RECONCILIATION_READ_SCHEMAS,
+            preparation_schema=PREPARED_SUBSCRIPTION_SCHEMA,
+            matched_identity=IdentityProof.MATCH.value,
+        ):
             raise PurchaseRefused("purchase_resolution_confirmation_required", 409)
         case.case_state = "resolved"
         case.resolved_at = now
