@@ -36,7 +36,11 @@ from app.domains.billing.reconciliation import (
     claim_reconciliation,
     read_source_time,
 )
-from app.domains.billing.reconciliation_contracts import ReconciliationSubject, SubscriptionProof
+from app.domains.billing.reconciliation_contracts import (
+    ReconciliationSubject,
+    SubscriptionLifecycleReason,
+    SubscriptionProof,
+)
 from app.domains.billing.work_contracts import DeliveryLane, WorkClaim, WorkLane
 from app.domains.purchases.contracts import Purchase
 from app.domains.purchases import widget_admission
@@ -787,6 +791,41 @@ async def test_any897_covered_pending_wakeup_restores_the_original_reconciliatio
     assert await polling.tick(23, WorkLane.URGENT)
     with factory() as db:
         assert db.scalars(select(PurchasedAllowance)).one().quantity == 100
+
+
+@pytest.mark.parametrize("scenario", [True], indirect=True)
+@pytest.mark.parametrize("activation_polling", [{"prepared_at": PERIOD_TEST_PREPARED_AT}], indirect=True)
+async def test_any897_cabinet_clears_activation_when_handoff_confirms_inactive_subscription(
+    activation_polling: ActivationPolling,
+    cabinet: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    polling = activation_polling
+    monkeypatch.setattr(paid_read, "database_now", lambda db: polling.now)
+    activate(polling.transport)
+    assert await polling.tick(40)
+    completion = WidgetActivationWindow.from_work(polling.job()).completion
+    assert completion is not None and completion.reason == WidgetActivationCompletionReason.ACTIVATION_DETECTED
+    assert await cabinet_status(cabinet) == ("checking", 0)
+
+    polling.transport.subscriptions[0].update(state=-1, current_blocking=0)
+    assert await polling.tick(41, WorkLane.URGENT)
+    with polling.factory() as db:
+        subscription = db.scalars(select(ExternalSubscription)).one()
+        observation = db.get(BillingStateObservation, subscription.latest_observation_id)
+        assert subscription.lifecycle_status == ExternalSubscriptionLifecycleStatus.INACTIVE
+        assert observation is not None
+        assert SubscriptionLifecycleReason.INACTIVE in observation.evidence_document["reasons"]
+
+    for read_at in (polling.now, polling.window.deadline_at + activation_windows.CLOSING_GRACE):
+        polling.now = read_at
+        response = await cabinet.get("/api/paid-access")
+        assert response.status_code == 200, response.json()
+        body = response.json()
+        (product,) = body["products"]
+        assert body["access_revision"] == 0
+        assert product["status"] == paid_read.ProductPaidStatus.ABSENT
+        assert product["activation_check"] is None
 
 
 @pytest.mark.parametrize("scenario", [True], indirect=True)

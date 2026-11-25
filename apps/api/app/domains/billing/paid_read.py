@@ -244,6 +244,13 @@ def _activation_status(
     reconciliation: BillingWorkItem | None,
     inventory: BillingWorkItem | None,
 ) -> ActivationCheckStatus | None:
+    if (
+        proof is not None
+        and proof.identity == IdentityProof.MATCH
+        and proof.lifecycle == Lifecycle.INACTIVE
+        and SubscriptionLifecycleReason.INACTIVE in proof.reasons
+    ):
+        return None
     if job is not None:
         try:
             window = WidgetActivationWindow.from_work(job)
