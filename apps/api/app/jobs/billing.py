@@ -26,7 +26,7 @@ from app.core.settings import Settings
 from app.core.time import utc_now
 from app.domains.billing import work
 from app.domains.billing.contracts import BillingRefused
-from app.domains.billing.reconciliation_contracts import ReconciliationWakeupCovered
+from app.domains.billing.reconciliation_contracts import ReconciliationWakeupHandled
 from app.domains.billing.work_contracts import WorkLane, WorkAttemptOutcome, InvalidationFailureCode, DeliveryLane
 from app.domains.catalog.publication import SessionFactory
 from app.infrastructure import billing_worker_metrics as metrics
@@ -293,8 +293,8 @@ class BillingWorker:
                                 self.last_verified_subscription_at or observed_at, observed_at
                             )
                             metrics.LAST_PROOF.set(self.last_verified_subscription_at.timestamp())
-                except ReconciliationWakeupCovered:
-                    attempt_outcome = WorkAttemptOutcome.COMPLETED
+                except ReconciliationWakeupHandled as result:
+                    attempt_outcome = result.outcome
                 except BillingRefused as error:
                     if error.code == "billing_work_stale":
                         raise

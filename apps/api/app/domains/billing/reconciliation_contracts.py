@@ -7,6 +7,7 @@ from uuid import UUID
 
 from app.domains.billing.contracts import CustomerOpen
 from app.domains.billing.paid_cycles import CalendarEvidence
+from app.domains.billing.work_contracts import WorkAttemptOutcome
 from app.domains.purchases.contracts import Purchase
 from app.models import (
     ExternalSubscriptionFinancialAccessStatus as Financial,
@@ -101,5 +102,9 @@ class ReconciliationResult:
     purchase: Purchase
 
 
-class ReconciliationWakeupCovered(Exception):
-    """A Widget-only claim was finished using an already linked first-primary attempt."""
+class ReconciliationWakeupHandled(Exception):
+    """A covered or deferred Widget claim ended without a source read."""
+
+    def __init__(self, outcome: WorkAttemptOutcome) -> None:
+        self.outcome = outcome
+        super().__init__(outcome)

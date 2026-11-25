@@ -395,6 +395,19 @@ the original reconciliation due time and priority. When that due time has
 arrived or a newer reconciliation hint has changed the generation, the regular
 check still runs.
 
+Before taking a subscription fence, a Widget-only wakeup can wait for the live
+customer inventory that was already due at the signal or for the live source
+fence of the subscription. The worker releases the queue claim and retains its
+due time. Recalculating the future urgent cadence during HTTP or inventory
+apply preserves the Widget signal's generation and merges the earlier ordinary
+due time. A matching live inventory can record its wait before the first
+pickup. The wakeup becomes eligible after all recorded owners finish, expire
+or are superseded. An independent reconciliation hint or a due ordinary check
+can run on its own. A current grant for the selected subscription satisfies
+the wakeup even if it commits before the first pickup. The worker restores
+the ordinary schedule in that case and uses the ordinary proof path when
+more evidence is needed.
+
 The reconciliation row records wakeup coverage independently of the cabinet's
 inventory link, without locking the Widget row.
 Paid access and purchased allowances are written by standard reconciliation and

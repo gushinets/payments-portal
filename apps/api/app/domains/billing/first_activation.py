@@ -7,7 +7,10 @@ from uuid import UUID
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.orm import Session
 
-from app.domains.billing.work_contracts import WorkClaim
+from app.domains.billing.contracts import BillingRefused
+from app.domains.billing.paid_contracts import EffectiveState
+from app.domains.billing.paid_deadlines import effective_deadline
+from app.domains.billing.work_contracts import WorkAttemptOutcome, WorkClaim
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases.widget_activation_window import (
     CLOSING_GRACE,
@@ -16,6 +19,7 @@ from app.domains.purchases.widget_activation_window import (
 )
 from app.infrastructure.queries import billing_reconciliation, billing_work
 from app.models import (
+    BillingProductAccessScope,
     BillingWorkItem,
     BillingWorkKind,
     BillingWorkState,
@@ -109,6 +113,14 @@ class WidgetInventoryCoverage(BaseModel):
     source: InventorySourceProof
 
 
+class WidgetInventoryWait(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    key: str
+    owner: str
+    generation: int
+
+
 class WidgetReconciliationWakeup(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -118,6 +130,8 @@ class WidgetReconciliationWakeup(BaseModel):
     original_due_at: AwareDatetime | None
     original_priority: int
     inventory_coverage: WidgetInventoryCoverage | None = Field(default=None, exclude_if=lambda value: value is None)
+    inventory_wait: WidgetInventoryWait | None = Field(default=None, exclude_if=lambda value: value is None)
+    source_wait_fence: int | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class ReconciliationQueuePayload(BaseModel):
@@ -224,6 +238,149 @@ def widget_wakeup_is_covered(
         and (wakeup.running_attempt is None or first_primary.reconciliation_attempt == wakeup.running_attempt)
         and reusable_first_primary(db, subscription, first_primary, wakeup.window, now)
     )
+
+
+def _widget_signal_at(
+    db: Session, sub: ExternalSubscription, subscription_key: str, window_key: ActivationWindowKey
+) -> datetime | None:
+    widget = billing_work.by_key(db, BillingWorkKind.WIDGET_ACTIVATION_CHECK, subscription_key)
+    if widget is None or ActivationWindowKey.from_job(widget) != window_key:
+        return None
+    try:
+        window = WidgetActivationWindow.from_work(widget)
+    except ValueError:
+        return None
+    completion = window.completion
+    if (
+        window.purchase_id != sub.purchase_intent_id
+        or completion is None
+        or completion.reason != WidgetActivationCompletionReason.ACTIVATION_DETECTED
+    ):
+        return None
+    return completion.at
+
+
+def _live_inventory_wait(
+    inventory: BillingWorkItem | None, now: datetime, signal_at: datetime
+) -> WidgetInventoryWait | None:
+    if (
+        inventory is None
+        or not _inventory_is_running(inventory, now)
+        or inventory.coalescing_key is None
+        or inventory.lease_owner is None
+        or as_utc(inventory.next_attempt_at) > signal_at
+    ):
+        return None
+    return WidgetInventoryWait(
+        key=inventory.coalescing_key, owner=inventory.lease_owner, generation=inventory.enqueue_generation
+    )
+
+
+def handle_widget_wakeup(
+    db: Session, sub: ExternalSubscription, scope: BillingProductAccessScope, claim: WorkClaim
+) -> WorkAttemptOutcome | None:
+    from app.domains.billing import work
+
+    row = work.verify_claim(db, claim)
+    subscription_key = work.key(sub)
+    if claim.kind != work.RECONCILIATION or row.coalescing_key != subscription_key:
+        raise BillingRefused("billing_work_stale", 409)
+    payload = ReconciliationQueuePayload.from_job(row)
+    wakeup, first_primary = payload.widget_wakeup, payload.first_primary
+    now = as_utc(billing_reconciliation.database_now(db))
+    if (
+        wakeup is None
+        or row.enqueue_generation != claim.generation
+        or wakeup.generation != claim.generation
+        or (wakeup.original_due_at is not None and wakeup.original_due_at <= now)
+    ):
+        return None
+    signal_at = _widget_signal_at(db, sub, subscription_key, wakeup.window)
+    if signal_at is None:
+        return None
+
+    source_busy = sub.reconciliation_lease_expires_at is not None and as_utc(sub.reconciliation_lease_expires_at) > now
+    covered = False
+    if not source_busy:
+        if scope.primary_subscription_id is None:
+            covered = widget_wakeup_is_covered(db, sub, wakeup, first_primary, now)
+        elif scope.primary_subscription_id == sub.subscription_id and wakeup.original_due_at is not None:
+            # Inventory can commit the first grant before the first worker pickup.
+            deadline = effective_deadline(scope)
+            covered = (
+                deadline is not None
+                and deadline > now
+                and any(
+                    grant.product_id == scope.product_id
+                    for grant in EffectiveState.model_validate(scope.effective_access_document).grants
+                )
+            )
+    if not covered:
+        if wakeup.original_due_at is None or scope.primary_subscription_id is not None:
+            return None
+        live_inventory = billing_work.by_key(db, BillingWorkKind.CUSTOMER_INVENTORY, inventory_key(sub))
+        current_wait = _live_inventory_wait(live_inventory, now, signal_at)
+        inventory_busy = current_wait is not None and wakeup.inventory_wait in (None, current_wait)
+        if not source_busy and not inventory_busy:
+            return None
+        wakeup = wakeup.model_copy(
+            update={
+                "inventory_wait": current_wait if inventory_busy else wakeup.inventory_wait,
+                "source_wait_fence": sub.reconciliation_fencing_token if source_busy else None,
+            }
+        )
+        row.payload_document = payload.model_copy(update={"widget_wakeup": wakeup}).model_dump(mode="json")
+        work.finish(db, row, claim, due=row.next_attempt_at, error=row.last_error_classification)
+        return WorkAttemptOutcome.PARKED
+
+    if wakeup.original_due_at is None:
+        work.schedule_reconciliation(db, sub, claim, complete=True)
+    else:
+        work.finish(db, row, claim, due=wakeup.original_due_at, error=row.last_error_classification)
+        row.priority = wakeup.original_priority
+        row.payload_document = payload.model_copy(update={"widget_wakeup": None}).model_dump(mode="json")
+    return WorkAttemptOutcome.COMPLETED
+
+
+def retain_widget_schedule(
+    db: Session, sub: ExternalSubscription, subscription_key: str, inventory_claim: WorkClaim | None, due: datetime
+) -> bool:
+    """Merge a future follow-up into the schedule suspended by a Widget wakeup."""
+    # The locked read refreshes the ORM row, so flush any pending schedule updates first.
+    db.flush()
+    row = billing_work.by_key(db, BillingWorkKind.SUBSCRIPTION_RECONCILIATION, subscription_key, lock=True)
+    payload = ReconciliationQueuePayload.from_job(row)
+    wakeup = payload.widget_wakeup
+    if (
+        row is None
+        or row.work_state not in (BillingWorkState.PENDING, BillingWorkState.RUNNING)
+        or wakeup is None
+        or wakeup.generation != row.enqueue_generation
+        or wakeup.original_due_at is None
+    ):
+        return False
+    signal_at = _widget_signal_at(db, sub, subscription_key, wakeup.window)
+    now = as_utc(billing_reconciliation.database_now(db))
+    if signal_at is None or wakeup.original_due_at <= now:
+        return False
+    inventory_wait = wakeup.inventory_wait
+    if inventory_claim is not None:
+        # Only the verified inventory claim can establish an inventory wait before worker pickup.
+        observed = _live_inventory_wait(db.get(BillingWorkItem, inventory_claim.id), now, signal_at)
+        expected = WidgetInventoryWait(
+            key=inventory_key(sub), owner=inventory_claim.owner, generation=inventory_claim.generation
+        )
+        if observed == expected and inventory_wait in (None, observed):
+            inventory_wait = observed
+    wakeup = wakeup.model_copy(
+        update={
+            "original_due_at": min(wakeup.original_due_at, due),
+            "original_priority": 1,
+            "inventory_wait": inventory_wait,
+        }
+    )
+    row.payload_document = payload.model_copy(update={"widget_wakeup": wakeup}).model_dump(mode="json")
+    return True
 
 
 def _cabinet_inventory_link(

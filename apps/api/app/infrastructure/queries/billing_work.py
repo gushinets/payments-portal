@@ -3,8 +3,8 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import BigInteger, DateTime, Text, exists, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy import BigInteger, ColumnElement, DateTime, Text, case, exists, false, func, or_, select
+from sqlalchemy.orm import Session, aliased
 
 from app.infrastructure.queries import paid_access
 from app.models import (
@@ -56,6 +56,50 @@ def item(db: Session, identity: UUID) -> BillingWorkItem | None:
         .with_for_update()
         .execution_options(populate_existing=True)
     )
+
+
+def _widget_wait_is_live(db: Session, now: datetime) -> ColumnElement[bool]:
+    wakeup = BillingWorkItem.payload_document["widget_wakeup"]
+    inventory_wait = wakeup["inventory_wait"]
+    original_due = wakeup["original_due_at"].as_string()
+    subscription_id = BillingWorkItem.scope_reference
+    window_id = wakeup["window"]["work_item_id"].as_string()
+    if db.get_bind().dialect.name == "sqlite":
+        original_due_is_future = func.julianday(original_due) > func.julianday(now)
+        subscription_id = func.replace(subscription_id, "-", "")
+        window_id = func.replace(window_id, "-", "")
+    else:
+        original_due_is_future = original_due.cast(DateTime(timezone=True)) > now
+
+    widget = aliased(BillingWorkItem)
+    inventory = aliased(BillingWorkItem)
+    live_inventory = exists().where(
+        inventory.work_kind == BillingWorkKind.CUSTOMER_INVENTORY,
+        inventory.coalescing_key == inventory_wait["key"].as_string(),
+        inventory.lease_owner == inventory_wait["owner"].as_string(),
+        inventory.enqueue_generation.cast(Text) == inventory_wait["generation"].as_string().cast(Text),
+        inventory.work_state == BillingWorkState.RUNNING,
+        inventory.lease_expires_at > now,
+    )
+    live_subscription = exists().where(
+        ExternalSubscription.subscription_id.cast(Text) == subscription_id,
+        ExternalSubscription.reconciliation_fencing_token.cast(Text)
+        == wakeup["source_wait_fence"].as_string().cast(Text),
+        ExternalSubscription.reconciliation_lease_expires_at > now,
+    )
+    still_owned = (
+        (BillingWorkItem.work_kind == BillingWorkKind.SUBSCRIPTION_RECONCILIATION)
+        & (BillingWorkItem.enqueue_generation.cast(Text) == wakeup["generation"].as_string().cast(Text))
+        & (live_inventory | live_subscription)
+        & exists().where(
+            widget.work_kind == BillingWorkKind.WIDGET_ACTIVATION_CHECK,
+            widget.coalescing_key == BillingWorkItem.coalescing_key,
+            widget.work_item_id.cast(Text) == window_id,
+            widget.enqueue_generation.cast(Text) == wakeup["window"]["generation"].as_string().cast(Text),
+        )
+    )
+    # A former payload with no live, exact waiter should never enter the deadline comparison.
+    return case((still_owned, func.coalesce(original_due_is_future, false())), else_=false())
 
 
 def claimable(
@@ -160,6 +204,7 @@ def claimable(
             is_urgent if urgent else ~is_urgent,
             or_(~activation_check, BillingWorkItem.coalescing_key == account + ":" + BillingWorkItem.scope_reference),
         )
+        query = query.where(~_widget_wait_is_live(db, now))
     return db.scalar(
         query.where(due)
         .order_by(activation_check, BillingWorkItem.next_attempt_at, BillingWorkItem.work_item_id)

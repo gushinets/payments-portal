@@ -8,6 +8,7 @@ from app.domains.billing.contracts import BillingRefused, CustomerOpen
 from app.domains.billing.first_activation import (
     InventoryAttempt,
     ReconciliationAttempt,
+    handle_widget_wakeup,
     record_first_activation_inventory,
 )
 from app.domains.billing.paid_access import apply_paid_source, commit_paid_state, resolve_access_end
@@ -21,7 +22,7 @@ from app.domains.billing.reconciliation_contracts import (
     IdentityProof,
     ReconciliationSubject,
     ReconciliationResult,
-    ReconciliationWakeupCovered,
+    ReconciliationWakeupHandled,
     SubscriptionProof,
 )
 from app.domains.catalog.publication import SessionFactory
@@ -31,7 +32,6 @@ from app.infrastructure.queries import billing_reconciliation as queries, purcha
 from app.infrastructure.queries.billing_customers import customer_operation, open_customer_reviews
 from app.domains.billing.work import (
     RECONCILIATION,
-    finish_covered_widget_wakeup,
     key,
     schedule_reconciliation,
     verify_claim,
@@ -152,18 +152,18 @@ def claim_reconciliation(
             or current.external_agreement_id != agreement.bound_external_object_id
         ):
             raise BillingRefused("subscription_provenance_unproven", 409)
-        now = as_utc(queries.database_now(db))
-        if current.reconciliation_lease_expires_at and as_utc(current.reconciliation_lease_expires_at) > now:
-            raise BillingRefused("subscription_reconciliation_busy", 409)
         if (
             work_claim is not None
             and work_claim.kind == RECONCILIATION
             and purchase.state == PurchaseIntentState.LINKED
-            and scope.primary_subscription_id is None
-            and finish_covered_widget_wakeup(db, current, work_claim)
         ):
-            db.commit()
-            raise ReconciliationWakeupCovered()
+            outcome = handle_widget_wakeup(db, current, scope, work_claim)
+            if outcome is not None:
+                db.commit()
+                raise ReconciliationWakeupHandled(outcome)
+        now = as_utc(queries.database_now(db))
+        if current.reconciliation_lease_expires_at and as_utc(current.reconciliation_lease_expires_at) > now:
+            raise BillingRefused("subscription_reconciliation_busy", 409)
         current.reconciliation_lease_owner = str(uuid4())
         current.reconciliation_lease_expires_at = now + timedelta(seconds=io_timeout_seconds + APPLY_SAFETY_SECONDS)
         current.reconciliation_fencing_token += 1
@@ -452,6 +452,7 @@ def apply_reconciliation(
             subscription_claim,
             complete=proof.complete and not conflict and not known_review and not customer_conflict,
             attempt_started_at=proof.read_started_at,
+            inventory_claim=work_claim if inventory_attempt is not None else None,
         )
         if resolved_case is not None:
             from app.domains.billing.operator_review import audit_resolution
