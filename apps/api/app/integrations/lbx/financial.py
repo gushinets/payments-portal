@@ -113,6 +113,38 @@ class RecommendedPaymentDetails(PrivateDto):
     services: list[RecommendedCharge]
 
 
+def recommended_payment_confirms_cycle(
+    details: RecommendedPaymentDetails,
+    *,
+    day: date,
+    agreement_balance: Decimal,
+    subscription_instance_id: int,
+    service_id: int,
+    recurring_amount: Decimal,
+) -> bool:
+    if (
+        details.start_period != day
+        or details.end_period != day
+        or details.recommended_payment != 0
+        or details.current_balance < 0
+        or details.current_balance != agreement_balance
+        or len(details.services) != 1
+    ):
+        return False
+    charge = details.services[0]
+    return (
+        charge.subscription_instance_id == subscription_instance_id
+        and charge.service_id == service_id
+        and charge.tariffication_period_start == charge.tariffication_period_end == day
+        and charge.charge_type == 0
+        and not charge.is_predicted_charge
+        and not charge.is_waiting_for_activation
+        and ("operation_type" not in charge.model_fields_set or charge.operation_type == 1)
+        and charge.charge_sum == recurring_amount
+        and charge.charge_sum > 0
+    )
+
+
 class AgreementReceipt(PrivateDto):
     agreement_id: Id
 

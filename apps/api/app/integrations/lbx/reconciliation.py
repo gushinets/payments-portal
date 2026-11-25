@@ -28,6 +28,7 @@ from app.integrations.lbx.financial import (
     Subscription,
     agreement_is_closed,
     prove_effective_terms,
+    recommended_payment_confirms_cycle,
     subscription_lifecycle,
 )
 from app.integrations.lbx.selected_offer import PERIOD_ANCHORS
@@ -375,26 +376,13 @@ async def _daily_cycle_is_funded(
         lambda: client.get_recommended_payment_details(agreement_id=int(subject.agreement_id), day=day, budget=budget),
         budget,
     )
-    if (
-        details.start_period != day
-        or details.end_period != day
-        or details.recommended_payment != 0
-        or details.current_balance < 0
-        or details.current_balance != agreement.balance
-        or len(details.services) != 1
-    ):
-        return False
-    charge = details.services[0]
-    return (
-        charge.subscription_instance_id == subscription.subscription_instance_id
-        and charge.service_id == service_id
-        and charge.tariffication_period_start == charge.tariffication_period_end == day
-        and charge.charge_type == 0
-        and not charge.is_predicted_charge
-        and not charge.is_waiting_for_activation
-        and ("operation_type" not in charge.model_fields_set or charge.operation_type == 1)
-        and charge.charge_sum == subject.purchase.accepted.offer.money.recurring_amount
-        and charge.charge_sum > 0
+    return recommended_payment_confirms_cycle(
+        details,
+        day=day,
+        agreement_balance=agreement.balance,
+        subscription_instance_id=subscription.subscription_instance_id,
+        service_id=service_id,
+        recurring_amount=subject.purchase.accepted.offer.money.recurring_amount,
     )
 
 
