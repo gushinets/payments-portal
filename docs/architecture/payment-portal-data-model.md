@@ -235,11 +235,12 @@ characters; existing users receive no fabricated names.
 mapping revision, exact legal acceptance event, accepted commercial
 fingerprint, immutable accepted snapshot, and client idempotency key. Its
 closed states are `created`, `preparing`, `awaiting_external_result`, `linked`,
-`resolved_no_external_effect`, `failed_before_external_effect`, and
-`manual_review`. PostgreSQL triggers keep the accepted evidence/provenance
-fields immutable. ANY-765 writes `accepted-purchase:v2`, including the optional
-SIMULATED technical terms and selected-meaning confirmation digest, separately
-from full source/audit digests. Historical v2 full-digest acceptances and v1 stay
+`resolved_no_external_effect`, `resolved_external_terminal`,
+`failed_before_external_effect`, and `manual_review`. PostgreSQL triggers keep
+the accepted evidence/provenance fields immutable. ANY-765 writes
+`accepted-purchase:v2`, including the optional SIMULATED technical terms and
+selected-meaning confirmation digest, separately from full source/audit digests.
+Historical v2 full-digest acceptances and v1 stay
 readable without invented limits; exact replay uses saved evidence rather than current
 source configuration. The development fixture is disabled by default and
 rejected in production.

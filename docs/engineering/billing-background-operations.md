@@ -810,13 +810,19 @@ idempotency key. Ordinary admission still applies.
 ### Close an exact late-object case
 
 `recover` or ordinary inventory can record a case on the completed purchase
-when point proof identifies a disputed object. The case continues to block
-affected admission if a later list omits that object. In the replacement's
-`inspect` output, `blocking_late_reviews` identifies the original purchase,
-case and digest. Inspect the original for `late_object` and the current
-`expected_case_digest`. Use the original purchase ID and the exact `--case-id`,
-and pass the case digest as
-`--expected-digest`.
+when point proof identifies a disputed object. The case blocks admission for the
+original product and for products using its confirmed competing tariff, even
+after the object disappears from discovery. If the agreement GET times out, the
+open case retains its confirmed scope. A live point read after closure can
+restore that scope from the most recent closed case with confirmed scope when
+the subscription ID, agreement ID and tariff all match. This applies when a new
+case opens or when an open case still lacks confirmed scope. A durable case
+block for another product requires a confirmed competing tariff.
+
+In the replacement's `inspect` output, `blocking_late_reviews` identifies the
+original purchase, case and digest. Inspect the original for `late_object` and
+the current `expected_case_digest`. Use the original purchase ID and the exact
+`--case-id`, and pass the case digest as `--expected-digest`.
 
 After stop and drain, verify `customer_work_active: false` and obtain proof of
 irreversible termination for the exact disputed object. The confirmation must
@@ -835,10 +841,10 @@ file shape:
   --evidence-file late-closure.json --reason 'Exact case resolved' --reference 'Supporting evidence reference'
 ```
 
-A changed relationship alone leaves a live competitor blocked. Closing the
-case keeps the original terminal audit and permanently excludes the exact ID
-from first binding. A distinct ID goes through ordinary admission with complete
-customer inventory. A later contradictory point read can open a new case.
+Closing the case keeps the original terminal audit and permanently excludes the
+exact ID from first binding. A distinct ID goes through ordinary admission with
+complete customer inventory. A later contradictory point read can open a new
+case.
 
 ## Alerts and outage diagnosis
 

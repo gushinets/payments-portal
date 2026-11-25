@@ -1,8 +1,8 @@
 # ANY-821 — Quiesced terminal resolution rebuild plan
 
-Status: **READY FOR REBUILD**  
-Owning issue: [ANY-821](https://linear.app/paveldik/issue/ANY-821/implement-quiesced-audited-resolution-for-purchases-stuck-in-unknown)  
-Current PR: [ANY-821(#191)](https://github.com/gushinets/payments-portal/pull/191)
+- Status: **READY FOR REBUILD**
+- Owning issue: [ANY-821](https://linear.app/paveldik/issue/ANY-821/implement-quiesced-audited-resolution-for-purchases-stuck-in-unknown)
+- Current PR: [ANY-821(#191)](https://github.com/gushinets/payments-portal/pull/191)
 
 ## 1. Decision
 
@@ -375,38 +375,8 @@ sequence:
 Use the existing matrix to verify refusal when only an empty/failed discovery
 or an elapsed deadline is available, rollback, exact replay, and late-case
 block and closure. Record the run and the repository's canonical checks on
-the final revision. Use `npm run check` and the repository's documented browser
-procedure for browser coverage.
-
-### Local verification result
-
-The local run verified implementation revision `4fedbc75` against the 14-row
-Linear matrix. All 176 focused PostgreSQL tests passed. The saved-link
-Playwright scenario passed on desktop and mobile Chromium. Alembic revision
-`20261123_0821` was verified, including downgrade refusal with retained terminal
-history.
-
-With a disposable database and a loopback LBX simulator, the real Portal API
-lost the first agreement CREATE response. The saved link showed `manual_review`.
-Empty discovery and HTTP 503 left the hold in place without another CREATE.
-After the API drained and stopped, the local CLI resolved the exact terminal
-agreement and the proven-unsent subscription without source I/O. After restart,
-the old link showed `resolved_external_terminal` and its Widget bootstrap
-returned HTTP 409. The buyer reviewed the current offer and linked a distinct
-purchase with fresh consent and a new idempotency key. Exact CLI replay after
-the replacement returned the original audit without source I/O.
-
-`npm run check` passed its documentation, generation, architecture, lint, web
-boundary, component and API-fast phases before Next.js exited at its package
-advisory. The immediate standalone web-build retry passed. The full PostgreSQL
-run had 1,254 passes and one `statement_timeout` in the swapped-subscription
-inventory test. That case passed both in the focused matrix and on a serial
-rerun with the same timeout settings.
-
-The local verification found no reproducible implementation blocker on the
-supported paths. Closure still requires publishing the verified rebuild with
-its scope and evidence, passing required CI on that PR head, obtaining human
-approval and merging under the rule below.
+the final revision in the PR or its verification report. Use `npm run check`
+and the repository's documented browser procedure for browser coverage.
 
 ### Final review rule
 
