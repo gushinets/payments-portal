@@ -811,16 +811,22 @@ duration and the browser's monotonic clock.
 For a linked purchase eligible for first activation, the product's optional
 `activation_check` field reports `checking` during the saved window, including
 the closing read, and while the accelerated reconciliation or the specific
-first-primary inventory attempt linked to the window holds a live claim. Each
-queued stage also has up to 60 seconds to be picked up. When the accelerated
-path ends, it reports `unconfirmed` while the purchase remains eligible and
-access is still pending. Reclaiming the expired lease of the accelerated
-reconciliation keeps that status through the retry and any first-primary
-selection it queues. Ordinary inventory also keeps that status when it is
-reclaimed after the linked attempt's lease expires or first picked up at or
-after the saved deadline plus the five-second closing grace. Without a saved
-window, fresh matching reconciliation evidence of a waiting subscription also
-yields `unconfirmed`.
+first-primary inventory attempt linked to the window holds a live claim. A
+queued stage can keep the status at `checking` for up to 60 seconds from the
+reconciliation handoff or inventory enqueue. When none of these conditions
+applies, the field reports `unconfirmed` while the purchase remains eligible
+and access is still pending. A worker can still pick up the queued stage after
+its display period, and a late first claim of the linked stage can restore
+`checking`.
+
+The first reconciliation claim for the Widget signal can show `checking` after
+the preceding ordinary claim's lease expires. Reclaiming the Widget-triggered
+reconciliation in the same generation after its own lease expires keeps
+`unconfirmed` through the retry and any first-primary selection it queues.
+Ordinary inventory also keeps that status when reclaimed after the linked
+attempt's lease expires or first picked up at or after the saved deadline plus
+the five-second closing grace. Without a saved window, fresh matching
+reconciliation evidence of a waiting subscription also yields `unconfirmed`.
 A window completed as `purchase_ineligible` yields `null`. When regular
 reconciliation confirms the normalized `inactive` reason, the field also
 becomes `null`, even if the Widget previously signaled activation. Committed

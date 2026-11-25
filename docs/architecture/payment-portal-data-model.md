@@ -449,10 +449,11 @@ alongside paid state, causal revision and outbox writes for an existing primary.
 Migration `20261028_0005` follows consolidated billing revision
 `20261029_0003` and preserves its active deadline and existing rows.
 
-Migration `20261123_0014` gives `widget_activation_check` a partial unique index. Its key
-combines the billing account and local subscription UUID. The
-`widget-activation-window:v1` payload stores the verified purchase ID, the
-database-clock preparation time, the deadline fixed at the first committed
+Migration `20261123_0014` adds a `CHECK` requiring a non-`NULL` `coalescing_key`
+for `widget_activation_check` rows and a partial unique index on that key for
+the same work kind. The key combines the billing account and local subscription
+UUID. The `widget-activation-window:v1` payload stores the verified purchase ID,
+the database-clock preparation time, the deadline fixed at the first committed
 enqueue, and optional typed completion evidence. An accepted reopening resets
 attempt state and advances the enqueue generation on the same queue row.
 
