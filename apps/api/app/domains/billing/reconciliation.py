@@ -13,6 +13,7 @@ from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.reconciliation_contracts import (
     RECONCILIATION_SCHEMA,
     CommercialProof,
+    CycleFunding,
     IdentityProof,
     ReconciliationSubject,
     ReconciliationResult,
@@ -384,7 +385,14 @@ def apply_reconciliation(
             current.lifecycle_status = proof.lifecycle
             current.financial_access_status = Financial.BLOCKED
             current.latest_observation_id = observation.observation_id
-        if proof.complete and not conflict and not known_review and not customer_conflict:
+        complete = (
+            proof.complete
+            and proof.cycle_funding != CycleFunding.UNCONFIRMED
+            and not conflict
+            and not known_review
+            and not customer_conflict
+        )
+        if complete:
             current.lifecycle_status = proof.lifecycle
             current.financial_access_status = proof.financial
             current.commercial_access_status = Commercial.ELIGIBLE
@@ -414,7 +422,7 @@ def apply_reconciliation(
             db,
             current,
             subscription_claim,
-            complete=proof.complete and not conflict and not known_review and not customer_conflict,
+            complete=complete,
             attempt_started_at=proof.read_started_at,
         )
         if resolved_case is not None:

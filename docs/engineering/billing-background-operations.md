@@ -855,7 +855,7 @@ date-only; naive/mixed timestamps acquire no invented zone or UTC deadline.
 
 ### Monthly LBX instance-start calendar (ANY-864)
 
-For the observed one-month `instance_start` profile only, date-only cycle bounds
+For the observed one-month `instance_start` and one-day `first_instance_start` profiles, date-only cycle bounds
 may accompany naive midnight subscription/instance starts such as
 `2026-11-13 00:00:00`. Integration interprets these starts as calendar dates,
 checks that neither interpreted start follows the cycle start, and retains the
@@ -867,6 +867,14 @@ frozen-anchor conflicts and same/later-cycle identity. Missing anchors and the
 parsed epoch date `1970-01-01`, including equivalent `T`/space midnight spellings
 and 1–6 zero fractional digits, remain missing evidence: they cannot establish
 a paid cycle, issue quota or trigger a reset.
+
+For the one-day profile, Portal also reads LBX recommendation details for the
+exact provider day before confirming paid access. Zero due, the matching
+nonnegative agreement balance and the single posted recurring charge must agree
+with the owned subscription instance, service, date and accepted amount. Credit
+and allowed debt must be zero. A forecast, return or incomplete/conflicting read
+withholds the new allowance and preserves the previous trust deadline.
+Confirmed financial blocks still take effect through the ordinary negative path.
 
 **CONFIRMED_ON_TEST — 2026-11-18, P03:** Portal
 `e2e8cead45b016e031b69790461a9916906f3e21` with real LBX 043 and isolated

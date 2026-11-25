@@ -29,6 +29,11 @@ class IdentityProof(StrEnum):
     INCOMPLETE = "incomplete"
 
 
+class CycleFunding(StrEnum):
+    CONFIRMED = "confirmed"
+    UNCONFIRMED = "unconfirmed"
+
+
 @dataclass(frozen=True)
 class SubscriptionCandidateSubject:
     """Original possible-send candidate; no canonical local subscription yet."""
@@ -70,6 +75,7 @@ class SubscriptionProof:
     reads: tuple[str, ...]
     cycle: CalendarEvidence | None = None
     access_end_at: datetime | None = None
+    cycle_funding: CycleFunding | None = None
 
     def document(self) -> dict[str, object]:
         """Redacted JSON evidence shared by preparation and authoritative apply."""

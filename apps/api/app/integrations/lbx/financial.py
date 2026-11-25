@@ -15,7 +15,7 @@ from pydantic import Field, field_validator
 
 from app.domains.catalog.product_link import CurrentOffer, ProductLinkRequest
 from app.integrations.lbx.customer import PrivateDto
-from app.integrations.lbx.dto import ExactNumber
+from app.integrations.lbx.dto import CalendarDate, ExactNumber
 from app.integrations.lbx.errors import LbxResponseInvalid, LbxScopeMismatch
 from app.models import (
     ExternalSubscriptionFinancialAccessStatus as Financial,
@@ -35,10 +35,14 @@ class Agreement(PrivateDto):
     create_date: str | None = None
     close_date: str | None = None
     agreement_link: str | None = None
+    balance: ExactNumber | None = None
+    credit: ExactNumber | None = None
+    debt_threshold: ExactNumber | None = None
 
 
 class SubscriptionService(PrivateDto):
     tariff_service_id: Id
+    service_id: Id | None = None
     multiplicator: ExactNumber | None = None
     price: ExactNumber | None = None
     connection_price: ExactNumber | None = None
@@ -52,6 +56,7 @@ class Subscription(PrivateDto):
     subscription_id: Id
     agreement_id: Id
     tariff_id: Id
+    subscription_instance_id: Id | None = None
     period_id: Id | None = None
     period_type: int | None = None
     period_length: int | None = None
@@ -85,6 +90,27 @@ class Subscription(PrivateDto):
         ):
             raise ValueError("invalid provider calendar evidence")
         return value
+
+
+class RecommendedCharge(PrivateDto):
+    subscription_instance_id: Id
+    service_id: Id
+    is_predicted_charge: bool
+    is_waiting_for_activation: bool
+    charge_type: int
+    charge_sum: ExactNumber
+    tariffication_period_start: CalendarDate
+    tariffication_period_end: CalendarDate
+    # LBX 043 omits this field. An explicitly typed return is never a charge.
+    operation_type: Literal[0, 1] | None = Field(default=None, alias="type")
+
+
+class RecommendedPaymentDetails(PrivateDto):
+    recommended_payment: ExactNumber
+    current_balance: ExactNumber
+    start_period: CalendarDate
+    end_period: CalendarDate
+    services: list[RecommendedCharge]
 
 
 class AgreementReceipt(PrivateDto):

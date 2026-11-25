@@ -5,7 +5,7 @@ import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any, TypeVar
 
 import httpx
@@ -25,6 +25,7 @@ from app.integrations.lbx.financial import (
     Agreement,
     AgreementCreated,
     NewAgreement,
+    RecommendedPaymentDetails,
     Subscription,
     SubscriptionCreated,
     NewSubscription,
@@ -291,6 +292,18 @@ class LbxServerClient:
     async def get_subscription(self, *, subscription_id: int, budget: PreflightBudget) -> Subscription:
         _require_identity(subscription_id)
         return await self._read(f"/subscriptions/{subscription_id}", LbxEnvelope[Subscription], budget=budget)
+
+    async def get_recommended_payment_details(
+        self, *, agreement_id: int, day: date, budget: PreflightBudget
+    ) -> RecommendedPaymentDetails:
+        _require_identity(agreement_id)
+        period = day.isoformat()
+        return await self._read(
+            "/recommendedpayment/details",
+            LbxEnvelope[RecommendedPaymentDetails],
+            budget=budget,
+            body={"agreement_id": agreement_id, "start_period": period, "end_period": period},
+        )
 
     async def discover_subscriptions(
         self, *, user_id: int, budget: PreflightBudget, agreement_id: int | None = None

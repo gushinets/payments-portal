@@ -9,6 +9,7 @@ from app.core.time import utc_now
 from app.domains.billing.paid_cycles import CalendarEvidence, CalendarPrecision
 from app.domains.billing.reconciliation_contracts import (
     CommercialProof,
+    CycleFunding,
     IdentityProof,
     ReconciliationSubject,
     SubscriptionCandidateSubject,
@@ -292,6 +293,13 @@ def normalize_subscription(
         (),
         cycle=cycle if calendar_complete else None,
         access_end_at=normalize_access_end(calendar.get("subscription_end_date")),
+        cycle_funding=(
+            CycleFunding.UNCONFIRMED
+            if financial == Financial.ALLOWED
+            and (accepted.offer.period.unit, accepted.offer.period.length, accepted.offer.period.anchor)
+            == ("day", 1, "first_instance_start")
+            else None
+        ),
     )
 
 
@@ -337,6 +345,57 @@ async def _agreement_has_competitor(
     ):
         raise LbxResponseInvalid()
     return False
+
+
+async def _daily_cycle_is_funded(
+    client: LbxServerClient,
+    subject: ReconciliationSubject,
+    agreement: Agreement,
+    subscription: Subscription,
+    cycle: CalendarEvidence | None,
+    budget: PreflightBudget,
+) -> bool:
+    if (
+        cycle is None
+        or cycle.precision != CalendarPrecision.DATE
+        or cycle.start != cycle.end
+        or agreement.credit != 0
+        or agreement.debt_threshold != 0
+        or agreement.balance is None
+        or subscription.subscription_instance_id is None
+        or subscription.services is None
+        or len(subscription.services) != 1
+    ):
+        return False
+    service_id = subscription.services[0].service_id
+    if service_id is None:
+        return False
+    day = date.fromisoformat(cycle.start)
+    details = await timely_point(
+        lambda: client.get_recommended_payment_details(agreement_id=int(subject.agreement_id), day=day, budget=budget),
+        budget,
+    )
+    if (
+        details.start_period != day
+        or details.end_period != day
+        or details.recommended_payment != 0
+        or details.current_balance < 0
+        or details.current_balance != agreement.balance
+        or len(details.services) != 1
+    ):
+        return False
+    charge = details.services[0]
+    return (
+        charge.subscription_instance_id == subscription.subscription_instance_id
+        and charge.service_id == service_id
+        and charge.tariffication_period_start == charge.tariffication_period_end == day
+        and charge.charge_type == 0
+        and not charge.is_predicted_charge
+        and not charge.is_waiting_for_activation
+        and ("operation_type" not in charge.model_fields_set or charge.operation_type == 1)
+        and charge.charge_sum == subject.purchase.accepted.offer.money.recurring_amount
+        and charge.charge_sum > 0
+    )
 
 
 async def read_subscription_proof(
@@ -417,6 +476,26 @@ async def read_subscription_proof(
                     complete=False,
                     reasons=proof.reasons + ("subscription_identity_conflict", "dedicated_agreement_conflict"),
                 )
+    if (
+        isinstance(subject, ReconciliationSubject)
+        and proof.cycle_funding == CycleFunding.UNCONFIRMED
+        and proof.identity == IdentityProof.MATCH
+        and proof.commercial == CommercialProof.MATCH
+        and proof.complete
+        and not failures
+        and agreement is not None
+        and subscription is not None
+    ):
+        try:
+            funded = await _daily_cycle_is_funded(client, subject, agreement, subscription, proof.cycle, budget)
+        except (LbxError, PreflightDeadlineExceeded) as error:
+            proof = replace(proof, reasons=proof.reasons + ("daily_cycle_funding:" + error.code,))
+        else:
+            if funded:
+                reads.append("daily_cycle_funding")
+                proof = replace(proof, cycle_funding=CycleFunding.CONFIRMED)
+            else:
+                proof = replace(proof, reasons=proof.reasons + ("daily_cycle_funding_unconfirmed",))
     try:
         budget.check()
     except PreflightDeadlineExceeded:

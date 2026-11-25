@@ -5,7 +5,7 @@ from enum import StrEnum
 
 from app.core.settings import AppEnv
 from app.domains.catalog.contracts import SourceProvenance
-from app.domains.billing.reconciliation_contracts import CommercialProof, IdentityProof, SubscriptionProof
+from app.domains.billing.reconciliation_contracts import CommercialProof, CycleFunding, IdentityProof, SubscriptionProof
 from app.models import ExternalSubscriptionFinancialAccessStatus as Financial
 from app.models import ExternalSubscriptionLifecycleStatus as Lifecycle
 
@@ -44,7 +44,11 @@ def paid_decision(proof: SubscriptionProof, *, review: bool = False) -> PaidDeci
             return PaidDecision.DENY
         if proof.lifecycle in {Lifecycle.INACTIVE, Lifecycle.ENDED}:
             return PaidDecision.DENY
-        if proof.complete and proof.commercial == CommercialProof.MATCH:
+        if (
+            proof.complete
+            and proof.commercial == CommercialProof.MATCH
+            and proof.cycle_funding != CycleFunding.UNCONFIRMED
+        ):
             if proof.lifecycle == Lifecycle.ACTIVE and proof.financial == Financial.ALLOWED:
                 return PaidDecision.GRANT
     return PaidDecision.KEEP
