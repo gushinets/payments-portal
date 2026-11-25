@@ -157,6 +157,10 @@ async def test_operator_collects_original_point_evidence_once_and_keeps_zero_pos
         assert case.resolution_document["observation_id"] == str(sub.latest_observation_id)
     if not terminal:
         refreshed = terminal_request(factory, config, purchase, *proofs, confirmed=True)
+        observation = inspect_evidence(factory, config, purchase.user_id, purchase.id)
+        retained = next(op["original_point_facts"] for op in observation["operations"] if op["kind"] == "subscription")
+        point_at = datetime.fromisoformat(retained["primary"]["point_read_finished_at"])
+        assert early.evidence.confirmed_at < point_at <= refreshed.evidence.confirmed_at
         old_confirmation = refreshed.model_copy(update={"evidence": early.evidence})
         with pytest.raises(PurchaseRefused, match="purchase_resolution_confirmation_required"):
             completion.resolve_purchase(factory, config, old_confirmation, "os-euid:1000")
@@ -632,3 +636,53 @@ async def test_terminal_confirmation_uses_point_clocks_before_tariff(
         }
     )
     assert completion.resolve_purchase(factory, config, timed, "os-euid:1000").state.resolved
+
+
+@pytest.mark.parametrize("unavailable", [False, True], ids=["ended", "unavailable"])
+async def test_pending_inventory_retains_open_agreement_independently(
+    background_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    unavailable: bool,
+) -> None:
+    from app.composition.purchase_inventory import collect_inventory
+    from app.domains.billing.operator_diagnostics import inspect_evidence
+    from app.domains.billing.reconciliation import read_source_time
+    from app.infrastructure.preflight import PreflightBudget
+    from app.integrations.lbx.errors import LbxTimeout
+    from apps.api.tests.factories.billing_operator import terminal_object_request
+    from apps.api.tests.test_billing_background_recovery_postgres import synthetic_prepare
+
+    transport, sources, purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    purchase = synthetic_prepare(factory, transport, purchase, uncertain=True)
+    transport.agreements[0]["close_date"] = None
+    transport.subscriptions[0]["state"] = 3
+    before = read_source_time(factory)
+    client = sources.require_lbx()
+    if unavailable:
+
+        async def unavailable_point(*, subscription_id: int, budget: PreflightBudget) -> None:
+            raise LbxTimeout()
+
+        monkeypatch.setattr(client, "get_subscription", unavailable_point)
+    customer = service.customer_for_purchase(factory, config, purchase)
+    async with sources.billing.operation(bound_scope=False) as budget:
+        await collect_inventory(client, sources.billing, config, factory=factory, customer=customer, budget=budget)
+    inspected = inspect_evidence(factory, config, purchase.user_id, purchase.id)
+    agreement, subscription = inspected["operations"]
+    assert agreement["original_point_facts"] is not None
+    fact = agreement["original_point_facts"]["primary"]
+    assert (fact["operation_id"], fact["external_object_id"], fact["fact"]) == (
+        str(purchase.operations[0].id),
+        "456",
+        "open",
+    )
+    assert before < datetime.fromisoformat(fact["point_read_finished_at"]) <= read_source_time(factory)
+    assert subscription["original_point_facts"] is None
+    request = terminal_object_request(factory, config, purchase, subscription_id="567")
+    stale = request.evidence.model_copy(update={"senders_stopped_at": before, "confirmed_at": before})
+    with pytest.raises(PurchaseRefused, match="purchase_resolution_confirmation_required"):
+        completion.resolve_purchase(factory, config, request.model_copy(update={"evidence": stale}), "os-euid:1000")
+    assert service.read_purchase(factory, purchase.user_id, purchase.id).held
+    assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0

@@ -206,7 +206,10 @@ def customer_work_active(db: Session, customer_id: UUID, account: str, now: date
     sub = ExternalSubscription
     customer_ops = select(cast(ExternalCreateOperation.create_operation_id, Text)).where(
         ExternalCreateOperation.customer_id == customer_id,
-        ExternalCreateOperation.external_billing_account_id == account,
+        or_(
+            ExternalCreateOperation.operation_kind == Kind.CUSTOMER,
+            ExternalCreateOperation.external_billing_account_id == account,
+        ),
     )
     customer_subs = select(cast(sub.subscription_id, Text)).where(
         sub.customer_id == customer_id, sub.external_billing_account_id == account

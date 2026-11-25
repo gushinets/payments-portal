@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
+import stat
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -68,7 +70,13 @@ def resolution_request(arguments: argparse.Namespace) -> ResolutionRequest:
 
 def terminal_request(arguments: argparse.Namespace) -> TerminalRequest | ClosureRequest:
     try:
-        with arguments.evidence_file.open("rb") as stream:
+
+        def open_evidence(path: str, flags: int) -> int:
+            return os.open(path, flags | getattr(os, "O_NONBLOCK", 0))
+
+        with open(arguments.evidence_file, "rb", opener=open_evidence) as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                raise AppError("purchase_resolution_arguments_invalid")
             content = stream.read(32769)
         if len(content) > 32768:
             raise AppError("purchase_resolution_arguments_invalid")
@@ -99,7 +107,7 @@ async def _run(arguments: argparse.Namespace, configuration: Settings, principal
             retry=arguments.command == "retry-invalidation",
         )
     if arguments.command == "resolve-purchase":
-        request = terminal_request(arguments)
+        request = await run_in_threadpool(terminal_request, arguments)
         if isinstance(request, ClosureRequest):
             result = await run_in_threadpool(close_case, SessionLocal, configuration, request, principal)
         else:

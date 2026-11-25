@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -408,3 +411,36 @@ def test_billing_recovery_cli_select_primary_uses_reconciliation_expectations() 
 
     with pytest.raises(ValidationError):
         ResolutionRequest.model_validate(invalid)
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="requires a POSIX FIFO")
+def test_terminal_evidence_refuses_a_fifo_without_waiting_for_a_writer(tmp_path: Path) -> None:
+    fifo = tmp_path / "evidence"
+    os.mkfifo(fifo)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "app.cli.billing_purchases",
+            "resolve-purchase",
+            "--user-id",
+            str(uuid4()),
+            "--purchase-id",
+            str(uuid4()),
+            "--expected-digest",
+            "sha256:" + "a" * 64,
+            "--reason",
+            "Restart",
+            "--reference",
+            "ANY-821",
+            "--evidence-file",
+            str(fifo),
+        ],
+        cwd=ROOT / "apps/api",
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 1
+    assert json.loads(result.stderr) == {"detail": {"code": "purchase_resolution_arguments_invalid"}}

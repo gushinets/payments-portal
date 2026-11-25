@@ -225,6 +225,12 @@ async def collect_inventory(
         if len(relevant) > MAX_RELEVANT_SUBSCRIPTIONS:
             raise PurchaseInventoryIncomplete()
         counts = Counter(row.agreement_id for row in rows)
+
+        def products_for_tariff(tariff_id: int | None) -> set[str]:
+            return {
+                item.accepted.selection.product_id for item in initial if item.accepted.selection.tariff_id == tariff_id
+            }
+
         for provider_id, candidate in relevant.items():
             budget.check()
             known = bindings.get(provider_id)
@@ -242,11 +248,7 @@ async def collect_inventory(
             affected = (
                 {owner.accepted.selection.product_id}
                 if owner is not None
-                else {
-                    item.accepted.selection.product_id
-                    for item in initial
-                    if candidate is not None and item.accepted.selection.tariff_id == candidate.tariff_id
-                }
+                else products_for_tariff(candidate.tariff_id if candidate else None)
             )
             if historical_matches:
                 affected.update(old.purchase.accepted.selection.product_id for old in historical_matches)
@@ -285,11 +287,7 @@ async def collect_inventory(
                         if reviewed and agrees_with_listing:
                             continue
                         affected.add(historical.purchase.accepted.selection.product_id)
-                    affected.update(
-                        item.accepted.selection.product_id
-                        for item in initial
-                        if item.accepted.selection.tariff_id == point.tariff_id
-                    )
+                    affected.update(products_for_tariff(point.tariff_id))
                 complete = False
                 product_complete.update(dict.fromkeys(affected, False))
                 continue
@@ -304,10 +302,16 @@ async def collect_inventory(
                 )
             # A permanently bound sibling can never be this purchase's original
             # UNKNOWN candidate, even when LBX now places it on this agreement.
+            receipt_mismatch = False
             if candidate is not None and known is None and owner is not None:
                 operation = next(op for op in owner.operations if op.kind == Kind.SUBSCRIPTION)
                 if counts[candidate.agreement_id] == 1 and operation.bound_id is None:
-                    if (
+                    if operation.candidate_id not in {None, provider_id}:
+                        receipt_mismatch = True
+                        conflicts.add(owner.id)
+                        complete = False
+                        proof = None  # Inspect the listed object for a released owner below.
+                    elif (
                         reuse is not None
                         and owner.id == reuse.purchase.id
                         and str(candidate.subscription_id) == reuse.provider_id
@@ -326,10 +330,6 @@ async def collect_inventory(
                             complete = False
                             continue
                         if not original_pending:
-                            complete = False
-                            continue
-                        if operation.candidate_id not in {None, str(candidate.subscription_id)}:
-                            conflicts.add(owner.id)
                             complete = False
                             continue
                         agreement_op = next(op for op in owner.operations if op.kind == Kind.AGREEMENT)
@@ -399,6 +399,7 @@ async def collect_inventory(
             if candidate is not None and (listed_elsewhere or point.tariff_id != candidate.tariff_id):
                 complete = False
                 if known is None and not listed_elsewhere:
+                    product_complete.update(dict.fromkeys(products_for_tariff(point.tariff_id), False))
                     continue
             owner = agreements.get(str(point.agreement_id))
             if (known is None and listed_elsewhere) or (known is not None and owner is None):
@@ -413,7 +414,8 @@ async def collect_inventory(
                     delegate=delegate,
                 )
                 continue
-            if known is not None and owner is not None and owner.id == known.id:
+            # A receipt conflict on the listed agreement belongs to its owner alone.
+            if receipt_mismatch or (known is not None and owner is not None and owner.id == known.id):
                 continue
             agreement = await candidate_point(
                 lambda: client.get_agreement(agreement_id=point.agreement_id, budget=budget), budget

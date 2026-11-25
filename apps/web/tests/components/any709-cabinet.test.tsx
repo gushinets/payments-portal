@@ -904,3 +904,22 @@ it.each([
   expect(selector()).toHaveValue(second.purchase_intent_id);
   expect(screen.queryByText("old-bootstrap", { exact: false })).not.toBeInTheDocument();
 });
+
+it("keeps an explicitly selected purchase visible after polling observes its release", async () => {
+  vi.useFakeTimers();
+  try {
+    list.mockResolvedValueOnce(json({ purchases: [{ ...first, state: "awaiting_external_result" }, second], next_cursor: null }));
+    status.mockResolvedValueOnce(json({ ...savedPurchase, state: "resolved_external_terminal", scope_held: false }));
+    await act(async () => { renderCabinet(); });
+    fireEvent.change(selector(), { target: { value: first.purchase_intent_id } });
+    await act(async () => vi.advanceTimersByTimeAsync(2100));
+    const billing = within(screen.getByRole("region", { name: ru.Billing.title }));
+    expect(billing.getByText(ru.Purchase.states.resolved_external_terminal)).toBeVisible();
+    expect(selector()).toHaveValue(first.purchase_intent_id);
+    expect(billing.getByRole("link", { name: ru.Purchase.buy })).toHaveAttribute("href", "/ru/products/proposal_ai");
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+    expect(bootstrap).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
+});

@@ -1,6 +1,5 @@
 """Typed operator expectations built from the public local diagnostic shape."""
 
-from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.orm import Session, sessionmaker
@@ -8,6 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.settings import Settings
 from app.domains.billing.operator_contracts import ResolutionRequest
 from app.domains.billing.operator_diagnostics import inspect_evidence
+from app.domains.billing.reconciliation import read_source_time
 from app.domains.billing.terminal_resolution import (
     OperationEvidence,
     TerminalEvidence,
@@ -47,7 +47,7 @@ def terminal_request(
     *operations: OperationEvidence,
     confirmed: bool = False,
 ) -> TerminalRequest:
-    now = datetime.now(UTC) if confirmed else None
+    now = read_source_time(factory) if confirmed else None
     inspected = inspect_evidence(factory, config, purchase.user_id, purchase.id)
     return TerminalRequest(
         user_id=purchase.user_id,

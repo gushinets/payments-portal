@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import replace
+from datetime import datetime
 from functools import partial
 from contextlib import asynccontextmanager
 from typing import Any
@@ -35,7 +36,7 @@ from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.operator_contracts import ReviewResolution
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.errors import LbxError
-from app.integrations.lbx.financial import prove_agreement
+from app.integrations.lbx.financial import agreement_explicitly_open, prove_agreement
 from app.integrations.lbx.reconciliation import complete_subscription_proof
 from app.integrations.lbx.reconciliation import read_subscription_proof as read_lbx_subscription_proof
 from app.integrations.lbx.subscription_points import read_subscription_points
@@ -77,57 +78,72 @@ async def read_inventory_original_subscription(
     """Retain the exact fact before tariff I/O. Return no proof on an ownership conflict."""
     point_clock = partial(delegate, read_source_time, factory)
     points = await read_subscription_points(client, subject, budget=budget, read_time=point_clock)
-    point, read_at = points.subscription, points.subscription_read_at
     customer = subject.customer
-    if (
-        point is not None
-        and read_at is not None
-        and points.user is not None
-        and points.user.outer_id == customer.outer_key
-    ):
+
+    async def retain(original: FinancialOperation, external_id: str, observed_at: datetime) -> bool:
+        fact = OriginalPointFact(
+            operation_id=original.id,
+            operation_kind=original.kind,
+            external_object_id=external_id,
+            fact="open" if original.kind == Kind.AGREEMENT else "live",
+            point_read_finished_at=observed_at,
+        )
+        return await delegate(
+            retain_original_point,
+            factory,
+            subject.purchase,
+            customer,
+            fact,
+            recovering_id=operation.id,
+            work_claim=work_claim,
+        )
+
+    if points.user is not None and points.user.outer_id == customer.outer_key:
         agreement_id = int(subject.agreement_id)
-        if point.agreement_id != agreement_id:
-            original = await review_redirected_subscription(
-                client,
-                factory,
-                customer,
-                subject.provider_subscription_id,
-                point,
-                read_finished_at=read_at,
-                budget=budget,
-                delegate=delegate,
-            )
-            if original is not None:
-                return None
-        elif points.agreement is not None:
+        agreement = points.agreement
+        agreement_matches = False
+        if agreement is not None and agreement.agreement_id == agreement_id:
+            original = next(op for op in subject.purchase.operations if op.kind == Kind.AGREEMENT)
             try:
                 prove_agreement(
-                    points.agreement,
+                    agreement,
                     user_id=int(customer.provider_id),
                     seller_id=subject.purchase.accepted.seller_id,
                     number=subject.agreement_key,
                 )
+                agreement_matches = (
+                    original.agreement_create_date is None
+                    or agreement.create_date == original.agreement_create_date.isoformat()
+                )
+                explicitly_open = agreement_explicitly_open(agreement)
             except LbxError:
-                pass  # Full normalization classifies failed proof.
-            else:
-                if is_live_original_subscription(subject.purchase, points.agreement, point, agreement_id=agreement_id):
-                    fact = OriginalPointFact(
-                        operation_id=operation.id,
-                        operation_kind=Kind.SUBSCRIPTION,
-                        external_object_id=subject.provider_subscription_id,
-                        fact="live",
-                        point_read_finished_at=read_at,
-                    )
-                    if not await delegate(
-                        retain_original_point,
+                explicitly_open = False  # Full normalization classifies failed proof.
+            if agreement_matches and explicitly_open and points.agreement_read_at is not None:
+                if not await retain(original, subject.agreement_id, points.agreement_read_at):
+                    return None
+
+        point, read_at = points.subscription, points.subscription_read_at
+        if point is not None and read_at is not None:
+            if point.agreement_id != agreement_id:
+                if (
+                    await review_redirected_subscription(
+                        client,
                         factory,
-                        subject.purchase,
                         customer,
-                        fact,
-                        recovering_id=operation.id,
-                        work_claim=work_claim,
-                    ):
-                        return None
+                        subject.provider_subscription_id,
+                        point,
+                        read_finished_at=read_at,
+                        budget=budget,
+                        delegate=delegate,
+                    )
+                    is not None
+                ):
+                    return None
+            elif agreement_matches and is_live_original_subscription(
+                subject.purchase, agreement, point, agreement_id=agreement_id
+            ):
+                if not await retain(operation, subject.provider_subscription_id, read_at):
+                    return None
     return await complete_subscription_proof(client, configuration, points, budget=budget, read_time=point_clock)
 
 

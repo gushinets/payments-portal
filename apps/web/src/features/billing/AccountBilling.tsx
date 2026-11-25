@@ -37,6 +37,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   const { begin, cancel } = useSessionOperation();
   const visit = useRef(Symbol());
   const billingSection = useRef<HTMLElement>(null);
+  const widgetContainer = useRef<HTMLDivElement>(null);
   const paymentNotice = useRef<HTMLDivElement>(null);
   const automaticPaymentId = useRef<string | undefined>(undefined);
   const focusBeforeStatusChange = useRef<Element | null>(null);
@@ -130,9 +131,10 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   const directPurchase = initialPurchaseId ? purchases.findPurchase(initialPurchaseId) : undefined;
   const options = directPurchase
     ? [directPurchase, ...purchases.items.filter((item) => item.purchase_intent_id !== directPurchase.purchase_intent_id)]
-    : purchases.items;
+    : [...purchases.items];
   const defaultPurchase = purchases.status === "ready" && !purchases.cursor && purchases.items.length === 1 ? purchases.items[0] : undefined;
-  const selection = selectedId === undefined ? defaultPurchase : options.find((item) => item.purchase_intent_id === selectedId);
+  const selection = selectedId === undefined ? defaultPurchase : selectedId ? purchases.findPurchase(selectedId) : undefined;
+  if (selection && !options.some(item => item.purchase_intent_id === selection.purchase_intent_id)) options.push(selection);
   const selectionId = selection?.purchase_intent_id;
   const selectionBlocked = selectionState.status !== "ready" || (!!selectedId && !selection);
   const checking = selection?.checking === true;
@@ -149,6 +151,14 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   const paymentUnavailable = paymentPurchaseId !== undefined && (
     selectionState.status === "error" || selectionId !== paymentPurchaseId || (!checking && selection?.state !== "linked")
   );
+
+  useLayoutEffect(() => {
+    const container = widgetContainer.current;
+    if (!container) return;
+    // Move focus before hiding a focused iframe makes the browser return focus to body.
+    if (checking && container.contains(document.activeElement)) purchaseSelector.current?.focus();
+    container.hidden = checking;
+  }, [checking]);
 
   useLayoutEffect(() => {
     if (paymentUnavailable) {
@@ -300,7 +310,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
         {widget.loading ? b("loading") : widgetOpen ? b("refresh") : canPay ? b("pay") : b("open")}
       </button>
       {widgetOpen && <p id="billing-refresh-hint" className="card-copy" hidden={checking}>{b("refreshHint")}</p>}
-      <div hidden={checking}><WidgetView widget={widget} onClose={refreshPaid} /></div>
+      <div ref={widgetContainer}><WidgetView widget={widget} onClose={refreshPaid} /></div>
     </section>
     {!sessionRefused && <section className="account-products-panel" aria-label={t("title")}>
       <div className="account-products-heading">

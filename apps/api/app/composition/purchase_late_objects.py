@@ -101,17 +101,25 @@ async def review_redirected_subscription(
     if str(point.subscription_id) != provider_id:
         raise LbxScopeMismatch()
     original = await released_subscription_owner(factory, customer, point, delegate)
-    if original is not None:
-        await review_historical_subscription(
-            client,
-            factory,
-            original,
-            customer,
-            point,
-            read_finished_at=read_finished_at,
-            budget=budget,
-            delegate=delegate,
+    if original is None:
+        agreement = await candidate_point(
+            lambda: client.get_agreement(agreement_id=point.agreement_id, budget=budget), budget
         )
+        if agreement is None:
+            return None
+        return await record_inventory_late_subscription(
+            factory, customer, point, agreement, read_finished_at=read_finished_at, delegate=delegate
+        )
+    await review_historical_subscription(
+        client,
+        factory,
+        original,
+        customer,
+        point,
+        read_finished_at=read_finished_at,
+        budget=budget,
+        delegate=delegate,
+    )
     return original
 
 
@@ -140,8 +148,8 @@ async def review_historical_subscription(
         await record_subscription(
             factory, original, customer, point, agreement, read_finished_at=read_finished_at, delegate=delegate
         )
-    except LbxResponseInvalid:
-        return False
+    except (LbxResponseInvalid, LbxScopeMismatch):
+        return False  # This historical object could not be verified for its customer.
     if failure is not None:
         raise failure
     return agreement is not None
@@ -155,18 +163,18 @@ async def record_inventory_late_subscription(
     *,
     read_finished_at: datetime,
     delegate: Callable[..., Awaitable[Any]],
-) -> bool:
+) -> ReleasedOriginal | None:
     if agreement.agreement_number is None:
-        return False
+        return None
     original = await released_subscription_owner(
         factory, customer, point, delegate, agreement_number=agreement.agreement_number
     )
     if original is None:
-        return False
+        return None
     await record_subscription(
         factory, original, customer, point, agreement, read_finished_at=read_finished_at, delegate=delegate
     )
-    return True
+    return original
 
 
 def prove_original_agreement(original: ReleasedOriginal, customer: CustomerOpen, agreement: Agreement) -> None:
@@ -233,7 +241,10 @@ async def record_subscription(
         LateObjectEvidence(
             kind=Kind.SUBSCRIPTION,
             external_object_id=external_id,
-            competing_tariff_id=point.tariff_id if scope_proven and not belongs_to_original else None,
+            competing_tariff_id=point.tariff_id
+            if scope_proven
+            and (not belongs_to_original or point.tariff_id != original.purchase.accepted.selection.tariff_id)
+            else None,
             read_finished_at=read_finished_at,
             agreement_id=agreement_id if scope_proven else None,
         ),
