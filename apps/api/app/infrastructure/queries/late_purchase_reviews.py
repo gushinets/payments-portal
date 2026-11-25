@@ -1,5 +1,6 @@
 """Point lookups for late purchase cases and retained original identities."""
 
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import Select, Text, and_, cast, exists, or_, select
@@ -45,6 +46,31 @@ def object_cases(db: Session, account: str, kind: Kind, external_id: str, *, rea
         db.scalars(
             _object_cases(account, kind, external_id, reason=reason, schema=schema).where(Case.case_state == "open")
         )
+    )
+
+
+def latest_closed_subscription_scope(
+    db: Session,
+    account: str,
+    purchase_id: UUID,
+    external_id: str,
+    read_finished_at: datetime,
+    *,
+    reason: str,
+    schema: str,
+    closure_schema: str,
+) -> Case | None:
+    return db.scalar(
+        _object_cases(account, Kind.SUBSCRIPTION, external_id, reason=reason, schema=schema)
+        .where(
+            Case.scope_reference == str(purchase_id),
+            Case.case_state == "resolved",
+            Case.resolution_schema_version == closure_schema,
+            Case.resolved_at < read_finished_at,
+            Case.evidence_document["agreement_id"].as_string().is_not(None),
+        )
+        .order_by(Case.resolved_at.desc(), Case.review_case_id.desc())
+        .limit(1)
     )
 
 

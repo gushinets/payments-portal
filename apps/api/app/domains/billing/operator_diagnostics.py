@@ -193,7 +193,7 @@ def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: 
                     **(
                         {
                             "late_object": LateObjectEvidence.model_validate(case.evidence_document).model_dump(
-                                mode="json"
+                                mode="json", exclude={"scope_read_finished_at"}
                             )
                         }
                         if (case.reason_code, case.evidence_schema_version) == (REASON, CASE_SCHEMA)

@@ -205,7 +205,8 @@ async def record_subscription(
     if subscription_lifecycle(point)[0] == Lifecycle.ENDED:
         return
     external_id = str(point.subscription_id)
-    belongs_to_original = str(point.agreement_id) in original.agreement_ids
+    agreement_id = str(point.agreement_id)
+    belongs_to_original = agreement_id in original.agreement_ids
     known_subscription = external_id in original.subscription_ids
     incomplete: LbxResponseInvalid | None = None
     if agreement is not None:
@@ -223,6 +224,7 @@ async def record_subscription(
             incomplete = error
     if not (belongs_to_original or known_subscription):
         raise PurchaseInventoryIncomplete()
+    scope_proven = belongs_to_original or agreement is not None
     await delegate(
         record_late_object,
         factory,
@@ -231,10 +233,11 @@ async def record_subscription(
         LateObjectEvidence(
             kind=Kind.SUBSCRIPTION,
             external_object_id=external_id,
-            competing_tariff_id=None if belongs_to_original else point.tariff_id,
+            competing_tariff_id=point.tariff_id if scope_proven and not belongs_to_original else None,
             read_finished_at=read_finished_at,
-            agreement_id=str(point.agreement_id),
+            agreement_id=agreement_id if scope_proven else None,
         ),
+        unverified_relationship=None if scope_proven else (agreement_id, point.tariff_id),
     )
     if incomplete is not None:
         raise incomplete

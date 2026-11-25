@@ -50,7 +50,7 @@ CLOSURE_SCHEMA = "purchase-late-object-closure:v1"
 
 
 class LateObjectEvidence(BaseModel):
-    """A timely live/open read of the exact provider object."""
+    """A timely live/open read of the exact provider object and its verified scope."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     kind: Literal[Kind.AGREEMENT, Kind.SUBSCRIPTION]
@@ -61,12 +61,29 @@ class LateObjectEvidence(BaseModel):
     competing_tariff_id: int | None = Field(default=None, gt=0)
     read_finished_at: AwareDatetime
     agreement_id: ProviderId | None = None
+    # Before this field, an observed agreement and point time were stored together.
+    scope_read_finished_at: AwareDatetime | None = Field(
+        default_factory=lambda data: data.get("read_finished_at") if data.get("agreement_id") is not None else None
+    )
 
     @model_validator(mode="after")
     def matching_fact(self) -> "LateObjectEvidence":
         if self.fact != ("open" if self.kind == Kind.AGREEMENT else "live"):
             raise ValueError("point fact does not match object kind")
+        if (self.agreement_id is None) != (self.scope_read_finished_at is None) or (
+            self.scope_read_finished_at is not None and self.scope_read_finished_at > self.read_finished_at
+        ):
+            raise ValueError("invalid verified scope time")
         return self
+
+    def merge_point(self, observation: "LateObjectEvidence") -> "LateObjectEvidence":
+        incoming_scope_time = observation.scope_read_finished_at
+        scope = self
+        if incoming_scope_time is not None and (
+            self.scope_read_finished_at is None or incoming_scope_time > self.scope_read_finished_at
+        ):
+            scope = observation
+        return scope.model_copy(update={"read_finished_at": max(self.read_finished_at, observation.read_finished_at)})
 
 
 class ClosureKind(StrEnum):
@@ -170,7 +187,12 @@ def released_owners(
 
 
 def record_late_object(
-    factory: SessionFactory, original: ReleasedOriginal, expected: CustomerOpen, evidence: LateObjectEvidence
+    factory: SessionFactory,
+    original: ReleasedOriginal,
+    expected: CustomerOpen,
+    evidence: LateObjectEvidence,
+    *,
+    unverified_relationship: tuple[str, int] | None = None,
 ) -> None:
     purchase = original.purchase
     with factory() as db:
@@ -199,13 +221,30 @@ def record_late_object(
             reason=REASON,
             schema=CASE_SCHEMA,
         )
-        if cases:
-            if len(cases) != 1 or cases[0].scope_reference != str(purchase.id):
-                raise PurchaseInventoryIncomplete()
-            [active] = cases
-            previous = LateObjectEvidence.model_validate(active.evidence_document)
-            if evidence.read_finished_at > previous.read_finished_at:
-                active.evidence_document = evidence.model_dump(mode="json")
+        if cases and (len(cases) != 1 or cases[0].scope_reference != str(purchase.id)):
+            raise PurchaseInventoryIncomplete()
+        active = cases[0] if cases else None
+        previous = LateObjectEvidence.model_validate(active.evidence_document) if active is not None else None
+        if unverified_relationship is not None and (previous is None or previous.scope_read_finished_at is None):
+            closed = queries.latest_closed_subscription_scope(
+                db,
+                purchase.account_id,
+                purchase.id,
+                evidence.external_object_id,
+                evidence.read_finished_at,
+                reason=REASON,
+                schema=CASE_SCHEMA,
+                closure_schema=CLOSURE_SCHEMA,
+            )
+            if closed is not None:
+                retained = LateObjectEvidence.model_validate(closed.evidence_document)
+                if unverified_relationship == (retained.agreement_id, retained.competing_tariff_id):
+                    evidence = retained.merge_point(evidence)
+        if active is not None:
+            assert previous is not None
+            merged = previous.merge_point(evidence)
+            if merged != previous:
+                active.evidence_document = merged.model_dump(mode="json")
                 db.commit()
             return
         db.add(
