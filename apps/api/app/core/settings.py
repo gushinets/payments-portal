@@ -183,6 +183,13 @@ class Settings(BaseSettings):
             return value.lower() == "true"
         return bool(value)
 
+    @field_validator("smtp_use_tls")
+    @classmethod
+    def require_tls_for_production_smtp(cls, value: bool, info: ValidationInfo) -> bool:
+        if info.data.get("app_env") == AppEnv.PRODUCTION and info.data.get("smtp_host") and not value:
+            raise ValueError("SMTP_USE_TLS must be true when SMTP is enabled in production")
+        return value
+
     @field_validator("cors_allow_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, value: Any) -> tuple[str, ...]:

@@ -1,0 +1,139 @@
+{
+  "project": "gushinets_payments-portal",
+  "branch": "main",
+  "analysis": "509b5422-b252-414b-9b02-0c7a0250c118",
+  "date_utc": "2026-11-21T19:17:59Z",
+  "revision": "236c852e88b5374dcc0c34baae4981bbc78c87c7",
+  "security_impact_counts": {
+    "MEDIUM": 16,
+    "LOW": 6,
+    "HIGH": 3,
+    "BLOCKER": 3
+  },
+  "legacy_vulnerabilities": 27,
+  "overall_security_rating": "E",
+  "security_hotspots": 0,
+  "hotspot_review_rating": "A",
+  "quality_gate": {
+    "status": "OK",
+    "conditions": [
+      {
+        "status": "OK",
+        "metricKey": "new_reliability_rating",
+        "comparator": "GT",
+        "periodIndex": 1,
+        "errorThreshold": "1",
+        "actualValue": "1"
+      },
+      {
+        "status": "OK",
+        "metricKey": "new_security_rating",
+        "comparator": "GT",
+        "periodIndex": 1,
+        "errorThreshold": "1",
+        "actualValue": "1"
+      },
+      {
+        "status": "OK",
+        "metricKey": "new_maintainability_rating",
+        "comparator": "GT",
+        "periodIndex": 1,
+        "errorThreshold": "1",
+        "actualValue": "1"
+      },
+      {
+        "status": "OK",
+        "metricKey": "new_duplicated_lines_density",
+        "comparator": "GT",
+        "periodIndex": 1,
+        "errorThreshold": "3",
+        "actualValue": "0.4"
+      },
+      {
+        "status": "OK",
+        "metricKey": "new_security_hotspots_reviewed",
+        "comparator": "LT",
+        "periodIndex": 1,
+        "errorThreshold": "100",
+        "actualValue": "100.0"
+      }
+    ],
+    "periods": [
+      {
+        "index": 1,
+        "mode": "previous_version",
+        "date": "2026-10-23T18:40:02+03:00"
+      }
+    ],
+    "ignoredConditions": false
+  },
+  "profiles_current": [
+    {
+      "key": "AaFomba9dkEpBguAy7aR",
+      "name": "Sonar way core",
+      "language": "docker",
+      "activeRuleCount": 37,
+      "rulesUpdatedAt": "2026-10-29T18:56:47+03:00"
+    },
+    {
+      "key": "AaFomba9dkEpBguAy7aX",
+      "name": "Sonar way core",
+      "language": "githubactions",
+      "activeRuleCount": 32,
+      "rulesUpdatedAt": "2026-10-29T18:58:24+03:00"
+    },
+    {
+      "key": "AaFomba8dkEpBguAy7Z6",
+      "name": "Sonar way core",
+      "language": "js",
+      "activeRuleCount": 249,
+      "rulesUpdatedAt": "2026-10-14T19:47:14+03:00"
+    },
+    {
+      "key": "AaFomba8dkEpBguAy7aE",
+      "name": "Sonar way core",
+      "language": "kubernetes",
+      "activeRuleCount": 18,
+      "rulesUpdatedAt": "2026-08-17T15:43:49+03:00"
+    },
+    {
+      "key": "AaFomba8dkEpBguAy7Z9",
+      "name": "Sonar way core",
+      "language": "py",
+      "activeRuleCount": 303,
+      "rulesUpdatedAt": "2026-11-10T17:44:54+03:00"
+    },
+    {
+      "key": "AaFomba9dkEpBguAy7aK",
+      "name": "Sonar way core",
+      "language": "secrets",
+      "activeRuleCount": 357,
+      "rulesUpdatedAt": "2026-11-04T19:14:30+03:00"
+    },
+    {
+      "key": "AaFomba9dkEpBguAy7aM",
+      "name": "Sonar way core",
+      "language": "shell",
+      "activeRuleCount": 11,
+      "rulesUpdatedAt": "2026-09-03T14:52:28+03:00"
+    },
+    {
+      "key": "AaFomba9dkEpBguAy7aq",
+      "name": "Sonar way core",
+      "language": "ts",
+      "activeRuleCount": 248,
+      "rulesUpdatedAt": "2026-10-14T19:48:53+03:00"
+    },
+    {
+      "key": "AaFomba9dkEpBguAy7aJ",
+      "name": "Sonar way core",
+      "language": "yaml",
+      "activeRuleCount": 2,
+      "rulesUpdatedAt": "2026-08-17T15:55:21+03:00"
+    }
+  ],
+  "github_ai_pr_review": {
+    "id": 357232766,
+    "state": "disabled_manually"
+  }
+}

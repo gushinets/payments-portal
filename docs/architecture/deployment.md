@@ -317,10 +317,14 @@ the flag retains the standalone configuration; `COMPOSE_FILE` does not add
 files to this explicit selection. A missing or invalid overlay fails at
 `compose config` before any service is stopped.
 
-`image-up` holds the deployment lock throughout: stop the API (including its
-embedded worker), wait for retained PostgreSQL, run a fresh migration container
-from the selected backend image, then start API only after migration success and
-readiness, followed by web health (`--wait` for both). The default API stop grace is 75 seconds for the
+`image-up` holds the deployment lock throughout. A full update first imports
+application settings from the selected backend image using the migration
+service's effective Compose environment. The temporary check starts without
+dependencies, and a settings error aborts before stopping the existing API.
+A successful check is followed by stopping the API (including its embedded
+worker), waiting for retained PostgreSQL, running migrations, and starting
+the API and web with health checks (`--wait` for both).
+The default API stop grace is 75 seconds for the
 default 60-second worker I/O budget; increase `PORTAL_API_STOP_GRACE_PERIOD` if
 raising that budget, retaining time for cleanup. PostgreSQL readiness uses TCP
 and a cold-initialization start period. A migration failure leaves the old API stopped; do
