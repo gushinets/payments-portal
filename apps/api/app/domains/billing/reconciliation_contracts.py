@@ -6,7 +6,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from app.domains.billing.contracts import CustomerOpen
+from app.domains.billing.contracts import BillingRefused, CustomerOpen
 from app.domains.billing.paid_cycles import CalendarEvidence
 from app.domains.billing.work_contracts import WorkAttemptOutcome
 from app.domains.identity.services.auth import as_utc
@@ -117,6 +117,10 @@ class ReconciliationResult:
     subject: ReconciliationSubject
     proof: SubscriptionProof
     purchase: Purchase
+
+
+class ReconciliationClaimBusy(BillingRefused):
+    """Local contention prevented the attempt from acquiring its source lease."""
 
 
 class ReconciliationWakeupHandled(Exception):

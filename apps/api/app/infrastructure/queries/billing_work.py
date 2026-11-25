@@ -98,8 +98,8 @@ def _widget_wait_is_live(db: Session, now: datetime) -> ColumnElement[bool]:
             widget.enqueue_generation.cast(Text) == wakeup["window"]["generation"].as_string().cast(Text),
         )
     )
-    # A former payload with no live, exact waiter should never enter the deadline comparison.
-    return case((still_owned, func.coalesce(original_due_is_future, false())), else_=false())
+    # With no separate ordinary schedule, only a new hint or a released lease can wake this signal.
+    return case((still_owned, or_(original_due.is_(None), original_due_is_future)), else_=false())
 
 
 def claimable(

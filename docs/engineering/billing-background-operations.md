@@ -385,6 +385,9 @@ committing the hint. When fresh regular proof has already queued the linked
 first-primary inventory, it reuses that attempt. The hint preserves an
 in-flight lease. A later worker can finish the exact Widget wakeup without
 starting another source read once matching work has queued the linked selection.
+When the signal arrives during a running reconciliation, that attempt records
+its next ordinary due time as it finishes. The Widget follow-up can wait for a
+later source fence and resumes as soon as that fence is released or expires.
 
 When Widget advances a pending reconciliation, a live inventory attempt can
 also cover that wakeup if its saved `next_attempt_at` was at or before the
@@ -401,16 +404,26 @@ fence of the subscription. The worker releases the queue claim and retains its
 due time. Recalculating the future urgent cadence during HTTP or inventory
 apply preserves the Widget signal's generation. The saved regular schedule
 keeps the earlier of its existing and recalculated due times and adopts urgent
-priority. A matching live inventory can record its wait before the first
-pickup. The wakeup becomes eligible after all recorded owners finish, expire
-or are superseded. An independent reconciliation hint or a due ordinary check
-can run on its own. A current grant for the selected subscription satisfies
-the wakeup even if it commits before the first pickup. The worker restores
-the ordinary schedule in that case and uses the ordinary proof path when
-more evidence is needed.
+priority. The same transaction advances the queue's next attempt time if it
+falls after the saved regular due time. A matching live inventory can record
+its wait before the first pickup. The wakeup becomes eligible after all
+recorded owners finish, expire or are superseded. An independent reconciliation
+hint or a due ordinary check can run on its own. When local contention prevents
+a Widget-only attempt from acquiring the subscription source lease, its retry
+is due no later than the saved regular check if the attempt started before
+that check was due. This also applies when the lock wait crosses the saved due
+time. A current grant for the selected subscription satisfies the wakeup even
+if it commits before the first pickup. The worker restores the ordinary
+schedule in that case and uses the ordinary proof path when more evidence is
+needed.
 
 The reconciliation row records wakeup coverage independently of the cabinet's
-inventory link, without locking the Widget row.
+inventory link, without locking the Widget row. After a positive signal, the
+cabinet tracks a reconciliation and its first-primary inventory through the
+matching Widget wakeup. The first claim for that wakeup can keep `checking`
+after the preceding ordinary claim expires. Reclaiming the Widget's own
+expired attempt leaves `unconfirmed`, as does starting an independently due
+reconciliation after the window.
 Paid access and purchased allowances are written by standard reconciliation and
 primary selection from their own authoritative proof.
 

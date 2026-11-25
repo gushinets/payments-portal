@@ -260,13 +260,10 @@ def _activation_status(
             completion = window.completion
             if completion is not None and completion.reason == WidgetActivationCompletionReason.PURCHASE_INELIGIBLE:
                 return None
+            window_key = ActivationWindowKey.from_job(job)
             reconciliation_payload = ReconciliationQueuePayload.from_job(reconciliation)
             link = reconciliation_payload.first_primary
-            if (
-                link is not None
-                and link.purchase_id == purchase_id
-                and link.window == ActivationWindowKey.from_job(job)
-            ):
+            if link is not None and link.purchase_id == purchase_id and link.window == window_key:
                 phase = link.phase(inventory, now)
                 if phase == BillingWorkState.RUNNING or (
                     phase == BillingWorkState.PENDING and now < link.queued_at + HANDOFF_PICKUP_GRACE
@@ -275,14 +272,19 @@ def _activation_status(
             if completion is None:
                 if now < window.deadline_at + CLOSING_GRACE:
                     return ActivationCheckStatus.CHECKING
-            elif completion.reason == WidgetActivationCompletionReason.ACTIVATION_DETECTED and (
-                (
-                    not reconciliation_payload.was_reclaimed_since(completion.at)
-                    and _handoff_in_progress(reconciliation, completion.at, now)
+            elif completion.reason == WidgetActivationCompletionReason.ACTIVATION_DETECTED:
+                wakeup = (
+                    reconciliation_payload.wakeup_for_generation(reconciliation.enqueue_generation)
+                    if reconciliation is not None
+                    else None
                 )
-                or _handoff_in_progress(inventory, completion.inventory_due_at, now)
-            ):
-                return ActivationCheckStatus.CHECKING
+                if (
+                    wakeup is not None
+                    and wakeup.window == window_key
+                    and not reconciliation_payload.was_reclaimed_since(completion.at)
+                    and _handoff_in_progress(reconciliation, completion.at, now)
+                ) or _handoff_in_progress(inventory, completion.inventory_due_at, now):
+                    return ActivationCheckStatus.CHECKING
             return ActivationCheckStatus.UNCONFIRMED
     if (
         proof is not None

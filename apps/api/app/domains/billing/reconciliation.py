@@ -8,6 +8,7 @@ from app.domains.billing.contracts import BillingRefused, CustomerOpen
 from app.domains.billing.first_activation import (
     InventoryAttempt,
     ReconciliationAttempt,
+    ReconciliationQueuePayload,
     handle_widget_wakeup,
     record_first_activation_inventory,
 )
@@ -251,8 +252,8 @@ def apply_reconciliation(
         ):
             raise BillingRefused("subscription_provenance_changed", 409)
         subscription_claim = None
-        reconciliation_due_at = None
-        reconciliation_attempt = None
+        reconciliation_window = None
+        attempt = None
         inventory_attempt = None
         if work_claim is not None:
             if work_claim.kind == RECONCILIATION and work_claim.reference == str(current.subscription_id):
@@ -263,10 +264,14 @@ def apply_reconciliation(
                 raise BillingRefused("billing_work_stale", 409)
             queue_row = verify_claim(db, work_claim)
             if subscription_claim is not None:
-                reconciliation_due_at = as_utc(queue_row.next_attempt_at)
-                reconciliation_attempt = ReconciliationAttempt(
+                attempt = ReconciliationAttempt(
                     generation=subscription_claim.generation, number=queue_row.attempt_count
                 )
+                payload = ReconciliationQueuePayload.from_job(queue_row)
+                wakeup = payload.wakeup_for_generation(queue_row.enqueue_generation)
+                # Capture the link before scheduling consumes the Widget wakeup.
+                if wakeup and (wakeup.generation == attempt.generation or wakeup.running_attempt == attempt):
+                    reconciliation_window = wakeup.window
             elif queue_row.coalescing_key != f"{purchase.account_id}:{purchase.customer_id}":
                 raise BillingRefused("billing_work_stale", 409)
             else:
@@ -484,8 +489,8 @@ def apply_reconciliation(
                     subscription_key=key(current),
                     purchase_id=purchase.id,
                     inventory=inventory_attempt,
-                    reconciliation_due_at=reconciliation_due_at,
-                    reconciliation_attempt=reconciliation_attempt,
+                    reconciliation_window=reconciliation_window,
+                    reconciliation_attempt=attempt,
                 )
         db.flush()
         committed = service._snapshot(db, row)

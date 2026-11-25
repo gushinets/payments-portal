@@ -62,7 +62,7 @@ from app.infrastructure.queries import billing_reconciliation
 from app.domains.purchases import financial
 from app.integrations.lbx.dto import LbxRead, LbxTariff
 from app.integrations.lbx.errors import LbxScopeMismatch, LbxUnavailable
-from app.integrations.lbx.financial import Subscription
+from app.integrations.lbx.financial import Agreement, Subscription
 from app.integrations.lbx.reconciliation import read_subscription_proof
 from app.jobs import billing as billing_jobs
 from app.jobs.billing import BillingWorker
@@ -1033,6 +1033,209 @@ async def test_any897_widget_resumes_when_http_releases_subscription_lease(
 
 @pytest.mark.parametrize("scenario", [True], indirect=True)
 @pytest.mark.parametrize("activation_polling", [{"prepared_at": PERIOD_TEST_PREPARED_AT}], indirect=True)
+@pytest.mark.parametrize(
+    ("pickup_offset", "after_read"),
+    [
+        pytest.param(-29, False, id="before-source"),
+        pytest.param(-0.5, False, id="lock-wait-crosses-regular-due"),
+        pytest.param(0, False, id="pickup-at-regular-due"),
+        pytest.param(-29, True, id="after-source"),
+    ],
+)
+async def test_any897_widget_handoff_retries_local_contention_with_or_without_source_lease(
+    activation_polling: ActivationPolling,
+    cabinet: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    pickup_offset: float,
+    after_read: bool,
+) -> None:
+    polling = activation_polling
+    factory = polling.factory
+    prepared_at = polling.window.prepared_at
+    monkeypatch.setattr(paid_read, "database_now", lambda db: polling.now)
+    regular_id, _, generation = reconciliation_schedule(factory)
+    regular_due = prepared_at + timedelta(seconds=50)
+    with factory() as db, db.begin():
+        db.get(BillingWorkItem, regular_id).next_attempt_at = regular_due
+        user_id = db.scalar(select(ExternalSubscription.user_id))
+
+    activate(polling.transport)
+    prove_month(polling.transport.subscriptions[0], polling.window.prepared_at)
+    assert await polling.tick(20)
+    assert reconciliation_schedule(factory) == (regular_id, polling.now, generation + 1)
+    assert await cabinet_status(cabinet) == ("checking", 0)
+    polling.transport.requests.clear()
+
+    picked_up_at = regular_due + timedelta(seconds=pickup_offset)
+    polling.now = picked_up_at
+    clock_started: float | None = None
+
+    def advancing_clock(_db: Session) -> datetime:
+        # Fix the pickup instant and let PostgreSQL's real lock wait advance time.
+        nonlocal clock_started
+        sample = monotonic()
+        if clock_started is None:
+            clock_started = sample
+        return picked_up_at + timedelta(seconds=sample - clock_started)
+
+    with factory() as locker, locker.begin(), monkeypatch.context() as patch:
+        if after_read:
+            read = orchestration.read_subscription_proof
+
+            async def read_then_lock(*args: Any, **kwargs: Any) -> SubscriptionProof:
+                proof = await read(*args, **kwargs)
+                assert proof.complete
+                assert locker.get(User, user_id, with_for_update=True) is not None
+                return proof
+
+            patch.setattr(orchestration, "read_subscription_proof", read_then_lock)
+        else:
+            assert locker.get(User, user_id, with_for_update=True) is not None
+            patch.setattr(billing_reconciliation, "database_now", advancing_clock)
+        assert await polling.worker.tick(WorkLane.URGENT)
+
+    assert bool(polling.transport.requests) == after_read
+    with factory() as db:
+        resumed_at = polling.now if after_read else advancing_clock(db)
+        row = db.get(BillingWorkItem, regular_id)
+        assert row.last_attempt_started_at == picked_up_at
+        assert row.last_error_classification == "billing_busy" and row.lease_owner is None
+        retry_at = row.next_attempt_at
+        source_lease = db.scalar(select(ExternalSubscription.reconciliation_lease_expires_at))
+    if pickup_offset == -0.5:
+        assert picked_up_at < regular_due < resumed_at
+    if after_read:
+        assert source_lease is not None and regular_due < source_lease < retry_at
+    else:
+        assert source_lease is None
+
+    if pickup_offset < 0 and not after_read:
+        assert retry_at == regular_due
+    else:
+        earliest_regular_pickup = max(regular_due, resumed_at)
+        assert retry_at > earliest_regular_pickup
+        assert not await polling.tick((earliest_regular_pickup - prepared_at).total_seconds(), WorkLane.URGENT)
+
+    retry_seconds = (max(retry_at, resumed_at) - prepared_at).total_seconds()
+    assert await polling.tick(retry_seconds, WorkLane.URGENT)
+    assert await polling.tick(retry_seconds + 1, WorkLane.URGENT)
+    assert await cabinet_status(cabinet) == (None, 1)
+    with factory() as db:
+        assert db.scalars(select(PurchasedAllowance)).one().quantity == 100
+
+
+@pytest.mark.parametrize("scenario", [True], indirect=True)
+@pytest.mark.parametrize(
+    "activation_polling",
+    [{"prepared_at": PERIOD_TEST_PREPARED_AT, "billing_worker_io_timeout_seconds": 240}],
+    indirect=True,
+)
+@pytest.mark.parametrize("retry_first", [False, True], ids=["http-before-retry", "retry-before-http"])
+async def test_any897_recalculated_regular_due_is_claimable_after_widget_retry(
+    activation_polling: ActivationPolling,
+    scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    cabinet: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    retry_first: bool,
+) -> None:
+    polling = activation_polling
+    factory = polling.factory
+    prepared_at = polling.window.prepared_at
+    monkeypatch.setattr(paid_read, "database_now", lambda db: polling.now)
+    regular_id, _, _ = reconciliation_schedule(factory)
+    polling.now = prepared_at + timedelta(seconds=1)
+    with factory() as db, db.begin():
+        subscription = db.scalars(select(ExternalSubscription)).one()
+        subscription_id, user_id = subscription.subscription_id, subscription.user_id
+        work.enroll_subscription(db, subscription, hint=True)
+
+    # Use two valid jitter seeds so the independent HTTP read advances the regular due time.
+    jitter_seeds = {
+        regular_id: UUID("00000000-0000-4000-8000-000000000008"),
+        subscription_id: UUID("00000000-0000-4000-8000-000000000007"),
+    }
+    spread_seconds = work.spread_seconds
+    monkeypatch.setattr(
+        work, "spread_seconds", lambda key, interval: spread_seconds(jitter_seeds.get(key, key), interval)
+    )
+    assert await polling.tick(1, WorkLane.URGENT)
+    _, original_due, generation = reconciliation_schedule(factory)
+
+    http_ready, release_http = asyncio.Event(), asyncio.Event()
+    retry_ready, release_retry = asyncio.Event(), asyncio.Event()
+    read = orchestration.read_subscription_proof
+    delegate = polling.worker.db
+
+    async def pause_http_apply(*args: Any, **kwargs: Any) -> SubscriptionProof:
+        proof = await read(*args, **kwargs)
+        if not http_ready.is_set():
+            assert proof.complete and SubscriptionLifecycleReason.WAITING in proof.reasons
+            assert proof.read_started_at == http_started_at
+            http_ready.set()
+            await release_http.wait()
+        return proof
+
+    async def pause_retry_save(
+        lane: WorkLane | DeliveryLane, function: Callable[..., Any], *args: Any, **kwargs: Any
+    ) -> Any:
+        if function is work.retry_work:
+            assert kwargs["before_source_claim"] and kwargs["error"] == "billing_busy"
+            retry_ready.set()
+            await release_retry.wait()
+        return await delegate(lane, function, *args, **kwargs)
+
+    monkeypatch.setattr(orchestration, "read_subscription_proof", pause_http_apply)
+    monkeypatch.setattr(polling.worker, "db", pause_retry_save)
+    http_started_at = polling.now = prepared_at + timedelta(seconds=19)
+    http_task = asyncio.create_task(payment(cabinet, scenario[2].id))
+    retry_task = None
+    try:
+        await asyncio.wait_for(http_ready.wait(), 5)
+        activate(polling.transport)
+        prove_month(polling.transport.subscriptions[0], prepared_at)
+        assert await polling.tick(20)
+        assert reconciliation_schedule(factory) == (regular_id, polling.now, generation + 1)
+        polling.transport.requests.clear()
+        with factory() as locker, locker.begin():
+            assert locker.get(User, user_id, with_for_update=True) is not None
+            retry_task = asyncio.create_task(polling.tick(21, WorkLane.URGENT))
+            await asyncio.wait_for(retry_ready.wait(), 5)
+            if retry_first:
+                release_retry.set()
+                assert await retry_task
+        assert not polling.transport.requests
+
+        polling.now = prepared_at + timedelta(seconds=22)
+        release_http.set()
+        assert (await http_task).status_code == 200
+        release_retry.set()
+        assert await retry_task
+    finally:
+        release_http.set()
+        release_retry.set()
+        await http_task
+        if retry_task is not None:
+            await retry_task
+
+    earlier_due = http_started_at + timedelta(seconds=work.spread_seconds(subscription_id, work.URGENT_SECONDS))
+    assert earlier_due < original_due
+    with factory() as db:
+        row = db.get(BillingWorkItem, regular_id)
+        wakeup = ReconciliationQueuePayload.from_job(row).widget_wakeup
+        assert wakeup is not None and wakeup.original_due_at == earlier_due
+        assert row.enqueue_generation == wakeup.generation == generation + 1
+        assert row.last_error_classification == "billing_busy" and row.lease_owner is None
+        assert row.next_attempt_at == earlier_due
+    due_seconds = (earlier_due - prepared_at).total_seconds()
+    assert await polling.tick(due_seconds, WorkLane.URGENT)
+    assert await polling.tick(due_seconds + 1, WorkLane.URGENT)
+    assert await cabinet_status(cabinet) == (None, 1)
+    with factory() as db:
+        assert db.scalars(select(PurchasedAllowance)).one().quantity == 100
+
+
+@pytest.mark.parametrize("scenario", [True], indirect=True)
+@pytest.mark.parametrize("activation_polling", [{"prepared_at": PERIOD_TEST_PREPARED_AT}], indirect=True)
 @pytest.mark.parametrize("owner", ["inventory", "subscription"])
 @pytest.mark.parametrize("resume", ["expired", "original-due", "new-hint"])
 async def test_any897_widget_wait_yields_to_recovery_and_independent_work(
@@ -1205,6 +1408,83 @@ async def test_any897_in_flight_reconciliation_only_consumes_covered_widget_wake
 
 @pytest.mark.parametrize("scenario", [True], indirect=True)
 @pytest.mark.parametrize("activation_polling", [{"prepared_at": PERIOD_TEST_PREPARED_AT}], indirect=True)
+async def test_any897_widget_handoff_from_running_reconciliation_waits_for_later_http_lease(
+    activation_polling: ActivationPolling,
+    scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    cabinet: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    polling = activation_polling
+    factory = polling.factory
+    prepared_at = polling.window.prepared_at
+    monkeypatch.setattr(paid_read, "database_now", lambda db: polling.now)
+    regular_id, _, _ = reconciliation_schedule(factory)
+    with factory() as db, db.begin():
+        db.get(BillingWorkItem, regular_id).next_attempt_at = prepared_at + timedelta(seconds=19)
+
+    old_read, release_old, http_read, release_http = (asyncio.Event() for _ in range(4))
+    read = orchestration.read_subscription_proof
+
+    async def pause_apply(*args: Any, **kwargs: Any) -> SubscriptionProof:
+        proof = await read(*args, **kwargs)
+        if not old_read.is_set():
+            assert proof.complete and SubscriptionLifecycleReason.WAITING in proof.reasons
+            old_read.set()
+            await release_old.wait()
+        elif not http_read.is_set():
+            assert not proof.complete and "agreement:lbx_unavailable" in proof.reasons
+            http_read.set()
+            await release_http.wait()
+        return proof
+
+    monkeypatch.setattr(orchestration, "read_subscription_proof", pause_apply)
+    old_task = asyncio.create_task(polling.tick(19, WorkLane.URGENT))
+    try:
+        await asyncio.wait_for(old_read.wait(), 5)
+        activate(polling.transport)
+        prove_month(polling.transport.subscriptions[0], prepared_at)
+        assert await polling.tick(20)
+        with factory() as db:
+            wakeup = ReconciliationQueuePayload.from_job(db.get(BillingWorkItem, regular_id)).widget_wakeup
+            assert wakeup is not None and wakeup.running_attempt is not None and wakeup.original_due_at is None
+    finally:
+        release_old.set()
+        assert await old_task
+    signal_schedule = reconciliation_schedule(factory)
+
+    async def unavailable_agreement(*, agreement_id: int, budget: PreflightBudget) -> Agreement:
+        raise LbxUnavailable()
+
+    polling.now = prepared_at + timedelta(seconds=22)
+    with monkeypatch.context() as patch:
+        patch.setattr(polling.worker.client, "get_agreement", unavailable_agreement)
+        http_task = asyncio.create_task(payment(cabinet, scenario[2].id))
+        try:
+            await asyncio.wait_for(http_read.wait(), 5)
+            requests = len(polling.transport.requests)
+            assert await polling.tick(23, WorkLane.URGENT)
+            assert not await polling.tick(23.5, WorkLane.URGENT)
+            assert len(polling.transport.requests) == requests
+            with factory() as db:
+                row = db.get(BillingWorkItem, regular_id)
+                wakeup = ReconciliationQueuePayload.from_job(row).widget_wakeup
+                assert wakeup is not None and wakeup.source_wait_fence is not None
+                assert row.lease_owner is None
+        finally:
+            polling.now = prepared_at + timedelta(seconds=24)
+            release_http.set()
+            assert (await http_task).status_code == 409
+
+    assert reconciliation_schedule(factory) == signal_schedule
+    assert await polling.tick(25, WorkLane.URGENT)
+    assert await polling.tick(26, WorkLane.URGENT)
+    assert await cabinet_status(cabinet) == (None, 1)
+    with factory() as db:
+        assert db.scalars(select(PurchasedAllowance)).one().quantity == 100
+
+
+@pytest.mark.parametrize("scenario", [True], indirect=True)
+@pytest.mark.parametrize("activation_polling", [{"prepared_at": PERIOD_TEST_PREPARED_AT}], indirect=True)
 async def test_any897_covered_pending_wakeup_restores_the_original_reconciliation_due(
     activation_polling: ActivationPolling,
 ) -> None:
@@ -1298,6 +1578,7 @@ async def test_any897_cabinet_stays_unconfirmed_when_reconciliation_handoff_is_r
 
     retry = work.claim_work(factory, polling.worker.configuration, WorkLane.URGENT)
     assert retry is not None and retry.id == original.id and retry.owner != original.owner
+    assert retry.generation == original.generation
     assert reconciliation_schedule(factory) == original_schedule
     assert await cabinet_status(cabinet) == ("unconfirmed", 0)
 
@@ -1315,6 +1596,188 @@ async def test_any897_cabinet_stays_unconfirmed_when_reconciliation_handoff_is_r
     assert await cabinet_status(cabinet) == (None, 1)
     with factory() as db:
         assert db.scalars(select(PurchasedAllowance)).one().quantity == 100
+
+
+@pytest.mark.parametrize("scenario", [True], indirect=True)
+@pytest.mark.parametrize(
+    "activation_polling",
+    [{"prepared_at": PERIOD_TEST_PREPARED_AT, "billing_worker_io_timeout_seconds": 10}],
+    indirect=True,
+)
+@pytest.mark.parametrize("reclaim_widget", [False, True], ids=["first-pickup", "same-generation-reclaim"])
+async def test_any897_widget_pickup_after_ordinary_lease_expires(
+    activation_polling: ActivationPolling,
+    cabinet: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    reclaim_widget: bool,
+) -> None:
+    polling = activation_polling
+    factory = polling.factory
+    prepared = polling.window.prepared_at
+    monkeypatch.setattr(paid_read, "database_now", lambda db: polling.now)
+    regular_id, _, _ = reconciliation_schedule(factory)
+    with factory() as db, db.begin():
+        db.get(BillingWorkItem, regular_id).next_attempt_at = prepared + timedelta(seconds=19)
+
+    polling.now = prepared + timedelta(seconds=19)
+    ordinary = work.claim_work(factory, polling.worker.configuration, WorkLane.URGENT)
+    assert ordinary is not None and ordinary.id == regular_id
+    # The ordinary worker disappears before acquiring the source lease.
+    activate(polling.transport)
+    prove_month(polling.transport.subscriptions[0], prepared)
+    assert await polling.tick(20)
+    assert await cabinet_status(cabinet) == ("checking", 0)
+    assert ordinary.expires_at < polling.now + activation_windows.HANDOFF_PICKUP_GRACE
+
+    polling.now = ordinary.expires_at
+    first_widget = work.claim_work(factory, polling.worker.configuration, WorkLane.URGENT)
+    assert first_widget is not None and first_widget.id == ordinary.id
+    assert first_widget.generation == ordinary.generation + 1 and first_widget.owner != ordinary.owner
+    assert await cabinet_status(cabinet) == ("checking", 0)
+
+    claim = first_widget
+    expected = "checking"
+    if reclaim_widget:
+        polling.now = first_widget.expires_at
+        assert await cabinet_status(cabinet) == ("unconfirmed", 0)
+        retry = work.claim_work(factory, polling.worker.configuration, WorkLane.URGENT)
+        assert retry is not None and retry.id == first_widget.id and retry.owner != first_widget.owner
+        assert retry.generation == first_widget.generation
+        claim, expected = retry, "unconfirmed"
+
+    entered, release = asyncio.Event(), asyncio.Event()
+    read = orchestration.read_subscription_proof
+
+    async def pause_apply(*args: Any, **kwargs: Any) -> SubscriptionProof:
+        proof = await read(*args, **kwargs)
+        assert proof.complete and SubscriptionLifecycleReason.ACTIVE in proof.reasons
+        entered.set()
+        await release.wait()
+        return proof
+
+    with monkeypatch.context() as patch:
+        patch.setattr(orchestration, "read_subscription_proof", pause_apply)
+        task = asyncio.create_task(
+            orchestration.reconcile_subscription(
+                polling.worker.client,
+                polling.worker.admissions[WorkLane.URGENT],
+                polling.worker.configuration,
+                factory=factory,
+                subscription_id=UUID(claim.reference),
+                work_claim=claim,
+            )
+        )
+        try:
+            await asyncio.wait_for(entered.wait(), 5)
+            assert await cabinet_status(cabinet) == (expected, 0)
+        finally:
+            release.set()
+            await task
+
+    with factory() as db:
+        row = db.get(BillingWorkItem, regular_id)
+        assert (ReconciliationQueuePayload.from_job(row).first_primary is not None) == (not reclaim_widget)
+    assert await cabinet_status(cabinet) == (expected, 0)
+    seconds = (polling.now - prepared).total_seconds()
+    assert await polling.tick(seconds + 1, WorkLane.URGENT)
+    assert await cabinet_status(cabinet) == (None, 1)
+    with factory() as db:
+        assert db.scalars(select(PurchasedAllowance)).one().quantity == 100
+
+
+@pytest.mark.parametrize("scenario", [True], indirect=True)
+@pytest.mark.parametrize("activation_polling", [{"prepared_at": PERIOD_TEST_PREPARED_AT}], indirect=True)
+async def test_any897_cabinet_does_not_link_an_already_due_reconciliation_after_the_window(
+    activation_polling: ActivationPolling,
+    cabinet: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    polling = activation_polling
+    factory = polling.factory
+    monkeypatch.setattr(paid_read, "database_now", lambda db: polling.now)
+    regular_id, _, _ = reconciliation_schedule(factory)
+    prepared_at = polling.window.prepared_at
+    ordinary_due = prepared_at + timedelta(seconds=19)
+    with factory() as db, db.begin():
+        row = db.get(BillingWorkItem, regular_id)
+        row.next_attempt_at = ordinary_due
+        row.priority = 1
+
+    activate(polling.transport)
+    prove_month(polling.transport.subscriptions[0], prepared_at)
+    assert await polling.tick(20)
+    with factory() as db:
+        row = db.get(BillingWorkItem, regular_id)
+        assert row.next_attempt_at == ordinary_due
+        assert ReconciliationQueuePayload.from_job(row).widget_wakeup is None
+
+    polling.now = polling.window.deadline_at + activation_windows.CLOSING_GRACE + timedelta(seconds=1)
+    assert await cabinet_status(cabinet) == ("unconfirmed", 0)
+    entered, release = asyncio.Event(), asyncio.Event()
+    read = orchestration.read_subscription_proof
+
+    async def pause_apply(*args: Any, **kwargs: Any) -> SubscriptionProof:
+        proof = await read(*args, **kwargs)
+        assert proof.complete and SubscriptionLifecycleReason.ACTIVE in proof.reasons
+        entered.set()
+        await release.wait()
+        return proof
+
+    late_offset = (polling.now - prepared_at).total_seconds()
+    with monkeypatch.context() as patch:
+        patch.setattr(orchestration, "read_subscription_proof", pause_apply)
+        task = asyncio.create_task(polling.tick(late_offset, WorkLane.URGENT))
+        try:
+            await asyncio.wait_for(entered.wait(), 5)
+            assert await cabinet_status(cabinet) == ("unconfirmed", 0)
+        finally:
+            release.set()
+            assert await task
+    with factory() as db:
+        row = db.get(BillingWorkItem, regular_id)
+        assert ReconciliationQueuePayload.from_job(row).first_primary is None
+    assert await cabinet_status(cabinet) == ("unconfirmed", 0)
+    assert await polling.tick(late_offset + 1, WorkLane.URGENT)
+    assert await cabinet_status(cabinet) == (None, 1)
+    with factory() as db:
+        assert db.scalars(select(PurchasedAllowance)).one().quantity == 100
+
+
+@pytest.mark.parametrize("scenario", [True], indirect=True)
+@pytest.mark.parametrize("activation_polling", [{"prepared_at": PERIOD_TEST_PREPARED_AT}], indirect=True)
+@pytest.mark.parametrize("had_row", [False, True], ids=["new", "completed"])
+async def test_any897_cabinet_tracks_reconciliation_enrolled_by_widget_handoff(
+    activation_polling: ActivationPolling,
+    cabinet: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    had_row: bool,
+) -> None:
+    polling = activation_polling
+    factory = polling.factory
+    monkeypatch.setattr(paid_read, "database_now", lambda db: polling.now)
+    prepared_at = polling.window.prepared_at
+    with factory() as db, db.begin():
+        regular = db.scalars(select(BillingWorkItem).where(BillingWorkItem.work_kind == work.RECONCILIATION)).one()
+        subscription_id = UUID(regular.scope_reference)
+        if had_row:
+            regular.work_state = BillingWorkState.COMPLETED
+        else:
+            db.delete(regular)
+
+    polling.now = prepared_at + timedelta(seconds=19)
+    source = claim_reconciliation(factory, polling.worker.configuration, subscription_id, io_timeout_seconds=10)
+    activate(polling.transport)
+    prove_month(polling.transport.subscriptions[0], prepared_at)
+    assert await polling.tick(20)
+    assert await cabinet_status(cabinet) == ("checking", 0)
+    assert await polling.tick(21, WorkLane.URGENT)
+    assert not await polling.tick(22, WorkLane.URGENT)
+
+    resume_at = (source.lease_expires_at - prepared_at).total_seconds()
+    assert await polling.tick(resume_at, WorkLane.URGENT)
+    assert await cabinet_status(cabinet) == ("checking", 0)
+    assert await polling.tick(resume_at + 1, WorkLane.URGENT)
+    assert await cabinet_status(cabinet) == (None, 1)
 
 
 @pytest.mark.parametrize("scenario", [True], indirect=True)
@@ -2102,8 +2565,14 @@ async def test_any897_handoff_past_cutoff_rolls_back_hint_and_expires_window(
     activate(polling.transport)
     enroll = work.enroll_subscription
 
-    def advance_then_cross_cutoff(db: Session, subscription: ExternalSubscription, *, hint: bool = False) -> None:
-        enroll(db, subscription, hint=hint)
+    def advance_then_cross_cutoff(
+        db: Session,
+        subscription: ExternalSubscription,
+        *,
+        hint: bool = False,
+        payload: ReconciliationQueuePayload | None = None,
+    ) -> None:
+        enroll(db, subscription, hint=hint, payload=payload)
         polling.now = polling.window.deadline_at + timedelta(seconds=5, milliseconds=1)
 
     monkeypatch.setattr(work, "enroll_subscription", advance_then_cross_cutoff)
@@ -2111,6 +2580,8 @@ async def test_any897_handoff_past_cutoff_rolls_back_hint_and_expires_window(
     assert polling.now > polling.window.deadline_at + timedelta(seconds=5)
     assert len(polling.transport.requests) == 1
     assert reconciliation_schedule(polling.factory) == original
+    with polling.factory() as db:
+        assert ReconciliationQueuePayload.from_job(db.get(BillingWorkItem, original[0])).widget_wakeup is None
     assert (
         WidgetActivationWindow.from_work(polling.job()).completion.reason
         == WidgetActivationCompletionReason.WINDOW_EXPIRED

@@ -26,7 +26,7 @@ from app.core.settings import Settings
 from app.core.time import utc_now
 from app.domains.billing import work
 from app.domains.billing.contracts import BillingRefused
-from app.domains.billing.reconciliation_contracts import ReconciliationWakeupHandled
+from app.domains.billing.reconciliation_contracts import ReconciliationClaimBusy, ReconciliationWakeupHandled
 from app.domains.billing.work_contracts import WorkLane, WorkAttemptOutcome, InvalidationFailureCode, DeliveryLane
 from app.domains.catalog.publication import SessionFactory
 from app.infrastructure import billing_worker_metrics as metrics
@@ -303,6 +303,7 @@ class BillingWorker:
                         work.retry_work,
                         self.factory,
                         claim,
+                        before_source_claim=isinstance(error, ReconciliationClaimBusy),
                         invalid=claim.kind == work.RECONCILIATION
                         and error.code
                         in {

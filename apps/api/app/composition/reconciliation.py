@@ -16,6 +16,7 @@ from app.domains.billing.reconciliation import apply_reconciliation, claim_recon
 from app.domains.billing.reconciliation_contracts import (
     CommercialProof,
     IdentityProof,
+    ReconciliationClaimBusy,
     SubscriptionProof,
     ReconciliationResult,
     ReconciliationSubject,
@@ -67,14 +68,19 @@ async def reconcile_subscription(
 ) -> ReconciliationResult:
     if configuration.lbx_configuration_error is not None:
         raise BillingRefused("billing_not_configured")
-    subject = await delegate(
-        claim_reconciliation,
-        factory,
-        configuration,
-        subscription_id,
-        io_timeout_seconds=admission.policy.total_timeout_seconds,
-        work_claim=work_claim,
-    )
+    try:
+        subject = await delegate(
+            claim_reconciliation,
+            factory,
+            configuration,
+            subscription_id,
+            io_timeout_seconds=admission.policy.total_timeout_seconds,
+            work_claim=work_claim,
+        )
+    except BillingRefused as error:
+        if work_claim is not None and error.code == "billing_busy":
+            raise ReconciliationClaimBusy(error.code, error.status) from error
+        raise
     if expected is not None:
         from app.domains.purchases.inventory import same_purchase
 

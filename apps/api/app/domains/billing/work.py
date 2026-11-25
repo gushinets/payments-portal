@@ -65,7 +65,13 @@ def key(subscription: ExternalSubscription) -> str:
     return f"{subscription.external_billing_account_id}:{subscription.subscription_id}"
 
 
-def enroll_subscription(db: Session, subscription: ExternalSubscription, *, hint: bool = False) -> None:
+def enroll_subscription(
+    db: Session,
+    subscription: ExternalSubscription,
+    *,
+    hint: bool = False,
+    payload: ReconciliationQueuePayload | None = None,
+) -> None:
     coalesce(
         db,
         kind=RECONCILIATION,
@@ -74,7 +80,7 @@ def enroll_subscription(db: Session, subscription: ExternalSubscription, *, hint
         reference=str(subscription.subscription_id),
         due=as_utc(billing_reconciliation.database_now(db)),
         priority=1,
-        payload=None,
+        payload=payload.model_dump(mode="json") if payload is not None else None,
         hint=hint,
     )
 
@@ -82,27 +88,26 @@ def enroll_subscription(db: Session, subscription: ExternalSubscription, *, hint
 def hint_widget_reconciliation(db: Session, subscription: ExternalSubscription, window: ActivationWindowKey) -> None:
     row = queries.by_key(db, RECONCILIATION, key(subscription), lock=True)
     now = as_utc(billing_reconciliation.database_now(db))
-    if row is None:
-        enroll_subscription(db, subscription, hint=True)
-        return
-    due_at = as_utc(row.next_attempt_at)
-    running = row.work_state == BillingWorkState.RUNNING
-    if running or (row.work_state == BillingWorkState.PENDING and due_at > now):
+    ordinary_due = (
+        as_utc(row.next_attempt_at) if row is not None and row.work_state == BillingWorkState.PENDING else None
+    )
+    payload = None
+    if (
+        row is None
+        or row.work_state in (BillingWorkState.RUNNING, BillingWorkState.COMPLETED)
+        or (ordinary_due is not None and ordinary_due > now)
+    ):
         wakeup = WidgetReconciliationWakeup(
             window=window,
-            generation=row.enqueue_generation + 1,
+            generation=row.enqueue_generation + 1 if row is not None else 0,
             running_attempt=ReconciliationAttempt(generation=row.enqueue_generation, number=row.attempt_count)
-            if running
+            if row is not None and row.work_state == BillingWorkState.RUNNING
             else None,
-            original_due_at=None if running else due_at,
-            original_priority=row.priority,
+            original_due_at=ordinary_due,
+            original_priority=row.priority if row is not None else 1,
         )
-        row.payload_document = (
-            ReconciliationQueuePayload.from_job(row)
-            .model_copy(update={"widget_wakeup": wakeup})
-            .model_dump(mode="json")
-        )
-    enroll_subscription(db, subscription, hint=True)
+        payload = ReconciliationQueuePayload.from_job(row).model_copy(update={"widget_wakeup": wakeup})
+    enroll_subscription(db, subscription, hint=row is not None, payload=payload)
 
 
 def enroll_batch(factory: SessionFactory, configuration: Settings) -> int:
@@ -226,9 +231,9 @@ def claim_work(
         if row is None:
             return None
         if row.work_kind == BillingWorkKind.SUBSCRIPTION_RECONCILIATION and row.work_state == BillingWorkState.RUNNING:
-            # An expired claim can be reclaimed with the same due time and generation.
             payload = ReconciliationQueuePayload.from_job(row)
-            row.payload_document = payload.model_copy(update={"last_reclaimed_at": now}).model_dump(mode="json")
+            if not payload.wakeup_supersedes_attempt(row):
+                row.payload_document = payload.model_copy(update={"last_reclaimed_at": now}).model_dump(mode="json")
         row.lease_owner = str(uuid4())
         row.lease_expires_at = now + timedelta(seconds=configuration.billing_worker_io_timeout_seconds + 30)
         if row.work_kind != BillingWorkKind.WIDGET_ACTIVATION_CHECK:
@@ -332,8 +337,20 @@ def schedule_reconciliation(
         finish(db, row, claim, due=due, error=None if complete else "source_incomplete")
         row.priority = int(urgent or row.enqueue_generation != claim.generation)
         payload = ReconciliationQueuePayload.from_job(row)
-        if payload.widget_wakeup is not None and payload.widget_wakeup.generation <= claim.generation:
-            row.payload_document = payload.model_copy(update={"widget_wakeup": None}).model_dump(mode="json")
+        wakeup = payload.widget_wakeup
+        if wakeup is not None:
+            if wakeup.generation <= claim.generation:
+                wakeup = None
+            elif wakeup.generation == row.enqueue_generation and wakeup.running_attempt == ReconciliationAttempt(
+                generation=claim.generation, number=row.attempt_count
+            ):
+                # The old claim has now established the ordinary schedule behind the Widget signal.
+                regular_due, regular_priority = wakeup.ordinary_schedule(due, int(urgent))
+                wakeup = wakeup.model_copy(
+                    update={"original_due_at": regular_due, "original_priority": regular_priority}
+                )
+            if wakeup is not payload.widget_wakeup:
+                row.payload_document = payload.model_copy(update={"widget_wakeup": wakeup}).model_dump(mode="json")
     else:
         # For an exact Widget wakeup, merge urgent follow-up into the underlying
         # schedule so the wakeup retains its generation and current lease waits.
@@ -355,7 +372,12 @@ def schedule_reconciliation(
 
 
 def retry_work(
-    factory: SessionFactory, claim: WorkClaim, *, invalid: bool = False, error: str = "worker_attempt_failed"
+    factory: SessionFactory,
+    claim: WorkClaim,
+    *,
+    invalid: bool = False,
+    error: str = "worker_attempt_failed",
+    before_source_claim: bool = False,
 ) -> bool:
     """Acknowledge only a committed owned retry/quarantine; DB errors propagate."""
     with factory() as db:
@@ -367,6 +389,15 @@ def retry_work(
         # Source lease may still be occupied after cancellation: wait until its
         # finite expiry; never promote an old result or extend source trust.
         due = max(now + timedelta(seconds=30), claim.expires_at + timedelta(seconds=1))
+        if before_source_claim and claim.kind == RECONCILIATION:
+            wakeup = ReconciliationQueuePayload.from_job(row).widget_wakeup
+            if (
+                wakeup is not None
+                and wakeup.generation == row.enqueue_generation == claim.generation
+                and wakeup.original_due_at is not None
+                and wakeup.original_due_at > claim.started_at
+            ):
+                due = min(due, wakeup.original_due_at)
         finish(db, row, claim, due=due, error=error)
         if claim.kind == "customer_inventory":
             row.priority = 1

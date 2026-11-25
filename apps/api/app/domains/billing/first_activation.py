@@ -133,6 +133,11 @@ class WidgetReconciliationWakeup(BaseModel):
     inventory_wait: WidgetInventoryWait | None = Field(default=None, exclude_if=lambda value: value is None)
     source_wait_fence: int | None = Field(default=None, exclude_if=lambda value: value is None)
 
+    def ordinary_schedule(self, due: datetime, priority: int) -> tuple[datetime, int]:
+        if self.original_due_at is None:
+            return due, priority
+        return min(self.original_due_at, due), max(self.original_priority, priority)
+
 
 class ReconciliationQueuePayload(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -140,6 +145,15 @@ class ReconciliationQueuePayload(BaseModel):
     first_primary: FirstPrimaryAttempt | None = Field(default=None, exclude_if=lambda value: value is None)
     widget_wakeup: WidgetReconciliationWakeup | None = Field(default=None, exclude_if=lambda value: value is None)
     last_reclaimed_at: AwareDatetime | None = Field(default=None, exclude_if=lambda value: value is None)
+
+    def wakeup_for_generation(self, generation: int) -> WidgetReconciliationWakeup | None:
+        wakeup = self.widget_wakeup
+        return wakeup if wakeup is not None and wakeup.generation == generation else None
+
+    def wakeup_supersedes_attempt(self, job: BillingWorkItem) -> bool:
+        wakeup = self.wakeup_for_generation(job.enqueue_generation)
+        prior = wakeup.running_attempt if wakeup is not None else None
+        return prior is not None and prior.generation < job.enqueue_generation and prior.number == job.attempt_count
 
     def was_reclaimed_since(self, handoff_at: datetime) -> bool:
         return self.last_reclaimed_at is not None and self.last_reclaimed_at >= handoff_at
@@ -288,8 +302,8 @@ def handle_widget_wakeup(
 
     if source_busy:
         # A busy ordinary attempt keeps its source refusal without locking the queue.
-        queued = ReconciliationQueuePayload.from_job(db.get(BillingWorkItem, claim.id)).widget_wakeup
-        if queued is None or queued.original_due_at is None or scope.primary_subscription_id is not None:
+        queued = ReconciliationQueuePayload.from_job(db.get(BillingWorkItem, claim.id))
+        if queued.wakeup_for_generation(claim.generation) is None or scope.primary_subscription_id is not None:
             return None
     row = work.verify_claim(db, claim)
     subscription_key = work.key(sub)
@@ -325,7 +339,7 @@ def handle_widget_wakeup(
                 )
             )
     if not covered:
-        if wakeup.original_due_at is None or scope.primary_subscription_id is not None:
+        if scope.primary_subscription_id is not None:
             return None
         live_inventory = billing_work.by_key(db, BillingWorkKind.CUSTOMER_INVENTORY, inventory_key(sub))
         current_wait = _live_inventory_wait(live_inventory, now, signal_at)
@@ -358,19 +372,15 @@ def retain_widget_schedule(
     # The locked read refreshes the ORM row, so flush any pending schedule updates first.
     db.flush()
     row = billing_work.by_key(db, BillingWorkKind.SUBSCRIPTION_RECONCILIATION, subscription_key, lock=True)
+    if row is None or row.work_state not in (BillingWorkState.PENDING, BillingWorkState.RUNNING):
+        return False
     payload = ReconciliationQueuePayload.from_job(row)
-    wakeup = payload.widget_wakeup
-    if (
-        row is None
-        or row.work_state not in (BillingWorkState.PENDING, BillingWorkState.RUNNING)
-        or wakeup is None
-        or wakeup.generation != row.enqueue_generation
-        or wakeup.original_due_at is None
-    ):
+    wakeup = payload.wakeup_for_generation(row.enqueue_generation)
+    if wakeup is None:
         return False
     signal_at = _widget_signal_at(db, sub, subscription_key, wakeup.window)
     now = as_utc(billing_reconciliation.database_now(db))
-    if signal_at is None or wakeup.original_due_at <= now:
+    if signal_at is None or (wakeup.original_due_at is not None and wakeup.original_due_at <= now):
         return False
     inventory_wait = wakeup.inventory_wait
     if inventory_claim is not None:
@@ -381,13 +391,15 @@ def retain_widget_schedule(
         )
         if observed == expected and inventory_wait in (None, observed):
             inventory_wait = observed
+    regular_due, regular_priority = wakeup.ordinary_schedule(due, 1)
     wakeup = wakeup.model_copy(
         update={
-            "original_due_at": min(wakeup.original_due_at, due),
-            "original_priority": 1,
+            "original_due_at": regular_due,
+            "original_priority": regular_priority,
             "inventory_wait": inventory_wait,
         }
     )
+    row.next_attempt_at = min(as_utc(row.next_attempt_at), regular_due)
     row.payload_document = payload.model_copy(update={"widget_wakeup": wakeup}).model_dump(mode="json")
     return True
 
@@ -397,15 +409,15 @@ def _cabinet_inventory_link(
     window_key: ActivationWindowKey,
     previous: FirstPrimaryAttempt | None,
     inventory: InventoryAttempt,
-    reconciliation_due_at: datetime | None,
+    reconciliation_window: ActivationWindowKey | None,
     reconciliation_attempt: ReconciliationAttempt | None,
 ) -> FirstPrimaryAttempt | None:
     completion = window.completion
-    if completion is None or reconciliation_due_at is None:
+    if completion is None or reconciliation_attempt is None:
         inventory_at = inventory.started_at if inventory.started_at is not None else inventory.queued_at
         belongs = inventory_at < window.deadline_at + CLOSING_GRACE
     else:
-        belongs = reconciliation_due_at <= completion.at
+        belongs = reconciliation_window == window_key
     if not belongs:
         return None
     if inventory.source_proof is not None:
@@ -436,7 +448,7 @@ def record_first_activation_inventory(
     subscription_key: str,
     purchase_id: UUID,
     inventory: InventoryAttempt,
-    reconciliation_due_at: datetime | None,
+    reconciliation_window: ActivationWindowKey | None,
     reconciliation_attempt: ReconciliationAttempt | None,
 ) -> None:
     # The user lock stabilizes the window definition. A claim can lock the Widget row without changing it.
@@ -479,7 +491,7 @@ def record_first_activation_inventory(
     link = None
     if reconciliation_attempt is None or completion is None or not payload.was_reclaimed_since(completion.at):
         link = _cabinet_inventory_link(
-            window, window_key, payload.first_primary, inventory, reconciliation_due_at, reconciliation_attempt
+            window, window_key, payload.first_primary, inventory, reconciliation_window, reconciliation_attempt
         )
     if link is not None or wakeup is not payload.widget_wakeup:
         job.payload_document = payload.model_copy(
