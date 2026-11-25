@@ -821,9 +821,10 @@ reclaimed after the linked attempt's lease expires or first picked up at or
 after the saved deadline plus the five-second closing grace. Without a saved
 window, fresh matching reconciliation evidence of a waiting subscription also
 yields `unconfirmed`.
-A window completed as `purchase_ineligible` yields `null`, as do other cases
-where no activation status applies. Committed entries in `grants` determine the
-cabinet's paid access.
+A window completed as `purchase_ineligible` yields `null`. When regular
+reconciliation confirms the normalized `inactive` reason, the field also
+becomes `null`, even if the Widget previously signaled activation. Committed
+entries in `grants` determine the cabinet's paid access.
 
 Per-product confirmed access, fresh authoritative absence and unavailable evidence
 remain distinct. Implicit revision zero with no product evidence is confirmed

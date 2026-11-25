@@ -10,9 +10,10 @@ The buyer opens the payment Widget and pays in LBX. Portal automatically checks
 the selected subscription. The cabinet shows that activation is being checked
 during polling and final reconciliation. Once access is committed, the cabinet
 shows it automatically. The cabinet shows that activation is still unconfirmed
-when the check ends without access or when existing local evidence confirms
-waiting and the accelerated job was never saved. Scheduled reconciliation
-continues with the tab closed. Use the Russian messages recorded in Linear.
+when the check ends and the purchase still qualifies for first activation, or
+when fresh local evidence confirms waiting and the accelerated job was never
+saved. Scheduled reconciliation continues with the tab closed. Use the Russian
+messages recorded in Linear.
 
 ## Server and worker
 
@@ -99,10 +100,12 @@ inventory. When regular reconciliation queues the first selection for the saved
 window, it records the purchase, window and inventory attempt in the subscription
 reconciliation row without locking the Widget row. A live claim keeps `checking`
 visible through the linked attempt, and a pending stage has a 60-second pickup
-grace. If the accelerated path ends with access still pending, return
-`unconfirmed`. Without a saved window, return `unconfirmed` for a current
-owned and linked purchase awaiting its first activation if the latest
-reconciliation observation still provides fresh matching waiting evidence
+grace. If the accelerated path ends with access still pending and the purchase
+still qualifies for first activation, return `unconfirmed`. If regular
+reconciliation confirms the normalized `inactive` reason, return `null` even
+after a positive Widget signal. Without a saved window, return `unconfirmed`
+for a current owned and linked purchase awaiting its first activation if the
+latest reconciliation observation still provides fresh matching waiting evidence
 under the existing source trust rules. Read that evidence locally and return
 `null` when it is absent or stale. Committed access, terminal outcomes and
 known conflicts take precedence. Regenerate the OpenAPI and TypeScript

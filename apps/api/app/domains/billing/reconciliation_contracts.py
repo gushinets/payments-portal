@@ -3,16 +3,21 @@
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from enum import StrEnum
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from app.domains.billing.contracts import CustomerOpen
 from app.domains.billing.paid_cycles import CalendarEvidence
 from app.domains.billing.work_contracts import WorkAttemptOutcome
+from app.domains.identity.services.auth import as_utc
 from app.domains.purchases.contracts import Purchase
 from app.models import (
     ExternalSubscriptionFinancialAccessStatus as Financial,
     ExternalSubscriptionLifecycleStatus as Lifecycle,
 )
+
+if TYPE_CHECKING:
+    from app.models import ExternalSubscription
 
 RECONCILIATION_SCHEMA = "subscription-reconciliation:v2"
 RECONCILIATION_READ_SCHEMAS = ("subscription-reconciliation:v1", RECONCILIATION_SCHEMA)
@@ -62,6 +67,18 @@ class ReconciliationSubject:
     fence: int
     lease_expires_at: datetime
     claimed_at: datetime
+
+    def accepts_read(self, subscription: "ExternalSubscription", proof: "SubscriptionProof", now: datetime) -> bool:
+        """Check a source read against the current locked subscription lease."""
+        lease_expires_at = subscription.reconciliation_lease_expires_at
+        return (
+            subscription.reconciliation_lease_owner == self.owner
+            and subscription.reconciliation_fencing_token == self.fence
+            and lease_expires_at is not None
+            and as_utc(lease_expires_at) > now
+            and self.claimed_at <= proof.read_started_at <= proof.read_finished_at <= now
+            and proof.read_finished_at < self.lease_expires_at
+        )
 
 
 @dataclass(frozen=True)

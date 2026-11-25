@@ -214,18 +214,7 @@ def apply_reconciliation(
         scope = queries.scope(db, purchase.user_id, purchase.accepted.selection.product_id)
         current = queries.subscription(db, subject.subscription_id, lock=True)
         now = as_utc(queries.database_now(db))
-        if (
-            current is None
-            or scope is None
-            or current.reconciliation_lease_owner != subject.owner
-            or current.reconciliation_fencing_token != subject.fence
-            or current.reconciliation_lease_expires_at is None
-            or as_utc(current.reconciliation_lease_expires_at) <= now
-            or proof.read_started_at > proof.read_finished_at
-            or proof.read_started_at < subject.claimed_at
-            or proof.read_finished_at > now
-            or proof.read_finished_at >= subject.lease_expires_at
-        ):
+        if current is None or scope is None or not subject.accepts_read(current, proof, now):
             raise BillingRefused("subscription_reconciliation_stale", 409)
         if (
             current.purchase_intent_id != purchase.id

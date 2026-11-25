@@ -391,16 +391,17 @@ also cover that wakeup if its saved `next_attempt_at` was at or before the
 activation signal. The worker reuses fresh authoritative subscription proof from
 the exact inventory attempt while its lease is live and its enqueue generation
 and the subscription fence still match. Consuming the redundant wakeup restores
-the original reconciliation due time and priority. When that due time has
-arrived or a newer reconciliation hint has changed the generation, the regular
-check still runs.
+the saved regular schedule, including any urgent update described below. When
+that due time has arrived or a newer reconciliation hint has changed the
+generation, the regular check still runs.
 
 Before taking a subscription fence, a Widget-only wakeup can wait for the live
 customer inventory that was already due at the signal or for the live source
 fence of the subscription. The worker releases the queue claim and retains its
 due time. Recalculating the future urgent cadence during HTTP or inventory
-apply preserves the Widget signal's generation and merges the earlier ordinary
-due time. A matching live inventory can record its wait before the first
+apply preserves the Widget signal's generation. The saved regular schedule
+keeps the earlier of its existing and recalculated due times and adopts urgent
+priority. A matching live inventory can record its wait before the first
 pickup. The wakeup becomes eligible after all recorded owners finish, expire
 or are superseded. An independent reconciliation hint or a due ordinary check
 can run on its own. A current grant for the selected subscription satisfies
@@ -542,9 +543,11 @@ implementation and real provider authentication/delivery evidence.
 
 ## Startup, inspection and shutdown
 
-Apply migration `20261028_0005` after consolidated billing revision `20261029_0003`
-through the normal migration service before API startup. For retired branch
-revision labels, follow the [base migration runbook](ANY-709-billing-runbook.md#consolidated-any-709-migration).
+Run the normal migration service to the current Alembic `head` before API
+startup. The Widget activation queue requires revision `20261123_0014`.
+Follow the [deployment guide](../architecture/deployment.md#reviewed-image-installation-any-766-step-17).
+For retired branch revision labels, follow the
+[base migration runbook](ANY-709-billing-runbook.md#consolidated-any-709-migration).
 Use the existing repository/deployment start/restart commands. To disable worker
 execution, set `BILLING_WORKER_ENABLED=false` and restart. Shutdown stops claims
 and drains bounded work/cleanup; outstanding work remains reclaimable after
