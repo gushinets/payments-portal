@@ -24,6 +24,7 @@ from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
 from app.domains.purchases.financial import RECOVERY_WINDOW
+from app.domains.purchases.recovery_evidence import ProviderId, retained_points
 from app.domains.purchases.contracts import (
     FINANCIAL_REVIEW_SCHEMA,
     FinancialOperation,
@@ -44,6 +45,7 @@ from app.models import (
     ExternalCreateOperation,
     ExternalCreateOperationKind as Kind,
     ExternalCreateOperationState as OperationState,
+    ExternalSubscription,
     ManualReviewCase,
     PurchaseIntent,
     PurchaseIntentState as IntentState,
@@ -52,7 +54,6 @@ from app.models import (
 SCHEMA = "purchase-terminal-resolution:v1"
 TERMINAL_REASON = "purchase_terminal_resolution"
 SafeText = Annotated[str, Field(min_length=1, max_length=500, pattern=r"^[^\x00-\x1f\x7f]+$")]
-ProviderId = Annotated[str, Field(pattern=r"^[1-9][0-9]{0,19}$")]
 
 
 class TerminalEvidenceKind(StrEnum):
@@ -118,6 +119,7 @@ def state_digest(db: Session, row: PurchaseIntent) -> str:
     customer = db.get(ExternalBillingCustomer, row.customer_id)
     hold = purchases.hold(db, row.user_id, row.product_id)
     sub = queries.subscription(db, row.purchase_intent_id)
+    operations = purchases.operations(db, row.purchase_intent_id)
     return digest(
         {
             "purchase": str(row.purchase_intent_id),
@@ -125,7 +127,10 @@ def state_digest(db: Session, row: PurchaseIntent) -> str:
             "accepted": row.accepted_snapshot,
             "hold": str(hold.purchase_intent_id) if hold else None,
             "customer": [customer.provider_origin, customer.provider_customer_id, customer.binding_state],
-            "operations": operation_digest(db, purchases.operations(db, row.purchase_intent_id)),
+            "operations": operation_digest(db, operations),
+            "original_points": [
+                value.model_dump(mode="json") for op in operations if (value := retained_points(db, op)) is not None
+            ],
             "subscription": [str(sub.latest_observation_id), sub.reconciliation_fencing_token] if sub else None,
             "open_cases": sorted(
                 case_digest(case)
@@ -186,27 +191,41 @@ def _verify_proof(
     op: ExternalCreateOperation,
     item: OperationEvidence,
     evidence: TerminalEvidence,
-    subscription_id: UUID | None,
+    subscription: ExternalSubscription | None,
     now: datetime,
 ) -> None:
+    if item.outcome == TerminalEvidenceKind.NO_EXTERNAL_EFFECT:
+        raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
+
     snapshot = service._operation(db, op)
-    unsent = _locally_unsent(db, op, snapshot)
+    points = retained_points(db, op)
+    unsent = points is None and _locally_unsent(db, op, snapshot)
     if item.outcome == TerminalEvidenceKind.NOT_SENT:
         if not unsent:
             raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
         return
 
-    known_ids = {value for value in (snapshot.bound_id, snapshot.candidate_id) if value is not None}
-    if (known_ids and known_ids != {item.external_object_id}) or (unsent and item.external_object_id is not None):
-        raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
-    if item.external_object_id is not None:
-        lock_financial_object(db, op.external_billing_account_id, op.operation_kind, item.external_object_id)
-        if queries.other_financial_binding(
-            db, op, item.external_object_id
-        ) or late_purchase_reviews.other_audited_owner(
-            db, op, item.external_object_id, reason=TERMINAL_REASON, schema=SCHEMA
-        ):
+    external_id = item.external_object_id
+    assert external_id is not None
+    linked_id = None
+    if subscription is not None:
+        linked_id = (
+            subscription.external_agreement_id
+            if op.operation_kind == Kind.AGREEMENT
+            else subscription.external_subscription_id
+        )
+    known_ids = {value for value in (snapshot.bound_id, snapshot.candidate_id, linked_id) if value is not None}
+    if points is not None:
+        if points.conflict is not None:
             raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
+        known_ids.add(points.primary.external_object_id)
+    if unsent or (known_ids and known_ids != {external_id}):
+        raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
+    lock_financial_object(db, op.external_billing_account_id, op.operation_kind, external_id)
+    if queries.other_financial_binding(db, op, external_id) or late_purchase_reviews.other_audited_owner(
+        db, op, external_id, reason=TERMINAL_REASON, schema=SCHEMA
+    ):
+        raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
 
     # The operator attests actual sender shutdown and a definitive provider
     # confirmation. A worker flag, expired recovery window or empty GET is insufficient.
@@ -220,21 +239,27 @@ def _verify_proof(
     ):
         raise PurchaseRefused("purchase_resolution_confirmation_required", 409)
     if (
-        op.operation_kind == Kind.AGREEMENT
-        and snapshot.bound_id is not None
-        and not snapshot.agreement_closed
-        and op.resolved_at is not None
-        and as_utc(op.resolved_at) > confirmed
-    ) or (
-        op.operation_kind == Kind.SUBSCRIPTION
-        and subscription_id is not None
-        and queries.has_newer_live_subscription_read(
-            db,
-            subscription_id,
-            confirmed,
-            schemas=RECONCILIATION_READ_SCHEMAS,
-            preparation_schema=PREPARED_SUBSCRIPTION_SCHEMA,
-            matched_identity=IdentityProof.MATCH.value,
+        (points is not None and points.primary.point_read_finished_at > confirmed)
+        or (
+            points is None
+            and op.operation_kind == Kind.AGREEMENT
+            and snapshot.bound_id is not None
+            and not snapshot.agreement_closed
+            and op.resolved_at is not None
+            and as_utc(op.resolved_at) > confirmed
+        )
+        or (
+            subscription is not None
+            and queries.has_newer_live_financial_point(
+                db,
+                subscription.subscription_id,
+                op.operation_kind,
+                external_id,
+                confirmed,
+                schemas=RECONCILIATION_READ_SCHEMAS,
+                preparation_schema=PREPARED_SUBSCRIPTION_SCHEMA,
+                matched_identity=IdentityProof.MATCH.value,
+            )
         )
     ):
         raise PurchaseRefused("purchase_resolution_confirmation_required", 409)
@@ -287,7 +312,7 @@ def resolve_purchase(
             raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
         now = as_utc(billing_reconciliation.database_now(db))
         for op in operations:
-            _verify_proof(db, op, supplied[op.create_operation_id], request.evidence, sub_id, now)
+            _verify_proof(db, op, supplied[op.create_operation_id], request.evidence, sub, now)
 
         before = row.state
         external = any(item.outcome == TerminalEvidenceKind.EXTERNAL_TERMINAL for item in supplied.values())

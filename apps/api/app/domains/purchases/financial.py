@@ -30,6 +30,7 @@ from app.domains.purchases.contracts import (
     PurchaseRefused,
 )
 from app.domains.purchases.preparation import record_first_binding
+from app.domains.purchases.recovery_evidence import require_current_customer, settle_point_conflict
 from app.domains.purchases.service import _locked, _operation, _verify_original_consent
 from app.infrastructure.queries import purchases as queries
 from app.infrastructure.queries.billing_customers import (
@@ -45,7 +46,6 @@ from app.models import (
     ExternalCreateOperation,
     ExternalCreateOperationKind as Kind,
     ExternalCreateOperationState as State,
-    ExternalBillingCustomerBindingState as Binding,
     ManualReviewCase,
     PurchaseIntent,
     PurchaseIntentState as IntentState,
@@ -393,29 +393,13 @@ def _bind_financial(
             or not proof.read_started_at <= proof.read_finished_at <= now
         ):
             raise PurchaseRefused("purchase_history_unproven", 409)
-        customer = lock_customer(db, row.customer_id)
-        customer_create = customer_operation(db, customer.customer_id)
-        if (
-            customer.customer_id != proof.customer.customer_id
-            or customer.binding_state != Binding.BOUND
-            or customer.provider_customer_id != proof.customer.provider_id
-            or customer.billing_customer_key != proof.customer.outer_key
-            or customer.provider_origin != purchase.accepted.provider_origin
-            or customer_create is None
-            or customer_create.create_operation_id != proof.customer.operation_id
-            or customer_create.request_correlation_key != proof.customer.outer_key
-            or customer_create.send_fence != proof.customer.fence
-            or customer_create.operation_state != State.BOUND
-            or customer_create.bound_external_object_id != proof.customer.provider_id
-        ):
-            raise PurchaseRefused("billing_identity_unproven", 409)
-        customer_admission_reviews(db, customer, customer_create)
+        account = require_current_customer(db, row, purchase, proof.customer)
         if work_claim is not None:
             from app.domains.billing.background_recovery import pause_expired_recovery
             from app.domains.billing.work import verify_operation_claim
 
             verify_operation_claim(db, work_claim, expected.id)
-            if pause_expired_recovery(db, op, customer.external_billing_account_id):
+            if pause_expired_recovery(db, op, account):
                 db.commit()
                 raise PurchaseRefused("billing_work_stale", 409)
         existing = queries.linked_subscription(db, purchase.id)
@@ -436,6 +420,8 @@ def _bind_financial(
         op.operation_state = State.BOUND
         op.resolved_at = now
         work = recovery_work(db, op.create_operation_id)
+        if work is not None and resolution is not None:
+            settle_point_conflict(work, op, str(provider_id))
         if work and (work_claim is not None or work.work_state != "running"):
             if work_claim is not None:
                 from app.domains.billing.work import finish

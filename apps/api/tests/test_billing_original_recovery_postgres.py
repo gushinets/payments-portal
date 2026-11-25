@@ -322,3 +322,220 @@ async def test_reviewed_bound_financial_operation_is_completed_recovery_without_
         assert db.get(BillingWorkItem, claim.id).work_state == "completed"
         assert db.scalar(select(func.count()).select_from(BillingStateObservation)) == 1
         assert db.scalar(select(func.count()).select_from(ManualReviewCase)) == 1
+
+
+@pytest.mark.parametrize(
+    ("kind", "conflict"),
+    [("agreement", False), ("subscription", False), ("subscription", True)],
+    ids=["agreement", "subscription", "conflicting-subscriptions"],
+)
+async def test_unbound_original_point_fences_terminal_resolution(
+    background_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    conflict: bool,
+) -> None:
+    from app.composition import purchase_recovery
+    from app.domains.billing.reconciliation import read_source_time
+    from app.infrastructure.queries.billing_customers import recovery_work
+    from app.integrations.lbx.errors import LbxTimeout
+    from apps.api.tests.test_billing_background_recovery_postgres import synthetic_prepare
+
+    transport, sources, purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    if kind == "agreement":
+        transport.fail_create = "/agreements"
+        transport.hide.add("/agreements")
+        purchase = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+        transport.hide.clear()
+        transport.agreements[0]["close_date"] = None
+
+        def refuse_binding(*args: object, **kwargs: object) -> bool:
+            raise PurchaseRefused("purchase_history_unproven", 409)
+
+        monkeypatch.setattr(purchase_recovery.financial, "bind_financial", refuse_binding)
+    else:
+        purchase = synthetic_prepare(factory, transport, purchase, uncertain=True)
+
+        async def fail_tariff(**kwargs: object) -> None:
+            raise LbxTimeout()
+
+        monkeypatch.setattr(sources.require_lbx(), "get_tariff", fail_tariff)
+
+    agreement, subscription = purchase.operations
+    operation = agreement if kind == "agreement" else subscription
+    provider_id = "456" if kind == "agreement" else "567"
+    assert operation.bound_id is None and operation.candidate_id is None
+    early = read_source_time(factory)
+    if kind == "agreement":
+        with pytest.raises(PurchaseRefused, match="purchase_history_unproven"):
+            await recover_financial(
+                sources,
+                config,
+                factory=factory,
+                user_id=purchase.user_id,
+                purchase_id=purchase.id,
+                operation_id=operation.id,
+            )
+    else:
+        await recover_financial(
+            sources,
+            config,
+            factory=factory,
+            user_id=purchase.user_id,
+            purchase_id=purchase.id,
+            operation_id=operation.id,
+        )
+    saved = service.read_purchase(factory, purchase.user_id, purchase.id)
+    assert saved.held and next(op for op in saved.operations if op.id == operation.id).bound_id is None
+
+    kind_of = completion.TerminalEvidenceKind
+    other = completion.OperationEvidence(
+        operation_id=(subscription if kind == "agreement" else agreement).id,
+        outcome=kind_of.NOT_SENT if kind == "agreement" else kind_of.EXTERNAL_TERMINAL,
+        external_object_id=None if kind == "agreement" else "456",
+    )
+
+    def request(external_id: str) -> completion.TerminalRequest:
+        evidence = completion.OperationEvidence(
+            operation_id=operation.id, outcome=kind_of.EXTERNAL_TERMINAL, external_object_id=external_id
+        )
+        return terminal_request(factory, config, saved, evidence, other, confirmed=True)
+
+    with pytest.raises(PurchaseRefused, match="purchase_resolution_proof_incomplete"):
+        completion.resolve_purchase(factory, config, request("999"), "os-euid:1000")
+    with factory() as db:
+        data = recovery_work(db, operation.id).payload_document["original_point_facts"]
+        point = data["primary"]
+        assert point["operation_id"] == str(operation.id)
+        assert point["operation_kind"] == kind and point["external_object_id"] == provider_id
+        assert early <= datetime.fromisoformat(point["point_read_finished_at"]) <= read_source_time(factory)
+
+    exact = request(provider_id)
+    stale = exact.model_copy(
+        update={"evidence": exact.evidence.model_copy(update={"senders_stopped_at": early, "confirmed_at": early})}
+    )
+    with pytest.raises(PurchaseRefused, match="purchase_resolution_confirmation_required"):
+        completion.resolve_purchase(factory, config, stale, "os-euid:1000")
+    assert service.read_purchase(factory, purchase.user_id, purchase.id) == saved
+
+    if conflict:
+        transport.subscriptions[0]["subscription_id"] = 568
+        saved = await recover_financial(
+            sources,
+            config,
+            factory=factory,
+            user_id=purchase.user_id,
+            purchase_id=purchase.id,
+            operation_id=operation.id,
+        )
+        with factory() as db:
+            data = recovery_work(db, operation.id).payload_document["original_point_facts"]
+            first, second = data["primary"], data["conflict"]
+            assert first["external_object_id"] == "567"
+            assert second["external_object_id"] == "568" and second["operation_id"] == first["operation_id"]
+            assert datetime.fromisoformat(second["point_read_finished_at"]) > datetime.fromisoformat(
+                first["point_read_finished_at"]
+            )
+        for external_id in ("567", "568"):
+            with pytest.raises(PurchaseRefused, match="purchase_resolution_proof_incomplete"):
+                completion.resolve_purchase(factory, config, request(external_id), "os-euid:1000")
+        assert saved.held and service.read_purchase(factory, purchase.user_id, purchase.id) == saved
+        return
+
+    transport.agreements[0]["close_date"] = "2026-11-05"
+    if kind == "subscription":
+        transport.subscriptions[0]["state"] = 3
+    assert completion.resolve_purchase(factory, config, request(provider_id), "os-euid:1000").state.resolved
+
+
+async def test_terminal_confirmation_uses_point_clocks_before_tariff(
+    background_scenario: tuple,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.composition.reconciliation import reconcile_subscription
+    from app.domains.billing.reconciliation import read_source_time
+    from app.infrastructure.queries.billing_operator import has_newer_live_financial_point
+    from app.domains.billing.reconciliation_contracts import PREPARED_SUBSCRIPTION_SCHEMA, RECONCILIATION_READ_SCHEMAS
+    from app.infrastructure.preflight import PreflightBudget
+    from app.integrations.lbx.dto import LbxRead, LbxTariff
+    from app.models import ExternalCreateOperationKind as Kind
+    from apps.api.tests.factories.billing_operator import terminal_object_request
+    from apps.api.tests.test_billing_background_recovery_postgres import synthetic_prepare
+
+    transport, sources, purchase = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    purchase = synthetic_prepare(factory, transport, purchase, uncertain=False)
+    sub_id = service.linked_subscription_id(factory, purchase)
+    client = sources.require_lbx()
+    read_tariff = client.get_tariff
+    confirmations: list[datetime] = []
+    before = read_source_time(factory)
+
+    async def timed_tariff(*, tariff_id: int, budget: PreflightBudget) -> LbxRead[LbxTariff]:
+        confirmations.append(read_source_time(factory))
+        return await read_tariff(tariff_id=tariff_id, budget=budget)
+
+    monkeypatch.setattr(client, "get_tariff", timed_tariff)
+    result = await reconcile_subscription(client, sources.billing, config, factory=factory, subscription_id=sub_id)
+    [confirmed] = confirmations
+    with factory() as db:
+        observation = db.get(BillingStateObservation, result.observation_id)
+        assert confirmed < observation.observed_at
+        for kind, external_id in ((Kind.AGREEMENT, "456"), (Kind.SUBSCRIPTION, "567")):
+            point = datetime.fromisoformat(observation.evidence_document[f"{kind.value}_read_finished_at"])
+            assert before <= point <= confirmed
+            for evidence_at, expected in ((before, True), (confirmed, False)):
+                assert (
+                    has_newer_live_financial_point(
+                        db,
+                        sub_id,
+                        kind,
+                        external_id,
+                        evidence_at,
+                        schemas=RECONCILIATION_READ_SCHEMAS,
+                        preparation_schema=PREPARED_SUBSCRIPTION_SCHEMA,
+                        matched_identity="match",
+                    )
+                    is expected
+                )
+        # A retained pre-upgrade observation has only its enclosing timestamp.
+        document = {**observation.evidence_document}
+        document.pop("subscription_read_finished_at")
+        db.add(
+            BillingStateObservation(
+                observation_kind=observation.observation_kind,
+                external_billing_account_id=observation.external_billing_account_id,
+                user_id=observation.user_id,
+                product_id=observation.product_id,
+                subscription_id=sub_id,
+                observed_at=observation.observed_at,
+                evidence_schema_version=observation.evidence_schema_version,
+                evidence_document=document,
+                completeness_classification=observation.completeness_classification,
+                result_classification=observation.result_classification,
+            )
+        )
+        db.flush()
+        assert has_newer_live_financial_point(
+            db,
+            sub_id,
+            Kind.SUBSCRIPTION,
+            "567",
+            confirmed,
+            schemas=RECONCILIATION_READ_SCHEMAS,
+            preparation_schema=PREPARED_SUBSCRIPTION_SCHEMA,
+            matched_identity="match",
+        )
+
+    transport.agreements[0]["close_date"] = "2026-11-05"
+    transport.subscriptions[0]["state"] = 3
+    request = terminal_object_request(factory, config, result.purchase, subscription_id="567")
+    timed = request.model_copy(
+        update={
+            "evidence": request.evidence.model_copy(update={"senders_stopped_at": before, "confirmed_at": confirmed})
+        }
+    )
+    assert completion.resolve_purchase(factory, config, timed, "os-euid:1000").state.resolved

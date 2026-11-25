@@ -146,7 +146,7 @@ async def test_open_late_case_fences_first_primary_even_with_existing_binding(
     transport.agreements[0]["close_date"] = "2026-10-27"
     agreement, subscription = old.operations
     # The later canonical subscription must have its own identity evidence.
-    transport.subscriptions.clear()
+    transport.subscriptions[0].update(subscription_id=999, state=3)
     command = terminal_request(
         factory,
         config,
@@ -157,11 +157,14 @@ async def test_open_late_case_fences_first_primary_even_with_existing_binding(
             external_object_id=agreement.bound_id,
         ),
         terminal.OperationEvidence(
-            operation_id=subscription.id, outcome=terminal.TerminalEvidenceKind.NO_EXTERNAL_EFFECT
+            operation_id=subscription.id,
+            outcome=terminal.TerminalEvidenceKind.EXTERNAL_TERMINAL,
+            external_object_id="999",
         ),
         confirmed=True,
     )
     terminal.resolve_purchase(factory, config, command, "os-euid:1000")
+    retired_point = transport.subscriptions.pop()
     replacement = await confirm_purchase(
         sources, config, factory=factory, token=TOKEN, key="canonical-before-dispute", meaning=old.accepted.meaning
     )
@@ -172,12 +175,14 @@ async def test_open_late_case_fences_first_primary_even_with_existing_binding(
     point = transport.subscriptions[0]
     actual_agreement = point["agreement_id"]
     point["agreement_id"] = 456
+    transport.subscriptions.append(retired_point)
     try:
         await recover_financial(
             sources, config, factory=factory, user_id=old.user_id, purchase_id=old.id, operation_id=old.operations[1].id
         )
     finally:
         point["agreement_id"] = actual_agreement
+        transport.subscriptions.remove(retired_point)
     for row in transport.subscriptions:
         row.update(
             state=2,

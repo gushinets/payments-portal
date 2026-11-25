@@ -14,7 +14,6 @@ from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.customers import lock_customer, lock_user
 from app.domains.billing.operator_review import case_digest
 from app.domains.billing.terminal_resolution import (
-    ProviderId,
     SafeText,
     SCHEMA,
     TERMINAL_REASON,
@@ -27,6 +26,7 @@ from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
 from app.domains.purchases.contracts import Purchase, PurchaseInventoryIncomplete, PurchaseRefused
+from app.domains.purchases.recovery_evidence import ProviderId
 from app.infrastructure.queries import (
     billing_operator,
     billing_reconciliation,

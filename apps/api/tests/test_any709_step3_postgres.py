@@ -780,8 +780,12 @@ async def test_purchase_status_and_hold_share_one_snapshot(
     assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
 
 
-async def test_operator_releases_unknown_only_with_confirmed_no_effect(
-    migrated_database: Engine, postgres_session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("possible_send", [True, False], ids=["unknown", "proven-not-sent"])
+async def test_operator_requires_supported_proof_before_release(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    possible_send: bool,
 ) -> None:
     factory, config = postgres_session_factory, step1_settings()
     transport = setup_purchase(factory)
@@ -789,7 +793,9 @@ async def test_operator_releases_unknown_only_with_confirmed_no_effect(
     def respond(message: httpx.Request) -> httpx.Response:
         if message.method == "POST" and message.url.path.endswith("/agreements"):
             transport.requests.append(message)
-            return httpx.Response(500, json={"code": 500, "response": {}})
+            if possible_send:
+                return httpx.Response(500, json={"code": 500, "response": {}})
+            raise httpx.ConnectError("synthetic unsent", request=message)
         return transport.respond(message)
 
     async with source_resources(
@@ -798,32 +804,31 @@ async def test_operator_releases_unknown_only_with_confirmed_no_effect(
         purchase = await accept(sources, factory)
         pending = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
         agreement, subscription = pending.operations
-        assert agreement.state == State.UNKNOWN and agreement.deadline and not transport.agreements
-        assert advance_deadlines(factory, now=agreement.deadline + timedelta(seconds=1)) == 1
-        reviewed = service.read_purchase(factory, purchase.user_id, purchase.id)
-        assert reviewed.state == IntentState.MANUAL_REVIEW
+        assert not transport.agreements
         count = len(transport.requests)
-
-        unsent = terminal_request(factory, config, reviewed)
-        with pytest.raises(PurchaseRefused, match="purchase_resolution_proof_incomplete"):
-            terminal.resolve_purchase(factory, config, unsent, PRINCIPAL)
-        proof = terminal.OperationEvidence(
-            operation_id=agreement.id, outcome=terminal.TerminalEvidenceKind.NO_EXTERNAL_EFFECT
-        )
-        unsent_subscription = terminal.OperationEvidence(
-            operation_id=subscription.id, outcome=terminal.TerminalEvidenceKind.NOT_SENT
-        )
-        missing = terminal_request(factory, config, reviewed, proof, unsent_subscription)
-        with pytest.raises(PurchaseRefused, match="purchase_resolution_confirmation_required"):
-            terminal.resolve_purchase(factory, config, missing, PRINCIPAL)
-        confirmed = terminal_request(factory, config, reviewed, proof, unsent_subscription, confirmed=True)
-        reversed_order = confirmed.evidence.model_copy(
-            update={"confirmed_at": confirmed.evidence.senders_stopped_at - timedelta(seconds=1)}
-        )
-        with pytest.raises(PurchaseRefused, match="purchase_resolution_confirmation_required"):
-            terminal.resolve_purchase(
-                factory, config, confirmed.model_copy(update={"evidence": reversed_order}), PRINCIPAL
+        if possible_send:
+            assert agreement.state == State.UNKNOWN and agreement.deadline
+            assert advance_deadlines(factory, now=agreement.deadline + timedelta(seconds=1)) == 1
+            reviewed = service.read_purchase(factory, purchase.user_id, purchase.id)
+            assert reviewed.state == IntentState.MANUAL_REVIEW
+            with pytest.raises(PurchaseRefused, match="purchase_resolution_proof_incomplete"):
+                terminal.resolve_purchase(factory, config, terminal_request(factory, config, reviewed), PRINCIPAL)
+            no_effect = terminal.OperationEvidence(
+                operation_id=agreement.id, outcome=terminal.TerminalEvidenceKind.NO_EXTERNAL_EFFECT
             )
+            unsent_subscription = terminal.OperationEvidence(
+                operation_id=subscription.id, outcome=terminal.TerminalEvidenceKind.NOT_SENT
+            )
+            confirmed = terminal_request(factory, config, reviewed, no_effect, unsent_subscription, confirmed=True)
+            with pytest.raises(PurchaseRefused, match="purchase_resolution_proof_incomplete"):
+                terminal.resolve_purchase(factory, config, confirmed, PRINCIPAL)
+            assert service.read_purchase(factory, purchase.user_id, purchase.id) == reviewed
+            assert len(transport.requests) == count
+            return
+
+        assert agreement.state == State.PROVEN_NOT_SENT and subscription.state == State.PENDING
+        reviewed = pending
+        confirmed = terminal_request(factory, config, reviewed)
 
         def fail_after_audit(db: Session, user_id: UUID) -> int:
             assert (
@@ -865,7 +870,7 @@ async def test_operator_releases_unknown_only_with_confirmed_no_effect(
                 assert item.work_state == BillingWorkState.INVALID and item.enqueue_generation == generation + 1
                 assert item.lease_owner is None and item.lease_expires_at is None
         assert len(transport.requests) == count
-        assert transport.creates("/agreements") == 1 and transport.creates("/subscriptions") == 0
+        assert transport.creates("/subscriptions") == 0
 
         # A later exact agreement can produce a restriction even when the
         # terminal outcome uses a state the previous schema recognizes.
@@ -916,7 +921,7 @@ async def test_operator_releases_unknown_only_with_confirmed_no_effect(
             assert case.case_state == "resolved"
             assert late.ClosureAudit.model_validate(case.resolution_document).request == closure
         assert service.read_purchase(factory, purchase.user_id, purchase.id) == retained
-        assert transport.creates("/agreements") == 1 and transport.creates("/subscriptions") == 0
+        assert transport.creates("/subscriptions") == 0
 
 
 @pytest.mark.parametrize("change", ["retarget", "legal"])

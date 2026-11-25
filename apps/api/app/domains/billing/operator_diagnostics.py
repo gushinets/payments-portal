@@ -13,6 +13,7 @@ from app.infrastructure.queries.billing_customers import diagnostic_user
 from app.infrastructure.queries.billing_background import operation_subject
 from app.domains.billing.customer_scope import connection_account
 from app.domains.billing.terminal_resolution import state_digest
+from app.domains.purchases.recovery_evidence import retained_points
 
 
 def inspect_operation(factory: SessionFactory, configuration: Settings, operation_id: UUID) -> dict:
@@ -82,6 +83,11 @@ def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: 
         reviews = queries.reviews(
             db, purchase.id, purchase.customer_id, sub.subscription_id if sub else None, include_paid_diagnostics=True
         )
+        original_points = {
+            op.create_operation_id: points.model_dump(mode="json")
+            for op in purchases.operations(db, purchase.id)
+            if (points := retained_points(db, op)) is not None
+        }
         blockers = blocking_cases(db, purchase)
         now = as_utc(billing_reconciliation.database_now(db))
         return {
@@ -104,6 +110,7 @@ def inspect_evidence(factory: SessionFactory, configuration: Settings, user_id: 
                     "request_correlation_key": op.key,
                     "external_object_id": op.bound_id,
                     "receipt_candidate_id": op.candidate_id,
+                    "original_point_facts": original_points.get(op.id),
                     "bound": op.bound_id is not None,
                     "receipt_saved": op.candidate_id is not None,
                     "deadline": op.deadline.isoformat() if op.deadline else None,

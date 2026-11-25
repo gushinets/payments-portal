@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import replace
+from functools import partial
 from contextlib import asynccontextmanager
 from typing import Any
 from uuid import UUID
@@ -44,12 +45,14 @@ async def read_subscription_proof(
     check_agreement_inventory: bool = False,
 ) -> SubscriptionProof:
     """Persist only the DB-clock interval surrounding this actual source read."""
-    started = await delegate(read_source_time, factory)
-    proof = await read_lbx_subscription_proof(
-        client, subject, configuration, budget=budget, check_agreement_inventory=check_agreement_inventory
+    return await read_lbx_subscription_proof(
+        client,
+        subject,
+        configuration,
+        budget=budget,
+        check_agreement_inventory=check_agreement_inventory,
+        read_time=partial(delegate, read_source_time, factory),
     )
-    finished = await delegate(read_source_time, factory)
-    return replace(proof, read_started_at=started, read_finished_at=finished)
 
 
 async def reconcile_subscription(

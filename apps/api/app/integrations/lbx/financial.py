@@ -163,6 +163,10 @@ def agreement_is_closed(point: Agreement) -> bool:
     return True
 
 
+def agreement_explicitly_open(point: Agreement) -> bool:
+    return "close_date" in point.model_fields_set and not agreement_is_closed(point)
+
+
 def subscription_lifecycle(point: Subscription) -> tuple[Lifecycle, Financial, SubscriptionLifecycleReason]:
     """Recognized canonical states; unknown codes never prove a negative."""
     states = {

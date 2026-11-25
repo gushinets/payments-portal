@@ -1,6 +1,6 @@
 """Bounded local evidence reads and review locks for privileged operations."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import Text, and_, cast, or_, select, exists
@@ -12,6 +12,7 @@ from app.models import (
     BillingStateObservationKind,
     BillingWorkItem,
     ExternalCreateOperation,
+    ExternalCreateOperationKind as Kind,
     ExternalSubscription,
     ExternalSubscriptionLifecycleStatus as Lifecycle,
     ManualReviewCase,
@@ -115,9 +116,11 @@ def other_financial_binding(db: Session, operation: ExternalCreateOperation, ext
     )
 
 
-def has_newer_live_subscription_read(
+def has_newer_live_financial_point(
     db: Session,
     subscription_id: UUID,
+    kind: Kind,
+    external_id: str,
     confirmed_at: datetime,
     *,
     schemas: tuple[str, ...],
@@ -126,26 +129,46 @@ def has_newer_live_subscription_read(
 ) -> bool:
     observation = BillingStateObservation
     evidence = observation.evidence_document
-    first_binding = evidence["original_proof"]["subscription"]
-    live = (Lifecycle.ACTIVE.value, Lifecycle.INACTIVE.value)
-    live_read = exists().where(
-        observation.subscription_id == subscription_id,
-        observation.observation_kind == BillingStateObservationKind.AUTHORITATIVE_SUBSCRIPTION_READ,
-        observation.observed_at > confirmed_at,
-        or_(
-            and_(
-                observation.evidence_schema_version.in_(schemas),
-                evidence["identity"].as_string() == matched_identity,
-                evidence["lifecycle"].as_string().in_(live),
-            ),
-            and_(
-                observation.evidence_schema_version == preparation_schema,
-                first_binding["identity"].as_string() == matched_identity,
-                first_binding["lifecycle"].as_string().in_(live),
-            ),
-        ),
+    sources = (
+        (observation.evidence_schema_version.in_(schemas), evidence),
+        (observation.evidence_schema_version == preparation_schema, evidence["original_proof"]["subscription"]),
     )
-    return bool(db.scalar(select(live_read)))
+    # New point times are UTC ISO strings at fixed precision. Use the enclosing
+    # observation time for legacy evidence without an object-specific clock.
+    confirmed_iso = confirmed_at.astimezone(UTC).isoformat(timespec="microseconds")
+    agreement = kind == Kind.AGREEMENT
+    link = ExternalSubscription.external_agreement_id if agreement else ExternalSubscription.external_subscription_id
+    clauses = []
+    for schema, document in sources:
+        if agreement:
+            point_time = document["agreement_read_finished_at"].as_string()
+            live = document["agreement_open"].as_boolean().is_(True)
+        else:
+            point_time = document["subscription_read_finished_at"].as_string()
+            live = and_(
+                document["identity"].as_string() == matched_identity,
+                document["lifecycle"].as_string().in_((Lifecycle.ACTIVE.value, Lifecycle.INACTIVE.value)),
+            )
+        clauses.append(
+            and_(
+                schema,
+                live,
+                or_(point_time > confirmed_iso, and_(point_time.is_(None), observation.observed_at > confirmed_at)),
+            )
+        )
+    return bool(
+        db.scalar(
+            select(
+                exists().where(
+                    observation.subscription_id == subscription_id,
+                    ExternalSubscription.subscription_id == observation.subscription_id,
+                    link == external_id,
+                    observation.observation_kind == BillingStateObservationKind.AUTHORITATIVE_SUBSCRIPTION_READ,
+                    or_(*clauses),
+                )
+            )
+        )
+    )
 
 
 def subscription(db: Session, purchase_id: UUID) -> ExternalSubscription | None:

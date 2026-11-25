@@ -1,7 +1,7 @@
 """Provider-neutral proof handed from Integration to shared Application apply."""
 
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -98,6 +98,9 @@ class SubscriptionProof:
     reads: tuple[str, ...]
     cycle: CalendarEvidence | None = None
     access_end_at: datetime | None = None
+    agreement_read_finished_at: datetime | None = None
+    subscription_read_finished_at: datetime | None = None
+    agreement_open: bool = False
 
     def document(self) -> dict[str, object]:
         """Redacted JSON evidence shared by preparation and authoritative apply."""
@@ -107,6 +110,16 @@ class SubscriptionProof:
             "read_finished_at": self.read_finished_at.isoformat(),
             "cycle": self.cycle.model_dump(mode="json") if self.cycle else None,
             "access_end_at": self.access_end_at.isoformat() if self.access_end_at else None,
+            "agreement_read_finished_at": self.agreement_read_finished_at.astimezone(UTC).isoformat(
+                timespec="microseconds"
+            )
+            if self.agreement_read_finished_at
+            else None,
+            "subscription_read_finished_at": self.subscription_read_finished_at.astimezone(UTC).isoformat(
+                timespec="microseconds"
+            )
+            if self.subscription_read_finished_at
+            else None,
         }
 
 

@@ -729,12 +729,17 @@ saved bound or receipt IDs from inspection when obtaining LBX confirmation.
 
 - `not_sent` uses local proof that the operation was never sent or that its
   transport proved no send. Provide only the operation ID and outcome.
-- `no_external_effect` requires definitive LBX confirmation that the exact
-  original operation had no effect. Empty discovery, a timeout and elapsed
-  recovery deadlines leave the outcome unresolved.
+- `no_external_effect` after a possible send requires an approved LBX
+  operation-level contract proving that the exact request had no effect and
+  cannot materialize later. The command refuses that outcome while the contract
+  is unavailable. Empty discovery, a timeout and elapsed recovery deadlines
+  leave the outcome unresolved.
 - `external_terminal` requires definitive LBX confirmation of irreversible
-  termination and the exact `external_object_id`. Retained bindings and receipt
-  candidates must match the evidence.
+  termination and the exact `external_object_id`. Retained bindings, receipts
+  and exact point facts must agree. A newer open or live point read supersedes
+  an older confirmation. Freshness uses the GET completion time of the
+  object in question, with the enclosing observation time for older evidence
+  that lacks that clock.
 
 Both purchase resolution and exact case closure require quiesced maintenance.
 Before obtaining final evidence, stop all affected Portal API and worker
