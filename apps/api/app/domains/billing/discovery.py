@@ -10,6 +10,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
+from app.domains.purchases.financial_reviews import record_financial_review
 from app.domains.billing import work
 from app.domains.billing.background_recovery import INVENTORY, INVENTORY_SECONDS
 from app.domains.billing.contracts import BillingRefused
@@ -21,7 +22,7 @@ from app.domains.billing.work import verify_claim
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
-from app.domains.purchases import financial, service
+from app.domains.purchases import service
 from app.domains.purchases.contracts import Purchase
 from app.infrastructure.queries import billing_reconciliation, paid_access, purchases, billing_background as queries
 from app.models import (
@@ -368,7 +369,7 @@ def apply_inventory(
                         )
                     )
             else:
-                financial._review(db, row, target, "customer_inventory_conflict")
+                record_financial_review(db, row, target, "customer_inventory_conflict")
             from app.models import (
                 BillingStateObservation,
                 BillingStateObservationKind,

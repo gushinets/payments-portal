@@ -80,7 +80,7 @@ async def find_financial(
     *,
     budget: PreflightBudget,
     require_discovery: bool = False,
-    retain_point: Callable[[FinancialOperation, int], Awaitable[None]] | None = None,
+    retain_point: Callable[[FinancialOperation, int, bool], Awaitable[None]] | None = None,
 ) -> tuple[int, Agreement, Subscription | None] | None:
     """Discovery selects candidates; neither a receipt nor a listing binds them."""
     if operation.bound_id is not None:
@@ -111,8 +111,8 @@ async def find_financial(
         ):
             raise LbxResponseInvalid()
         agreement_is_closed(agreement)
-        if retain_point is not None and agreement_explicitly_open(agreement):
-            await retain_point(operation, ids[0])
+        if retain_point is not None:
+            await retain_point(operation, ids[0], agreement_explicitly_open(agreement))
         return ids[0], agreement, None
     agreement_op = next(op for op in purchase.operations if op.kind == Kind.AGREEMENT)
     if agreement_op.bound_id is None:
@@ -132,7 +132,7 @@ async def find_financial(
             or agreement.create_date == agreement_op.agreement_create_date.isoformat()
         )
     ):
-        await retain_point(agreement_op, agreement_id)
+        await retain_point(agreement_op, agreement_id, True)
     rows = await timely_point(
         lambda: client.discover_subscriptions(
             user_id=int(customer.provider_id), agreement_id=agreement_id, budget=budget
@@ -201,24 +201,25 @@ async def recover_one(
             fact="open" if original.kind == Kind.AGREEMENT else "live",
             point_read_finished_at=observed_at,
         )
-        if (
-            not await delegate(
-                retain_original_point,
-                factory,
-                purchase,
-                customer,
-                fact,
-                recovering_id=operation.id,
-                work_claim=work_claim,
-            )
-            and resolution is None
-        ):
+        if not await delegate(
+            retain_original_point,
+            factory,
+            purchase,
+            customer,
+            fact,
+            request_document=original_command(purchase, original, customer)
+            if original.kind != Kind.AGREEMENT or original.agreement_create_date
+            else None,
+            recovering_id=operation.id,
+            work_claim=work_claim,
+        ) and (resolution is None or original.id != operation.id):
             raise LbxScopeMismatch()
 
-    async def retain_agreement(original: FinancialOperation, provider_id: int) -> None:
+    async def retain_agreement(original: FinancialOperation, provider_id: int, explicitly_open: bool) -> None:
         nonlocal agreement_read_at
         agreement_read_at = await delegate(read_source_time, factory)
-        await retain_point(original, provider_id, agreement_read_at)
+        if explicitly_open:
+            await retain_point(original, provider_id, agreement_read_at)
 
     try:
         try:
@@ -297,6 +298,7 @@ async def recover_one(
             customer,
             proof,
             agreement.close_date if agreement_is_closed(agreement) else None,
+            subscription_read_at if point is not None else agreement_read_at,
         )
         if resolution is not None:
             from app.composition.purchase_inventory import collect_inventory

@@ -1630,6 +1630,8 @@ async def test_quiesced_write_refuses_active_work_and_replays_from_audit(
         ).one()
         inventory.lease_owner = "replacement-inventory"
         inventory.lease_expires_at = read_source_time(factory) + timedelta(minutes=1)
+        replacement_work_id = inventory.work_item_id
+        replacement_lease = (inventory.lease_owner, inventory.lease_expires_at, inventory.enqueue_generation)
     restarted = create_engine(migrated_database.url)
     try:
         with factory() as locker:
@@ -1639,6 +1641,9 @@ async def test_quiesced_write_refuses_active_work_and_replays_from_audit(
             )
     finally:
         restarted.dispose()
+    with factory() as db:
+        item = db.get(BillingWorkItem, replacement_work_id)
+        assert (item.lease_owner, item.lease_expires_at, item.enqueue_generation) == replacement_lease
     assert service.read_purchase(factory, actor.user_id, actor.id) == actor
 
 

@@ -74,3 +74,8 @@ async def resolve_review(
         return {"review_case_id": str(request.case_id), "outcome": "resolved"}
     except InventoryStale:
         raise PurchaseRefused("billing_review_stale", 409) from None
+    except PurchaseRefused as error:
+        if request.resolution == "bind-original" and error.code == "purchase_pending":
+            # The operation changed after the operator's expectation was authorized.
+            raise PurchaseRefused("billing_review_stale", 409) from error
+        raise

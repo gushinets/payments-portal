@@ -48,7 +48,7 @@ async def test_inner_retry_acknowledgement_controls_worker_progress(
         if function is work.retry_work:
             retries.append(kwargs["error"])
             return saved
-        if function is recovery.recovery_paused:
+        if function is recovery.recovery_inactive:
             assert kind == recovery.RECOVERY and not saved
             return False
         raise AssertionError(f"Unexpected delegation: {function.__name__}")

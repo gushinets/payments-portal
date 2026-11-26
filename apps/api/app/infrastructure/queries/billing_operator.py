@@ -29,6 +29,24 @@ def review(db: Session, case_id: UUID, *, lock: bool = False) -> ManualReviewCas
     return db.scalar(query)
 
 
+def has_audited_original_binding(db: Session, operation_id: UUID, *, schema: str) -> bool:
+
+    return (
+        db.scalar(
+            select(ManualReviewCase.review_case_id)
+            .where(
+                ManualReviewCase.scope_kind == "create_operation",
+                ManualReviewCase.scope_reference == str(operation_id),
+                ManualReviewCase.case_state == "resolved",
+                ManualReviewCase.resolution_schema_version == schema,
+                ManualReviewCase.resolution_document["resolution"].as_string() == "bind-original",
+            )
+            .limit(1)
+        )
+        is not None
+    )
+
+
 def reviews(
     db: Session,
     purchase_id: UUID,

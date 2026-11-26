@@ -25,6 +25,7 @@ from app.domains.purchases.contracts import PurchaseRefused
 from app.integrations.lbx.errors import LbxUnavailable
 from app.models import (
     AccessInvalidationOutbox,
+    ManualReviewCase,
     BillingProductAccessScope,
     BillingStateObservation,
     BillingStateObservationKind,
@@ -115,7 +116,9 @@ async def reconcile(scenario: Scenario, *, config: Settings | None = None) -> Re
     )
 
 
-async def test_terminal_resolution_requires_fresh_confirmation_and_reduces_paid_access(paid_source: Scenario) -> None:
+async def test_terminal_resolution_requires_fresh_confirmation_and_reduces_paid_access(
+    paid_source: Scenario, monkeypatch: pytest.MonkeyPatch
+) -> None:
     factory, config = paid_source.factory, paid_source.config
     first = await reconcile(paid_source)
     purchase = first.purchase
@@ -152,6 +155,29 @@ async def test_terminal_resolution_requires_fresh_confirmation_and_reduces_paid_
     paid_source.transport.subscriptions[0]["state"] = 3
     confirmed = terminal_request(factory, config, purchase, *proofs, confirmed=True)
     count = len(paid_source.transport.requests)
+    before_resolution = persisted(factory)
+    audit_query = (
+        select(func.count())
+        .select_from(ManualReviewCase)
+        .where(ManualReviewCase.reason_code == terminal.TERMINAL_REASON)
+    )
+    reduce = terminal.reduce_paid_access
+
+    def fail_after_reduce(db: Session, user_id: UUID) -> None:
+        reduce(db, user_id)
+        db.flush()
+        assert db.scalar(select(PaidAccessState.access_revision)) == before_resolution[2][0] + 1
+        assert db.scalar(audit_query) == 1
+        raise RuntimeError("interrupt after paid access reduction")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(terminal, "reduce_paid_access", fail_after_reduce)
+        with pytest.raises(RuntimeError, match="interrupt after paid access reduction"):
+            terminal.resolve_purchase(factory, config, confirmed, "os-euid:1000")
+    assert service.read_purchase(factory, purchase.user_id, purchase.id).held
+    assert persisted(factory) == before_resolution
+    with factory() as db:
+        assert db.scalar(audit_query) == 0
     result = terminal.resolve_purchase(factory, config, confirmed, "os-euid:1000")
     assert result.state == PurchaseIntentState.RESOLVED_EXTERNAL_TERMINAL
     after = persisted(factory)

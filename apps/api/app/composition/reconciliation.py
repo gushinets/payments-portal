@@ -11,7 +11,7 @@ from uuid import UUID
 from starlette.concurrency import run_in_threadpool
 
 from app.composition.purchase_late_objects import review_redirected_subscription
-from app.composition.purchase_recovery import is_live_original_subscription
+from app.composition.purchase_recovery import is_live_original_subscription, original_command
 from app.composition.sources import SourceResources
 from app.core.settings import Settings
 from app.domains.billing.contracts import BillingRefused
@@ -94,6 +94,9 @@ async def read_inventory_original_subscription(
             subject.purchase,
             customer,
             fact,
+            request_document=original_command(subject.purchase, original, customer)
+            if original.kind != Kind.AGREEMENT or original.agreement_create_date
+            else None,
             recovering_id=operation.id,
             work_claim=work_claim,
         )

@@ -11,26 +11,32 @@ from datetime import timedelta
 from uuid import uuid4
 
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
 from app.core.time import utc_now
-from app.domains.billing.customer_reviews import customer_admission_reviews, restrict_subscription
+from app.domains.billing.customer_reviews import customer_admission_reviews
 from app.domains.billing.customers import authenticate, lock_customer
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases.contracts import (
-    FINANCIAL_REVIEW_SCHEMA,
+    FINANCIAL_HINT_SCHEMA,
     FinancialOperation,
     FinancialRequestDocument,
     FinancialFailureFacts,
-    FinancialReviewEvidence,
     PreparedSubscriptionObservation,
     Purchase,
     PurchaseRefused,
 )
+from app.domains.purchases.financial_reviews import record_financial_review, review_identity_conflict
 from app.domains.purchases.preparation import record_first_binding
-from app.domains.purchases.recovery_evidence import require_current_customer, settle_point_conflict
+from app.domains.purchases.recovery_evidence import (
+    require_current_customer,
+    binding_identity_matches,
+    same_send,
+    retained_points,
+    saved_request,
+    settle_point_conflict,
+)
 from app.domains.purchases.service import _locked, _operation, _verify_original_consent
 from app.infrastructure.queries import purchases as queries
 from app.infrastructure.queries.billing_customers import (
@@ -46,13 +52,10 @@ from app.models import (
     ExternalCreateOperation,
     ExternalCreateOperationKind as Kind,
     ExternalCreateOperationState as State,
-    ManualReviewCase,
-    PurchaseIntent,
     PurchaseIntentState as IntentState,
 )
 
 RECOVERY_WINDOW = timedelta(hours=2)
-FINANCIAL_HINT_SCHEMA = "financial-create:v1"
 
 
 def claim_financial(
@@ -98,6 +101,7 @@ def claim_financial(
             or operation.recovery_hint_document.get("request") != request_document
             or work is None
             or work.payload_document.get("candidate_id") is not None
+            or retained_points(db, operation) is not None
         ):
             raise PurchaseRefused("purchase_history_unproven", 409)
         if operation.operation_kind == Kind.SUBSCRIPTION and any(
@@ -174,6 +178,7 @@ def proven_not_sent(factory: SessionFactory, purchase: Purchase, expected: Finan
             or work is None
             or work.payload_document.get("candidate_id") is not None
             or row.state == IntentState.MANUAL_REVIEW
+            or retained_points(db, op) is not None
         ):
             return
         op.operation_state = State.PROVEN_NOT_SENT
@@ -212,32 +217,6 @@ def record_receipt(factory: SessionFactory, purchase: Purchase, expected: Financ
         return True
 
 
-def _review(db: Session, row: PurchaseIntent, operation: ExternalCreateOperation, reason: str) -> None:
-    if not any(case.reason_code == reason for case in open_customer_reviews(db, operation.create_operation_id)):
-        db.add(
-            ManualReviewCase(
-                reason_code=reason,
-                scope_kind="create_operation",
-                scope_reference=str(operation.create_operation_id),
-                evidence_schema_version=FINANCIAL_REVIEW_SCHEMA,
-                evidence_document=FinancialReviewEvidence(
-                    purchase_intent_id=row.purchase_intent_id,
-                    create_operation_id=operation.create_operation_id,
-                    operation_state_at_conflict=operation.operation_state,
-                    send_fence_at_conflict=operation.send_fence,
-                ).model_dump(mode="json"),
-                case_state="open",
-            )
-        )
-    operation.operation_state = State.MANUAL_REVIEW
-    operation.send_fence = uuid4()
-    sub = queries.linked_subscription(db, row.purchase_intent_id)
-    if sub is not None:
-        restrict_subscription(sub)
-    row.state = IntentState.MANUAL_REVIEW
-    row.state_updated_at = utc_now()
-
-
 def financial_pending(
     factory: SessionFactory,
     purchase: Purchase,
@@ -255,12 +234,12 @@ def financial_pending(
         work = recovery_work(db, op.create_operation_id)
         deadline = queries.financial_recovery_deadline(op, work)
         if conflict:
-            _review(db, row, op, "financial_binding_conflict")
+            record_financial_review(db, row, op, "financial_binding_conflict")
         elif op.operation_state == State.PROVEN_NOT_SENT:
             return  # A failed GET cannot erase completed no-send evidence.
         elif op.operation_state != State.BOUND:
             if deadline and as_utc(database_now(db)) >= as_utc(deadline):
-                _review(db, row, op, "external_create_outcome_unknown:" + op.operation_kind.value)
+                record_financial_review(db, row, op, "external_create_outcome_unknown:" + op.operation_kind.value)
             elif op.operation_state != State.MANUAL_REVIEW:
                 op.operation_state = State.UNKNOWN if op.unknown_since else State.PENDING
                 row.state = IntentState.AWAITING_EXTERNAL_RESULT
@@ -302,7 +281,7 @@ def changed_unsent_terms(factory: SessionFactory, purchase: Purchase) -> None:
             for op in operations
         ):
             target = next(op for op in operations if op.operation_kind == Kind.SUBSCRIPTION)
-            _review(db, row, target, "accepted_terms_changed_after_preparation")
+            record_financial_review(db, row, target, "accepted_terms_changed_after_preparation")
         else:
             row.state = IntentState.FAILED_BEFORE_EXTERNAL_EFFECT
             row.resolved_at = utc_now()
@@ -315,20 +294,9 @@ def changed_unsent_terms(factory: SessionFactory, purchase: Purchase) -> None:
 
 
 def _original_request(operation: ExternalCreateOperation, purchase: Purchase) -> FinancialRequestDocument:
-    hint = operation.recovery_hint_document
-    if (
-        operation.operation_state not in {State.POSSIBLE_SEND, State.UNKNOWN, State.MANUAL_REVIEW}
-        or operation.unknown_since is None
-        or operation.unknown_recovery_deadline_at is None
-        or operation.send_fence is None
-        or operation.recovery_hint_schema_version != FINANCIAL_HINT_SCHEMA
-        or not isinstance(hint, dict)
-        or hint.get("purchase_intent_id") != str(purchase.id)
-        or hint.get("accepted_fingerprint") != purchase.accepted.offer.fingerprint
-        or not isinstance(hint.get("request"), dict)
-    ):
+    if operation.operation_state not in {State.POSSIBLE_SEND, State.UNKNOWN, State.MANUAL_REVIEW}:
         raise PurchaseRefused("purchase_history_unproven", 409)
-    return hint["request"]
+    return saved_request(operation, purchase)
 
 
 def original_request(
@@ -382,10 +350,16 @@ def _bind_financial(
         if op.bound_external_object_id is not None:
             if resolution is not None:
                 raise PurchaseRefused("billing_review_stale", 409)
-            return False  # Discard the stale candidate; caller uses claimed reconciliation.
-        if op.send_fence != expected.fence:
+            if op.bound_external_object_id == str(provider_id):
+                return False  # The matching binder won; use canonical reconciliation.
+            if not same_send(db, op, expected, _operation(db, op)):
+                raise PurchaseRefused("purchase_pending", 409)
+        elif op.send_fence != expected.fence:
             raise PurchaseRefused("billing_review_stale" if resolution is not None else "purchase_pending", 409)
-        if proof.request_digest != digest(_original_request(op, purchase)):
+        request = (
+            saved_request(op, purchase) if op.bound_external_object_id is not None else _original_request(op, purchase)
+        )
+        if proof.request_digest != digest(request):
             raise PurchaseRefused("purchase_history_unproven", 409)
         now = as_utc(database_now(db))
         if (
@@ -402,6 +376,11 @@ def _bind_financial(
             if pause_expired_recovery(db, op, account):
                 db.commit()
                 raise PurchaseRefused("billing_work_stale", 409)
+        if not binding_identity_matches(db, op, expected, str(provider_id), proof, operator=resolution is not None):
+            if resolution is None:
+                review_identity_conflict(db, row, op)
+                db.commit()
+            raise PurchaseRefused("purchase_review_required", 409)
         existing = queries.linked_subscription(db, purchase.id)
         if existing is not None:
             raise PurchaseRefused("purchase_review_required", 409)

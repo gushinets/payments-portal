@@ -79,3 +79,4 @@ class OriginalOperationProof:
     customer: CustomerOpen
     subscription: SubscriptionProof | None = None
     agreement_close_date: str | None = None
+    point_read_at: datetime | None = None

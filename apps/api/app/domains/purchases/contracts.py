@@ -19,6 +19,8 @@ from app.models import ExternalCreateOperationKind, ExternalCreateOperationState
 type FinancialRequestDocument = dict[str, str | int | bool | list[dict[str, int]]]
 type FinancialFailureFacts = dict[str, str | int | None]
 MAX_PURCHASE_LEGAL_DOCUMENTS = 20
+FINANCIAL_HINT_SCHEMA = "financial-create:v1"
+ORIGINAL_ID_CONFLICT = "original_financial_identity_conflict"
 FINANCIAL_REVIEW_SCHEMA = "financial-review:v1"
 
 

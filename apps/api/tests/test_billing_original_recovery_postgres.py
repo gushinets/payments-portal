@@ -343,7 +343,9 @@ async def test_unbound_original_point_fences_terminal_resolution(
     from app.composition import purchase_recovery
     from app.domains.billing.reconciliation import read_source_time
     from app.infrastructure.queries.billing_customers import recovery_work
+    from app.infrastructure.preflight import PreflightBudget
     from app.integrations.lbx.errors import LbxTimeout
+    from app.integrations.lbx.financial import Agreement
     from apps.api.tests.test_billing_background_recovery_postgres import synthetic_prepare
 
     transport, sources, purchase = background_scenario
@@ -355,10 +357,14 @@ async def test_unbound_original_point_fences_terminal_resolution(
         transport.hide.clear()
         transport.agreements[0]["close_date"] = None
 
-        def refuse_binding(*args: object, **kwargs: object) -> bool:
-            raise PurchaseRefused("purchase_history_unproven", 409)
+        get_agreement = sources.require_lbx().get_agreement
 
-        monkeypatch.setattr(purchase_recovery.financial, "bind_financial", refuse_binding)
+        async def review_during_get(*, agreement_id: int, budget: PreflightBudget) -> Agreement:
+            point = await get_agreement(agreement_id=agreement_id, budget=budget)
+            purchase_recovery.financial.financial_pending(factory, purchase, purchase.operations[0], conflict=True)
+            return point
+
+        monkeypatch.setattr(sources.require_lbx(), "get_agreement", review_during_get)
     else:
         purchase = synthetic_prepare(factory, transport, purchase, uncertain=True)
 
@@ -373,7 +379,7 @@ async def test_unbound_original_point_fences_terminal_resolution(
     assert operation.bound_id is None and operation.candidate_id is None
     early = read_source_time(factory)
     if kind == "agreement":
-        with pytest.raises(PurchaseRefused, match="purchase_history_unproven"):
+        with pytest.raises(PurchaseRefused, match="purchase_pending"):
             await recover_financial(
                 sources,
                 config,
@@ -454,12 +460,12 @@ async def test_unbound_original_point_fences_terminal_resolution(
     assert completion.resolve_purchase(factory, config, request(provider_id), "os-euid:1000").state.resolved
 
 
-@pytest.mark.parametrize("expired", [False, True], ids=["owned-claim", "expired-claim"])
+@pytest.mark.parametrize("claim_state", ["owned", "expired", "changed-attempt"])
 async def test_inventory_retains_original_subscription_point_before_tariff_failure(
     background_scenario: tuple,
     postgres_session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
-    expired: bool,
+    claim_state: str,
 ) -> None:
     from app.composition.purchase_inventory import collect_inventory
     from app.domains.billing import background_recovery as recovery, work
@@ -493,7 +499,11 @@ async def test_inventory_retains_original_subscription_point_before_tariff_failu
         assert subscription_id == 567
         point = await get_subscription(subscription_id=subscription_id, budget=budget)
         points_read.append(read_source_time(factory))
-        if expired:
+        if claim_state == "changed-attempt":
+            from app.domains.purchases import financial
+
+            financial.financial_pending(factory, purchase, operation)
+        if claim_state == "expired":
             with factory.begin() as db:
                 db.get(BillingWorkItem, claim.id).lease_expires_at = points_read[-1] - timedelta(seconds=1)
         return point
@@ -517,9 +527,9 @@ async def test_inventory_retains_original_subscription_point_before_tariff_failu
     assert saved.held and saved.operations[1].bound_id is None
     with factory.begin() as db:
         facts = retained_points(db, db.get(ExternalCreateOperation, operation.id))
-        if not expired:
+        if claim_state != "expired":
             work.finish(db, work.verify_claim(db, claim), claim, due=None)
-    if expired:
+    if claim_state == "expired":
         assert facts is None
         return
 

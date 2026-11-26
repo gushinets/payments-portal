@@ -155,7 +155,8 @@ Reuse the existing operation recovery work payload. Do not add a table or column
 - Subscription recovery records `(subscription, exact ID, live, point GET completion time)` immediately after exact relationship/effective-term/lifecycle proof and before tariff/policy I/O.
 - A newer read of the same ID replaces its time/fact.
 - A different ID records conflict and refuses terminal resolution.
-- Do not retain evidence from a stale operation, stale customer, changed purchase, retired exact ID, or unsupported source response.
+- Keep a proven point for the same original send across UNKNOWN, receipt arrival, deadline review, and a concurrent first binding. Verify its retained request, active send window, customer, hold, and work claim. A new send after definitive no-send or an audited choice invalidates the old reader.
+- Before first binding, recheck retained identities and receipts under the same locks as the write. A conflicting point blocks ordinary binding even when the proposed object is terminal. Record such a disagreement in the financial review so terminal resolution also sees it. An audited original binding needs fresh point proof covering the conflict it settles.
 
 ### Bound subscription observations
 

@@ -26,6 +26,7 @@ from app.domains.purchases.financial import RECOVERY_WINDOW
 from app.domains.purchases.recovery_evidence import ProviderId, RetainedOriginalPointFacts, retained_points
 from app.domains.purchases.contracts import (
     FINANCIAL_REVIEW_SCHEMA,
+    ORIGINAL_ID_CONFLICT,
     FinancialOperation,
     FinancialReviewEvidence,
     PurchaseRefused,
@@ -185,6 +186,10 @@ def _verify_proof(
     subscription: ExternalSubscription | None,
     now: datetime,
 ) -> None:
+    # A verified terminal candidate can disagree with a live point or receipt.
+    # This case retains the disagreement without labelling the terminal GET as live.
+    if any(case.reason_code == ORIGINAL_ID_CONFLICT for case in open_customer_reviews(db, op.create_operation_id)):
+        raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
     if item.outcome == TerminalEvidenceKind.NO_EXTERNAL_EFFECT:
         raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
 

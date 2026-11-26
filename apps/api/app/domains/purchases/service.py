@@ -28,6 +28,7 @@ from app.domains.legal.acceptance_text import (
 from app.domains.legal.service import create_document_acceptance
 from app.domains.purchases.admission import lock_purchase_link
 from app.domains.purchases.contracts import (
+    FINANCIAL_HINT_SCHEMA,
     AcceptedPurchase,
     FinancialOperation,
     MAX_PURCHASE_LEGAL_DOCUMENTS,
@@ -121,7 +122,7 @@ def verify_original_consent(factory: SessionFactory, purchase: Purchase) -> None
 
 def _operation(db: Session, operation: ExternalCreateOperation, *, may_send: bool = False) -> FinancialOperation:
     agreement_date = None
-    if operation.operation_kind == Kind.AGREEMENT and operation.recovery_hint_schema_version == "financial-create:v1":
+    if operation.operation_kind == Kind.AGREEMENT and operation.recovery_hint_schema_version == FINANCIAL_HINT_SCHEMA:
         try:
             agreement_date = date.fromisoformat(operation.recovery_hint_document["request"]["create_date"])
         except (KeyError, TypeError, ValueError):
