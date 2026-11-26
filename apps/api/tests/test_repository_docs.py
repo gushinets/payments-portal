@@ -1498,7 +1498,8 @@ def test_fast_check_passes_the_scoped_environment_to_every_subprocess(
 
     repo.cmd_check(argparse.Namespace(fast=True))
 
-    assert len(invocations) == 5
+    assert len(invocations) == 6
+    assert (["npm", "run", "test:install-policy"], check_environment) in invocations
     assert len(runner_calls) == 1
     assert runner_calls[0]["environment"] == isolated_api_environment(environ=check_environment)
     assert runner_calls[0]["target"] == "api-fast"

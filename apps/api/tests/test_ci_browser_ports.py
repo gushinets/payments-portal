@@ -17,7 +17,7 @@ def test_browser_reserves_ports_before_network_and_retains_failure_diagnostics()
     steps = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]["browser"]["steps"]
     commands = [step.get("run", "") for step in steps]
     reserve = commands.index("python -m scripts.ci_browser_ports reserve")
-    assert reserve < commands.index("uv sync --directory apps/api --locked --no-dev --python 3.12")
+    assert reserve < commands.index("uv sync --directory apps/api --locked --no-dev --no-build --python 3.12")
     assert reserve < commands.index("npm run test:e2e:react-runtime")
     assert "python scripts/repo.py up" in commands
     diagnostics = next(step for step in steps if step.get("run") == "python -m scripts.ci_browser_ports diagnose")

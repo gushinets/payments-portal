@@ -119,6 +119,7 @@ Start with the smallest document that matches the task.
 ## Engineering
 
 - [Development](engineering/DEVELOPMENT.md)
+- [Dependency installation policy](engineering/dependency-installation.md)
 - [Billing operations](engineering/ANY-709-billing-runbook.md) — current configuration, commands, migration transitions, diagnosis and recovery.
 - [Testing](engineering/TESTING.md)
 - [Agent workflow](engineering/AGENT_WORKFLOW.md)

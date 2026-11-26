@@ -31,7 +31,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "24.22.1"
           cache: npm
       - name: Set up uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
@@ -40,11 +40,11 @@ jobs:
           enable-cache: true
           cache-dependency-glob: apps/api/uv.lock
       - name: Validate API dependency lock
-        run: uv lock --directory apps/api --check
+        run: uv lock --directory apps/api --check --no-build
       - name: Install API dependencies
-        run: uv sync --directory apps/api --locked --dev --python 3.12
+        run: uv sync --directory apps/api --locked --dev --no-build --python 3.12
       - name: Install web dependencies
-        run: npm ci
+        run: npm run deps:install
       - name: Check provisional Kernel spec, HTTP mock and Portal consumer
         run: ./.venv/bin/python scripts/check_kernel_manifest_contract.py --local
       - name: Run fast checks with coverage
@@ -125,9 +125,9 @@ jobs:
           enable-cache: true
           cache-dependency-glob: apps/api/uv.lock
       - name: Validate API dependency lock
-        run: uv lock --directory apps/api --check
+        run: uv lock --directory apps/api --check --no-build
       - name: Install API dependencies
-        run: uv sync --directory apps/api --locked --dev --python 3.12
+        run: uv sync --directory apps/api --locked --dev --no-build --python 3.12
       - name: Create private CI environment
         shell: bash
         run: |
@@ -252,10 +252,12 @@ jobs:
       - if: runner.os == 'Windows'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "24.22.1"
           cache: npm
       - if: runner.os == 'Windows'
-        run: npm ci
+        run: npm run deps:install
+      - if: runner.os == 'Windows'
+        run: npm run test:install-policy
       - if: runner.os == 'Windows'
         run: node --test apps/web/tests/typescript-tooling.test.mjs
       - run: python scripts/repo.py harness-smoke
@@ -265,6 +267,20 @@ jobs:
           python -m venv --without-pip .venv
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -c "import subprocess, sys; result = subprocess.run([sys.executable, 'scripts/repo.py', 'test', '--invalid-option']); assert result.returncode == 2, result.returncode"
+      - name: Set up uv for Windows wheel checks
+        if: runner.os == 'Windows'
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.7"
+          enable-cache: false
+      - name: Install locked Windows API wheels
+        if: runner.os == 'Windows'
+        run: npm run sync:api
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/portal-uv-wheel-check
+      - name: Verify Windows wheel-only policy
+        if: runner.os == 'Windows'
+        run: .venv/Scripts/python.exe -m pytest apps/api/tests/test_dependency_install_policy.py -q
       - run: python scripts/repo.py pr-metadata
         env:
           PR_TITLE: ANY-108 - Validate harness
@@ -292,15 +308,15 @@ jobs:
           enable-cache: true
           cache-dependency-glob: apps/api/uv.lock
       - name: Validate API dependency lock
-        run: uv lock --directory apps/api --check
+        run: uv lock --directory apps/api --check --no-build
       - name: Install API dependencies
-        run: uv sync --directory apps/api --locked --no-dev --python 3.12
+        run: uv sync --directory apps/api --locked --no-dev --no-build --python 3.12
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "24.22.1"
           cache: npm
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: npm run deps:install
+      - run: npm run playwright:install -- --with-deps
       - run: npm run test:e2e:react-runtime
       - run: python scripts/repo.py up
       - run: npm run test:e2e

@@ -649,6 +649,8 @@ def cmd_doctor(_: argparse.Namespace) -> None:
                     "Python 3.12 is required for the repository; "
                     f"found {sys.version.split()[0]}"
                 )
+            if command[0] == "npm":
+                check_npm_version(output)
             if command[0] == "uv":
                 required_version = tomllib.loads(
                     (ROOT / "apps/api/pyproject.toml").read_text(encoding="utf-8")
@@ -712,13 +714,24 @@ def runtime_ports(config: RuntimeConfig) -> Iterable[int]:
     return (*ports, config.kernel_mock_port) if kernel_mock_enabled() else ports
 
 
+def check_npm_version(installed_version: str) -> None:
+    manifest = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+    required_version = manifest["devEngines"]["packageManager"]["version"]
+    if installed_version != required_version:
+        raise HarnessError(
+            f"npm {required_version} is required for dependency install policy; "
+            f"found {installed_version}. Use the Node.js version documented in README.md."
+        )
+
+
 def cmd_setup(_: argparse.Namespace) -> None:
     python_312_executable()
     tool("uv")
-    tool("npm")
+    npm = tool("npm")
+    check_npm_version(run([npm, "--version"], capture=True).stdout.strip())
     sync_api()
-    run([tool("npm"), "ci"])
-    run([tool("npm"), "run", "playwright:install"])
+    run([npm, "run", "deps:install"])
+    run([npm, "run", "playwright:install"])
     config = runtime_config()
     write_runtime(config)
     print(f"Setup complete for worktree {config.worktree_id}.")
@@ -730,7 +743,7 @@ def api_uv_command(action: str, *arguments: str) -> list[str]:
 
 def sync_api() -> None:
     run(
-        api_uv_command("sync", "--locked", "--dev"),
+        api_uv_command("sync", "--locked", "--dev", "--no-build"),
         env=uv_environment(),
     )
 
@@ -744,7 +757,7 @@ def cmd_lock_api(_: argparse.Namespace) -> None:
 
 
 def cmd_check_api_lock(_: argparse.Namespace) -> None:
-    run(api_uv_command("lock", "--check"), env=uv_environment())
+    run(api_uv_command("lock", "--check", "--no-build"), env=uv_environment())
 
 
 def cmd_up(args: argparse.Namespace) -> None:
@@ -3745,6 +3758,7 @@ def cmd_check(args: argparse.Namespace) -> None:
     cmd_generate(argparse.Namespace(check=True))
     cmd_architecture(argparse.Namespace())
     cmd_lint(argparse.Namespace(target="api"))
+    run([tool("npm"), "run", "test:install-policy"], env=check_env)
     run([tool("npm"), "run", "test:boundaries:web"], env=check_env)
     run(
         [tool("npm"), "--workspace", "@anytoolai/web", "run",
