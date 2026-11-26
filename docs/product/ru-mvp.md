@@ -170,12 +170,12 @@ documents remain drafts.
    For a purchase eligible for first activation, ANY-897 shows “Checking
    activation” during the saved window and while the accelerated reconciliation
    or the linked first-primary inventory attempt is running. The cabinet also
-   shows this status for up to 60 seconds while each accelerated stage waits
-   for a worker. If access is still pending and the purchase remains eligible,
-   the cabinet shows “Activation has not been confirmed yet” after the
-   accelerated path ends. Regular background checks can continue while this
-   message is visible. The same message appears if no window was saved and fresh
-   matching local reconciliation evidence shows that the subscription is waiting.
+   shows this status for up to 60 seconds after an accelerated stage is queued.
+   Outside these periods, the cabinet shows “Activation has not been confirmed
+   yet” while access is pending and the purchase remains eligible. Background
+   work can continue, and a late first claim of the linked stage can restore
+   “Checking activation”. The unconfirmed message also appears if no window was
+   saved and fresh matching local evidence shows that the subscription is waiting.
    The visible cabinet refreshes local paid-access status when it regains focus,
    including after returning from a separate payment window. See the
    [cabinet paid-access runbook](../engineering/ANY-709-billing-runbook.md#authenticated-cabinet-paid-access-read).

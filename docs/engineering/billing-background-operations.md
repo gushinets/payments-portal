@@ -358,6 +358,14 @@ backoff up to five minutes. Process pauses/backlog can cause observable cadence
 lag; they never extend trust. Claims/fences prevent competing or stale consumers
 from overwriting newer facts, and hints arriving during work remain due.
 
+After sending a successful payment Widget response for a linked purchase
+awaiting first activation, Portal rechecks eligibility before saving the window.
+Ordinary reconciliation continues if the window is missing. To diagnose the
+enqueue, use [`billing-purchase inspect`](#privileged-purchase-operations) to look
+for the subscription's `widget_activation_check` work item and check its
+generation, state and due time. An enqueue exception logs
+`widget_activation_enqueue_failed` with the Widget response `request_id`.
+
 ANY-897 Widget activation checks run in the normal source lane after due
 regular work. Each attempt makes one logical point read of the linked LBX
 subscription. The worker skips missed 20-second slots anchored at Widget

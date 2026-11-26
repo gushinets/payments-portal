@@ -99,17 +99,19 @@ closing read, and during the linked final reconciliation and first-primary
 inventory. When regular reconciliation queues the first selection for the saved
 window, it records the purchase, window and inventory attempt in the subscription
 reconciliation row without locking the Widget row. A live claim keeps `checking`
-visible through the linked attempt, and a pending stage has a 60-second pickup
-grace. If the accelerated path ends with access still pending and the purchase
-still qualifies for first activation, return `unconfirmed`. If regular
-reconciliation confirms the normalized `inactive` reason, return `null` even
-after a positive Widget signal. Without a saved window, return `unconfirmed`
-for a current owned and linked purchase awaiting its first activation if the
-latest reconciliation observation still provides fresh matching waiting evidence
-under the existing source trust rules. Read that evidence locally and return
-`null` when it is absent or stale. Committed access, terminal outcomes and
-known conflicts take precedence. Regenerate the OpenAPI and TypeScript
-contracts using the repository generator.
+visible through the linked attempt. For a pending stage, show `checking` for up
+to 60 seconds from the reconciliation handoff or inventory enqueue. The worker
+can still pick up the stage after this display period, and a late first claim of
+the linked stage can restore `checking`. Outside these periods, return
+`unconfirmed` while access is pending and the purchase remains eligible. If
+regular reconciliation confirms the normalized `inactive` reason, return `null`
+even after a positive Widget signal. Without a saved window, return
+`unconfirmed` for a current owned and linked purchase awaiting its first
+activation if the latest reconciliation observation provides fresh matching
+waiting evidence under the existing source trust rules. Read that evidence
+locally and return `null` when it is absent or stale. Committed access, terminal
+outcomes and known conflicts take precedence. Regenerate the OpenAPI and
+TypeScript contracts using the repository generator.
 
 Refresh the local `GET /api/paid-access` read when the cabinet becomes visible
 or regains focus while visible, including when returning from a separate
