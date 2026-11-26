@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { purchaseStatus } from "@/shared/api/purchases";
@@ -179,7 +179,14 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
     ) {
       const target = sessionRefused ? retrySessionButton.current
         : canPay && !widget.loading ? paymentButton.current : purchaseSelector.current;
-      target?.focus();
+      if (!target) return;
+      target.focus({ preventScroll: true });
+      const navigationBottom = Math.max(0, document.querySelector(".top-nav")?.getBoundingClientRect().bottom ?? 0);
+      const { top, bottom } = target.getBoundingClientRect();
+      const scrollOffset = top < navigationBottom
+        ? Math.floor(top - navigationBottom)
+        : Math.max(0, Math.ceil(bottom - window.innerHeight));
+      if (scrollOffset) window.scrollBy({ top: scrollOffset, behavior: "instant" });
     }
   });
 
@@ -248,8 +255,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
     setDetailAttempt(attempt => attempt + 1);
   }
 
-  function retryRecheck(event: MouseEvent<HTMLButtonElement>) {
-    if (document.activeElement === event.currentTarget) purchaseSelector.current?.focus({ preventScroll: true });
+  function retryRecheck() {
     setRecheckFailure(undefined);
     poll.retry();
   }
@@ -294,7 +300,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
         {!selectionBlocked && recheckRequestId && <div className="notice error" role="alert">
           <p>{b("selectionUnavailable")}</p>
           <p>{b("requestId", { id: recheckRequestId })}</p>
-          <button className="btn-secondary" type="button" onClick={retryRecheck}>{p("refresh")}</button>
+          <button ref={preserveControlFocus} className="btn-secondary" type="button" onClick={retryRecheck}>{p("refresh")}</button>
         </div>}
         {poll.paused && <p role="status">{p("statusPollingPaused")}</p>}
         {!selectionBlocked && selection && released && <>
