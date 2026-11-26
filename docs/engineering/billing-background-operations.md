@@ -462,10 +462,16 @@ same provider ID that the original operation already bound, it uses the saved
 binding and proceeds through the usual subscription admission checks.
 Recovery requires the original saved command, possible-send history and fresh
 proof of ownership and effective terms. The recovery worker skips operations
-with a committed binding. If another caller binds an operation during ordinary
-recovery, the losing attempt discards its proof and reads the saved binding.
-For a subscription, it then reconciles through the existing lease with fresh
-proof. Subscription lifecycle updates use that same lease. An audited
+with a committed binding. If another caller binds the same ID during ordinary
+recovery, recovery can use the saved binding and reconcile a subscription
+through the existing lease with fresh proof. Subscription lifecycle updates
+use that same lease. If a concurrent automatic binding commits a different ID,
+recovery retains the conflicting live or open point proof for the same send and
+opens `original_financial_identity_conflict`. The saved binding stays in place.
+While that case remains open, `resolve-purchase` refuses terminal completion
+and `restore-original` cannot restore trust.
+
+An audited
 [`resolve-review --resolution bind-original`](#privileged-purchase-operations)
 returns `billing_review_stale` if another caller binds the operation
 before the reviewed binding is applied.
@@ -667,11 +673,15 @@ revision, outbox and audit commit together. Repeating the identical command repl
 the saved result without source calls.
 
 `bind-original` also requires `--operation-id` and `--expected-operation-fence`, with
-no reconciliation expectations. Supported cases are financial_binding_conflict /
-accepted_terms_changed_after_preparation / customer_inventory_conflict on an
-unbound possible-send financial operation. Complete bounded discovery must prove exactly one original candidate,
-even with a saved receipt. Saved request/correlation/accepted terms, original
-agreement date and supported subscription lifecycle/policy must match. Binding
+no reconciliation expectations. Supported cases on an unbound possible-send
+financial operation are `original_financial_identity_conflict`,
+`financial_binding_conflict`, `accepted_terms_changed_after_preparation` and
+`customer_inventory_conflict`. Complete bounded discovery must prove exactly one
+original candidate, even with a saved receipt. For an original identity
+conflict, the first-binding transaction checks that the exact point read is
+newer than the retained conflicting evidence. The saved request, correlation
+key, accepted terms, original agreement date and supported subscription
+lifecycle and policy must match. Binding
 enrolls reconciliation without itself renewing trust. This includes a proved
 original terminal subscription or closed agreement. Each required point is read
 once; the same normalized original proof authorizes binding and its atomic

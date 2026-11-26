@@ -1,6 +1,5 @@
 # ANY-821 — Quiesced terminal resolution rebuild plan
 
-- Status: **READY FOR REBUILD**
 - Owning issue: [ANY-821](https://linear.app/paveldik/issue/ANY-821/implement-quiesced-audited-resolution-for-purchases-stuck-in-unknown)
 - Current PR: [ANY-821(#191)](https://github.com/gushinets/payments-portal/pull/191)
 

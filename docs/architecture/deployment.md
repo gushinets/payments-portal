@@ -182,8 +182,8 @@ bootstrap; subsequent revisions apply through the same `upgrade head`. The
 current migration chain and table inventory. Do not create a separate
 bootstrap CLI. Before starting normal runtime on a fresh database, verify:
 
-- Alembic reports one head and the database is at that head;
-- the current head is `20261123_0014` and exactly 30 application tables exist;
+- Alembic reports the single head listed in the [schema reference](payment-portal-data-model.md#physical-baseline) and the database is at that head;
+- exactly 30 application tables exist;
 - every removed legacy catalog/order/payment/provider/subscription/
   entitlement/trial table is absent;
 - all seventeen billing/link/purchase tables are empty before explicit flows;
