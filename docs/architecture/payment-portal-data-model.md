@@ -444,6 +444,13 @@ storage identity. Step 3 needs no additional table or migration beyond the
 Step 2 worker migration `20261028_0005`. Inventory observations use
 `customer-inventory:v1`; conflicts never grant access or rewrite bindings.
 
+ANY-821 stores `original_point_facts` (`original-operation-point-facts:v1`) in
+the financial operation's existing `external_create_recovery` work payload.
+It retains one primary fact and at most one conflicting fact. Each fact
+includes the operation ID and kind, exact provider object ID, open or live
+status, and the completion time of that object's GET. Terminal resolution
+checks these retained facts alongside receipts and bindings.
+
 The pre-existing create-recovery index and customer-send lease identity remain
 unchanged. Claims use paired finite ownership; completion preserves newer enqueue
 generations. Binding atomically enrolls new canonical subscriptions. Source apply
@@ -471,6 +478,16 @@ fence to distinguish possible-send history from completed no-send. Known cases
 without sufficient preserved proof refuse binding; no retrospective assertion
 or force override supplies it. Audit, permitted shared apply/bind and scheduling
 commit atomically; terminal holds remain. No Step 5 DDL is required.
+
+ANY-821 records `purchase-terminal-resolution:v1` in the same audit fields.
+It retains the operator principal, exact request and evidence, before/after
+purchase states and command digest. The audit commits with the release of
+the original purchase hold. Exact late-object cases store their identity,
+point-read time and any confirmed scope evidence as `purchase-late-object:v1`.
+The `purchase-late-object-closure:v1` audit preserves the exact ID and
+terminal confirmation. The retained cases and audits protect exact IDs
+through later discovery omissions. See
+[audited purchase completion](../engineering/billing-background-operations.md#audited-purchase-completion-any-821).
 
 ## Persisted vocabularies
 

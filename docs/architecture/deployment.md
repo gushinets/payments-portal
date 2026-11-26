@@ -356,10 +356,11 @@ their saved deadlines.
 Apply Portal revision `20261123_0821` with the normal migration service before
 terminal maintenance. Use the compatible migration and API/worker images, a
 one-off CLI from the selected API image, and a web image that understands
-`resolved_external_terminal`. The downgrade guard refuses retained terminal
-purchase history, open late-object cases and audited exact late-object closures.
-Use a matching verified application/database backup pair for an incompatible
-rollback.
+`resolved_external_terminal`. The downgrade guard refuses a downgrade when the
+database contains a purchase in `resolved_external_terminal`, an open
+late-object case, or an audited late-object closure that records
+`external_terminal` evidence for the exact object ID. Use a matching verified
+application/database backup pair for an incompatible rollback.
 
 1. Before maintenance, `inspect`, attempt GET-only `recover`, then `inspect`
    again as described in the [operator runbook](../engineering/billing-background-operations.md#audited-purchase-completion-any-821).
