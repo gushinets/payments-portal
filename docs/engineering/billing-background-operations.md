@@ -197,9 +197,10 @@ There is no separate process to launch or standalone worker command/container.
   than the cleanup reserve and at most 240 seconds. This leaves the 30-second
   claim/apply margin and refusal retry within the five-minute urgent cadence.
 - `BILLING_WORKER_SCAN_BATCH_SIZE=100`: local enrollment/repair batch, range 1–100.
-- `BILLING_WIDGET_ACTIVATION_WINDOW_SECONDS=300` sets the duration of new
-  activation windows. Startup accepts 1–3,600 seconds. Saved windows retain
-  their original deadline.
+- `BILLING_WIDGET_ACTIVATION_WINDOW_SECONDS` sets the duration of new activation
+  windows. Production Compose defaults to 780 seconds, and the application and
+  local Compose default to 300 seconds. Startup accepts 1–3,600 seconds. Saved
+  windows retain their original deadline. See the [production update procedure](../architecture/deployment.md#widget-activation-window-any-897).
 - `PAID_ACCESS_CLOCK_SKEW_SECONDS`: supported deployment clock budget, 1–299
   seconds with no default. Unset prevents new positive derivation while local
   reductions continue; existing allowance UTC bounds remain frozen.
@@ -430,8 +431,11 @@ inventory link, without locking the Widget row. After a positive signal, the
 cabinet tracks a reconciliation and its first-primary inventory through the
 matching Widget wakeup. The first claim for that wakeup can keep `checking`
 after the preceding ordinary claim expires. Reclaiming the Widget's own
-expired attempt leaves `unconfirmed`, as does starting an independently due
-reconciliation after the window.
+expired attempt leaves `unconfirmed`. The cabinet treats a claim taken at or
+after the saved ordinary due time as ordinary. The worker clears that wakeup
+when acquiring the source lease if the ordinary check is due by then. Ordinary
+reconciliation and the primary selection it queues leave the cabinet at
+`unconfirmed` after the window.
 Paid access and purchased allowances are written by standard reconciliation and
 primary selection from their own authoritative proof.
 

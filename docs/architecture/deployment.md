@@ -335,11 +335,21 @@ and verify separate application/database backups before updating retained data.
 Use the existing backup/recovery procedure and matching reader+database pair;
 never repair failure by downgrading, stamping or rewriting purchase history.
 
+#### Widget activation window (ANY-897)
+
 The Portal image for ANY-897 applies migration `20261123_0014`, which enforces
 one Widget activation queue row per billing account and subscription. Any retained
 `widget_activation_check` row, including a completed job, blocks downgrade
 from that revision. If rollback is required, use the backup/recovery procedure
 to restore a verified database and matching application images.
+
+Production Compose and `.env.production.example` use a 780-second Widget
+activation window. Before updating an existing installation, set
+`BILLING_WIDGET_ACTIVATION_WINDOW_SECONDS=780` in its private environment file
+or remove the old setting to inherit the Compose default. Check the effective
+API value for shell or overlay overrides before running a full `image-up`.
+The setting applies when the API saves a new window. Existing windows retain
+their saved deadlines.
 
 ### Paired compatibility and synchronized cutover
 

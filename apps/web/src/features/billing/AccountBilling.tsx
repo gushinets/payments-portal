@@ -197,8 +197,8 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
     ...(usage.state.status === PaidReadStatus.Ready ? usage.state.data.items.map((item) => item.product_id) : []),
   ])].filter((id) => !purchases.items.some((item) => item.product_id === id));
 
-  function refreshPaid(afterCurrent = false) {
-    void paid.refresh(afterCurrent);
+  function refreshPaid() {
+    void paid.refresh({ afterCurrent: true });
     void usage.refresh();
   }
 
@@ -259,7 +259,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
         {widget.loading ? b("loading") : widgetOpen ? b("refresh") : canPay ? b("pay") : b("open")}
       </button>
       {widgetOpen && <p id="billing-refresh-hint" className="card-copy">{b("refreshHint")}</p>}
-      <WidgetView widget={widget} onClose={() => refreshPaid(true)} />
+      <WidgetView widget={widget} onClose={refreshPaid} />
     </section>
     {!sessionRefused && <section className="account-products-panel" aria-label={t("title")}>
       <div className="account-products-heading">
@@ -267,7 +267,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
         <p className="card-copy">{t("description")}</p>
         <div className="account-products-actions">
           <Link className="btn-secondary" href="/products">{t("allProducts")}</Link>
-          {emailVerified && <button className="btn-secondary" type="button" onClick={() => refreshPaid()} disabled={paid.state.status === PaidReadStatus.Loading}>{a("refresh")}</button>}
+          {emailVerified && <button className="btn-secondary" type="button" onClick={refreshPaid} disabled={paid.state.status === PaidReadStatus.Loading}>{a("refresh")}</button>}
         </div>
       </div>
       {emailVerified && paid.state.status === PaidReadStatus.Unavailable && <div className="notice error" role="alert">

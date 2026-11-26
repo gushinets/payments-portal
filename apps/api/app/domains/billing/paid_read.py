@@ -278,9 +278,15 @@ def _activation_status(
                     if reconciliation is not None
                     else None
                 )
+                pickup_at = (
+                    reconciliation.last_attempt_started_at
+                    if reconciliation is not None and reconciliation.work_state == BillingWorkState.RUNNING
+                    else None
+                )
                 if (
                     wakeup is not None
                     and wakeup.window == window_key
+                    and not wakeup.ordinary_check_due(pickup_at)
                     and not reconciliation_payload.was_reclaimed_since(completion.at)
                     and _handoff_in_progress(reconciliation, completion.at, now)
                 ) or _handoff_in_progress(inventory, completion.inventory_due_at, now):

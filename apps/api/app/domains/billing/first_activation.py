@@ -138,6 +138,9 @@ class WidgetReconciliationWakeup(BaseModel):
             return due, priority
         return min(self.original_due_at, due), max(self.original_priority, priority)
 
+    def ordinary_check_due(self, at: datetime | None) -> bool:
+        return at is not None and self.original_due_at is not None and self.original_due_at <= as_utc(at)
+
 
 class ReconciliationQueuePayload(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -310,14 +313,12 @@ def handle_widget_wakeup(
     if claim.kind != work.RECONCILIATION or row.coalescing_key != subscription_key:
         raise BillingRefused("billing_work_stale", 409)
     payload = ReconciliationQueuePayload.from_job(row)
-    wakeup, first_primary = payload.widget_wakeup, payload.first_primary
+    wakeup = payload.wakeup_for_generation(row.enqueue_generation)
+    if wakeup is None or row.enqueue_generation != claim.generation:
+        return None
     now = as_utc(billing_reconciliation.database_now(db))
-    if (
-        wakeup is None
-        or row.enqueue_generation != claim.generation
-        or wakeup.generation != claim.generation
-        or (wakeup.original_due_at is not None and wakeup.original_due_at <= now)
-    ):
+    if wakeup.ordinary_check_due(now):
+        row.payload_document = payload.model_copy(update={"widget_wakeup": None}).model_dump(mode="json")
         return None
     signal_at = _widget_signal_at(db, sub, subscription_key, wakeup.window)
     if signal_at is None:
@@ -326,7 +327,7 @@ def handle_widget_wakeup(
     covered = False
     if not source_busy:
         if scope.primary_subscription_id is None:
-            covered = widget_wakeup_is_covered(db, sub, wakeup, first_primary, now)
+            covered = widget_wakeup_is_covered(db, sub, wakeup, payload.first_primary, now)
         elif scope.primary_subscription_id == sub.subscription_id and wakeup.original_due_at is not None:
             # Inventory can commit the first grant before the first worker pickup.
             deadline = effective_deadline(scope)
@@ -380,7 +381,7 @@ def retain_widget_schedule(
         return False
     signal_at = _widget_signal_at(db, sub, subscription_key, wakeup.window)
     now = as_utc(billing_reconciliation.database_now(db))
-    if signal_at is None or (wakeup.original_due_at is not None and wakeup.original_due_at <= now):
+    if signal_at is None or wakeup.ordinary_check_due(now):
         return False
     inventory_wait = wakeup.inventory_wait
     if inventory_claim is not None:

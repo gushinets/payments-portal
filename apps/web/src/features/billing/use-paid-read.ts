@@ -19,6 +19,8 @@ type PaidReadState<T> =
   | { status: PaidReadStatus.Ready; data: T; expiresAt: number | null }
   | { status: PaidReadStatus.Unavailable; requestId: string; deadlinePending: boolean };
 
+type PaidReadRefreshOptions = { afterCurrent?: boolean; background?: boolean };
+
 export function usePaidRead<T>(
   enabled: boolean,
   read: (token: string, requestId: string) => Promise<T>,
@@ -29,16 +31,15 @@ export function usePaidRead<T>(
   const { begin, cancel } = useSessionOperation();
   const stopped = useRef(false);
   const busy = useRef(false);
-  const refreshPending = useRef(false);
+  const refreshPending = useRef<PaidReadRefreshOptions | null>(null);
   const boundToken = useRef<string | null | undefined>(undefined);
-  const refresh = useCallback(async function refreshPaidRead(afterCurrent = false): Promise<void> {
+  const refresh = useCallback(async function refreshPaidRead(options: PaidReadRefreshOptions = {}): Promise<void> {
     if (!enabled || stopped.current || !isVisible()) return;
     if (busy.current) {
-      if (afterCurrent) refreshPending.current = true;
+      if (options.afterCurrent && !refreshPending.current?.background) refreshPending.current = options;
       return;
     }
     busy.current = true;
-    setState({ status: PaidReadStatus.Loading });
     const operation = begin();
     if (boundToken.current === undefined) boundToken.current = operation.token;
     if (boundToken.current !== operation.token) {
@@ -50,6 +51,9 @@ export function usePaidRead<T>(
     }
     const requestId = newRequestId();
     const started = performance.now();
+    setState((current) => options.background && current.status === PaidReadStatus.Ready
+      && (current.expiresAt === null || current.expiresAt > started)
+      ? current : { status: PaidReadStatus.Loading });
     try {
       if (!operation.token) throw new Error("session_required");
       const data = await read(operation.token, requestId);
@@ -74,12 +78,12 @@ export function usePaidRead<T>(
       if (operation.isLatest()) {
         busy.current = false;
         const pending = refreshPending.current;
-        refreshPending.current = false;
+        refreshPending.current = null;
         if (!operation.isCurrent()) {
           stopped.current = true;
           setState({ status: PaidReadStatus.Unavailable, requestId: "", deadlinePending: false });
         } else if (pending) {
-          void refreshPaidRead();
+          void refreshPaidRead(pending);
         }
       }
     }
@@ -91,9 +95,9 @@ export function usePaidRead<T>(
     queueMicrotask(() => void refresh());
     const interval = setInterval(() => void refresh(), paidReadRefreshMs);
     const onVisibility = () => {
-      if (isVisible()) void refresh(true);
+      if (isVisible()) void refresh({ afterCurrent: true });
       else {
-        refreshPending.current = false;
+        refreshPending.current = null;
         setState({ status: PaidReadStatus.Loading });
       }
     };
@@ -102,7 +106,7 @@ export function usePaidRead<T>(
       cancel();
       clearInterval(interval);
       busy.current = false;
-      refreshPending.current = false;
+      refreshPending.current = null;
       setState({ status: PaidReadStatus.Unavailable, requestId: "", deadlinePending: false });
     });
     document.addEventListener("visibilitychange", onVisibility);
@@ -111,7 +115,7 @@ export function usePaidRead<T>(
       cancel();
       clearInterval(interval);
       busy.current = false;
-      refreshPending.current = false;
+      refreshPending.current = null;
       unsubscribe();
       document.removeEventListener("visibilitychange", onVisibility);
     };

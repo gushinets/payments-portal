@@ -198,9 +198,10 @@ read after the access revision is committed.
   Use the initial Brief Decoder case in the linked Linear QA baseline as the
   reference for the late-activation test.
 
-Start the baseline QA run with a five-minute window. Use the selected 13-minute
-window (`BILLING_WIDGET_ACTIVATION_WINDOW_SECONDS=780`) for the qualifying QA
-timing run. Retain the saved deadline for an open window when tuning its
-duration. The 20- and 40-second intervals, five-second read wait and 60-second
-confirmation display are the initial settings. The question of faster
-activation on the LBX test environment can proceed in parallel.
+The baseline QA run used a five-minute window. Production Compose uses the
+13-minute window (`BILLING_WIDGET_ACTIVATION_WINDOW_SECONDS=780`) selected for
+the qualifying QA timing run. Follow the [production update procedure](../../architecture/deployment.md#widget-activation-window-any-897)
+for existing installations. Saved windows retain their deadline when the
+configured duration changes. The 20- and 40-second intervals, five-second read
+wait and 60-second confirmation display are the initial settings. The question
+of faster activation on the LBX test environment can proceed in parallel.

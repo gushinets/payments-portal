@@ -169,21 +169,26 @@ def test_billing_worker_settings_propagate_and_match_documentation() -> None:
         "BILLING_WORKER_DELIVERY_CONCURRENCY": "1",
         "BILLING_WORKER_IO_TIMEOUT_SECONDS": "60",
         "BILLING_WORKER_SCAN_BATCH_SIZE": "100",
-        "BILLING_WIDGET_ACTIVATION_WINDOW_SECONDS": "300",
     }
-    for path in ("docker-compose.yml", "docker-compose.prod.yml", "docker-compose.agent.yml"):
+    window_setting = "BILLING_WIDGET_ACTIVATION_WINDOW_SECONDS"
+    for path, window_seconds in (
+        ("docker-compose.yml", "300"),
+        ("docker-compose.prod.yml", "780"),
+        ("docker-compose.agent.yml", "300"),
+    ):
         config = yaml.safe_load((ROOT / path).read_text())["services"]
         assert config["api"]["environment"]["PAID_ACCESS_CLOCK_SKEW_SECONDS"] == "${PAID_ACCESS_CLOCK_SKEW_SECONDS:-}"
         assert (
             config["api"]["environment"]["PREFLIGHT_TOTAL_TIMEOUT_SECONDS"] == "${PREFLIGHT_TOTAL_TIMEOUT_SECONDS:-10}"
         )
-        for key, value in defaults.items():
+        for key, value in (defaults | {window_setting: window_seconds}).items():
             assert config["api"]["environment"][key] == f"${{{key}:-{value}}}"
-    for path in (".env.example", ".env.production.example"):
-        for key, value in defaults.items():
-            assert f"{key}={value}" in (ROOT / path).read_text()
+    for path, window_seconds in ((".env.example", "300"), (".env.production.example", "780")):
+        lines = (ROOT / path).read_text().splitlines()
+        for key, value in (defaults | {window_setting: window_seconds}).items():
+            assert f"{key}={value}" in lines
     text = (ROOT / "docs/engineering/billing-background-operations.md").read_text()
-    for key in defaults:
+    for key in (*defaults, window_setting):
         assert key in text
     assert "per-process" in text and "standalone" in text and "100" in text
 

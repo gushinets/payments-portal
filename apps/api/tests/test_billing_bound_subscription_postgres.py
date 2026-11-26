@@ -1687,17 +1687,26 @@ async def test_any897_widget_pickup_after_ordinary_lease_expires(
 
 @pytest.mark.parametrize("scenario", [True], indirect=True)
 @pytest.mark.parametrize("activation_polling", [{"prepared_at": PERIOD_TEST_PREPARED_AT}], indirect=True)
-async def test_any897_cabinet_does_not_link_an_already_due_reconciliation_after_the_window(
+@pytest.mark.parametrize(
+    "ordinary_due_offset",
+    [
+        pytest.param(19, id="due-before-signal"),
+        pytest.param(100, id="due-before-pickup"),
+        pytest.param(117, id="due-before-source-claim"),
+    ],
+)
+async def test_any897_cabinet_does_not_link_due_ordinary_reconciliation_after_the_window(
     activation_polling: ActivationPolling,
     cabinet: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
+    ordinary_due_offset: int,
 ) -> None:
     polling = activation_polling
     factory = polling.factory
     monkeypatch.setattr(paid_read, "database_now", lambda db: polling.now)
     regular_id, _, _ = reconciliation_schedule(factory)
     prepared_at = polling.window.prepared_at
-    ordinary_due = prepared_at + timedelta(seconds=19)
+    ordinary_due = prepared_at + timedelta(seconds=ordinary_due_offset)
     with factory() as db, db.begin():
         row = db.get(BillingWorkItem, regular_id)
         row.next_attempt_at = ordinary_due
@@ -1708,13 +1717,29 @@ async def test_any897_cabinet_does_not_link_an_already_due_reconciliation_after_
     assert await polling.tick(20)
     with factory() as db:
         row = db.get(BillingWorkItem, regular_id)
-        assert row.next_attempt_at == ordinary_due
-        assert ReconciliationQueuePayload.from_job(row).widget_wakeup is None
+        wakeup = ReconciliationQueuePayload.from_job(row).widget_wakeup
+        if ordinary_due <= polling.now:
+            assert row.next_attempt_at == ordinary_due
+            assert wakeup is None
+        else:
+            assert row.next_attempt_at == polling.now
+            assert wakeup is not None and wakeup.original_due_at == ordinary_due
 
-    polling.now = polling.window.deadline_at + activation_windows.CLOSING_GRACE + timedelta(seconds=1)
+    pickup_offset = 116
+    polling.now = prepared_at + timedelta(seconds=pickup_offset)
+    assert polling.now > polling.window.deadline_at + activation_windows.CLOSING_GRACE
     assert await cabinet_status(cabinet) == ("unconfirmed", 0)
+    claim = work.claim_work(factory, polling.worker.configuration, WorkLane.URGENT)
+    assert claim is not None and claim.id == regular_id
+    pickup_status = "unconfirmed" if ordinary_due <= polling.now else "checking"
+    assert await cabinet_status(cabinet) == (pickup_status, 0)
     entered, release = asyncio.Event(), asyncio.Event()
     read = orchestration.read_subscription_proof
+    claim_source = orchestration.claim_reconciliation
+
+    def claim_when_ordinary_is_due(*args: Any, **kwargs: Any) -> ReconciliationSubject:
+        polling.now = max(polling.now, ordinary_due)
+        return claim_source(*args, **kwargs)
 
     async def pause_apply(*args: Any, **kwargs: Any) -> SubscriptionProof:
         proof = await read(*args, **kwargs)
@@ -1723,21 +1748,30 @@ async def test_any897_cabinet_does_not_link_an_already_due_reconciliation_after_
         await release.wait()
         return proof
 
-    late_offset = (polling.now - prepared_at).total_seconds()
     with monkeypatch.context() as patch:
+        patch.setattr(orchestration, "claim_reconciliation", claim_when_ordinary_is_due)
         patch.setattr(orchestration, "read_subscription_proof", pause_apply)
-        task = asyncio.create_task(polling.tick(late_offset, WorkLane.URGENT))
+        task = asyncio.create_task(
+            orchestration.reconcile_subscription(
+                polling.worker.client,
+                polling.worker.admissions[WorkLane.URGENT],
+                polling.worker.configuration,
+                factory=factory,
+                subscription_id=UUID(claim.reference),
+                work_claim=claim,
+            )
+        )
         try:
             await asyncio.wait_for(entered.wait(), 5)
             assert await cabinet_status(cabinet) == ("unconfirmed", 0)
         finally:
             release.set()
-            assert await task
+            await task
     with factory() as db:
         row = db.get(BillingWorkItem, regular_id)
         assert ReconciliationQueuePayload.from_job(row).first_primary is None
     assert await cabinet_status(cabinet) == ("unconfirmed", 0)
-    assert await polling.tick(late_offset + 1, WorkLane.URGENT)
+    assert await polling.tick((polling.now - prepared_at).total_seconds() + 1, WorkLane.URGENT)
     assert await cabinet_status(cabinet) == (None, 1)
     with factory() as db:
         assert db.scalars(select(PurchasedAllowance)).one().quantity == 100

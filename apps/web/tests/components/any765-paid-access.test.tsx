@@ -204,6 +204,56 @@ it("shows the checking status in Brazilian Portuguese", async () => {
   expect(await screen.findByText("Verificando a ativação")).toBeVisible();
 });
 
+it("preserves a focused product link through focus revalidation and its follow-up", async () => {
+  vi.stubEnv("NEXT_PUBLIC_KERNEL_WEB_BASE_URL", "https://kernel.invalid");
+  const grant = paidState();
+  paid.mockResolvedValueOnce(Response.json(grant));
+  renderCabinet();
+  const link = await screen.findByRole("link", { name: a.openProduct });
+  act(() => link.focus());
+  expect(link).toHaveFocus();
+
+  let finish!: (response: Response) => void;
+  let finishFollowUp!: (response: Response) => void;
+  paid.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }));
+  paid.mockImplementationOnce(() => new Promise<Response>((resolve) => { finishFollowUp = resolve; }));
+  fireEvent.blur(window);
+  fireEvent.focus(window);
+  fireEvent.focus(window);
+  expect(paid).toHaveBeenCalledTimes(2);
+  expect(link).toHaveFocus();
+
+  await act(async () => finish(Response.json(grant)));
+  expect(paid).toHaveBeenCalledTimes(3);
+  expect(link).toHaveFocus();
+
+  await act(async () => finishFollowUp(Response.json(grant)));
+  expect(screen.getByRole("link", { name: a.openProduct })).toBe(link);
+  expect(link).toHaveFocus();
+});
+
+it("expires the focused product link while a focus refresh is pending", async () => {
+  vi.useFakeTimers();
+  vi.stubEnv("NEXT_PUBLIC_KERNEL_WEB_BASE_URL", "https://kernel.invalid");
+  paid.mockResolvedValueOnce(Response.json(paidState({ effective_until: new Date(Date.now() + 500).toISOString() })));
+  renderCabinet();
+  await act(async () => vi.advanceTimersByTimeAsync(1));
+  const link = screen.getByRole("link", { name: a.openProduct });
+  act(() => link.focus());
+
+  let finish!: (response: Response) => void;
+  paid.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }));
+  fireEvent.focus(window);
+  expect(paid).toHaveBeenCalledTimes(2);
+  expect(link).toHaveFocus();
+
+  await act(async () => vi.advanceTimersByTimeAsync(510));
+  expect(link).not.toBeInTheDocument();
+  expect(screen.getByRole("alert")).toHaveTextContent(a.deadlinePending);
+  await act(async () => finish(Response.json(emptyPaidState())));
+  expect(screen.queryByRole("link", { name: a.openProduct })).not.toBeInTheDocument();
+});
+
 it("coalesces visible focus events behind an older paid read", async () => {
   renderCabinet();
   await screen.findByText(a.confirmed);
@@ -224,6 +274,34 @@ it("coalesces visible focus events behind an older paid read", async () => {
     product_id: "proposal_ai", status: "no_paid_access", activation_check: "checking", observed_at: null, effective_until: null,
   }];
   await act(async () => finish(Response.json(checking)));
+  expect(paid).toHaveBeenCalledTimes(3);
+  expect(screen.getByText(a.confirmed)).toBeVisible();
+});
+
+it("queues one manual refresh when a paid access read is already running in the background", async () => {
+  vi.useFakeTimers();
+  const checking = emptyPaidState();
+  checking.products = [{
+    product_id: "proposal_ai", status: "no_paid_access", activation_check: "checking",
+    observed_at: null, effective_until: null,
+  }];
+  paid.mockResolvedValueOnce(Response.json(checking));
+  renderCabinet();
+  await act(async () => vi.advanceTimersByTimeAsync(1));
+  expect(screen.getByText(a.checking)).toBeVisible();
+
+  let finishStaleRead!: (response: Response) => void;
+  paid.mockImplementationOnce(() => new Promise<Response>((resolve) => { finishStaleRead = resolve; }));
+  fireEvent.focus(window);
+  expect(paid).toHaveBeenCalledTimes(2);
+
+  paid.mockResolvedValueOnce(Response.json(paidState()));
+  expect(screen.getByRole("button", { name: a.refresh })).toBeEnabled();
+  refresh();
+  refresh();
+  expect(paid).toHaveBeenCalledTimes(2);
+
+  await act(async () => finishStaleRead(Response.json(checking)));
   expect(paid).toHaveBeenCalledTimes(3);
   expect(screen.getByText(a.confirmed)).toBeVisible();
 });
