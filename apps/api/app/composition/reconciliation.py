@@ -10,7 +10,7 @@ from uuid import UUID
 
 from starlette.concurrency import run_in_threadpool
 
-from app.composition.purchase_late_objects import review_redirected_subscription
+from app.composition.purchase_late_objects import review_late_subscription
 from app.composition.purchase_recovery import is_live_original_subscription, original_command
 from app.composition.sources import SourceResources
 from app.core.settings import Settings
@@ -129,7 +129,7 @@ async def read_inventory_original_subscription(
         if point is not None and read_at is not None:
             if point.agreement_id != agreement_id:
                 if (
-                    await review_redirected_subscription(
+                    await review_late_subscription(
                         client,
                         factory,
                         customer,

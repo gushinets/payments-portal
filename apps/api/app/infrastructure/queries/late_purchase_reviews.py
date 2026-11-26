@@ -49,6 +49,16 @@ def object_cases(db: Session, account: str, kind: Kind, external_id: str, *, rea
     )
 
 
+def other_late_object_owner(
+    db: Session, purchase: Purchase, kind: Kind, external_id: str, *, reason: str, schema: str
+) -> bool:
+    """Match retained ownership even after the late case has been closed."""
+    query = _object_cases(purchase.external_billing_account_id, kind, external_id, reason=reason, schema=schema).where(
+        Purchase.purchase_intent_id != purchase.purchase_intent_id
+    )
+    return bool(db.scalar(select(query.exists())))
+
+
 def latest_closed_subscription_scope(
     db: Session,
     account: str,

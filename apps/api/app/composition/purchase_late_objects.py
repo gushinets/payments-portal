@@ -86,7 +86,7 @@ async def released_subscription_owner(
     return owners[0] if owners else None
 
 
-async def review_redirected_subscription(
+async def review_late_subscription(
     client: LbxServerClient,
     factory: SessionFactory,
     customer: CustomerOpen,
@@ -97,7 +97,7 @@ async def review_redirected_subscription(
     budget: PreflightBudget,
     delegate: Callable[..., Awaitable[Any]],
 ) -> ReleasedOriginal | None:
-    """Follow the actual point relationship when discovery named a different agreement."""
+    """Check whether the exact subscription point belongs to a released purchase."""
     if str(point.subscription_id) != provider_id:
         raise LbxScopeMismatch()
     original = await released_subscription_owner(factory, customer, point, delegate)

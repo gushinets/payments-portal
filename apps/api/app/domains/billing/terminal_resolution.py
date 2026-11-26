@@ -180,12 +180,15 @@ def locally_proven_not_sent(
 
 def _verify_proof(
     db: Session,
+    purchase: PurchaseIntent,
     op: ExternalCreateOperation,
     item: OperationEvidence,
     evidence: TerminalEvidence,
     subscription: ExternalSubscription | None,
     now: datetime,
 ) -> None:
+    from app.domains.billing import late_purchase_reviews as late_cases
+
     # A verified terminal candidate can disagree with a live point or receipt.
     # This case retains the disagreement without labelling the terminal GET as live.
     if any(case.reason_code == ORIGINAL_ID_CONFLICT for case in open_customer_reviews(db, op.create_operation_id)):
@@ -217,8 +220,12 @@ def _verify_proof(
         known_ids.add(points.primary.external_object_id)
     if unsent or (known_ids and known_ids != {external_id}):
         raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
-    if queries.other_financial_binding(db, op, external_id) or late_purchase_reviews.other_audited_owner(
-        db, op, external_id, reason=TERMINAL_REASON, schema=SCHEMA
+    if (
+        queries.other_financial_binding(db, op, external_id)
+        or late_purchase_reviews.other_audited_owner(db, op, external_id, reason=TERMINAL_REASON, schema=SCHEMA)
+        or late_purchase_reviews.other_late_object_owner(
+            db, purchase, op.operation_kind, external_id, reason=late_cases.REASON, schema=late_cases.CASE_SCHEMA
+        )
     ):
         raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
 
@@ -305,7 +312,7 @@ def resolve_purchase(
         sub_id = sub.subscription_id if sub else None
         now = current.now
         for op in operations:
-            _verify_proof(db, op, supplied[op.create_operation_id], request.evidence, sub, now)
+            _verify_proof(db, row, op, supplied[op.create_operation_id], request.evidence, sub, now)
 
         before = row.state
         external = any(item.outcome == TerminalEvidenceKind.EXTERNAL_TERMINAL for item in supplied.values())

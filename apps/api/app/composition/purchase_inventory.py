@@ -13,7 +13,7 @@ from app.composition.purchase_late_objects import (
     record_inventory_late_subscription,
     released_subscription_owner,
     review_historical_subscription,
-    review_redirected_subscription,
+    review_late_subscription,
 )
 from app.composition.purchase_recovery import original_command
 from app.composition.reconciliation import read_inventory_original_subscription, reconcile_subscription
@@ -396,14 +396,17 @@ async def collect_inventory(
             if str(point.subscription_id) != provider_id:
                 raise LbxScopeMismatch()
             listed_elsewhere = candidate is not None and point.agreement_id != candidate.agreement_id
+            unbound_tariff_mismatch = False
             if candidate is not None and (listed_elsewhere or point.tariff_id != candidate.tariff_id):
                 complete = False
                 if known is None and not listed_elsewhere:
                     product_complete.update(dict.fromkeys(products_for_tariff(point.tariff_id), False))
-                    continue
+                    if owner is not None:
+                        continue
+                    unbound_tariff_mismatch = True
             owner = agreements.get(str(point.agreement_id))
-            if (known is None and listed_elsewhere) or (known is not None and owner is None):
-                await review_redirected_subscription(
+            if unbound_tariff_mismatch or (known is None and listed_elsewhere) or (known is not None and owner is None):
+                await review_late_subscription(
                     client,
                     factory,
                     current,
