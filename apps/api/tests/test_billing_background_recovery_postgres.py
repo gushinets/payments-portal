@@ -903,6 +903,129 @@ async def test_verified_late_scope_survives_out_of_order_rereads(
         late.close_case(factory, config, closure, "os-euid:1000")
 
 
+@pytest.mark.parametrize("first_get", ["agreement", "subscription"])
+async def test_closed_agreement_prevents_late_case_in_either_get_order(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    first_get: str,
+) -> None:
+    transport, sources, original = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    original = synthetic_prepare(factory, transport, original, uncertain=True)
+    agreement, point = transport.agreements[0], transport.subscriptions[0]
+    agreement["close_date"], point["state"] = "2026-10-27", 3
+    request = terminal_object_request(factory, config, original, subscription_id="567")
+    resolved = terminal.resolve_purchase(factory, config, request, "os-euid:1000")
+    saved = service.read_purchase(factory, original.user_id, original.id)
+    with factory() as db:
+        audit = db.get(ManualReviewCase, resolved.review_case_id).resolution_document
+
+    replacement = await accept(sources, factory, key="closed-agreement-replacement")
+    point["state"] = 2
+    start = len(transport.requests)
+    client = sources.require_lbx()
+    if first_get == "agreement":
+        await recover_financial(
+            sources,
+            config,
+            factory=factory,
+            user_id=original.user_id,
+            purchase_id=original.id,
+            operation_id=original.operations[1].id,
+        )
+    else:
+        customer = service.customer_for_purchase(factory, config, replacement)
+        async with sources.billing.operation(bound_scope=False) as budget:
+            inventory = await collect_inventory(
+                client, sources.billing, config, factory=factory, customer=customer, expected=replacement, budget=budget
+            )
+        assert inventory.complete
+
+    agreement_path, subscription_path = "/agreements/456", "/subscriptions/567"
+    points = [
+        item.url.path.removeprefix("/api/rest/v1")
+        for item in transport.requests[start:]
+        if item.method == "GET" and item.url.path.endswith((agreement_path, subscription_path))
+    ]
+    assert points == (
+        [agreement_path, subscription_path] if first_get == "agreement" else [subscription_path, agreement_path]
+    )
+    assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
+    with factory() as db:
+        assert db.scalar(select(ManualReviewCase).where(ManualReviewCase.reason_code == late.REASON)) is None
+
+    discover = client.discover_subscriptions
+
+    async def omit_original(
+        *, user_id: int, budget: PreflightBudget, agreement_id: int | None = None
+    ) -> tuple[Subscription, ...]:
+        rows = await discover(user_id=user_id, agreement_id=agreement_id, budget=budget)
+        return tuple(row for row in rows if row.subscription_id != 567)
+
+    monkeypatch.setattr(client, "discover_subscriptions", omit_original)
+    linked = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=replacement.id)
+    assert linked.state == "linked" and linked.id != original.id
+    assert linked.operations[0].bound_id != "456" and linked.operations[1].bound_id != "567"
+    assert transport.creates("/agreements") == transport.creates("/subscriptions") == 1
+    assert service.read_purchase(factory, original.user_id, original.id) == saved
+    with factory() as db:
+        assert db.get(ManualReviewCase, resolved.review_case_id).resolution_document == audit
+
+
+@pytest.mark.parametrize("agreement_id", [456, 987], ids=["original-open", "different-open"])
+async def test_released_recovery_retains_live_subscription_on_open_agreement(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+    agreement_id: int,
+) -> None:
+    transport, sources, original = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    original = synthetic_prepare(factory, transport, original, uncertain=True)
+    agreement, point = transport.agreements[0], transport.subscriptions[0]
+    agreement["close_date"], point["state"] = "2026-10-27", 3
+    request = terminal_object_request(factory, config, original, subscription_id="567")
+    terminal.resolve_purchase(factory, config, request, "os-euid:1000")
+    replacement = await accept(sources, factory, key="live-late-subscription-replacement")
+
+    if agreement_id == agreement["agreement_id"]:
+        agreement["close_date"] = None
+    else:
+        transport.agreements.append(
+            {**agreement, "agreement_id": agreement_id, "agreement_number": "other-owned-agreement", "close_date": None}
+        )
+    point.update(agreement_id=agreement_id, state=2)
+    case_id, observed_at = None, request.evidence.confirmed_at
+    for _ in range(2):
+        await recover_financial(
+            sources,
+            config,
+            factory=factory,
+            user_id=original.user_id,
+            purchase_id=original.id,
+            operation_id=original.operations[1].id,
+        )
+        with factory() as db:
+            [case] = db.scalars(select(ManualReviewCase).where(ManualReviewCase.reason_code == late.REASON)).all()
+            assert case.case_state == "open" and case.scope_reference == str(original.id)
+            assert case_id is None or case.review_case_id == case_id
+            evidence = late.LateObjectEvidence.model_validate(case.evidence_document)
+            assert (evidence.kind, evidence.fact, evidence.external_object_id, evidence.agreement_id) == (
+                Kind.SUBSCRIPTION,
+                "live",
+                "567",
+                str(agreement_id),
+            )
+            assert evidence.read_finished_at > observed_at
+            case_id, observed_at = case.review_case_id, evidence.read_finished_at
+
+    transport.hide.add("/subscriptions")
+    with pytest.raises(PurchaseRefused, match="purchase_existing_subscription_review"):
+        await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=replacement.id)
+    assert service.read_purchase(factory, replacement.user_id, replacement.id).held
+    assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
+
+
 @pytest.mark.parametrize(
     "error_type", [LbxAttemptsExhausted, PreflightDeadlineExceeded, None], ids=["exhausted", "deadline", "partial"]
 )
@@ -969,6 +1092,15 @@ async def test_new_late_id_survives_failed_agreement_read_and_list_omission(
     after_omission = transport.requests[before_recovery:]
     assert all(request.method == "GET" for request in after_omission)
     assert any(request.url.path.endswith("/subscriptions/789") for request in after_omission)
+    with factory() as db:
+        case = db.scalars(select(ManualReviewCase).where(ManualReviewCase.reason_code == late.REASON)).one()
+        assert case.review_case_id == case_id and case.case_state == "open"
+        assert case_digest(case) == expected_digest
+
+    agreement["close_date"] = None
+    await recover_financial(
+        sources, config, factory=factory, user_id=old.user_id, purchase_id=old.id, operation_id=old.operations[1].id
+    )
     with factory() as db:
         case = db.scalars(select(ManualReviewCase).where(ManualReviewCase.reason_code == late.REASON)).one()
         assert case.review_case_id == case_id and case.case_state == "open"
@@ -1090,6 +1222,134 @@ async def test_terminal_resolution_refuses_id_owned_only_by_another_late_case(
     assert terminal.resolve_purchase(factory, config, correct, principal) == result.model_copy(
         update={"already_resolved": True}
     )
+
+
+@pytest.mark.parametrize("evidence_source", ["receipt", "point", "conflicting-point"])
+async def test_terminal_resolution_refuses_foreign_recovery_id(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+    evidence_source: str,
+) -> None:
+    from app.domains.purchases.recovery_evidence import retained_points
+
+    transport, sources, target = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    principal = "os-euid:1000"
+    target = synthetic_prepare(factory, transport, target, uncertain=True)
+    financial.financial_pending(factory, target, target.operations[1])
+    target = service.read_purchase(factory, target.user_id, target.id)
+    target_op = target.operations[1]
+    assert target.held and target_op.state == State.UNKNOWN
+    assert target_op.bound_id is None and target_op.candidate_id is None
+    owner = historical_link(factory, target, transport, "brief_decoder", 1, uncertain_subscription=True)
+    owner_op = owner.operations[1]
+    target_point, owner_point = transport.subscriptions
+    foreign_id = str(owner_point["subscription_id"])
+    if evidence_source == "receipt":
+        assert financial.record_receipt(factory, owner, replace(owner_op, may_send=True), int(foreign_id))
+    else:
+        # Only the other operation's subscription is visible during inventory.
+        transport.subscriptions.remove(target_point)
+        customer = service.customer_for_purchase(factory, config, owner)
+        async with sources.billing.operation(bound_scope=False) as budget:
+            await collect_inventory(
+                sources.require_lbx(), sources.billing, config, factory=factory, customer=customer, budget=budget
+            )
+        if evidence_source == "conflicting-point":
+            foreign_id = "789"
+            owner_point["subscription_id"] = int(foreign_id)
+            async with sources.billing.operation(bound_scope=False) as budget:
+                await collect_inventory(
+                    sources.require_lbx(), sources.billing, config, factory=factory, customer=customer, budget=budget
+                )
+        transport.subscriptions.append(target_point)
+
+    owner = service.read_purchase(factory, owner.user_id, owner.id)
+    assert owner.operations[1].bound_id is None
+    with factory() as db:
+        assert retained_points(db, db.get(ExternalCreateOperation, target_op.id)) is None
+        facts = retained_points(db, db.get(ExternalCreateOperation, owner_op.id))
+        if evidence_source == "receipt":
+            assert owner.operations[1].candidate_id == foreign_id and facts is None
+        else:
+            assert owner.operations[1].candidate_id is None and facts is not None
+            point = facts.conflict if evidence_source == "conflicting-point" else facts.primary
+            assert point is not None and point.external_object_id == foreign_id
+            assert (facts.primary.external_object_id == foreign_id) == (evidence_source == "point")
+
+    for agreement in transport.agreements:
+        agreement["close_date"] = "2026-10-29"
+    target_point["state"] = owner_point["state"] = 3
+    before_requests = len(transport.requests)
+    before_work = [job(factory, recovery.RECOVERY, op.id) for op in (*target.operations, *owner.operations)]
+    assert not inspect_evidence(factory, config, target.user_id, target.id)["customer_work_active"]
+    request = terminal_object_request(factory, config, target, subscription_id=foreign_id)
+    with pytest.raises(PurchaseRefused, match="purchase_resolution_proof_incomplete") as refusal:
+        terminal.resolve_purchase(factory, config, request, principal)
+    assert refusal.value.status == 409
+    assert service.read_purchase(factory, target.user_id, target.id) == target
+    assert service.read_purchase(factory, owner.user_id, owner.id) == owner
+    with factory() as db:
+        assert (
+            db.scalar(select(ManualReviewCase).where(ManualReviewCase.reason_code == terminal.TERMINAL_REASON)) is None
+        )
+        for before in before_work:
+            after = db.get(BillingWorkItem, before.work_item_id)
+            assert after.updated_at == before.updated_at
+            assert after.payload_document == before.payload_document
+            assert after.enqueue_generation == before.enqueue_generation and after.work_state == before.work_state
+
+    correct = terminal_object_request(factory, config, target, subscription_id=str(target_point["subscription_id"]))
+    result = terminal.resolve_purchase(factory, config, correct, principal)
+    assert result.state == "resolved_external_terminal"
+    assert not service.read_purchase(factory, target.user_id, target.id).held
+    assert terminal.resolve_purchase(factory, config, correct, principal) == result.model_copy(
+        update={"already_resolved": True}
+    )
+    assert len(transport.requests) == before_requests
+    if evidence_source == "receipt":
+        recovered = await recover_financial(
+            sources, config, factory=factory, user_id=owner.user_id, purchase_id=owner.id, operation_id=owner_op.id
+        )
+        assert recovered.operations[1].bound_id == foreign_id
+        assert all(item.method == "GET" for item in transport.requests[before_requests:])
+
+
+async def test_terminal_resolution_scopes_recovery_ids_by_account_and_kind(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+) -> None:
+    from app.domains.purchases.recovery_evidence import ORIGINAL_POINT_FACTS_KEY
+    from app.infrastructure.queries.billing_operator import other_financial_recovery_id
+
+    transport, _, target = background_scenario
+    factory = postgres_session_factory
+    target = synthetic_prepare(factory, transport, target, uncertain=True)
+    owner = historical_link(factory, target, transport, "brief_decoder", 1, uncertain_subscription=True)
+    owner_op = owner.operations[1]
+    provider_id = int(transport.subscriptions[-1]["subscription_id"])
+    assert financial.record_receipt(factory, owner, replace(owner_op, may_send=True), provider_id)
+
+    other_account = step1_settings(lbx_base_url="https://lbx-other.test").lbx_external_billing_account_id
+    assert other_account != target.account_id
+    with factory() as db:
+        for lookup_op, account, expected in (
+            (target.operations[1], target.account_id, True),
+            (target.operations[1], other_account, False),
+            (target.operations[0], target.account_id, False),
+            (owner_op, target.account_id, False),
+        ):
+            assert (
+                other_financial_recovery_id(
+                    db,
+                    lookup_op.id,
+                    str(provider_id),
+                    account_id=account,
+                    kind=lookup_op.kind,
+                    point_facts_key=ORIGINAL_POINT_FACTS_KEY,
+                )
+                is expected
+            )
 
 
 @pytest.mark.parametrize("dispute", ["open-case", "audit-only", "closed-case-only"])

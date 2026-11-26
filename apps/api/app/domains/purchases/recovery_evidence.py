@@ -40,7 +40,7 @@ from app.models import (
 )
 
 ProviderId = Annotated[str, Field(pattern=r"^[1-9][0-9]{0,19}$")]
-_POINT_FACTS = "original_point_facts"
+ORIGINAL_POINT_FACTS_KEY = "original_point_facts"
 
 
 class OriginalPointFact(BaseModel):
@@ -82,10 +82,10 @@ def retained_points(db: Session, operation: ExternalCreateOperation) -> Retained
 
 
 def _read_points(work: BillingWorkItem | None, operation: ExternalCreateOperation) -> RetainedOriginalPointFacts | None:
-    if work is None or _POINT_FACTS not in work.payload_document:
+    if work is None or ORIGINAL_POINT_FACTS_KEY not in work.payload_document:
         return None
     try:
-        points = RetainedOriginalPointFacts.model_validate(work.payload_document[_POINT_FACTS])
+        points = RetainedOriginalPointFacts.model_validate(work.payload_document[ORIGINAL_POINT_FACTS_KEY])
     except ValidationError:
         raise PurchaseRefused("purchase_history_unproven", 409) from None
     if (points.primary.operation_id, points.primary.operation_kind) != (
@@ -239,7 +239,7 @@ def retain_original_point(
             # A competing automatic bind committed first. Keep its binding, but withdraw trust.
             review_identity_conflict(db, row, op)
         if current != saved:
-            work.payload_document = {**work.payload_document, _POINT_FACTS: current.model_dump(mode="json")}
+            work.payload_document = {**work.payload_document, ORIGINAL_POINT_FACTS_KEY: current.model_dump(mode="json")}
         db.commit()
         return (
             current.conflict is None
@@ -299,7 +299,7 @@ def settle_point_conflict(work: BillingWorkItem, op: ExternalCreateOperation, ex
         None,
     )
     if point is None:
-        payload.pop(_POINT_FACTS)
+        payload.pop(ORIGINAL_POINT_FACTS_KEY)
     else:
-        payload[_POINT_FACTS] = RetainedOriginalPointFacts(primary=point).model_dump(mode="json")
+        payload[ORIGINAL_POINT_FACTS_KEY] = RetainedOriginalPointFacts(primary=point).model_dump(mode="json")
     work.payload_document = payload

@@ -203,7 +203,6 @@ async def record_subscription(
     *,
     read_finished_at: datetime,
     delegate: Callable[..., Awaitable[Any]],
-    agreement_read_after_point: bool = True,
 ) -> None:
     if agreement is not None and (agreement.agreement_id, agreement.user_id) != (
         point.agreement_id,
@@ -222,7 +221,7 @@ async def record_subscription(
             if belongs_to_original or not known_subscription:
                 prove_original_agreement(original, customer, agreement)
                 belongs_to_original = True
-            if agreement_read_after_point and agreement_is_closed(agreement):
+            if agreement_is_closed(agreement):
                 return
         except LbxResponseInvalid as error:
             # Missing follow-up evidence can leave inventory incomplete while
@@ -339,8 +338,7 @@ async def recover_released(
                 if point.subscription_id != identity:
                     raise LbxScopeMismatch()
                 agreement = agreements.get(point.agreement_id)
-                agreement_read_after_point = point.agreement_id not in attempted_agreements
-                if agreement_read_after_point:
+                if point.agreement_id not in attempted_agreements:
                     attempted_agreements.add(point.agreement_id)
                     try:
                         agreement = await timely_point(
@@ -359,7 +357,6 @@ async def recover_released(
                     agreement,
                     read_finished_at=read_finished_at,
                     delegate=delegate,
-                    agreement_read_after_point=agreement_read_after_point,
                 )
             except LbxScopeMismatch:
                 raise

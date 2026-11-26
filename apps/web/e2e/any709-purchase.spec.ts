@@ -170,6 +170,110 @@ test("one-click payment shows the verified target before Widget READY after sess
   expect(state.bootstraps).toEqual([{ purchase_intent_id: savedPurchase.purchase_intent_id }]);
 });
 
+test("keyboard focus survives retrying the initial saved-link request", async ({ page }, testInfo) => {
+  const state = await syntheticBilling(page);
+  const purchaseId = savedPurchase.purchase_intent_id;
+  const retryReply = Promise.withResolvers<void>();
+  const statusRequests: string[] = [];
+  await page.route(`**/api/purchase-intents/${purchaseId}`, async (route) => {
+    statusRequests.push(route.request().method());
+    if (statusRequests.length === 1) return route.fulfill({
+      status: 503, json: { detail: { code: "unavailable", request_id: "synthetic-initial-status" } }
+    });
+    await retryReply.promise;
+    return route.fulfill({ json: { ...savedPurchase, state: "resolved_external_terminal", scope_held: false } });
+  });
+
+  await page.goto(`/ru/account?purchase=${purchaseId}#billing`);
+  await page.getByRole("button", { name: ru.CookieBanner.acceptAction, exact: true }).click();
+  const billing = page.getByRole("region", { name: ru.Billing.title });
+  const refresh = billing.getByRole("button", { name: ru.Purchase.refresh });
+  const selector = billing.getByRole("combobox");
+  try {
+    await expect(billing.getByRole("alert")).toContainText("synthetic-initial-status");
+    await refresh.focus();
+    await page.keyboard.press("Enter");
+    await expect(refresh).toBeFocused();
+    await expect(refresh).toHaveAttribute("aria-disabled", "true");
+    await expect(refresh).toHaveCSS("outline-style", "solid");
+    await expect(selector).toBeDisabled();
+    await expect(billing.getByRole("status")).toHaveText(ru.Purchase.loading);
+    await expect.poll(() => statusRequests).toEqual(["GET", "GET"]);
+    await page.keyboard.press("Enter");
+    await page.evaluate(() => document.fonts.ready);
+    expect((await new AxeBuilder({ page }).include("#billing").analyze()).violations).toEqual([]);
+    await page.screenshot({ path: testInfo.outputPath("saved-link-retry-focus.png"), fullPage: true });
+  } finally {
+    retryReply.resolve();
+  }
+
+  await expect(billing.getByText(ru.Purchase.states.resolved_external_terminal)).toBeVisible();
+  await expect(selector).toHaveValue(purchaseId);
+  await expect(selector).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(billing.getByRole("link", { name: ru.Purchase.buy, exact: true })).toBeFocused();
+  expect(statusRequests).toEqual(["GET", "GET"]);
+  expect(state.bootstraps).toEqual([]);
+});
+
+test("keyboard focus survives retrying a saved-link status recheck", async ({ page }, testInfo) => {
+  const state = await syntheticBilling(page);
+  state.owned = savedPurchase;
+  const purchaseId = savedPurchase.purchase_intent_id;
+  const listReply = Promise.withResolvers<void>();
+  const retryReply = Promise.withResolvers<void>();
+  let firstStatus = true;
+  let retryStarted = false;
+  await page.route("**/api/purchase-intents", async (route) => {
+    await listReply.promise;
+    return route.fulfill({ json: { purchases: [], next_cursor: null } });
+  });
+  await page.route(`**/api/purchase-intents/${purchaseId}`, async (route) => {
+    if (firstStatus) {
+      firstStatus = false;
+      return route.fulfill({ json: savedPurchase });
+    }
+    if (!retryStarted) return route.fulfill({
+      status: 503, json: { detail: { code: "unavailable", request_id: "synthetic-status-recheck" } }
+    });
+    await retryReply.promise;
+    return route.fulfill({ json: { ...savedPurchase, state: "resolved_external_terminal", scope_held: false } });
+  });
+
+  const billing = page.getByRole("region", { name: ru.Billing.title });
+  const selector = billing.getByRole("combobox");
+  const widget = billing.getByTitle(ru.Billing.frameTitle);
+  try {
+    await page.goto(`/ru/account?purchase=${purchaseId}#billing`);
+    await page.getByRole("button", { name: ru.CookieBanner.acceptAction, exact: true }).click();
+    await billing.getByRole("button", { name: ru.Billing.pay, exact: true }).click();
+    await expect(billing.frameLocator(`iframe[title="${ru.Billing.frameTitle}"]`)
+      .frameLocator('iframe[title="Synthetic LBX"]').getByText("Synthetic payment view")).toBeVisible();
+    listReply.resolve();
+    const alert = billing.getByRole("alert");
+    await expect(alert).toContainText("synthetic-status-recheck");
+    await expect(widget).toBeHidden();
+    await alert.getByRole("button", { name: ru.Purchase.refresh }).focus();
+    retryStarted = true;
+    await page.keyboard.press("Enter");
+    await expect(selector).toBeFocused();
+    await expect(widget).toBeHidden();
+    await page.evaluate(() => document.fonts.ready);
+    expect((await new AxeBuilder({ page }).include("#billing").analyze()).violations).toEqual([]);
+    await page.screenshot({ path: testInfo.outputPath("saved-link-recheck-focus.png"), fullPage: true });
+  } finally {
+    listReply.resolve();
+    retryReply.resolve();
+  }
+
+  await expect(billing.getByText(ru.Purchase.states.resolved_external_terminal)).toBeVisible();
+  await expect(selector).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(billing.getByRole("link", { name: ru.Purchase.buy, exact: true })).toBeFocused();
+  await expect(widget).toHaveCount(0);
+  expect(state.bootstraps).toEqual([{ purchase_intent_id: purchaseId }]);
+});
+
 test("a saved purchase link leads through operator completion to a fresh replacement", async ({ page }, testInfo) => {
   const state = await syntheticBilling(page);
   const originalId = savedPurchase.purchase_intent_id;

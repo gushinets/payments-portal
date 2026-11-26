@@ -320,17 +320,55 @@ it("shows a released deep link separately from held purchases", async () => {
   expect(bootstrap).not.toHaveBeenCalled();
 });
 
-it("refreshes a saved purchase in manual review and shows its terminal result", async () => {
-  status.mockImplementation(async () => json({ ...savedPurchase, state: "manual_review" }));
+it.each([
+  { entry: "unavailable", result: "terminal", leavesFocus: false },
+  { entry: "unavailable", result: "unavailable", leavesFocus: false },
+  { entry: "manual review", result: "terminal", leavesFocus: false },
+  { entry: "manual review", result: "terminal", leavesFocus: true }
+] as const)("keeps focus through a saved-link retry from $entry to $result (leaves focus: $leavesFocus)", async ({ entry, result, leavesFocus }) => {
+  const pending = Promise.withResolvers<Response>();
+  status
+    .mockResolvedValueOnce(entry === "manual review"
+      ? json({ ...savedPurchase, state: "manual_review" })
+      : json({ detail: { code: "unavailable" } }, 503))
+    .mockReturnValueOnce(pending.promise);
+  list.mockResolvedValueOnce(json({
+    purchases: entry === "manual review" ? [{ ...first, state: "manual_review" }] : [second],
+    next_cursor: null
+  }));
   renderCabinet(first.purchase_intent_id);
-  const billing = screen.getByRole("region", { name: ru.Billing.title });
-  expect(await within(billing).findByText(ru.Purchase.states.manual_review)).toBeVisible();
+  const billing = within(screen.getByRole("region", { name: ru.Billing.title }));
+  const retry = await billing.findByRole("button", { name: ru.Purchase.refresh });
+  if (entry === "manual review") expect(billing.getByRole("status")).toHaveTextContent(ru.Purchase.states.manual_review);
+  retry.focus();
+  fireEvent.click(retry);
+  expect(retry).toHaveFocus();
+  expect(retry).toHaveAttribute("aria-disabled", "true");
+  expect(selector()).toBeDisabled();
+  expect(billing.getByRole("status")).toHaveTextContent(ru.Purchase.loading);
+  expect(billing.queryByRole("alert")).not.toBeInTheDocument();
+  fireEvent.click(retry);
+  expect(status).toHaveBeenCalledTimes(2);
 
-  status.mockImplementation(async () => json({ ...savedPurchase, state: "resolved_external_terminal", scope_held: false }));
-  fireEvent.click(within(billing).getByRole("button", { name: ru.Purchase.refresh }));
-
-  expect(await within(billing).findByText(ru.Purchase.states.resolved_external_terminal)).toBeVisible();
-  expect(within(billing).getByRole("link", { name: ru.Purchase.buy })).toHaveAttribute("href", "/ru/products/proposal_ai");
+  const outside = screen.getByRole("link", { name: ru.Account.products.allProducts });
+  if (leavesFocus) outside.focus();
+  await act(async () => pending.resolve(result === "terminal"
+    ? json({ ...savedPurchase, state: "resolved_external_terminal", scope_held: false })
+    : json({ detail: { code: "unavailable", request_id: "saved-link-retry" } }, 503)));
+  if (result === "terminal") {
+    expect(billing.getByRole("status")).toHaveTextContent(ru.Purchase.states.resolved_external_terminal);
+    expect(billing.getByRole("link", { name: ru.Purchase.buy })).toHaveAttribute("href", "/ru/products/proposal_ai");
+    expect(leavesFocus ? outside : selector()).toHaveFocus();
+    expect(selector()).toHaveValue(first.purchase_intent_id);
+  } else {
+    expect(billing.getByRole("alert")).toHaveTextContent("saved-link-retry");
+    expect(retry).toHaveFocus();
+    expect(retry).not.toHaveAttribute("aria-disabled", "true");
+  }
+  const statusRequests = fetcher.mock.calls
+    .filter(([url]) => new URL(String(url)).pathname.startsWith("/api/purchase-intents/"))
+    .map(([url, init]) => [new URL(String(url)).pathname, init?.method ?? "GET"]);
+  expect(statusRequests).toEqual(Array(2).fill(["/api/purchase-intents/" + first.purchase_intent_id, "GET"]));
   expect(bootstrap).not.toHaveBeenCalled();
 });
 
@@ -349,10 +387,11 @@ it.each([
   "suspends stale payment until the $label purchase detail can be checked again", async ({ listed }) => {
     let finishList!: (value: Response) => void;
     let finishStatus!: (value: Response) => void;
+    const retryReply = Promise.withResolvers<Response>();
     list.mockImplementationOnce(() => new Promise<Response>(resolve => { finishList = resolve; }));
     status.mockImplementationOnce(async () => json(savedPurchase));
     status.mockImplementationOnce(() => new Promise<Response>(resolve => { finishStatus = resolve; }));
-    status.mockImplementationOnce(async () => json({ ...savedPurchase, state: "resolved_external_terminal", scope_held: false }));
+    status.mockReturnValueOnce(retryReply.promise);
     renderCabinet(first.purchase_intent_id);
     await waitFor(() => expect(screen.getByRole("button", { name: ru.Billing.pay })).toBeEnabled());
     open(ru.Billing.pay);
@@ -365,8 +404,15 @@ it.each([
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("status-recheck");
     expect(document.querySelector("iframe")).not.toBeVisible();
-    fireEvent.click(within(alert).getByRole("button", { name: ru.Purchase.refresh }));
+    const retry = within(alert).getByRole("button", { name: ru.Purchase.refresh });
+    retry.focus();
+    fireEvent.click(retry);
+    expect(selector()).toHaveFocus();
+    await waitFor(() => expect(status).toHaveBeenCalledTimes(3));
+    expect(document.querySelector("iframe")).not.toBeVisible();
+    await act(async () => retryReply.resolve(json({ ...savedPurchase, state: "resolved_external_terminal", scope_held: false })));
     expect(await screen.findByText(ru.Purchase.states.resolved_external_terminal)).toBeVisible();
+    expect(selector()).toHaveFocus();
     expect(screen.getByRole("link", { name: ru.Purchase.buy })).toHaveAttribute("href", "/ru/products/proposal_ai");
     expect(document.querySelector("iframe")).toBeNull();
     expect(dispose).toHaveBeenCalledTimes(1);

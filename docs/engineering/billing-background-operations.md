@@ -757,8 +757,9 @@ IDs from inspection when obtaining LBX confirmation.
   provider object of that original operation is irreversibly terminal. Supply
   its `external_object_id`. Retained bindings, receipts and exact point facts
   must agree. Within the same billing account and object kind, an ID recorded
-  for another purchase in a binding, terminal audit, or open or closed
-  late-object case is refused with `purchase_resolution_proof_incomplete`.
+  for another purchase in a binding, CREATE receipt, retained point fact,
+  terminal audit, or open or closed late-object case is refused with
+  `purchase_resolution_proof_incomplete`.
   Obtain confirmation for the original operation using its request correlation
   key. A newer open or live point read supersedes an older confirmation.
   Freshness uses the GET completion time of the object in question, with the
@@ -826,14 +827,17 @@ idempotency key. Ordinary admission still applies.
 ### Close an exact late-object case
 
 `recover` or ordinary inventory can record a case on the completed purchase
-when point proof identifies a disputed object. The case blocks admission for the
-original product and for products using its confirmed competing tariff, even
-after the object disappears from discovery. If the agreement GET times out, the
-open case retains its confirmed scope. A live point read after closure can
-restore that scope from the most recent closed case with confirmed scope when
-the subscription ID, agreement ID and tariff all match. This applies when a new
-case opens or when an open case still lacks confirmed scope. A durable case
-block for another product requires a confirmed competing tariff.
+when point proof identifies a disputed live object. A point read confirming
+agreement closure proves that its subscription has ended in that pass, regardless
+of which object was read first. An open case still requires exact terminal
+closure. The case blocks admission for the original product and for products
+using its confirmed competing tariff, even after the object disappears from
+discovery. If the agreement GET times out, the open case retains its confirmed
+scope. After closure, a live point
+read can restore that scope from the most recent closed case with confirmed scope
+when the subscription ID, agreement ID and tariff all match. This applies when
+a new case opens or when an open case still lacks confirmed scope. A durable
+case block for another product requires a confirmed competing tariff.
 
 In the replacement's `inspect` output, `blocking_late_reviews` identifies the
 original purchase, case and digest. Inspect the original for `late_object` and

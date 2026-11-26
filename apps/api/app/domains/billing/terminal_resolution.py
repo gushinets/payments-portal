@@ -23,7 +23,12 @@ from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
 from app.domains.purchases import service
 from app.domains.purchases.financial import RECOVERY_WINDOW
-from app.domains.purchases.recovery_evidence import ProviderId, RetainedOriginalPointFacts, retained_points
+from app.domains.purchases.recovery_evidence import (
+    ORIGINAL_POINT_FACTS_KEY,
+    ProviderId,
+    RetainedOriginalPointFacts,
+    retained_points,
+)
 from app.domains.purchases.contracts import (
     FINANCIAL_REVIEW_SCHEMA,
     ORIGINAL_ID_CONFLICT,
@@ -222,6 +227,14 @@ def _verify_proof(
         raise PurchaseRefused("purchase_resolution_proof_incomplete", 409)
     if (
         queries.other_financial_binding(db, op, external_id)
+        or queries.other_financial_recovery_id(
+            db,
+            op.create_operation_id,
+            external_id,
+            account_id=purchase.external_billing_account_id,
+            kind=op.operation_kind,
+            point_facts_key=ORIGINAL_POINT_FACTS_KEY,
+        )
         or late_purchase_reviews.other_audited_owner(db, op, external_id, reason=TERMINAL_REASON, schema=SCHEMA)
         or late_purchase_reviews.other_late_object_owner(
             db, purchase, op.operation_kind, external_id, reason=late_cases.REASON, schema=late_cases.CASE_SCHEMA

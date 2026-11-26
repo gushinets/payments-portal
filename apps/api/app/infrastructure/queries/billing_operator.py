@@ -11,6 +11,7 @@ from app.models import (
     BillingStateObservation,
     BillingStateObservationKind,
     BillingWorkItem,
+    BillingWorkKind,
     BillingWorkScope,
     BillingWorkState,
     ExternalCreateOperation,
@@ -134,6 +135,31 @@ def other_financial_binding(db: Session, operation: ExternalCreateOperation, ext
             )
         )
     )
+
+
+def other_financial_recovery_id(
+    db: Session, operation_id: UUID, external_id: str, *, account_id: str, kind: Kind, point_facts_key: str
+) -> bool:
+    """Check retained recovery identities regardless of the work item's state."""
+    operation, work_item = ExternalCreateOperation, BillingWorkItem
+    payload = work_item.payload_document
+    facts = payload[point_facts_key]
+    match = (
+        select(operation.create_operation_id)
+        .join(work_item, work_item.coalescing_key == cast(operation.create_operation_id, Text))
+        .where(
+            operation.create_operation_id != operation_id,
+            operation.external_billing_account_id == account_id,
+            operation.operation_kind == kind,
+            work_item.work_kind == BillingWorkKind.EXTERNAL_CREATE_RECOVERY,
+            or_(
+                payload["candidate_id"].as_string() == external_id,
+                facts["primary"]["external_object_id"].as_string() == external_id,
+                facts["conflict"]["external_object_id"].as_string() == external_id,
+            ),
+        )
+    )
+    return bool(db.scalar(select(match.exists())))
 
 
 def has_newer_live_financial_point(
