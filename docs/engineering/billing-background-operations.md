@@ -574,8 +574,10 @@ implementation and real provider authentication/delivery evidence.
 
 ## Startup, inspection and shutdown
 
-Run the normal migration service to the current Alembic `head` before API
-startup. The Widget activation queue requires revision `20261123_0014`.
+Before API startup, apply migrations through the normal migration service and
+verify that the database is at the current Portal Alembic head. See the
+[physical schema baseline](../architecture/payment-portal-data-model.md#physical-baseline).
+The Widget activation queue requires revision `20261123_0014`.
 Follow the [deployment guide](../architecture/deployment.md#reviewed-image-installation-any-766-step-17).
 For retired branch revision labels, follow the
 [base migration runbook](ANY-709-billing-runbook.md#consolidated-any-709-migration).
@@ -751,12 +753,16 @@ IDs from inspection when obtaining LBX confirmation.
   cannot materialize later. The command refuses that outcome while the contract
   is unavailable. Empty discovery, a timeout and elapsed recovery deadlines
   leave the outcome unresolved.
-- `external_terminal` requires definitive LBX confirmation of irreversible
-  termination and the exact `external_object_id`. Retained bindings, receipts
-  and exact point facts must agree. A newer open or live point read supersedes
-  an older confirmation. Freshness uses the GET completion time of the
-  object in question, with the enclosing observation time for older evidence
-  that lacks that clock.
+- `external_terminal` requires definitive LBX confirmation that the exact
+  provider object of that original operation is irreversibly terminal. Supply
+  its `external_object_id`. Retained bindings, receipts and exact point facts
+  must agree. Within the same billing account and object kind, an ID recorded
+  for another purchase in a binding, terminal audit, or open or closed
+  late-object case is refused with `purchase_resolution_proof_incomplete`.
+  Obtain confirmation for the original operation using its request correlation
+  key. A newer open or live point read supersedes an older confirmation.
+  Freshness uses the GET completion time of the object in question, with the
+  enclosing observation time for older evidence that lacks that clock.
 
 Both purchase resolution and exact case closure require quiesced maintenance.
 Follow the [deployment procedure](../architecture/deployment.md#quiesced-purchase-maintenance-any-821)

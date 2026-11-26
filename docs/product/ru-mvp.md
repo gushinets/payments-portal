@@ -1,7 +1,7 @@
 # RU AnyToolAI Portal — As-Built 4F Handoff
 
 Status: authoritative implemented-product specification and deferred-step handoff
-Last updated: 2026-11-23
+Last updated: 2026-11-26
 
 The surface established by ANY-636 4F is a product-centric AnyToolAI Portal:
 public product-first home, catalog/discovery, per-product pages,
@@ -159,7 +159,16 @@ documents remain drafts.
    offer payment on other agreements in the same account.
    The buyer checks the agreement number and selects the displayed agreement
    before paying. Accepted terms and purchase history remain immutable in
-   PostgreSQL. ANY-765 displays committed paid access and purchased simulated
+   PostgreSQL.
+
+   The saved purchase-status link opens that purchase in the cabinet. In
+   `manual_review`, it shows the saved status with a refresh action. After
+   audited completion, the same link shows the terminal result and keeps
+   payment disabled for the original purchase. The product link lets the
+   buyer review the current offer and give fresh consent for a new purchase
+   when an offer is available.
+
+   ANY-765 displays committed paid access and purchased simulated
    limits through authenticated local `GET /api/paid-access`. Confirmed absence
    and unavailable evidence remain distinct; actual usage/remaining quota is read
    independently from the saved backend owner through `/api/paid-usage`. Expired
