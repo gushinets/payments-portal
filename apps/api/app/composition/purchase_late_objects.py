@@ -56,6 +56,16 @@ class InventoryAgreementRead:
     read_finished_at: datetime
 
 
+type ClosedAgreementReads = dict[int, InventoryAgreementRead]
+
+
+@dataclass(frozen=True)
+class SubscriptionRedirect:
+    customer: CustomerOpen
+    point: Subscription
+    read_finished_at: datetime
+
+
 async def read_inventory_agreement(
     client: LbxServerClient,
     factory: SessionFactory,
@@ -63,14 +73,25 @@ async def read_inventory_agreement(
     *,
     budget: PreflightBudget,
     delegate: Callable[..., Awaitable[Any]],
+    closed_agreements: ClosedAgreementReads | None = None,
+    read_agreement: bool = True,
+    user_id: int | None = None,
 ) -> InventoryAgreementRead | None:
     """Keep the agreement's own point-read time before evaluating the subscription or its owner."""
-    agreement = await candidate_point(
-        lambda: client.get_agreement(agreement_id=subscription.agreement_id, budget=budget), budget
-    )
-    if agreement is None:
+    cached = closed_agreements.get(subscription.agreement_id) if closed_agreements is not None else None
+    if cached is not None:
+        agreement = cached.point
+    elif read_agreement:
+        agreement = await candidate_point(
+            lambda: client.get_agreement(agreement_id=subscription.agreement_id, budget=budget), budget
+        )
+    else:
         return None
-    return InventoryAgreementRead(agreement, await delegate(read_source_time, factory))
+    if agreement is None or (
+        user_id is not None and (agreement.agreement_id, agreement.user_id) != (subscription.agreement_id, user_id)
+    ):
+        return None
+    return cached or InventoryAgreementRead(agreement, await delegate(read_source_time, factory))
 
 
 def historical_subscription_matches(
@@ -120,17 +141,26 @@ async def review_late_subscription(
     read_finished_at: datetime,
     budget: PreflightBudget,
     delegate: Callable[..., Awaitable[Any]],
+    closed_agreements: ClosedAgreementReads | None = None,
 ) -> ReleasedOriginal | None:
     """Check whether the exact subscription point belongs to a released purchase."""
     if str(point.subscription_id) != provider_id:
         raise LbxScopeMismatch()
     original = await released_subscription_owner(factory, customer, point, delegate)
     if original is None:
-        agreement_read = await read_inventory_agreement(client, factory, point, budget=budget, delegate=delegate)
+        agreement_read = await read_inventory_agreement(
+            client, factory, point, budget=budget, delegate=delegate, closed_agreements=closed_agreements
+        )
         if agreement_read is None:
             return None
         return await record_inventory_late_subscription(
-            factory, customer, point, agreement_read, read_finished_at=read_finished_at, delegate=delegate
+            factory,
+            customer,
+            point,
+            agreement_read,
+            read_finished_at=read_finished_at,
+            delegate=delegate,
+            closed_agreements=closed_agreements,
         )
     await review_historical_subscription(
         client,
@@ -141,6 +171,7 @@ async def review_late_subscription(
         read_finished_at=read_finished_at,
         budget=budget,
         delegate=delegate,
+        closed_agreements=closed_agreements,
     )
     return original
 
@@ -155,11 +186,21 @@ async def review_historical_subscription(
     read_finished_at: datetime,
     budget: PreflightBudget,
     delegate: Callable[..., Awaitable[Any]],
+    read_agreement: bool = True,
+    closed_agreements: ClosedAgreementReads | None = None,
 ) -> bool:
     """Keep the exact subscription fact when follow-up evidence is unavailable."""
     agreement_read, failure = None, None
     try:
-        agreement_read = await read_inventory_agreement(client, factory, point, budget=budget, delegate=delegate)
+        agreement_read = await read_inventory_agreement(
+            client,
+            factory,
+            point,
+            budget=budget,
+            delegate=delegate,
+            closed_agreements=closed_agreements,
+            read_agreement=read_agreement,
+        )
     except LbxScopeMismatch:
         raise
     except AppError as error:
@@ -174,6 +215,7 @@ async def review_historical_subscription(
             read_finished_at=read_finished_at,
             agreement_read_at=agreement_read.read_finished_at if agreement_read else None,
             delegate=delegate,
+            closed_agreements=closed_agreements,
         )
     except (LbxResponseInvalid, LbxScopeMismatch):
         return False  # This historical object could not be verified for its customer.
@@ -190,6 +232,7 @@ async def record_inventory_late_subscription(
     *,
     read_finished_at: datetime,
     delegate: Callable[..., Awaitable[Any]],
+    closed_agreements: ClosedAgreementReads | None = None,
 ) -> ReleasedOriginal | None:
     agreement = agreement_read.point
     if agreement.agreement_number is None:
@@ -208,6 +251,7 @@ async def record_inventory_late_subscription(
         read_finished_at=read_finished_at,
         agreement_read_at=agreement_read.read_finished_at,
         delegate=delegate,
+        closed_agreements=closed_agreements,
     )
     return original
 
@@ -260,6 +304,7 @@ async def record_subscription(
     read_finished_at: datetime,
     delegate: Callable[..., Awaitable[Any]],
     agreement_read_at: datetime | None = None,
+    closed_agreements: ClosedAgreementReads | None = None,
 ) -> None:
     if agreement is not None and (agreement.agreement_id, agreement.user_id) != (
         point.agreement_id,
@@ -279,14 +324,20 @@ async def record_subscription(
     belongs_to_original = agreement_id in original.agreement_ids
     known_subscription = external_id in original.subscription_ids
     if agreement is not None:
-        prove_for_subscription = nonterminal_subscription and (belongs_to_original or not known_subscription)
+        requires_original_proof = belongs_to_original or not known_subscription
+        prove_for_subscription = nonterminal_subscription and requires_original_proof
         try:
             if prove_for_subscription:
                 prove_original_agreement(original, customer, agreement)
                 belongs_to_original = True
-            if nonterminal_subscription and agreement_is_closed(agreement):
-                return
-            if agreement_read_at is not None:
+            if (nonterminal_subscription or closed_agreements is not None) and agreement_is_closed(agreement):
+                if closed_agreements is not None and agreement_read_at is not None:
+                    if requires_original_proof and not prove_for_subscription:
+                        prove_original_agreement(original, customer, agreement)
+                    closed_agreements[agreement.agreement_id] = InventoryAgreementRead(agreement, agreement_read_at)
+                if nonterminal_subscription:
+                    return
+            elif agreement_read_at is not None:
                 operation = next(op for op in original.purchase.operations if op.kind == Kind.AGREEMENT)
                 if (belongs_to_original or agreement.agreement_number == operation.key) and agreement_explicitly_open(
                     agreement

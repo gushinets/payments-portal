@@ -1,6 +1,6 @@
 """Shared claimed read/apply orchestration for HTTP, worker and operator."""
 
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import replace
 from datetime import datetime
 from functools import partial
@@ -10,11 +10,18 @@ from uuid import UUID
 
 from starlette.concurrency import run_in_threadpool
 
-from app.composition.purchase_late_objects import review_late_subscription
+from app.composition.purchase_late_objects import (
+    ClosedAgreementReads,
+    SubscriptionRedirect,
+    released_subscription_owner,
+    review_historical_subscription,
+    review_late_subscription,
+)
 from app.composition.purchase_recovery import is_live_original_subscription, original_command
 from app.composition.sources import SourceResources
 from app.core.settings import Settings
-from app.domains.billing.contracts import BillingRefused
+from app.domains.billing.contracts import BillingRefused, CustomerOpen
+from app.domains.billing.late_purchase_reviews import ReleasedOriginal, released_owners
 from app.domains.billing.paid_policy import MeteringPolicy
 from app.domains.billing.reconciliation import apply_reconciliation, claim_reconciliation, read_source_time
 from app.domains.billing.reconciliation_contracts import (
@@ -31,14 +38,18 @@ from app.domains.purchases import service
 from app.domains.purchases.contracts import FinancialOperation, Purchase, PurchaseRefused
 from app.domains.purchases.inventory_contracts import InventoryStale
 from app.domains.purchases.recovery_evidence import OriginalPointFact, retain_original_point
-from app.infrastructure.preflight import PreflightAdmission, PreflightBudget, PreflightDeadlineExceeded
+from app.infrastructure.preflight import (
+    PreflightAdmission,
+    PreflightBudget,
+    PreflightCleanupPending,
+    PreflightDeadlineExceeded,
+)
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.billing.operator_contracts import ReviewResolution
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.errors import LbxError
-from app.integrations.lbx.financial import agreement_explicitly_open, prove_agreement
+from app.integrations.lbx.financial import Subscription, agreement_explicitly_open, prove_agreement
 from app.integrations.lbx.reconciliation import complete_subscription_proof
-from app.integrations.lbx.reconciliation import read_subscription_proof as read_lbx_subscription_proof
 from app.integrations.lbx.subscription_points import read_subscription_points
 from app.models import ExternalCreateOperationKind as Kind
 
@@ -52,15 +63,29 @@ async def read_subscription_proof(
     budget: PreflightBudget,
     delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
     check_agreement_inventory: bool = False,
+    on_subscription_redirect: Callable[[SubscriptionRedirect], None] | None = None,
 ) -> SubscriptionProof:
     """Persist only the DB-clock interval surrounding this actual source read."""
-    return await read_lbx_subscription_proof(
+    point_clock = partial(delegate, read_source_time, factory)
+    points = await read_subscription_points(client, subject, budget=budget, read_time=point_clock)
+    point, read_at = points.subscription, points.subscription_read_at
+    if (
+        on_subscription_redirect is not None
+        and points.user is not None
+        and points.user.outer_id == subject.customer.outer_key
+        and point is not None
+        and read_at is not None
+        and str(point.subscription_id) == subject.provider_subscription_id
+        and point.agreement_id != int(subject.agreement_id)
+    ):
+        on_subscription_redirect(SubscriptionRedirect(subject.customer, point, read_at))
+    return await complete_subscription_proof(
         client,
-        subject,
         configuration,
+        points,
         budget=budget,
         check_agreement_inventory=check_agreement_inventory,
-        read_time=partial(delegate, read_source_time, factory),
+        read_time=point_clock,
     )
 
 
@@ -74,6 +99,7 @@ async def read_inventory_original_subscription(
     budget: PreflightBudget,
     work_claim: WorkClaim | None,
     delegate: Callable[..., Awaitable[Any]],
+    closed_agreements: ClosedAgreementReads | None = None,
 ) -> SubscriptionProof | None:
     """Retain the exact fact before tariff I/O. Return no proof on an ownership conflict."""
     point_clock = partial(delegate, read_source_time, factory)
@@ -138,6 +164,7 @@ async def read_inventory_original_subscription(
                         read_finished_at=read_at,
                         budget=budget,
                         delegate=delegate,
+                        closed_agreements=closed_agreements,
                     )
                     is not None
                 ):
@@ -148,6 +175,66 @@ async def read_inventory_original_subscription(
                 if not await retain(operation, subject.provider_subscription_id, read_at):
                     return None
     return await complete_subscription_proof(client, configuration, points, budget=budget, read_time=point_clock)
+
+
+async def inventory_released_owners(
+    factory: SessionFactory,
+    customer_id: UUID,
+    rows: Sequence[Subscription],
+    conflicting_bindings: set[str],
+    delegate: Callable[..., Awaitable[Any]],
+) -> tuple[ReleasedOriginal, ...]:
+    if not rows and not conflicting_bindings:
+        return ()
+    return await delegate(
+        released_owners,
+        factory,
+        customer_id,
+        {str(row.agreement_id) for row in rows},
+        {str(row.subscription_id) for row in rows} | conflicting_bindings,
+    )
+
+
+async def review_late_redirects(
+    client: LbxServerClient,
+    factory: SessionFactory,
+    customer: CustomerOpen,
+    redirects: Sequence[SubscriptionRedirect],
+    *,
+    budget: PreflightBudget,
+    delegate: Callable[..., Awaitable[Any]],
+) -> ClosedAgreementReads:
+    """Retain proven points and carry verified agreement closures through this inventory pass."""
+    closed_agreements: ClosedAgreementReads = {}
+    failure: PreflightDeadlineExceeded | PreflightCleanupPending | None = None
+    for redirect in redirects:
+        if redirect.customer != customer:
+            continue
+        try:
+            original = await released_subscription_owner(factory, customer, redirect.point, delegate)
+            if original is not None:
+                await review_historical_subscription(
+                    client,
+                    factory,
+                    original,
+                    customer,
+                    redirect.point,
+                    read_finished_at=redirect.read_finished_at,
+                    budget=budget,
+                    delegate=delegate,
+                    read_agreement=failure is None,
+                    closed_agreements=closed_agreements,
+                )
+        except (PreflightDeadlineExceeded, PreflightCleanupPending) as error:
+            if failure is None:
+                failure = error
+        except PurchaseRefused:
+            if failure is None:
+                raise
+            # A rejected local write must not prevent independent proven points from being retained.
+    if failure is not None:
+        raise failure
+    return closed_agreements
 
 
 async def reconcile_subscription(
@@ -163,6 +250,7 @@ async def reconcile_subscription(
     resolution: ReviewResolution | None = None,
     expected: Purchase | None = None,
     check_agreement_inventory: bool = False,
+    on_subscription_redirect: Callable[[SubscriptionRedirect], None] | None = None,
 ) -> ReconciliationResult:
     if configuration.lbx_configuration_error is not None:
         raise BillingRefused("billing_not_configured")
@@ -187,6 +275,7 @@ async def reconcile_subscription(
     # Claim is committed before admission/HTTP; each delegated unit owns its DB.
     # Failure/cancellation leaves a finite lease for safe subsequent reclaim.
     started = await delegate(read_source_time, factory)
+    redirects: list[SubscriptionRedirect] = []
     try:
         async with _budget(admission, budget) as active_budget:
             proof = await read_subscription_proof(
@@ -197,6 +286,7 @@ async def reconcile_subscription(
                 budget=active_budget,
                 delegate=delegate,
                 check_agreement_inventory=check_agreement_inventory,
+                on_subscription_redirect=redirects.append if on_subscription_redirect is not None else None,
             )
             if resolution is not None:
                 if "customer_identity_conflict" in proof.reasons:
@@ -247,7 +337,7 @@ async def reconcile_subscription(
             ("read_budget_exhausted",),
             (),
         )
-    return await delegate(
+    result = await delegate(
         apply_reconciliation,
         factory,
         subject,
@@ -257,6 +347,10 @@ async def reconcile_subscription(
         clock_skew_seconds=configuration.paid_access_clock_skew_seconds,
         metering_policy=MeteringPolicy.for_environment(configuration.app_env),
     )
+    if on_subscription_redirect is not None and result.proof.identity == IdentityProof.CONFLICT:
+        for redirect in redirects:
+            on_subscription_redirect(redirect)
+    return result
 
 
 async def reconcile_bound_purchase(

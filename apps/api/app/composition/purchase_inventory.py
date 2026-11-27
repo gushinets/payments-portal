@@ -2,11 +2,13 @@
 
 from collections import Counter
 from collections.abc import Awaitable, Callable
+from functools import partial
 from typing import Any
 
 from starlette.concurrency import run_in_threadpool
 
 from app.composition.purchase_late_objects import (
+    SubscriptionRedirect,
     candidate_point,
     historical_subscription_matches,
     historical_subscription_owner,
@@ -17,12 +19,16 @@ from app.composition.purchase_late_objects import (
     review_late_subscription,
 )
 from app.composition.purchase_recovery import original_command
-from app.composition.reconciliation import read_inventory_original_subscription, reconcile_subscription
+from app.composition.reconciliation import (
+    inventory_released_owners,
+    read_inventory_original_subscription,
+    reconcile_subscription,
+    review_late_redirects,
+)
 from app.domains.billing.reconciliation import read_source_time
 from app.core.errors import AppError
 from app.core.settings import Settings
 from app.domains.billing.discovery import DiscoveredCandidate, ProductDiscovery, scope_versions
-from app.domains.billing.late_purchase_reviews import released_owners
 from app.domains.billing.paid_policy import CandidateConclusion as Conclusion, PaidDecision, paid_decision
 from app.domains.billing.background_recovery import customer_snapshot
 from app.domains.billing.contracts import CustomerOpen
@@ -38,12 +44,7 @@ from app.domains.purchases import financial, service
 from app.domains.purchases.contracts import Purchase, PurchaseInventoryIncomplete
 from app.domains.purchases.inventory import same_purchase
 from app.domains.purchases.inventory_contracts import InventoryCandidateProof, InventoryResult, InventoryStale
-from app.infrastructure.preflight import (
-    PreflightAdmission,
-    PreflightBudget,
-    PreflightCleanupPending,
-    PreflightDeadlineExceeded,
-)
+from app.infrastructure.preflight import PreflightAdmission, PreflightBudget
 from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.errors import LbxResponseInvalid, LbxScopeMismatch
 from app.integrations.lbx.financial import Subscription, agreement_is_closed, subscription_lifecycle
@@ -88,6 +89,7 @@ async def collect_inventory(
     conflicts, pending = set(), set()
     complete = True
     conflicting_bindings: set[str] = set()
+    redirects: list[SubscriptionRedirect] = []
     bindings = {
         operation.bound_id: purchase
         for purchase in initial
@@ -124,6 +126,7 @@ async def collect_inventory(
                     work_claim=work_claim,
                     delegate=delegate,
                     expected=purchase,
+                    on_subscription_redirect=redirects.append,
                 )
                 versions[purchase.id] = result.purchase
                 sources.append(result)
@@ -170,12 +173,12 @@ async def collect_inventory(
         ):
             complete = False
     try:
+        closed = await review_late_redirects(client, factory, current, redirects, budget=budget, delegate=delegate)
+        user_id = int(current.provider_id)
         if reuse is None:
             attempts = (expected,) if expected is not None else ()
             try:
-                user = await timely_point(
-                    lambda: client.get_user(user_id=int(current.provider_id), budget=budget), budget
-                )
+                user = await timely_point(lambda: client.get_user(user_id=user_id, budget=budget), budget)
             except LbxScopeMismatch:
                 await delegate(record_customer_conflict, factory, current, work_claim, attempts=attempts)
                 raise
@@ -191,20 +194,9 @@ async def collect_inventory(
                     provider_id=current.provider_id,
                 )
                 raise LbxScopeMismatch()
-        rows = await timely_point(
-            lambda: client.discover_subscriptions(user_id=int(current.provider_id), budget=budget), budget
-        )
-        history = (
-            await delegate(
-                released_owners,
-                factory,
-                current.customer_id,
-                {str(row.agreement_id) for row in rows},
-                {str(row.subscription_id) for row in rows} | conflicting_bindings,
-            )
-            if rows or conflicting_bindings
-            else ()
-        )
+        discover = partial(client.discover_subscriptions, user_id=user_id, budget=budget)
+        rows = await timely_point(discover, budget)
+        history = await inventory_released_owners(factory, current.customer_id, rows, conflicting_bindings, delegate)
         retired_agreements = {identity for old in history for identity in old.agreement_ids}
         retired_subscriptions = {identity for old in history for identity in old.subscription_ids}
         tariffs = {purchase.accepted.selection.tariff_id for purchase in initial}
@@ -284,6 +276,7 @@ async def collect_inventory(
                             read_finished_at=point_finished_at,
                             budget=budget,
                             delegate=delegate,
+                            closed_agreements=closed,
                         )
                         if reviewed and agrees_with_listing:
                             continue
@@ -346,6 +339,7 @@ async def collect_inventory(
                             budget=budget,
                             work_claim=work_claim,
                             delegate=delegate,
+                            closed_agreements=closed,
                         )
                         if proof is None:
                             conflicts.add(owner.id)
@@ -416,20 +410,26 @@ async def collect_inventory(
                     read_finished_at=point_finished_at,
                     budget=budget,
                     delegate=delegate,
+                    closed_agreements=closed,
                 )
                 continue
             # A receipt conflict on the listed agreement belongs to its owner alone.
             if receipt_mismatch or (known is not None and owner is not None and owner.id == known.id):
                 continue
-            agreement = await read_inventory_agreement(client, factory, point, budget=budget, delegate=delegate)
-            if agreement is None or (agreement.point.agreement_id, agreement.point.user_id) != (
-                point.agreement_id,
-                int(current.provider_id),
-            ):
+            agreement = await read_inventory_agreement(
+                client, factory, point, budget=budget, delegate=delegate, closed_agreements=closed, user_id=user_id
+            )
+            if agreement is None:
                 complete = False
                 continue
             late = await record_inventory_late_subscription(
-                factory, current, point, agreement, read_finished_at=point_finished_at, delegate=delegate
+                factory,
+                current,
+                point,
+                agreement,
+                read_finished_at=point_finished_at,
+                delegate=delegate,
+                closed_agreements=closed,
             )
             if late or agreement_is_closed(agreement.point) or subscription_lifecycle(point)[0] == Lifecycle.ENDED:
                 for product in affected:
@@ -444,9 +444,7 @@ async def collect_inventory(
             conflicts.update(
                 purchase.id for purchase in initial if purchase.accepted.selection.tariff_id == point.tariff_id
             )
-        again = await timely_point(
-            lambda: client.discover_subscriptions(user_id=int(current.provider_id), budget=budget), budget
-        )
+        again = await timely_point(discover, budget)
         if _identities(rows) != _identities(again):
             complete = False
         for product in candidates:
@@ -465,7 +463,7 @@ async def collect_inventory(
             )
     except InventoryStale:
         raise
-    except (AppError, PreflightDeadlineExceeded, PreflightCleanupPending):
+    except AppError:
         complete = False
         product_complete = dict.fromkeys(product_complete, False)
     for purchase in initial:
