@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+from contextvars import ContextVar
 from datetime import UTC, datetime
+from threading import Event
 
 import httpx
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -141,6 +144,116 @@ async def test_same_key_confirmation_during_user_lock_preserves_one_acceptance(
         for model in (PurchaseIntent, BillingPurchaseScopeHold, LegalAcceptanceEvent):
             assert db.scalar(select(func.count()).select_from(model)) == 1
         assert db.scalar(select(func.count()).select_from(ExternalCreateOperation)) == 3
+
+
+@pytest.mark.parametrize(
+    ("key", "change_fingerprint", "expected_error"),
+    [
+        pytest.param("one-request", False, None, id="same-key-same-terms"),
+        pytest.param("one-request", True, "purchase_idempotency_conflict", id="same-key-changed-terms"),
+        pytest.param("other-request", False, "purchase_scope_occupied", id="different-key"),
+    ],
+)
+async def test_confirm_key_and_scope_across_commit(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    key: str,
+    change_fingerprint: bool,
+    expected_error: str | None,
+) -> None:
+    factory = postgres_session_factory
+    transport = setup_purchase(factory)
+    # The competing confirmation may read sources while the observer holds a DB connection.
+    transport.pool = None
+    config = step1_settings()
+    monkeypatch.setattr(purchase_routes, "settings", config)
+    app = create_app()
+    app.dependency_overrides[get_session_factory] = lambda: factory
+    observer_request = ContextVar("observer_request", default=False)
+    loop = asyncio.get_running_loop()
+    before_scope_read, resume = asyncio.Event(), Event()
+
+    def pause_scope_read(conn: object, cursor: object, statement: str, *args: object) -> None:
+        if (
+            observer_request.get()
+            and not resume.is_set()
+            and statement.lstrip().startswith("SELECT")
+            and "billing_purchase_scope_holds" in statement
+        ):
+            # The old path already looked up the key. The combined SELECT reads both after the commit.
+            loop.call_soon_threadsafe(before_scope_read.set)
+            assert resume.wait(10), "competing confirmation did not finish"
+
+    async with (
+        source_resources(
+            config,
+            kernel_transport=httpx.MockTransport(transport.kernel),
+            lbx_transport=httpx.MockTransport(transport.respond),
+        ) as sources,
+        httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://portal.test") as client,
+    ):
+        app.state.sources = sources
+        link, offer, documents, terms = await review_purchase(
+            sources, config, factory=factory, token=TOKEN, product_id="proposal_ai"
+        )
+        meaning = PurchaseMeaning(
+            product_id="proposal_ai",
+            revision_id=link.mapping_revision_id,
+            expected_fingerprint=offer.fingerprint,
+            expected_technical_terms_digest=terms.confirmation_digest() if terms else None,
+            documents=tuple(
+                LegalSelection(
+                    document_version_id=document.document_version_id,
+                    acceptance_text_hash=document.acceptance_text_hash,
+                )
+                for document in documents
+            ),
+        )
+        observer_meaning = meaning
+        if change_fingerprint:
+            observer_meaning = meaning.model_copy(update={"expected_fingerprint": "sha256:" + "0" * 64})
+        headers = {"Authorization": "Bearer " + TOKEN}
+
+        async def observe_confirmation() -> httpx.Response:
+            marker = observer_request.set(True)
+            try:
+                return await client.post(
+                    "/api/purchase-intents",
+                    json=observer_meaning.model_dump(mode="json"),
+                    headers={**headers, "Idempotency-Key": key},
+                )
+            finally:
+                observer_request.reset(marker)
+
+        event.listen(migrated_database, "before_cursor_execute", pause_scope_read)
+        try:
+            observer = asyncio.create_task(observe_confirmation())
+            try:
+                await asyncio.wait_for(before_scope_read.wait(), timeout=10)
+                saved = await client.post(
+                    "/api/purchase-intents",
+                    json=meaning.model_dump(mode="json"),
+                    headers={**headers, "Idempotency-Key": "one-request"},
+                )
+                assert saved.status_code == 200, saved.text
+            finally:
+                resume.set()
+                replay = await observer
+        finally:
+            event.remove(migrated_database, "before_cursor_execute", pause_scope_read)
+
+    if expected_error is None:
+        assert replay.status_code == 200, replay.text
+        assert replay.json()["purchase_intent_id"] == saved.json()["purchase_intent_id"]
+    else:
+        assert replay.status_code == 409, replay.text
+        assert replay.json()["detail"]["code"] == expected_error
+    with factory() as db:
+        for model in (PurchaseIntent, BillingPurchaseScopeHold, LegalAcceptanceEvent):
+            assert db.scalar(select(func.count()).select_from(model)) == 1
+    for path in ("/users", "/agreements", "/subscriptions"):
+        assert transport.creates(path) == 0
 
 
 async def test_widget_origin_contention_returns_safe_busy_then_reopens(
