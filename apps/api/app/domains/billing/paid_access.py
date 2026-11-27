@@ -84,7 +84,14 @@ def apply_paid_source(
             return
         terms = purchase.accepted.technical_terms
         allowance = (
-            materialize_allowance(db, subscription, purchase.accepted, proof.cycle, skew_seconds=skew_seconds)
+            materialize_allowance(
+                db,
+                subscription,
+                purchase.accepted,
+                proof.cycle,
+                skew_seconds=skew_seconds,
+                existing_allowance_only=proof.existing_allowance_only,
+            )
             if terms is not None and metering_policy.permits(terms.provenance)
             else None
         )

@@ -3,6 +3,7 @@
 from dataclasses import replace
 from datetime import date, datetime
 from collections.abc import Awaitable, Callable
+from enum import Enum, auto
 
 from app.core.settings import Settings
 from app.core.time import utc_now
@@ -47,6 +48,11 @@ CALENDAR_FIELDS = (
 )
 
 
+class _CalendarUse(Enum):
+    STANDARD = auto()
+    EXISTING_ALLOWANCE_ONLY = auto()
+
+
 def _calendar_ordered(left: date | datetime, right: date | datetime, *, strict: bool = False) -> bool:
     if type(left) is type(right):
         if isinstance(left, datetime) and isinstance(right, datetime):
@@ -60,31 +66,38 @@ def _calendar_ordered(left: date | datetime, right: date | datetime, *, strict: 
     return left_day < right_day
 
 
-def _calendar_complete(
+def _calendar_use(
     calendar: dict[str, str | None], *, period: CommercialPeriod, cycle: CalendarEvidence | None
-) -> bool:
-    """Calendar evidence only: no UTC conversion, settlement or cycle identity."""
+) -> _CalendarUse | None:
+    """Validate calendar ordering and identify evidence that can only preserve an allowance."""
     parsed: dict[str, date | datetime] = {}
     try:
         for key, value in calendar.items():
             if value not in EMPTY_CALENDAR:
                 parsed[key] = date.fromisoformat(value) if len(value) == 10 else datetime.fromisoformat(value)
     except ValueError:
-        return False
-    for prefix in ("subscription", "subscription_instance", "last_tariffication_period"):
-        start, end = parsed.get(prefix + "_start_date"), parsed.get(prefix + "_end_date")
-        if prefix == "last_tariffication_period":
-            start, end = parsed.get(prefix + "_start"), parsed.get(prefix + "_end")
-            if start is None or end is None:
-                return False
-        if (
-            start is not None
-            and end is not None
-            and not _calendar_ordered(start, end, strict=isinstance(start, datetime) or isinstance(end, datetime))
-        ):
-            return False
-    cycle_start = parsed["last_tariffication_period_start"]
-    cycle_end = parsed["last_tariffication_period_end"]
+        return None
+    cycle_start = parsed.get("last_tariffication_period_start")
+    cycle_end = parsed.get("last_tariffication_period_end")
+    if (
+        cycle_start is None
+        or cycle_end is None
+        or not _calendar_ordered(
+            cycle_start, cycle_end, strict=isinstance(cycle_start, datetime) or isinstance(cycle_end, datetime)
+        )
+    ):
+        return None
+
+    subscription_end = parsed.get("subscription_end_date")
+    scheduled_close = (
+        cycle is not None
+        and cycle.precision == CalendarPrecision.DATE
+        and (period.unit, period.length, period.anchor) == ("month", 1, "instance_start")
+        and subscription_end is not None
+        and subscription_end == parsed.get("subscription_instance_end_date")
+        and _calendar_ordered(cycle_start, subscription_end, strict=True)
+        and _calendar_ordered(subscription_end, cycle_end, strict=True)
+    )
     # Keep the existing all-date completeness policy; the new start-order proof
     # is required only when interpreting the observed naive-midnight form.
     monthly_midnight = (
@@ -98,9 +111,20 @@ def _calendar_complete(
     for prefix in ("subscription", "subscription_instance"):
         start, end = parsed.get(prefix + "_start_date"), parsed.get(prefix + "_end_date")
         calendar_start = monthly_instance_start_date(start, period) if start is not None and monthly_midnight else None
+        # The observed monthly start is a date. An offset on the closing time
+        # must not turn that start into an ambiguous mix of timestamps.
+        interval_start = calendar_start if scheduled_close and calendar_start is not None else start
+        if (
+            interval_start is not None
+            and end is not None
+            and not _calendar_ordered(
+                interval_start, end, strict=isinstance(start, datetime) or isinstance(end, datetime)
+            )
+        ):
+            return None
         if calendar_start is not None:
             if not _calendar_ordered(calendar_start, cycle_start):
-                return False
+                return None
         # Calendar dates may straddle activation/termination. Only explicit
         # timestamps or the bounded monthly start representation prove more.
         elif (
@@ -108,14 +132,15 @@ def _calendar_complete(
             and (isinstance(start, datetime) or isinstance(cycle_start, datetime))
             and not _calendar_ordered(start, cycle_start)
         ):
-            return False
+            return None
         if (
-            end
+            not scheduled_close
+            and end
             and (isinstance(end, datetime) or isinstance(cycle_end, datetime))
             and not _calendar_ordered(cycle_end, end)
         ):
-            return False
-    return True
+            return None
+    return _CalendarUse.EXISTING_ALLOWANCE_ONLY if scheduled_close else _CalendarUse.STANDARD
 
 
 def normalize_subscription(
@@ -251,7 +276,8 @@ def normalize_subscription(
     lifecycle, financial = None, None
     calendar = {field: getattr(subscription, field) for field in CALENDAR_FIELDS} if subscription else {}
     cycle = normalize_calendar(calendar, accepted.offer.period)
-    calendar_complete = bool(calendar) and _calendar_complete(calendar, period=accepted.offer.period, cycle=cycle)
+    calendar_use = _calendar_use(calendar, period=accepted.offer.period, cycle=cycle)
+    calendar_complete = calendar_use is not None
     if identity == IdentityProof.MATCH:
         if subscription is not None:
             try:
@@ -292,6 +318,7 @@ def normalize_subscription(
         (),
         cycle=cycle if calendar_complete else None,
         access_end_at=normalize_access_end(calendar.get("subscription_end_date")),
+        existing_allowance_only=calendar_use is _CalendarUse.EXISTING_ALLOWANCE_ONLY,
     )
 
 

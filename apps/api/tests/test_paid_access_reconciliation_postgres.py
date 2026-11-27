@@ -17,7 +17,11 @@ from app.composition.purchases import advance_purchase, confirm_purchase, review
 from app.composition.reconciliation import reconcile_subscription
 from app.composition.sources import SourceResources, source_resources
 from app.core.settings import Settings
+from app.domains.billing import background_recovery, paid_read, work
+from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.reconciliation_contracts import ReconciliationResult
+from app.domains.billing.work_contracts import WorkLane
+from app.infrastructure.queries import billing_reconciliation
 from app.integrations.lbx.errors import LbxUnavailable
 from app.models import (
     AccessInvalidationOutbox,
@@ -178,6 +182,124 @@ async def test_paid_writer_first_noop_empty_and_same_cycle_recovery(paid_source:
     await reconcile(scenario)
     restored = persisted(scenario.factory)
     assert restored[2] == (3, one[2][1]) and restored[4] == one[4]
+
+
+@pytest.mark.parametrize("closure", ["date", "local_time", "offset", "blocked"])
+async def test_scheduled_monthly_close_preserves_issued_allowance(
+    paid_source: Scenario, monkeypatch: pytest.MonkeyPatch, closure: str
+) -> None:
+    scenario = paid_source
+    factory = scenario.factory
+    year = datetime.now(UTC).year + 1
+    close_at = datetime.fromisoformat(f"{year}-11-27T23:59:59+03:00")
+    now = close_at - timedelta(hours=2)
+    monkeypatch.setattr(billing_reconciliation, "database_now", lambda db: now)
+    monkeypatch.setattr(paid_read, "database_now", lambda db: now)
+    point = scenario.transport.subscriptions[0]
+    point.update(
+        subscription_start_date=f"{year}-11-26 00:00:00",
+        subscription_instance_start_date=f"{year}-11-26 00:00:00",
+        last_tariffication_period_start=f"{year}-11-26",
+        last_tariffication_period_end=f"{year}-12-25",
+    )
+    with factory() as db:
+        user_id = db.get(ExternalSubscription, scenario.subscription_id).user_id
+    consumer = backend_consumer()
+    await reconcile(scenario)
+    initial = paid_read.read_access_snapshot(factory, scenario.config, user_id, consumer)
+    (original,) = initial.document.allowances
+    assert original.quantity > 0
+
+    if closure == "date":
+        raw_end = close_at.date().isoformat()
+    elif closure == "offset":
+        raw_end = close_at.isoformat()
+    else:
+        raw_end = close_at.replace(tzinfo=None).isoformat(" ")
+    point.update(subscription_end_date=raw_end, subscription_instance_end_date=raw_end)
+    result = await reconcile(scenario)
+    scheduled = paid_read.read_access_snapshot(factory, scenario.config, user_id, consumer)
+    assert scheduled.document.allowances == (original,)
+    assert result.proof.calendar_complete and result.proof.existing_allowance_only
+    assert "existing_allowance_only" not in result.proof.document()
+    await reconcile(scenario)
+    repeated = paid_read.read_access_snapshot(factory, scenario.config, user_id, consumer)
+    assert repeated.revision == scheduled.revision and repeated.document == scheduled.document
+    assert persisted(factory)[4] == (UUID(original.allowance_id),)
+
+    if closure == "offset":
+        cutoff = close_at.astimezone(UTC) - timedelta(seconds=10)
+        assert scheduled.document.grants[0].valid_until == cutoff.isoformat()
+        now = cutoff - timedelta(seconds=20)
+        near_close = paid_read.read_access_snapshot(factory, scenario.config, user_id, consumer)
+        assert near_close.document.allowances == (original,) and near_close.expires_at <= cutoff
+        now = cutoff
+        with pytest.raises(BillingRefused, match="paid_access_deadline_pending"):
+            paid_read.read_access_snapshot(factory, scenario.config, user_id, consumer)
+        requests_before_expiry = len(scenario.transport.requests)
+        for _ in range(5):
+            claim = work.claim_work(factory, scenario.config, WorkLane.LOCAL)
+            assert claim is not None
+            if claim.kind == work.EXPIRY:
+                work.expire_trust(factory, claim)
+                break
+            assert claim.kind == background_recovery.DEADLINE
+            background_recovery.apply_deadline(factory, claim)
+        else:
+            pytest.fail("Scheduled access cutoff was not processed")
+        assert len(scenario.transport.requests) == requests_before_expiry
+    else:
+        assert scheduled.document.grants[0].valid_until is None
+        if closure == "blocked":
+            point["current_blocking"] = 1
+        else:
+            now = close_at + timedelta(seconds=1)
+            point["state"] = 3
+        await reconcile(scenario)
+
+    ended = paid_read.read_access_snapshot(factory, scenario.config, user_id, consumer)
+    assert ended.revision > scheduled.revision
+    assert not ended.document.grants and not ended.document.allowances
+    assert persisted(factory)[4] == (UUID(original.allowance_id),)
+
+
+@pytest.mark.parametrize("period", ["first", "later", "conflicting_ends", "missing_end", "wrong_period_end"])
+async def test_scheduled_monthly_close_requires_an_issued_allowance_for_the_proven_period(
+    paid_source: Scenario, period: str
+) -> None:
+    scenario = paid_source
+    point = scenario.transport.subscriptions[0]
+    point.update(
+        subscription_start_date="2026-11-26 00:00:00",
+        subscription_instance_start_date="2026-11-26 00:00:00",
+        last_tariffication_period_start="2026-11-26",
+        last_tariffication_period_end="2026-12-25",
+    )
+    if period != "first":
+        await reconcile(scenario)
+    previous_ids = persisted(scenario.factory)[4]
+
+    close = "2026-11-27 23:59:59"
+    point.update(subscription_end_date=close, subscription_instance_end_date=close)
+    if period == "later":
+        close = "2026-12-27 23:59:59"
+        point.update(
+            last_tariffication_period_start="2026-12-26",
+            last_tariffication_period_end="2027-01-25",
+            subscription_end_date=close,
+            subscription_instance_end_date=close,
+        )
+    elif period == "conflicting_ends":
+        point["subscription_instance_end_date"] = "2026-11-28 23:59:59"
+    elif period == "missing_end":
+        point.pop("last_tariffication_period_end")
+    elif period == "wrong_period_end":
+        point["last_tariffication_period_end"] = "2026-12-26"
+
+    await reconcile(scenario)
+    state = persisted(scenario.factory)
+    assert state[2][1]["grants"] and not state[2][1]["allowances"]
+    assert state[4] == previous_ids
 
 
 @pytest.mark.parametrize("negative", ["block", "ended_3_1", "closed_unavailable", "commercial", "identity"])
