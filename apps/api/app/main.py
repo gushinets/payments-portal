@@ -35,6 +35,7 @@ from app.domains.identity.backend_router import router as backend_session_router
 from app.http.backend_session_policy import backend_session_policy, session_validation_error
 from app.domains.legal.router import router as legal_router
 from app.domains.purchases.router import router as purchases_router
+from app.http.after_response import AfterResponseTasksMiddleware
 from app.http.errors import app_error_handler, unexpected_failure_middleware
 from app.http.health import health_router
 from app.http.metrics import metrics_router
@@ -113,6 +114,8 @@ def create_app() -> FastAPI:
     )
 
     app.middleware("http")(backend_session_policy)
+    # Run deferred tasks after the ASGI server's send, outside the HTTP middleware that streams bodies.
+    app.add_middleware(AfterResponseTasksMiddleware)
     app.add_exception_handler(RequestValidationError, session_validation_error)
     app.include_router(backend_session_router)
     app.include_router(billing_router)

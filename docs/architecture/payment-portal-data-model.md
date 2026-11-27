@@ -1,14 +1,14 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-11-13 (ANY-766 retained allowance activation)
+Last updated: 2026-11-23 (ANY-897 Widget activation windows)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 -> 20261110_0008 -> 20261111_0009 -> 20261111_0010 -> 20261111_0011 -> 20261113_0012 -> 20261113_0013 (head)
+20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 -> 20261110_0008 -> 20261111_0009 -> 20261111_0010 -> 20261111_0011 -> 20261113_0012 -> 20261113_0013 -> 20261123_0014 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
@@ -66,8 +66,8 @@ through the existing work table; it stores no Portal usage ledger.
 A fresh database has exactly 30 application tables: ten retained
 identity/session/legal tables, fifteen original external-billing persistence
 tables, one current product-link pointer, one purchase mutex, one session
-delegation table, one backend policy guard and one code-issuance budget table. Alembic has twelve revisions in
-one linear chain and one current head. Revision
+delegation table, one backend policy guard and one code-issuance budget table.
+The Alembic chain above is linear and has one current head. Revision
 `20261029_0003` belongs to ANY-709, `20261028_0005` to ANY-715 and
 `20261031_0006` to ANY-765 and `20261110_0007`/`20261110_0008`/`20261111_0009`/`20261111_0010` to ANY-766.
 Revision `20261110_0007` adds only `kernel_session_delegations`; revision
@@ -448,6 +448,14 @@ atomically reschedules monitoring and the earliest supported trust/access deadli
 alongside paid state, causal revision and outbox writes for an existing primary.
 Migration `20261028_0005` follows consolidated billing revision
 `20261029_0003` and preserves its active deadline and existing rows.
+
+Migration `20261123_0014` adds a `CHECK` requiring a non-`NULL` `coalescing_key`
+for `widget_activation_check` rows and a partial unique index on that key for
+the same work kind. The key combines the billing account and local subscription
+UUID. The `widget-activation-window:v1` payload stores the verified purchase ID,
+the database-clock preparation time, the deadline fixed at the first committed
+enqueue, and optional typed completion evidence. An accepted reopening resets
+attempt state and advances the enqueue generation on the same queue row.
 
 `manual_review_cases` stores bounded evidence and optional resolution proof.
 It cannot itself activate access, invent an allowance, or rewrite historical

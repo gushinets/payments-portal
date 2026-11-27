@@ -1,4 +1,4 @@
-"""Worker entrypoints into shared GET-only recovery and bounded inventory proof."""
+"""Worker entrypoints for bounded billing source work."""
 
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -14,15 +14,68 @@ from app.domains.billing.paid_policy import MeteringPolicy
 from app.core.settings import Settings
 from app.domains.billing.discovery import persist_discoveries, apply_inventory
 from app.domains.billing import background_recovery as recovery, work
-from app.domains.billing.work_contracts import WorkClaim
+from app.domains.billing.work_contracts import WorkAttemptOutcome, WorkClaim
 from app.domains.catalog.publication import SessionFactory
+from app.domains.purchases.widget_activation_poll import (
+    MAX_READ_CLEANUP_SECONDS,
+    WidgetActivationReadFailure,
+    WidgetActivationResult,
+    defer_widget_activation_read,
+    finish_widget_activation_read,
+    prepare_widget_activation_read,
+)
 from app.infrastructure.preflight import (
     PreflightAdmission,
     PreflightBudget,
+    PreflightDeadlineExceeded,
 )
 from app.integrations.lbx.client import LbxServerClient
+from app.integrations.lbx.errors import LbxError, LbxScopeMismatch
+from app.integrations.lbx.financial import subscription_lifecycle
+from app.integrations.lbx.reconciliation import timely_point
 from app.infrastructure.sentry import report_billing_recovery_exhausted
 from app.models import ExternalCreateOperationKind as Kind, ExternalCreateOperationState as State
+
+
+async def check_widget_activation(
+    client: LbxServerClient,
+    configuration: Settings,
+    *,
+    factory: SessionFactory,
+    claim: WorkClaim,
+    budget: PreflightBudget,
+    delegate: Callable[..., Awaitable[Any]],
+) -> WorkAttemptOutcome:
+    try:
+        attempt = await delegate(prepare_widget_activation_read, factory, configuration, claim)
+    except BillingRefused as error:
+        if error.code != "billing_busy":
+            raise
+        return await delegate(defer_widget_activation_read, factory, claim)
+    if attempt is None:
+        return WorkAttemptOutcome.COMPLETED
+    budget.limit_deadline(attempt.monotonic_deadline, max_cleanup_seconds=MAX_READ_CLEANUP_SECONDS)
+    result: WidgetActivationResult
+    try:
+        point = await timely_point(
+            lambda: client.get_subscription(subscription_id=attempt.provider_subscription_id, budget=budget), budget
+        )
+        if point.agreement_id != attempt.provider_agreement_id:
+            raise LbxScopeMismatch()
+        _, _, result = subscription_lifecycle(point)
+        budget.check()
+    except PreflightDeadlineExceeded as failure:
+        result = WidgetActivationReadFailure(failure.code) if budget.source_scheduled else None
+    except LbxError as failure:
+        result = WidgetActivationReadFailure(failure.code)
+    try:
+        return await delegate(finish_widget_activation_read, factory, configuration, claim, attempt, result)
+    except BillingRefused as error:
+        if error.code != "billing_busy":
+            raise
+        return await delegate(
+            defer_widget_activation_read, factory, claim, attempt=attempt, source_scheduled=budget.source_scheduled
+        )
 
 
 async def recover_operation(

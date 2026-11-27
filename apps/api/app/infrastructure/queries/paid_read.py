@@ -2,13 +2,17 @@
 
 from uuid import UUID
 
-from sqlalchemy import select, union
+from sqlalchemy import or_, select, union
 from sqlalchemy.orm import Session
 
 from app.models import (
     BillingProductAccessScope,
     BillingPurchaseScopeHold,
     BillingStateObservation,
+    BillingWorkItem,
+    BillingWorkKind,
+    ExternalBillingCustomer,
+    ExternalBillingCustomerBindingState,
     ExternalSubscription,
     PaidAccessState,
     PurchaseIntent,
@@ -56,14 +60,19 @@ def product_ids(db: Session, user_id: UUID) -> list[str]:
 
 def sources(
     db: Session, user_id: UUID, products: list[str]
-) -> list[tuple[PurchaseIntent, ExternalSubscription | None, BillingStateObservation | None]]:
+) -> list[
+    tuple[
+        PurchaseIntent, ExternalSubscription | None, BillingStateObservation | None, ExternalBillingCustomerBindingState
+    ]
+]:
     return list(
         db.execute(
-            select(PurchaseIntent, ExternalSubscription, BillingStateObservation)
+            select(PurchaseIntent, ExternalSubscription, BillingStateObservation, ExternalBillingCustomer.binding_state)
             .join(
                 BillingPurchaseScopeHold,
                 BillingPurchaseScopeHold.purchase_intent_id == PurchaseIntent.purchase_intent_id,
             )
+            .join(ExternalBillingCustomer, ExternalBillingCustomer.customer_id == PurchaseIntent.customer_id)
             .outerjoin(
                 ExternalSubscription, ExternalSubscription.purchase_intent_id == PurchaseIntent.purchase_intent_id
             )
@@ -74,6 +83,27 @@ def sources(
             .where(PurchaseIntent.user_id == user_id, PurchaseIntent.product_id.in_(products))
         ).tuples()
     )
+
+
+def activation_jobs(
+    db: Session, subscription_keys: set[str], customer_keys: set[str]
+) -> dict[tuple[str, str], BillingWorkItem]:
+    return {
+        (row.work_kind, row.coalescing_key): row
+        for row in db.scalars(
+            select(BillingWorkItem).where(
+                or_(
+                    BillingWorkItem.work_kind.in_(
+                        (BillingWorkKind.WIDGET_ACTIVATION_CHECK, BillingWorkKind.SUBSCRIPTION_RECONCILIATION)
+                    )
+                    & BillingWorkItem.coalescing_key.in_(subscription_keys),
+                    (BillingWorkItem.work_kind == BillingWorkKind.CUSTOMER_INVENTORY)
+                    & BillingWorkItem.coalescing_key.in_(customer_keys),
+                )
+            )
+        )
+        if row.coalescing_key is not None
+    }
 
 
 def allowances(db: Session, identities: list[UUID]) -> list[PurchasedAllowance]:

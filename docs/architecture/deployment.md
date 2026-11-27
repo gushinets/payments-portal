@@ -183,7 +183,7 @@ current migration chain and table inventory. Do not create a separate
 bootstrap CLI. Before starting normal runtime on a fresh database, verify:
 
 - Alembic reports one head and the database is at that head;
-- the current head is `20261113_0013` and exactly 30 application tables exist;
+- the current head is `20261123_0014` and exactly 30 application tables exist;
 - every removed legacy catalog/order/payment/provider/subscription/
   entitlement/trial table is absent;
 - all seventeen billing/link/purchase tables are empty before explicit flows;
@@ -335,9 +335,25 @@ and verify separate application/database backups before updating retained data.
 Use the existing backup/recovery procedure and matching reader+database pair;
 never repair failure by downgrading, stamping or rewriting purchase history.
 
+#### Widget activation window (ANY-897)
+
+The Portal image for ANY-897 applies migration `20261123_0014`, which enforces
+one Widget activation queue row per billing account and subscription. Any retained
+`widget_activation_check` row, including a completed job, blocks downgrade
+from that revision. If rollback is required, use the backup/recovery procedure
+to restore a verified database and matching application images.
+
+Production Compose and `.env.production.example` use a 780-second Widget
+activation window. Before updating an existing installation, set
+`BILLING_WIDGET_ACTIVATION_WINDOW_SECONDS=780` in its private environment file
+or remove the old setting to inherit the Compose default. Check the effective
+API value for shell or overlay overrides before running a full `image-up`.
+The setting applies when the API saves a new window. Existing windows retain
+their saved deadlines.
+
 ### Paired compatibility and synchronized cutover
 
-The current local ANY-766 source pair requires
+The locally verified ANY-766 source pair used
 Portal migration head `20261113_0013`, Kernel head `0022`, consumer identity V2,
 AccessSnapshot V3, manifest/invalidation/usage/exhaustion V1. Source baselines are
 Portal `2e328bb59af690ec3a4599da0ce4556f9bedce76` and Kernel
@@ -387,15 +403,15 @@ Before installing this pair over the Step 8 baseline:
    allowance ownership by changing configuration. Enable Kernel invalidation and
    usage receiver permissions before enabling Portal delivery.
 3. While both old application sets remain stopped, run Portal's selected
-   `migrate` image through head `20261113_0013`: 0009 binds retained delegations
+   `migrate` image through its head: 0009 binds retained delegations
    and policy scope; 0010 partitions recipient/outbox/work keys and retires stale
    claims; 0011 adds exhaustion deduplication; 0012 retains allowance activation
    and introduces V2 internal evidence readers/writers; 0013 bounds new code
    issuance while preserving expired-token recovery evidence. Downgrade refuses
-   retained V2/activation evidence or issuance budgets. Keep all old Portal
-   APIs/workers stopped and start only updated binaries. Configure consumers before first
-   API startup installs/verifies P/digest and recipient state. Do not run an old
-   worker against migrated delivery keys.
+   retained V2/allowance activation evidence or issuance budgets. Keep all old
+   Portal APIs/workers stopped and start only updated binaries.
+   Configure consumers before first API startup installs/verifies P/digest
+   and recipient state. Do not run an old worker against migrated delivery keys.
 4. Use the selected Kernel images and its existing runner through the head above:
    `0020` retains R floors and usage/reservations while clearing incompatible
    cache metadata and initializing consumer/P; `0021` adds durable exhaustion;

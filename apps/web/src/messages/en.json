@@ -170,6 +170,8 @@
       "paid": {
         "loading": "Checking paid access…",
         "confirmed": "Paid access confirmed",
+        "checking": "Checking activation",
+        "unconfirmed": "Activation has not been confirmed yet",
         "no_paid_access": "No paid access is confirmed for this product",
         "unavailable": "Paid-access status could not be confirmed. Try again.",
         "quantity": "Purchased limit: {quantity} {unit}",

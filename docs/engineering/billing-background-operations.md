@@ -197,6 +197,10 @@ There is no separate process to launch or standalone worker command/container.
   than the cleanup reserve and at most 240 seconds. This leaves the 30-second
   claim/apply margin and refusal retry within the five-minute urgent cadence.
 - `BILLING_WORKER_SCAN_BATCH_SIZE=100`: local enrollment/repair batch, range 1–100.
+- `BILLING_WIDGET_ACTIVATION_WINDOW_SECONDS` sets the duration of new activation
+  windows. Production Compose defaults to 780 seconds, and the application and
+  local Compose default to 300 seconds. Startup accepts 1–3,600 seconds. Saved
+  windows retain their original deadline. See the [production update procedure](../architecture/deployment.md#widget-activation-window-any-897).
 - `PAID_ACCESS_CLOCK_SKEW_SECONDS`: supported deployment clock budget, 1–299
   seconds with no default. Unset prevents new positive derivation while local
   reductions continue; existing allowance UTC bounds remain frozen.
@@ -355,6 +359,86 @@ backoff up to five minutes. Process pauses/backlog can cause observable cadence
 lag; they never extend trust. Claims/fences prevent competing or stale consumers
 from overwriting newer facts, and hints arriving during work remain due.
 
+After sending a successful payment Widget response for a linked purchase
+awaiting first activation, Portal rechecks eligibility before saving the window.
+Ordinary reconciliation continues if the window is missing. To diagnose the
+enqueue, use [`billing-purchase inspect`](#privileged-purchase-operations) to look
+for the subscription's `widget_activation_check` work item and check its
+generation, state and due time. An enqueue exception logs
+`widget_activation_enqueue_failed` with the Widget response `request_id`.
+
+ANY-897 Widget activation checks run in the normal source lane after due
+regular work. Each attempt makes one logical point read of the linked LBX
+subscription. The worker skips missed 20-second slots anchored at Widget
+preparation and uses the first slot starting at least 40 seconds after an
+attempt that failed. A slot skipped before any source task could start
+preserves the previous attempt and its backoff. The worker can make one
+closing read at the saved deadline if the purchase remains eligible and any
+backoff has elapsed by that deadline. The closing read and its handoff must
+fit within five seconds after the deadline, including any pickup delay.
+If the closing read cannot run, regular reconciliation continues on its own
+schedule.
+The ordinary read budget ends at the deadline. Each read and its bounded
+cleanup wait share a budget of at most five seconds. When applying this limit,
+the worker caps the cleanup reserve at 2.5 seconds and respects the original
+worker deadline. It retains resources until source cleanup finishes.
+A saved window stays eligible through a temporary financial block while the
+purchase is still linked and eligible for first activation.
+The worker compares the response's `agreement_id` with the saved agreement
+before interpreting the subscription state. A mismatch is treated as
+`lbx_scope_mismatch` and follows the standard read-failure backoff within the
+saved window. A timely active and unblocked response for the saved agreement
+completes the window and can advance regular reconciliation in the same
+transaction. The worker rechecks the saved binding, claim and deadline before
+committing the hint. When fresh regular proof has already queued the linked
+first-primary inventory, it reuses that attempt. The hint preserves an
+in-flight lease. A later worker can finish the exact Widget wakeup without
+starting another source read once matching work has queued the linked selection.
+When the signal arrives during a running reconciliation, that attempt records
+its next ordinary due time as it finishes. The Widget follow-up can wait for a
+later source fence and resumes as soon as that fence is released or expires.
+
+When Widget advances a pending reconciliation, a live inventory attempt can
+also cover that wakeup if its saved `next_attempt_at` was at or before the
+activation signal. The worker reuses fresh authoritative subscription proof from
+the exact inventory attempt while its lease is live and its enqueue generation
+and the subscription fence still match. Consuming the redundant wakeup restores
+the saved regular schedule, including any urgent update described below. When
+that due time has arrived or a newer reconciliation hint has changed the
+generation, the regular check still runs.
+
+Before taking a subscription fence, a Widget-only wakeup can wait for the live
+customer inventory that was already due at the signal or for the live source
+fence of the subscription. The worker releases the queue claim and retains its
+due time. Recalculating the future urgent cadence during HTTP or inventory
+apply preserves the Widget signal's generation. The saved regular schedule
+keeps the earlier of its existing and recalculated due times and adopts urgent
+priority. The same transaction advances the queue's next attempt time if it
+falls after the saved regular due time. A matching live inventory can record
+its wait before the first pickup. The wakeup becomes eligible after all
+recorded owners finish, expire or are superseded. An independent reconciliation
+hint or a due ordinary check can run on its own. When local contention prevents
+a Widget-only attempt from acquiring the subscription source lease, its retry
+is due no later than the saved regular check if the attempt started before
+that check was due. This also applies when the lock wait crosses the saved due
+time. A current grant for the selected subscription satisfies the wakeup even
+if it commits before the first pickup. The worker restores the ordinary
+schedule in that case and uses the ordinary proof path when more evidence is
+needed.
+
+The reconciliation row records wakeup coverage independently of the cabinet's
+inventory link, without locking the Widget row. After a positive signal, the
+cabinet tracks a reconciliation and its first-primary inventory through the
+matching Widget wakeup. The first claim for that wakeup can keep `checking`
+after the preceding ordinary claim expires. Reclaiming the Widget's own
+expired attempt leaves `unconfirmed`. The cabinet treats a claim taken at or
+after the saved ordinary due time as ordinary. The worker clears that wakeup
+when acquiring the source lease if the ordinary check is due by then. Ordinary
+reconciliation and the primary selection it queues leave the cabinet at
+`unconfirmed` after the window.
+Paid access and purchased allowances are written by standard reconciliation and
+primary selection from their own authoritative proof.
+
 `external_create_recovery` is GET-only. Zero candidates remain uncertain; exactly
 one original point-proven candidate may bind; ambiguous/foreign candidates or
 an identity bound to another purchase require review or more proof. Recovery preserves the original
@@ -484,9 +568,11 @@ implementation and real provider authentication/delivery evidence.
 
 ## Startup, inspection and shutdown
 
-Apply migration `20261028_0005` after consolidated billing revision `20261029_0003`
-through the normal migration service before API startup. For retired branch
-revision labels, follow the [base migration runbook](ANY-709-billing-runbook.md#consolidated-any-709-migration).
+Run the normal migration service to the current Alembic `head` before API
+startup. The Widget activation queue requires revision `20261123_0014`.
+Follow the [deployment guide](../architecture/deployment.md#reviewed-image-installation-any-766-step-17).
+For retired branch revision labels, follow the
+[base migration runbook](ANY-709-billing-runbook.md#consolidated-any-709-migration).
 Use the existing repository/deployment start/restart commands. To disable worker
 execution, set `BILLING_WORKER_ENABLED=false` and restart. Shutdown stops claims
 and drains bounded work/cleanup; outstanding work remains reclaimable after

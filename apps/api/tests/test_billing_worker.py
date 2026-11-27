@@ -7,11 +7,14 @@ from pathlib import Path
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 from app.domains.billing import work
-from app.infrastructure.queries import billing_reconciliation
+from app.infrastructure.queries import billing_reconciliation, billing_work
 from app.models import (
     BillingWorkItem,
+    BillingWorkKind,
+    BillingWorkState,
     CommercialProductHead,
     ExternalBillingCustomer,
     ExternalCreateOperation,
@@ -37,8 +40,11 @@ from app.jobs.billing import BillingWorker
 from app.http import health
 from app.domains.billing.work import spread_seconds
 from app.domains.billing.work_contracts import WorkLane
+from app.domains.purchases.widget_activation import WidgetActivationOpening
+from app.domains.purchases.widget_activation_window import save_widget_activation_window
 from app.main import create_app
 from apps.api.tests.support.any709_step1 import step1_settings
+from apps.api.tests.factories.billing_worker import work_factory
 from apps.api.tests.factories.reconciliation import subject_factory
 
 pytestmark = pytest.mark.anyio
@@ -62,11 +68,41 @@ def anyio_backend() -> str:
         ("billing_worker_io_timeout_seconds", 241),
         ("billing_worker_io_timeout_seconds", 300),
         ("billing_worker_io_timeout_seconds", 600),
+        ("billing_widget_activation_window_seconds", 0),
     ],
 )
 def test_billing_worker_settings_refuse_unbounded_or_invalid(field: str, value: float) -> None:
     with pytest.raises(ValidationError):
         step1_settings(**{field: value})
+
+
+def test_any897_sqlite_enforces_account_subscription_key_for_completed_windows() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    try:
+        BillingWorkItem.__table__.create(engine)
+        opening = WidgetActivationOpening(uuid4(), uuid4(), uuid4(), "account-a", uuid4(), utc_now())
+        kind = BillingWorkKind.WIDGET_ACTIVATION_CHECK
+        with Session(engine) as db, db.begin():
+            save_widget_activation_window(db, opening, duration_seconds=300)
+            key = f"{opening.account_id}:{opening.subscription_id}"
+            row = billing_work.by_key(db, kind, key)
+            assert row is not None
+            row.work_state = BillingWorkState.COMPLETED
+
+            with pytest.raises(IntegrityError, match="UNIQUE constraint failed"), db.begin_nested():
+                db.add(work_factory(kind=kind, key=key, reference=str(opening.subscription_id), due=utc_now()))
+                db.flush()
+
+            db.add(
+                work_factory(
+                    kind=kind,
+                    key=f"account-b:{opening.subscription_id}",
+                    reference=str(opening.subscription_id),
+                    due=utc_now(),
+                )
+            )
+    finally:
+        engine.dispose()
 
 
 @pytest.mark.parametrize("elapsed_seconds", [0, 269], ids=["immediate-refusal", "near-lease-expiry"])
@@ -134,19 +170,25 @@ def test_billing_worker_settings_propagate_and_match_documentation() -> None:
         "BILLING_WORKER_IO_TIMEOUT_SECONDS": "60",
         "BILLING_WORKER_SCAN_BATCH_SIZE": "100",
     }
-    for path in ("docker-compose.yml", "docker-compose.prod.yml", "docker-compose.agent.yml"):
+    window_setting = "BILLING_WIDGET_ACTIVATION_WINDOW_SECONDS"
+    for path, window_seconds in (
+        ("docker-compose.yml", "300"),
+        ("docker-compose.prod.yml", "780"),
+        ("docker-compose.agent.yml", "300"),
+    ):
         config = yaml.safe_load((ROOT / path).read_text())["services"]
         assert config["api"]["environment"]["PAID_ACCESS_CLOCK_SKEW_SECONDS"] == "${PAID_ACCESS_CLOCK_SKEW_SECONDS:-}"
         assert (
             config["api"]["environment"]["PREFLIGHT_TOTAL_TIMEOUT_SECONDS"] == "${PREFLIGHT_TOTAL_TIMEOUT_SECONDS:-10}"
         )
-        for key, value in defaults.items():
+        for key, value in (defaults | {window_setting: window_seconds}).items():
             assert config["api"]["environment"][key] == f"${{{key}:-{value}}}"
-    for path in (".env.example", ".env.production.example"):
-        for key, value in defaults.items():
-            assert f"{key}={value}" in (ROOT / path).read_text()
+    for path, window_seconds in ((".env.example", "300"), (".env.production.example", "780")):
+        lines = (ROOT / path).read_text().splitlines()
+        for key, value in (defaults | {window_setting: window_seconds}).items():
+            assert f"{key}={value}" in lines
     text = (ROOT / "docs/engineering/billing-background-operations.md").read_text()
-    for key in defaults:
+    for key in (*defaults, window_setting):
         assert key in text
     assert "per-process" in text and "standalone" in text and "100" in text
 

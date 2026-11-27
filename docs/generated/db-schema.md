@@ -223,6 +223,7 @@ Indexes and constraints:
 - `ck_billing_work_items_lease_pair`
 - `ck_billing_work_items_payload_schema_nonempty`
 - `ck_billing_work_items_recipient`
+- `ck_billing_work_items_widget_activation_key`
 - `ix_billing_work_items_claim_scan`
 - `ix_billing_work_items_coalescing_key`
 - `ix_billing_work_items_kind_state`
@@ -232,6 +233,7 @@ Indexes and constraints:
 - `ix_billing_work_items_scope`
 - `uq_billing_work_items_create_recovery`
 - `uq_billing_work_items_recurring`
+- `uq_billing_work_items_widget_activation`
 
 ## `capability_manifest_projections`
 

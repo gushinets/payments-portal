@@ -81,6 +81,7 @@ class PreflightBudget:
         self._work_deadline = self.deadline - owner.policy.cleanup_timeout_seconds
         self._admitted = False
         self._finished = False
+        self._source_scheduled = False
         self._tasks: set[asyncio.Task[Any]] = set()
         self._cleanup_tasks: set[asyncio.Task[Any]] = set()
 
@@ -91,6 +92,17 @@ class PreflightBudget:
     @property
     def work_deadline(self) -> float:
         return self._work_deadline
+
+    @property
+    def source_scheduled(self) -> bool:
+        """Whether this budget has scheduled any source work, even if it has finished."""
+        return self._source_scheduled
+
+    def limit_deadline(self, deadline: float, *, max_cleanup_seconds: float) -> None:
+        """Shorten the operation within its original work and cleanup limits."""
+        cleanup = min(self._owner.policy.cleanup_timeout_seconds, max_cleanup_seconds)
+        self._deadline = min(self.deadline, deadline)
+        self._work_deadline = min(self.work_deadline, self.deadline - cleanup)
 
     def remaining_seconds(self) -> float:
         self.check()
@@ -166,6 +178,7 @@ class PreflightBudget:
         if not self._admitted or self._tasks:
             raise PreflightSaturated()
         task = asyncio.create_task(source())
+        self._source_scheduled = True
         self._tasks.add(task)
         task.add_done_callback(self._source_done)
         try:

@@ -75,7 +75,8 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   }, [applyRefusal, closeWidget]);
   const purchases = useAccountPurchases(canRead, handleRefusal);
   const { applyStatus } = purchases;
-  const paid = usePaidAccess(canRead, handleRefusal);
+  const paymentWidgetOpen = widget.state.status === WidgetStatus.Open && widget.state.target !== null;
+  const paid = usePaidAccess(canRead, handleRefusal, paymentWidgetOpen);
   const usage = usePaidUsage(canRead, handleRefusal);
 
   useEffect(() => {
@@ -197,7 +198,7 @@ function Cabinet({ userId, emailVerified, initialPurchaseId }: AccountBillingPro
   ])].filter((id) => !purchases.items.some((item) => item.product_id === id));
 
   function refreshPaid() {
-    void paid.refresh();
+    void paid.refresh({ afterCurrent: true });
     void usage.refresh();
   }
 

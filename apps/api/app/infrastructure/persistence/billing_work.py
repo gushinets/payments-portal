@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import case, func, or_, text
+from sqlalchemy import case, false, func, or_, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
@@ -26,7 +26,7 @@ def coalesce(
     reference: str,
     due: datetime,
     priority: int,
-    payload: dict,
+    payload: dict | None,
     hint: bool = False,
     replace_deadline: bool = False,
     revive_completed: bool = False,
@@ -41,7 +41,7 @@ def coalesce(
         recipient_id=recipient_id,
         coalescing_key=key,
         payload_schema_version="billing-work:v1",
-        payload_document=payload,
+        payload_document={} if payload is None else payload,
         priority=priority,
         next_attempt_at=due,
         work_state="pending",
@@ -58,15 +58,16 @@ def coalesce(
             (or_(table.work_state == "completed", table.next_attempt_at > due), due), else_=table.next_attempt_at
         ),
         "enqueue_generation": table.enqueue_generation + 1,
-        "payload_document": payload,
         "priority": priority,
     }
+    if payload is not None:
+        updates["payload_document"] = payload
     statement = statement.on_conflict_do_update(
         index_elements=["work_kind", "coalescing_key"],
         index_where=text(RECURRING_INDEX),
         set_=updates,
         where=or_(
-            table.payload_document != payload,
+            table.payload_document != payload if payload is not None else false(),
             table.next_attempt_at != due,
             (table.work_state == "completed") & revive_completed,
         )

@@ -10,7 +10,7 @@ from app.core.observability import request_id_context
 from app.core.settings import settings
 from app.composition.paid_reads import PaidReadResources
 from app.domains.billing.contracts import BillingRefused
-from app.domains.billing.paid_read import PaidRead, ProductPaidStatus
+from app.domains.billing.paid_read import ActivationCheckStatus, PaidRead, ProductPaidStatus
 from app.domains.catalog.contracts import SourceProvenance
 from app.http.dependencies import get_paid_read_resources
 
@@ -36,6 +36,7 @@ class PaidAccessProductResponse(BaseModel):
     status: ProductPaidStatus
     observed_at: datetime | None
     effective_until: datetime | None
+    activation_check: ActivationCheckStatus | None = None
 
 
 class PaidAccessResponse(BaseModel):
@@ -73,6 +74,7 @@ def present_paid_access(result: PaidRead) -> PaidAccessResponse:
                 status=item.status,
                 observed_at=item.observed_at,
                 effective_until=item.effective_until,
+                activation_check=item.activation_check,
             )
             for item in result.products
         ],

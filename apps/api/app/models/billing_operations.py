@@ -19,6 +19,8 @@ from app.models._shared import (
 )
 from app.models.enums import BillingWorkKind, WebhookDeliveryState
 
+_WIDGET_ACTIVATION_WORK = f"work_kind = '{BillingWorkKind.WIDGET_ACTIVATION_CHECK.value}'"
+
 
 class BillingWorkItem(Base):
     __tablename__ = "billing_work_items"
@@ -29,6 +31,10 @@ class BillingWorkItem(Base):
             name="ck_billing_work_items_recipient",
         ),
         CheckConstraint("enqueue_generation >= 0", name="ck_billing_work_items_generation_nonnegative"),
+        CheckConstraint(
+            f"work_kind <> '{BillingWorkKind.WIDGET_ACTIVATION_CHECK.value}' OR coalescing_key IS NOT NULL",
+            name="ck_billing_work_items_widget_activation_key",
+        ),
         Index(
             "uq_billing_work_items_recurring",
             "work_kind",
@@ -44,6 +50,13 @@ class BillingWorkItem(Base):
                 "'billing_enrollment_sweep', 'customer_inventory', 'external_create_deadline', "
                 f"'{BillingWorkKind.ACCESS_INVALIDATION.value}', '{BillingWorkKind.ALLOWANCE_EXHAUSTION.value}')"
             ),
+        ),
+        Index(
+            "uq_billing_work_items_widget_activation",
+            "coalescing_key",
+            unique=True,
+            postgresql_where=text(_WIDGET_ACTIVATION_WORK),
+            sqlite_where=text(_WIDGET_ACTIVATION_WORK),
         ),
         CheckConstraint(
             "trim(payload_schema_version) <> ''",

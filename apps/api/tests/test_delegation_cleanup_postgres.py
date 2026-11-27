@@ -369,11 +369,12 @@ def test_budget_migration_refuses_reset_and_preserves_history(delegated_parent: 
     engine = factory.kw["bind"]
     with factory() as db:
         before = db.scalar(text("SELECT to_jsonb(b) FROM backend_code_issuance_budgets b"))
+        before_downgrade = db.scalar(text("SELECT version_num FROM alembic_version"))
     with alembic_test_config(engine.url) as config:
         with pytest.raises(RuntimeError, match="Code issuance budgets require the new writer"):
             command.downgrade(config, "20261113_0012")
     with factory() as db:
-        assert db.scalar(text("SELECT version_num FROM alembic_version")) == "20261113_0013"
+        assert db.scalar(text("SELECT version_num FROM alembic_version")) == before_downgrade
         assert db.scalar(text("SELECT to_jsonb(b) FROM backend_code_issuance_budgets b")) == before
         constraints = inspect(engine).get_foreign_keys("backend_code_issuance_budgets")
         assert constraints[0]["options"]["ondelete"] == "CASCADE"

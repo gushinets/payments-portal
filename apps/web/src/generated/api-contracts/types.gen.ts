@@ -172,6 +172,11 @@ export type AccountPurchasesResponse = {
 };
 
 /**
+ * ActivationCheckStatus
+ */
+export type ActivationCheckStatus = 'checking' | 'unconfirmed';
+
+/**
  * AllowanceExhaustion
  */
 export type AllowanceExhaustion = {
@@ -781,6 +786,7 @@ export type PaidAccessGrantResponse = {
  * PaidAccessProductResponse
  */
 export type PaidAccessProductResponse = {
+    activation_check?: ActivationCheckStatus | null;
     /**
      * Effective Until
      */

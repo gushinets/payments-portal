@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AccountBilling } from "@/features/billing";
 import { paidAccessRefreshMs } from "@/features/billing/use-paid-access";
+import pt from "@/messages/pt.json";
 import ru from "@/messages/ru.json";
 import { sessionChangedEvent, sessionStorageKey } from "@/shared/api/auth";
 import { emptyPaidState, paidState } from "../fixtures/paid-access";
@@ -82,6 +83,36 @@ it("reads local committed state again after closing the Widget", async () => {
   expect(paid).toHaveBeenCalledTimes(2);
 });
 
+it.each(["close", "close and focus"])("refreshes after %s during an older paid read", async (trigger) => {
+  vi.useFakeTimers();
+  const checking = emptyPaidState();
+  checking.products = [{
+    product_id: "proposal_ai", status: "no_paid_access", activation_check: "checking",
+    observed_at: null, effective_until: null,
+  }];
+  paid.mockResolvedValueOnce(Response.json(checking));
+  renderCabinet();
+  await act(async () => vi.advanceTimersByTimeAsync(1));
+  expect(screen.getByText(a.checking)).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: ru.Billing.pay }));
+  await act(async () => vi.advanceTimersByTimeAsync(1));
+  const closeWidget = screen.getByRole("button", { name: ru.Billing.close });
+
+  let finish!: (response: Response) => void;
+  paid.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }));
+  refresh();
+  fireEvent.click(closeWidget);
+  if (trigger === "close and focus") fireEvent.focus(window);
+  expect(paid).toHaveBeenCalledTimes(2);
+
+  await act(async () => finish(Response.json(checking)));
+  expect(paid).toHaveBeenCalledTimes(3);
+  expect(screen.getByText(a.confirmed)).toBeVisible();
+  const widgetRequests = fetcher.mock.calls.filter(([url]) =>
+    new URL(String(url)).pathname === "/api/billing/widget-bootstrap");
+  expect(widgetRequests).toHaveLength(1);
+});
+
 it("preserves independent paid products even if purchase inventory is unavailable", async () => {
   fetcher.mockImplementation(async (input) => new URL(String(input)).pathname === "/api/paid-access"
     ? Response.json(paidState({ grants: [{ product_id: "proposal_ai", valid_until: null }, { product_id: "brief_decoder", valid_until: null }] }))
@@ -135,6 +166,191 @@ it("refreshes while visible, pauses while hidden and catches up on visibility", 
   visibility.mockReturnValue("visible");
   await act(async () => document.dispatchEvent(new Event("visibilitychange")));
   expect(paid).toHaveBeenCalledTimes(3);
+});
+
+it("queues one paid read when visibility returns during an older request", async () => {
+  vi.useFakeTimers();
+  let finish!: (response: Response) => void;
+  paid.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }));
+  renderCabinet();
+  await act(async () => vi.advanceTimersByTimeAsync(1));
+  expect(paid).toHaveBeenCalledTimes(1);
+
+  const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+  fireEvent(document, new Event("visibilitychange"));
+  visibility.mockReturnValue("visible");
+  fireEvent(document, new Event("visibilitychange"));
+  fireEvent(document, new Event("visibilitychange"));
+  expect(paid).toHaveBeenCalledTimes(1);
+
+  const checking = emptyPaidState();
+  checking.products = [{
+    product_id: "proposal_ai", status: "no_paid_access", activation_check: "checking",
+    observed_at: null, effective_until: null,
+  }];
+  await act(async () => finish(Response.json(checking)));
+  expect(paid).toHaveBeenCalledTimes(2);
+  expect(screen.getByText(a.confirmed)).toBeVisible();
+});
+
+it("shows the checking status in Brazilian Portuguese", async () => {
+  const checking = emptyPaidState();
+  checking.products = [{
+    product_id: "proposal_ai", status: "no_paid_access", activation_check: "checking",
+    observed_at: null, effective_until: null,
+  }];
+  paid.mockResolvedValueOnce(Response.json(checking));
+  renderWithIntl(<AccountBilling userId={purchaseUser.user_id} emailVerified />, { locale: "pt", messages: pt });
+  expect(await screen.findByText("Verificando a ativação")).toBeVisible();
+});
+
+it("preserves a focused product link through focus revalidation and its follow-up", async () => {
+  vi.stubEnv("NEXT_PUBLIC_KERNEL_WEB_BASE_URL", "https://kernel.invalid");
+  const grant = paidState();
+  paid.mockResolvedValueOnce(Response.json(grant));
+  renderCabinet();
+  const link = await screen.findByRole("link", { name: a.openProduct });
+  act(() => link.focus());
+  expect(link).toHaveFocus();
+
+  let finish!: (response: Response) => void;
+  let finishFollowUp!: (response: Response) => void;
+  paid.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }));
+  paid.mockImplementationOnce(() => new Promise<Response>((resolve) => { finishFollowUp = resolve; }));
+  fireEvent.blur(window);
+  fireEvent.focus(window);
+  fireEvent.focus(window);
+  expect(paid).toHaveBeenCalledTimes(2);
+  expect(link).toHaveFocus();
+
+  await act(async () => finish(Response.json(grant)));
+  expect(paid).toHaveBeenCalledTimes(3);
+  expect(link).toHaveFocus();
+
+  await act(async () => finishFollowUp(Response.json(grant)));
+  expect(screen.getByRole("link", { name: a.openProduct })).toBe(link);
+  expect(link).toHaveFocus();
+});
+
+it("keeps a focused product link after a busy focus refresh until the original deadline", async () => {
+  vi.useFakeTimers();
+  vi.stubEnv("NEXT_PUBLIC_KERNEL_WEB_BASE_URL", "https://kernel.invalid");
+  const grant = paidState({ effective_until: new Date(Date.now() + 1000).toISOString() });
+  paid.mockResolvedValueOnce(Response.json(grant))
+    .mockResolvedValueOnce(Response.json({ detail: { code: "paid_access_busy" } }, { status: 503 }))
+    .mockResolvedValueOnce(Response.json({ detail: { code: "paid_access_deadline_pending" } }, { status: 503 }));
+  renderCabinet();
+  await act(async () => vi.advanceTimersByTimeAsync(500));
+  const link = screen.getByRole("link", { name: a.openProduct });
+  act(() => link.focus());
+
+  await act(async () => {
+    fireEvent.blur(window);
+    fireEvent.focus(window);
+  });
+  expect(paid).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole("link", { name: a.openProduct })).toBe(link);
+  expect(link).toHaveFocus();
+
+  await act(async () => vi.advanceTimersByTimeAsync(500));
+  expect(link).not.toBeInTheDocument();
+  expect(screen.getByRole("alert")).toHaveTextContent(a.deadlinePending);
+});
+
+it("expires the focused product link while a focus refresh is pending", async () => {
+  vi.useFakeTimers();
+  vi.stubEnv("NEXT_PUBLIC_KERNEL_WEB_BASE_URL", "https://kernel.invalid");
+  paid.mockResolvedValueOnce(Response.json(paidState({ effective_until: new Date(Date.now() + 500).toISOString() })));
+  renderCabinet();
+  await act(async () => vi.advanceTimersByTimeAsync(1));
+  const link = screen.getByRole("link", { name: a.openProduct });
+  act(() => link.focus());
+
+  let finish!: (response: Response) => void;
+  paid.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }));
+  fireEvent.focus(window);
+  expect(paid).toHaveBeenCalledTimes(2);
+  expect(link).toHaveFocus();
+
+  await act(async () => vi.advanceTimersByTimeAsync(510));
+  expect(link).not.toBeInTheDocument();
+  expect(screen.getByRole("alert")).toHaveTextContent(a.deadlinePending);
+  await act(async () => finish(Response.json(emptyPaidState())));
+  expect(screen.queryByRole("link", { name: a.openProduct })).not.toBeInTheDocument();
+});
+
+it("coalesces visible focus events behind an older paid read", async () => {
+  renderCabinet();
+  await screen.findByText(a.confirmed);
+  const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+  fireEvent.focus(window);
+  expect(paid).toHaveBeenCalledTimes(1);
+
+  visibility.mockReturnValue("visible");
+  let finish!: (response: Response) => void;
+  paid.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }));
+  fireEvent.focus(window);
+  await waitFor(() => expect(paid).toHaveBeenCalledTimes(2));
+  fireEvent.focus(window);
+  fireEvent.focus(window);
+  expect(paid).toHaveBeenCalledTimes(2);
+  const checking = emptyPaidState();
+  checking.products = [{
+    product_id: "proposal_ai", status: "no_paid_access", activation_check: "checking", observed_at: null, effective_until: null,
+  }];
+  await act(async () => finish(Response.json(checking)));
+  expect(paid).toHaveBeenCalledTimes(3);
+  expect(screen.getByText(a.confirmed)).toBeVisible();
+});
+
+it("queues one manual refresh when a paid access read is already running in the background", async () => {
+  vi.useFakeTimers();
+  const checking = emptyPaidState();
+  checking.products = [{
+    product_id: "proposal_ai", status: "no_paid_access", activation_check: "checking",
+    observed_at: null, effective_until: null,
+  }];
+  paid.mockResolvedValueOnce(Response.json(checking));
+  renderCabinet();
+  await act(async () => vi.advanceTimersByTimeAsync(1));
+  expect(screen.getByText(a.checking)).toBeVisible();
+
+  let finishStaleRead!: (response: Response) => void;
+  paid.mockImplementationOnce(() => new Promise<Response>((resolve) => { finishStaleRead = resolve; }));
+  fireEvent.focus(window);
+  expect(paid).toHaveBeenCalledTimes(2);
+
+  paid.mockResolvedValueOnce(Response.json(paidState()));
+  expect(screen.getByRole("button", { name: a.refresh })).toBeEnabled();
+  refresh();
+  refresh();
+  expect(paid).toHaveBeenCalledTimes(2);
+
+  await act(async () => finishStaleRead(Response.json(checking)));
+  expect(paid).toHaveBeenCalledTimes(3);
+  expect(screen.getByText(a.confirmed)).toBeVisible();
+});
+
+it.each(["hidden", "new session", "session refusal", "unmount"])("drops the pending focus refresh after %s", async (change) => {
+  let finish!: (response: Response) => void;
+  paid.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }));
+  const view = renderCabinet();
+  await waitFor(() => expect(paid).toHaveBeenCalledTimes(1));
+  fireEvent.focus(window);
+  if (change === "hidden") {
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    fireEvent(document, new Event("visibilitychange"));
+  } else if (change === "new session") {
+    window.localStorage.setItem(sessionStorageKey, "different-session");
+    fireEvent(window, new Event(sessionChangedEvent));
+  } else if (change === "unmount") {
+    view.unmount();
+  }
+  const response = change === "session refusal"
+    ? Response.json({ detail: { code: "billing_session_required" } }, { status: 401 })
+    : Response.json(paidState());
+  await act(async () => finish(response));
+  expect(paid).toHaveBeenCalledTimes(1);
 });
 
 it("expires a successful view at its server deadline even before the next periodic refresh", async () => {

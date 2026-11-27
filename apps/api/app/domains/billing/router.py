@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from functools import partial
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.composition.billing import bootstrap_account
@@ -14,6 +15,8 @@ from app.core.observability import request_id_context
 from app.core.settings import settings
 from app.domains.billing.contracts import BillingAccountFailure, BillingRefused
 from app.domains.catalog.publication import SessionFactory
+from app.domains.purchases.widget_activation import WidgetActivationWriter, enqueue_widget_activation
+from app.domains.purchases.widget_activation_window import save_widget_activation_window
 from app.http.dependencies import get_session_factory
 from app.infrastructure.sentry import FailureCategory, Operation, report_exception
 
@@ -47,12 +50,17 @@ class WidgetBootstrapResponse(BaseModel):
     request_id: str
 
 
+async def get_widget_activation_writer() -> WidgetActivationWriter:
+    return partial(save_widget_activation_window, duration_seconds=settings.billing_widget_activation_window_seconds)
+
+
 @router.post("/widget-bootstrap", response_model=WidgetBootstrapResponse)
 async def widget_bootstrap(
     payload: WidgetBootstrapRequest,
     request: Request,
     response: Response,
     factory: Annotated[SessionFactory, Depends(get_session_factory)],
+    activation_writer: Annotated[WidgetActivationWriter, Depends(get_widget_activation_writer)],
     authorization: Annotated[str | None, Header()] = None,
 ) -> WidgetBootstrapResponse:
     response.headers["Cache-Control"] = "no-store"
@@ -66,6 +74,7 @@ async def widget_bootstrap(
             factory=factory,
             token=authorization.removeprefix("Bearer ").strip(),
             purchase_id=payload.purchase_intent_id,
+            prepare_activation=True,
         )
     except AppError as error:
         if isinstance(error, BillingAccountFailure):
@@ -82,6 +91,13 @@ async def widget_bootstrap(
             detail={"code": error.code, "request_id": request_id_context.get()},
             headers={"Cache-Control": "no-store"},
         ) from None
+    request_id = request_id_context.get()
+    if result.activation_opening is not None:
+        tasks = BackgroundTasks()
+        tasks.add_task(
+            enqueue_widget_activation, factory, result.activation_opening, activation_writer, request_id=request_id
+        )
+        request.state.after_response_tasks = tasks
     return WidgetBootstrapResponse(
         presentation="payment" if result.purchase_id is not None else "account",
         payment_target=WidgetPaymentTarget(
@@ -101,5 +117,5 @@ async def widget_bootstrap(
         widget_origin=result.origin,
         sdk_url=result.origin + "/lbxwidget.js",
         serviceBaseUrl=result.origin + "/api/rest/v1/client",
-        request_id=request_id_context.get(),
+        request_id=request_id,
     )

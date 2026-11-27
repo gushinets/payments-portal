@@ -13,7 +13,12 @@ from uuid import UUID
 import anyio
 
 from app.composition.reconciliation import reconcile_subscription
-from app.composition.billing_background import recover_operation, inventory_customer, apply_deadline
+from app.composition.billing_background import (
+    recover_operation,
+    inventory_customer,
+    apply_deadline,
+    check_widget_activation,
+)
 from app.domains.billing import background_recovery
 from app.domains.billing import access_invalidation
 from app.domains.billing import allowance_exhaustion
@@ -21,6 +26,7 @@ from app.core.settings import Settings
 from app.core.time import utc_now
 from app.domains.billing import work
 from app.domains.billing.contracts import BillingRefused
+from app.domains.billing.reconciliation_contracts import ReconciliationClaimBusy, ReconciliationWakeupHandled
 from app.domains.billing.work_contracts import WorkLane, WorkAttemptOutcome, InvalidationFailureCode, DeliveryLane
 from app.domains.catalog.publication import SessionFactory
 from app.infrastructure import billing_worker_metrics as metrics
@@ -33,6 +39,7 @@ from app.infrastructure.preflight import (
 from app.integrations.kernel.client import PlatformKernelClient, KernelInvalidationFailed
 from app.infrastructure.sentry import Operation, report_exception
 from app.integrations.lbx.client import LbxServerClient
+from app.models import BillingWorkKind
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
@@ -257,6 +264,15 @@ class BillingWorker:
                             budget=budget,
                             delegate=partial(self.db, lane),
                         )
+                    elif claim.kind == BillingWorkKind.WIDGET_ACTIVATION_CHECK:
+                        attempt_outcome = await check_widget_activation(
+                            self.client,
+                            self.configuration,
+                            factory=self.factory,
+                            claim=claim,
+                            budget=budget,
+                            delegate=partial(self.db, lane),
+                        )
                     else:
                         result = await reconcile_subscription(
                             self.client,
@@ -277,6 +293,8 @@ class BillingWorker:
                                 self.last_verified_subscription_at or observed_at, observed_at
                             )
                             metrics.LAST_PROOF.set(self.last_verified_subscription_at.timestamp())
+                except ReconciliationWakeupHandled as result:
+                    attempt_outcome = result.outcome
                 except BillingRefused as error:
                     if error.code == "billing_work_stale":
                         raise
@@ -285,6 +303,7 @@ class BillingWorker:
                         work.retry_work,
                         self.factory,
                         claim,
+                        before_source_claim=isinstance(error, ReconciliationClaimBusy),
                         invalid=claim.kind == work.RECONCILIATION
                         and error.code
                         in {

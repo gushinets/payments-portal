@@ -105,6 +105,7 @@ class BillingWorkKind(StrEnum):
     EXTERNAL_CREATE_RECOVERY = "external_create_recovery"
     ACCESS_INVALIDATION = "access_invalidation"
     ALLOWANCE_EXHAUSTION = "allowance_exhaustion"
+    WIDGET_ACTIVATION_CHECK = "widget_activation_check"
 
 
 class BillingWorkState(StrEnum):
