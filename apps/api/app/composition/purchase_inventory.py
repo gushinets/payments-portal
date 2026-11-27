@@ -10,6 +10,7 @@ from app.composition.purchase_late_objects import (
     candidate_point,
     historical_subscription_matches,
     historical_subscription_owner,
+    read_inventory_agreement,
     record_inventory_late_subscription,
     released_subscription_owner,
     review_historical_subscription,
@@ -420,19 +421,17 @@ async def collect_inventory(
             # A receipt conflict on the listed agreement belongs to its owner alone.
             if receipt_mismatch or (known is not None and owner is not None and owner.id == known.id):
                 continue
-            agreement = await candidate_point(
-                lambda: client.get_agreement(agreement_id=point.agreement_id, budget=budget), budget
-            )
-            if agreement is None:
-                complete = False
-                continue
-            if (agreement.agreement_id, agreement.user_id) != (point.agreement_id, int(current.provider_id)):
+            agreement = await read_inventory_agreement(client, factory, point, budget=budget, delegate=delegate)
+            if agreement is None or (agreement.point.agreement_id, agreement.point.user_id) != (
+                point.agreement_id,
+                int(current.provider_id),
+            ):
                 complete = False
                 continue
             late = await record_inventory_late_subscription(
                 factory, current, point, agreement, read_finished_at=point_finished_at, delegate=delegate
             )
-            if late or agreement_is_closed(agreement) or subscription_lifecycle(point)[0] == Lifecycle.ENDED:
+            if late or agreement_is_closed(agreement.point) or subscription_lifecycle(point)[0] == Lifecycle.ENDED:
                 for product in affected:
                     candidates[product][-1] = candidates[product][-1].model_copy(
                         update={"conclusion": Conclusion.INELIGIBLE}

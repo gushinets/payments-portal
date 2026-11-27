@@ -278,18 +278,76 @@ async def test_late_case_survives_omission_and_fences_replacement(
         assert db.get(BillingWorkItem, other_work_id).lease_owner == "other-customer-work"
     assert terminal.resolve_purchase(factory, config, request, "os-euid:1000").review_case_id == finished.review_case_id
     assert service.read_purchase(factory, old.user_id, old.id) == terminal_purchase
+    transport.agreements[0]["close_date"] = "2026-10-27"
     transport.hide.clear()
     linked = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=replacement.id)
     assert linked.held and linked.state == "linked"
     assert transport.creates("/agreements") == transport.creates("/subscriptions") == 1
 
-    transport.subscriptions[0]["state"] = 2
+    transport.agreements[0]["close_date"], transport.subscriptions[0]["state"] = None, 2
     await recover_financial(
         sources, config, factory=factory, user_id=old.user_id, purchase_id=old.id, operation_id=old.operations[1].id
     )
     blockers = inspect_evidence(factory, config, old.user_id, linked.id)["blocking_late_reviews"]
     assert len(blockers) == 1 and blockers[0]["review_case_id"] != str(case_id)
     assert service.read_purchase(factory, linked.user_id, linked.id) == linked
+
+
+@pytest.mark.parametrize(
+    "agreement_id,subscription_id", [(456, 567), (987, 789)], ids=["retained-id", "request-number"]
+)
+async def test_inventory_retains_open_agreement_of_ended_subscription_after_list_omission(
+    background_scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    agreement_id: int,
+    subscription_id: int,
+) -> None:
+    transport, sources, old = background_scenario
+    factory, config = postgres_session_factory, step1_settings()
+    old = synthetic_prepare(factory, transport, old, uncertain=True)
+    agreement, subscription = transport.agreements[0], transport.subscriptions[0]
+    agreement["close_date"], subscription["state"] = "2026-10-27", 3
+    terminal.resolve_purchase(
+        factory, config, terminal_object_request(factory, config, old, subscription_id="567"), "os-euid:1000"
+    )
+    replacement = await accept(sources, factory, key="late-open-agreement-replacement")
+    transport.agreements[:] = [{**agreement, "agreement_id": agreement_id, "close_date": None}]
+    transport.subscriptions[:] = [{**subscription, "subscription_id": subscription_id, "agreement_id": agreement_id}]
+
+    client = sources.require_lbx()
+    get_agreement = client.get_agreement
+    agreement_reads: list[datetime] = []
+
+    async def observe_agreement(*, agreement_id: int, budget: PreflightBudget) -> Agreement:
+        point = await get_agreement(agreement_id=agreement_id, budget=budget)
+        agreement_reads.append(read_source_time(factory))
+        return point
+
+    monkeypatch.setattr(client, "get_agreement", observe_agreement)
+    with pytest.raises(PurchaseRefused, match="purchase_existing_subscription_review"):
+        await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=replacement.id)
+
+    with factory() as db:
+        case = db.scalars(select(ManualReviewCase).where(ManualReviewCase.reason_code == late.REASON)).one()
+        assert case.case_state == "open" and case.scope_reference == str(old.id)
+        evidence = late.LateObjectEvidence.model_validate(case.evidence_document)
+        assert (evidence.kind, evidence.fact, evidence.external_object_id) == (
+            Kind.AGREEMENT,
+            "open",
+            str(agreement_id),
+        )
+        assert evidence.read_finished_at >= agreement_reads[0]
+        case_id = case.review_case_id
+
+    transport.hide.add("/subscriptions")
+    with pytest.raises(PurchaseRefused, match="purchase_existing_subscription_review"):
+        await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=replacement.id)
+    assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
+    with factory() as db:
+        case = db.get(ManualReviewCase, case_id)
+        assert case.case_state == "open"
+        assert late.LateObjectEvidence.model_validate(case.evidence_document) == evidence
 
 
 async def test_late_subscription_survives_tariff_disagreement_and_list_omission(
@@ -496,6 +554,8 @@ async def test_inventory_allows_fresh_purchase_when_ended_id_has_two_closed_case
             (str(first.id), "resolved"),
             (str(second.id), "resolved"),
         }
+    for agreement in transport.agreements:
+        agreement["close_date"] = "2026-10-29"
     point["state"] = 2
     with pytest.raises(PurchaseInventoryIncomplete):
         await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=replacement.id)
@@ -549,6 +609,7 @@ async def test_inventory_refreshes_exact_case_only_id_after_agreement_change(
         }
     )
     moved["agreement_id"] = 987
+    agreement["close_date"] = "2026-10-27"
     customer = service.customer_for_purchase(factory, config, replacement)
     before = len(transport.requests)
     async with sources.billing.operation(bound_scope=False) as budget:
@@ -768,6 +829,7 @@ async def test_reopened_late_case_only_reuses_verified_relationship(
         ),
     )
     late.close_case(factory, config, closure, "os-euid:1000")
+    transport.agreements[0]["close_date"] = "2026-10-27"
 
     client = sources.require_lbx()
     get_agreement = client.get_agreement
