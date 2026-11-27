@@ -278,7 +278,7 @@ def prior_request(
 
 
 def _prior_request(db: Session, user_id: UUID, key: str, meaning: PurchaseMeaning) -> Purchase | None:
-    candidates = queries.by_key(db, user_id, key)
+    candidates, scope_occupied = queries.confirmation_lookup(db, user_id, key, meaning.product_id)
     if len(candidates) > 1:
         raise PurchaseRefused("purchase_idempotency_conflict", 409)
     if candidates:
@@ -286,7 +286,7 @@ def _prior_request(db: Session, user_id: UUID, key: str, meaning: PurchaseMeanin
         if accepted(previous).meaning != meaning:
             raise PurchaseRefused("purchase_idempotency_conflict", 409)
         return _snapshot(db, previous)
-    if queries.hold(db, user_id, meaning.product_id) is not None:
+    if scope_occupied:
         raise PurchaseRefused("purchase_scope_occupied", 409)
     return None
 

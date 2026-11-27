@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import and_, select, text
 from sqlalchemy.orm import Session
 
 from app.core.time import utc_now
@@ -39,14 +39,25 @@ def account_purchases(db: Session, user_id: UUID, *, after: UUID | None, limit: 
     return list(db.scalars(query))
 
 
-def by_key(db: Session, user_id: UUID, key: str) -> list[PurchaseIntent]:
-    return list(
-        db.scalars(
-            select(PurchaseIntent)
-            .where(PurchaseIntent.user_id == user_id, PurchaseIntent.client_idempotency_key == key)
-            .limit(2)
-        )
+def confirmation_lookup(db: Session, user_id: UUID, key: str, product_id: str) -> tuple[list[PurchaseIntent], bool]:
+    scope_exists = (
+        select(BillingPurchaseScopeHold.purchase_intent_id)
+        .where(BillingPurchaseScopeHold.user_id == user_id, BillingPurchaseScopeHold.product_id == product_id)
+        .exists()
     )
+    # Anchor the lookup on one row so a missing key still returns the scope flag.
+    scope = select(scope_exists.label("occupied")).subquery()
+    statement = (
+        select(PurchaseIntent, scope.c.occupied)
+        .select_from(scope)
+        .outerjoin(
+            PurchaseIntent,
+            and_(PurchaseIntent.user_id == user_id, PurchaseIntent.client_idempotency_key == key),
+        )
+        .limit(2)
+    )
+    rows = db.execute(statement).all()
+    return [purchase for purchase, _ in rows if purchase is not None], rows[0].occupied
 
 
 def hold(db: Session, user_id: UUID, product_id: str) -> BillingPurchaseScopeHold | None:
