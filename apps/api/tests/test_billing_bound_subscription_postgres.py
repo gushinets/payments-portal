@@ -1688,6 +1688,49 @@ async def test_any897_widget_pickup_after_ordinary_lease_expires(
 @pytest.mark.parametrize("scenario", [True], indirect=True)
 @pytest.mark.parametrize("activation_polling", [{"prepared_at": PERIOD_TEST_PREPARED_AT}], indirect=True)
 @pytest.mark.parametrize(
+    ("signal_offset", "ordinary_due_offset"),
+    [pytest.param(20, 45, id="early-signal"), pytest.param(110, 140, id="closing-signal")],
+)
+async def test_any897_queued_widget_handoff_ends_when_ordinary_reconciliation_is_due(
+    activation_polling: ActivationPolling,
+    cabinet: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signal_offset: int,
+    ordinary_due_offset: int,
+) -> None:
+    polling = activation_polling
+    factory = polling.factory
+    monkeypatch.setattr(paid_read, "database_now", lambda db: polling.now)
+    prepared_at = polling.window.prepared_at
+    ordinary_due = prepared_at + timedelta(seconds=ordinary_due_offset)
+    regular_id, _, _ = reconciliation_schedule(factory)
+    with factory() as db, db.begin():
+        row = db.get(BillingWorkItem, regular_id)
+        row.next_attempt_at = ordinary_due
+        row.priority = 1
+
+    activate(polling.transport)
+    prove_month(polling.transport.subscriptions[0], prepared_at)
+    assert await polling.tick(signal_offset)
+    with factory() as db:
+        row = db.get(BillingWorkItem, regular_id)
+        wakeup = ReconciliationQueuePayload.from_job(row).widget_wakeup
+        assert row.work_state == BillingWorkState.PENDING
+        assert wakeup is not None and wakeup.original_due_at == ordinary_due
+
+    polling.now = ordinary_due - timedelta(seconds=1)
+    assert await cabinet_status(cabinet) == ("checking", 0)
+    polling.now = ordinary_due
+    assert await cabinet_status(cabinet) == ("unconfirmed", 0)
+    assert await polling.tick(ordinary_due_offset, WorkLane.URGENT)
+    assert await cabinet_status(cabinet) == ("unconfirmed", 0)
+    assert await polling.tick(ordinary_due_offset + 1, WorkLane.URGENT)
+    assert await cabinet_status(cabinet) == (None, 1)
+
+
+@pytest.mark.parametrize("scenario", [True], indirect=True)
+@pytest.mark.parametrize("activation_polling", [{"prepared_at": PERIOD_TEST_PREPARED_AT}], indirect=True)
+@pytest.mark.parametrize(
     "ordinary_due_offset",
     [
         pytest.param(19, id="due-before-signal"),

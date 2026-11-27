@@ -278,10 +278,11 @@ def _activation_status(
                     if reconciliation is not None
                     else None
                 )
+                # A pending job would be picked up at the current time.
                 pickup_at = (
                     reconciliation.last_attempt_started_at
                     if reconciliation is not None and reconciliation.work_state == BillingWorkState.RUNNING
-                    else None
+                    else now
                 )
                 if (
                     wakeup is not None
