@@ -266,34 +266,53 @@ async def record_subscription(
         int(customer.provider_id),
     ):
         raise LbxScopeMismatch()
-    if subscription_lifecycle(point)[0] == Lifecycle.ENDED:
-        if agreement is not None and agreement_read_at is not None:
-            operation = next(op for op in original.purchase.operations if op.kind == Kind.AGREEMENT)
-            original_identity = (
-                str(agreement.agreement_id) in original.agreement_ids or agreement.agreement_number == operation.key
-            )
-            if original_identity and agreement_explicitly_open(agreement):
-                prove_original_agreement(original, customer, agreement)
-                await record_open_agreement(factory, original, customer, agreement, agreement_read_at, delegate)
-        return
+    incomplete: AppError | None = None
+    try:
+        lifecycle, _, _ = subscription_lifecycle(point)
+    except LbxResponseInvalid as error:
+        # The agreement point can still prove an independently open object.
+        lifecycle = None
+        incomplete = error
+    nonterminal_subscription = lifecycle not in (None, Lifecycle.ENDED)
     external_id = str(point.subscription_id)
     agreement_id = str(point.agreement_id)
     belongs_to_original = agreement_id in original.agreement_ids
     known_subscription = external_id in original.subscription_ids
-    incomplete: LbxResponseInvalid | None = None
     if agreement is not None:
+        prove_for_subscription = nonterminal_subscription and (belongs_to_original or not known_subscription)
         try:
-            if belongs_to_original or not known_subscription:
+            if prove_for_subscription:
                 prove_original_agreement(original, customer, agreement)
                 belongs_to_original = True
-            if agreement_is_closed(agreement):
+            if nonterminal_subscription and agreement_is_closed(agreement):
                 return
+            if agreement_read_at is not None:
+                operation = next(op for op in original.purchase.operations if op.kind == Kind.AGREEMENT)
+                if (belongs_to_original or agreement.agreement_number == operation.key) and agreement_explicitly_open(
+                    agreement
+                ):
+                    if not prove_for_subscription:
+                        prove_original_agreement(original, customer, agreement)
+                    await record_open_agreement(factory, original, customer, agreement, agreement_read_at, delegate)
+        except PurchaseInventoryIncomplete as error:
+            # Only a retained subscription ID proves ownership independently of the conflicting agreement.
+            if not known_subscription:
+                raise
+            incomplete = incomplete or error
+        except LbxScopeMismatch as error:
+            if not nonterminal_subscription or prove_for_subscription:
+                raise
+            incomplete = error
         except LbxResponseInvalid as error:
             # Missing follow-up evidence can leave inventory incomplete while
             # the exact subscription and its retained owner are already proven.
-            if not (belongs_to_original or known_subscription):
+            if not nonterminal_subscription or not (belongs_to_original or known_subscription):
                 raise
             incomplete = error
+    if not nonterminal_subscription:
+        if incomplete is not None:
+            raise incomplete
+        return
     if not (belongs_to_original or known_subscription):
         raise PurchaseInventoryIncomplete()
     scope_proven = belongs_to_original or agreement is not None
@@ -393,12 +412,14 @@ async def recover_released(
                 if point.subscription_id != identity:
                     raise LbxScopeMismatch()
                 agreement = agreements.get(point.agreement_id)
+                agreement_read_at = None
                 if point.agreement_id not in attempted_agreements:
                     attempted_agreements.add(point.agreement_id)
                     try:
                         agreement = await timely_point(
                             lambda: client.get_agreement(agreement_id=point.agreement_id, budget=budget), budget
                         )
+                        agreement_read_at = await delegate(read_source_time, factory)
                         agreements[point.agreement_id] = agreement
                     except LbxScopeMismatch:
                         raise
@@ -412,6 +433,7 @@ async def recover_released(
                     agreement,
                     read_finished_at=read_finished_at,
                     delegate=delegate,
+                    agreement_read_at=agreement_read_at,
                 )
             except LbxScopeMismatch:
                 raise
