@@ -306,7 +306,7 @@ def handle_widget_wakeup(
     if source_busy:
         # A busy ordinary attempt keeps its source refusal without locking the queue.
         queued = ReconciliationQueuePayload.from_job(db.get(BillingWorkItem, claim.id))
-        if queued.wakeup_for_generation(claim.generation) is None or scope.primary_subscription_id is not None:
+        if queued.wakeup_for_generation(claim.generation) is None:
             return None
     row = work.verify_claim(db, claim)
     subscription_key = work.key(sub)
@@ -325,20 +325,19 @@ def handle_widget_wakeup(
         return None
 
     covered = False
-    if not source_busy:
-        if scope.primary_subscription_id is None:
-            covered = widget_wakeup_is_covered(db, sub, wakeup, payload.first_primary, now)
-        elif scope.primary_subscription_id == sub.subscription_id and wakeup.original_due_at is not None:
-            # Inventory can commit the first grant before the first worker pickup.
-            deadline = effective_deadline(scope)
-            covered = (
-                deadline is not None
-                and deadline > now
-                and any(
-                    grant.product_id == scope.product_id
-                    for grant in EffectiveState.model_validate(scope.effective_access_document).grants
-                )
+    if scope.primary_subscription_id is None:
+        covered = not source_busy and widget_wakeup_is_covered(db, sub, wakeup, payload.first_primary, now)
+    elif scope.primary_subscription_id == sub.subscription_id and wakeup.original_due_at is not None:
+        # A committed first grant covers the wakeup independently of the source lease.
+        deadline = effective_deadline(scope)
+        covered = (
+            deadline is not None
+            and deadline > now
+            and any(
+                grant.product_id == scope.product_id
+                for grant in EffectiveState.model_validate(scope.effective_access_document).grants
             )
+        )
     if not covered:
         if scope.primary_subscription_id is not None:
             return None

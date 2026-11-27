@@ -671,6 +671,85 @@ async def test_any897_widget_hint_does_not_restart_healthy_two_product_inventory
 
 @pytest.mark.parametrize("scenario", [True], indirect=True)
 @pytest.mark.parametrize("activation_polling", [{"prepared_at": PERIOD_TEST_PREPARED_AT}], indirect=True)
+async def test_any897_widget_restores_ordinary_due_after_first_grant_with_busy_source(
+    activation_polling: ActivationPolling,
+    scenario: tuple[PurchaseTransport, SourceResources, Purchase],
+    portal: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    polling = activation_polling
+    factory = polling.factory
+    purchase = scenario[2]
+    prepared_at = polling.window.prepared_at
+    ordinary_due = prepared_at + timedelta(seconds=60)
+    regular_id, _, generation = reconciliation_schedule(factory)
+    legacy_meaning = purchase.accepted.meaning.model_copy(update={"expected_technical_terms_digest": None})
+    historical_link(
+        factory,
+        replace(purchase, accepted=purchase.accepted.model_copy(update={"meaning": legacy_meaning})),
+        polling.transport,
+        "brief_decoder",
+        1,
+    )
+    with factory() as db, db.begin():
+        regular = db.get(BillingWorkItem, regular_id)
+        regular.next_attempt_at = ordinary_due
+        ordinary_priority = regular.priority
+        sibling = db.scalars(
+            select(BillingWorkItem).where(
+                BillingWorkItem.work_kind == work.RECONCILIATION, BillingWorkItem.work_item_id != regular_id
+            )
+        ).one()
+        sibling.next_attempt_at = prepared_at + timedelta(seconds=18)
+        sibling.priority = 1
+    for point in polling.transport.subscriptions:
+        point["state"] = 2
+        prove_month(point, prepared_at)
+
+    assert await polling.tick(18, WorkLane.URGENT)  # The sibling queues customer inventory.
+    assert await polling.tick(20)  # Widget advances the target reconciliation.
+    with factory() as db:
+        regular = db.get(BillingWorkItem, regular_id)
+        assert (regular.next_attempt_at, regular.enqueue_generation) == (polling.now, generation + 1)
+    assert await polling.tick(21, WorkLane.URGENT)  # Inventory commits the first grant before that wakeup.
+    with factory() as db:
+        state = db.scalars(select(PaidAccessState)).one()
+        assert "proposal_ai" in {grant["product_id"] for grant in state.effective_state_document["grants"]}
+
+    entered, release = asyncio.Event(), asyncio.Event()
+    read = orchestration.read_subscription_proof
+
+    async def pause_before_apply(*args: Any, **kwargs: Any) -> SubscriptionProof:
+        proof = await read(*args, **kwargs)
+        if not entered.is_set():
+            assert proof.complete and SubscriptionLifecycleReason.ACTIVE in proof.reasons
+            entered.set()
+            await release.wait()
+        return proof
+
+    monkeypatch.setattr(orchestration, "read_subscription_proof", pause_before_apply)
+    polling.now = prepared_at + timedelta(seconds=22)
+    bootstrap = asyncio.create_task(payment(portal, purchase.id))
+    try:
+        await asyncio.wait_for(entered.wait(), 5)
+        requests_before = len(polling.transport.requests)
+        assert await polling.tick(23, WorkLane.URGENT)
+        assert len(polling.transport.requests) == requests_before
+    finally:
+        polling.now = prepared_at + timedelta(seconds=24)
+        release.set()
+        assert (await bootstrap).status_code == 200
+
+    with factory() as db:
+        regular = db.get(BillingWorkItem, regular_id)
+        assert (regular.next_attempt_at, regular.priority) == (ordinary_due, ordinary_priority)
+        assert regular.last_error_classification is None
+        assert ReconciliationQueuePayload.from_job(regular).widget_wakeup is None
+    assert await polling.tick(60, WorkLane.URGENT)
+
+
+@pytest.mark.parametrize("scenario", [True], indirect=True)
+@pytest.mark.parametrize("activation_polling", [{"prepared_at": PERIOD_TEST_PREPARED_AT}], indirect=True)
 @pytest.mark.parametrize(
     "proof_order", ["active", "waiting-after-park", "waiting-before-claim", "waiting-between-claims"]
 )
