@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiErrorCode } from "@/shared/api/transport";
+import { ApiError, apiErrorCode } from "@/shared/api/transport";
 import { subscribeToSessionChanges, useSessionOperation } from "@/shared/session/use-session-operation";
 import { billingSessionRefusal, newRequestId, safeRequestId, type OnBillingSessionRefused } from "./errors";
 
@@ -68,7 +68,16 @@ export function usePaidRead<T>(
     } catch (error) {
       if (!operation.isCurrent()) return;
       const id = safeRequestId(error) || requestId;
-      setState({ status: PaidReadStatus.Unavailable, requestId: id, deadlinePending: apiErrorCode(error) === "paid_access_deadline_pending" });
+      const code = apiErrorCode(error);
+      const busyBackground = options.background && error instanceof ApiError && error.status === 503 && code === "paid_access_busy";
+      const receivedAt = performance.now();
+      setState((current) => {
+        if (busyBackground && current.status === PaidReadStatus.Ready
+          && current.expiresAt !== null && current.expiresAt > receivedAt) {
+          return current;
+        }
+        return { status: PaidReadStatus.Unavailable, requestId: id, deadlinePending: code === "paid_access_deadline_pending" };
+      });
       const refusal = billingSessionRefusal(error, id);
       if (refusal) {
         stopped.current = true;

@@ -232,6 +232,31 @@ it("preserves a focused product link through focus revalidation and its follow-u
   expect(link).toHaveFocus();
 });
 
+it("keeps a focused product link after a busy focus refresh until the original deadline", async () => {
+  vi.useFakeTimers();
+  vi.stubEnv("NEXT_PUBLIC_KERNEL_WEB_BASE_URL", "https://kernel.invalid");
+  const grant = paidState({ effective_until: new Date(Date.now() + 1000).toISOString() });
+  paid.mockResolvedValueOnce(Response.json(grant))
+    .mockResolvedValueOnce(Response.json({ detail: { code: "paid_access_busy" } }, { status: 503 }))
+    .mockResolvedValueOnce(Response.json({ detail: { code: "paid_access_deadline_pending" } }, { status: 503 }));
+  renderCabinet();
+  await act(async () => vi.advanceTimersByTimeAsync(500));
+  const link = screen.getByRole("link", { name: a.openProduct });
+  act(() => link.focus());
+
+  await act(async () => {
+    fireEvent.blur(window);
+    fireEvent.focus(window);
+  });
+  expect(paid).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole("link", { name: a.openProduct })).toBe(link);
+  expect(link).toHaveFocus();
+
+  await act(async () => vi.advanceTimersByTimeAsync(500));
+  expect(link).not.toBeInTheDocument();
+  expect(screen.getByRole("alert")).toHaveTextContent(a.deadlinePending);
+});
+
 it("expires the focused product link while a focus refresh is pending", async () => {
   vi.useFakeTimers();
   vi.stubEnv("NEXT_PUBLIC_KERNEL_WEB_BASE_URL", "https://kernel.invalid");
