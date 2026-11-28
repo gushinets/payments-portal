@@ -44,6 +44,7 @@ def materialize_allowance(
     cycle: CalendarEvidence | None,
     *,
     skew_seconds: int,
+    existing_allowance_only: bool = False,
 ) -> EffectiveAllowance | None:
     technical = accepted.technical_terms
     if technical is None:
@@ -71,6 +72,8 @@ def materialize_allowance(
         diagnose_cycle(db, subscription, offer.metric_key)
         return None
     same = next((row for row in rows if row.provider_cycle_key == result.key), None)
+    if existing_allowance_only and (result.kind != CycleKind.SAME or same is None):
+        return None
     if same is None:
         start, end, source_start, source_end = None, None, None, None
         if cycle.precision == "timestamp":

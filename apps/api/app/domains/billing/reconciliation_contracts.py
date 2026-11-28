@@ -97,11 +97,14 @@ class SubscriptionProof:
     reads: tuple[str, ...]
     cycle: CalendarEvidence | None = None
     access_end_at: datetime | None = None
+    existing_allowance_only: bool = False
 
     def document(self) -> dict[str, object]:
         """Redacted JSON evidence shared by preparation and authoritative apply."""
+        fields = asdict(self)
+        fields.pop("existing_allowance_only")
         return {
-            **asdict(self),
+            **fields,
             "read_started_at": self.read_started_at.isoformat(),
             "read_finished_at": self.read_finished_at.isoformat(),
             "cycle": self.cycle.model_dump(mode="json") if self.cycle else None,
