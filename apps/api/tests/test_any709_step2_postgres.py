@@ -42,8 +42,9 @@ from app.models import (
 from apps.api.tests.support.any709_step1 import step1_settings
 from apps.api.tests.support.postgres import alembic_test_config, reset_public_schema
 
+from apps.api.tests.support.any709_step3 import PORTAL_TOKEN as TOKEN
+
 pytestmark = pytest.mark.postgres
-TOKEN = "isolated-portal-token"
 
 
 def seed(factory: sessionmaker[Session], *, verified: bool = True) -> None:

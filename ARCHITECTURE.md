@@ -111,8 +111,12 @@ select-primary resolutions.
 Fresh proof, expected review/evidence/fences and OS principal are rechecked in the
 shared writer; facts/binding, review audit and scheduling commit atomically.
 `select-primary` requires a bound, freshly proven eligible source; operators
-cannot supply arbitrary objects, access flags or quota. No terminal hold
-release or arbitrary rebind is implemented.
+cannot supply arbitrary objects, access flags or quota. After stopping and
+draining all affected Portal processes, an operator can use `resolve-purchase`
+with fresh evidence for both original operations. The command releases only
+the original purchase hold and records the terminal decision atomically.
+Exact late-object cases can be closed individually under the same maintenance
+procedure. See [audited purchase completion](docs/engineering/billing-background-operations.md#audited-purchase-completion-any-821).
 
 The canonical target is defined, in precedence order, by
 [ADR 0005](docs/architecture/decisions/0005-external-billing-boundary.md), the

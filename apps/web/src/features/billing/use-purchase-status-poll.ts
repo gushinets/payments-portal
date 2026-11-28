@@ -4,7 +4,7 @@ import { useEffect, useEffectEvent, useLayoutEffect, useState } from "react";
 import type { PurchaseIntentResponse } from "@/generated/api-contracts/types.gen";
 import { currentPurchase, purchaseStatus } from "@/shared/api/purchases";
 import { subscribeToSessionChanges, useSessionOperation } from "@/shared/session/use-session-operation";
-import { newRequestId, purchaseReadRefusal, reportBillingSessionRefusal, type PurchaseReadRefusal } from "./errors";
+import { newRequestId, purchaseReadRefusal, reportBillingSessionRefusal, safeRequestId, type PurchaseReadRefusal } from "./errors";
 
 const fastPollWindowMs = 120_000;
 const recoveryPollIntervalMs = 60_000;
@@ -15,6 +15,7 @@ type PurchaseStatusPollOptions = {
   enabled?: boolean;
   initialDelayMs?: number;
   acceptLateSessionRefusal?: boolean;
+  onReadError?: (requestId: string) => void;
 };
 
 export function purchaseNeedsStatus(purchase: Pick<PurchaseIntentResponse, "state">): boolean {
@@ -26,12 +27,14 @@ export function usePurchaseStatusPoll(
   uncertainProductId: string | undefined,
   onStatus: (purchase: PurchaseIntentResponse, readStartedAt: number) => void,
   onRefused: (refusal: PurchaseReadRefusal) => void,
-  { enabled = true, initialDelayMs = 2_000, acceptLateSessionRefusal = false }: PurchaseStatusPollOptions = {}
+  { enabled = true, initialDelayMs = 2_000, acceptLateSessionRefusal = false, onReadError }: PurchaseStatusPollOptions = {}
 ) {
   const accept = useEffectEvent(onStatus);
   const refuse = useEffectEvent(onRefused);
+  const reportReadError = useEffectEvent((requestId: string) => onReadError?.(requestId));
   const { begin, cancel } = useSessionOperation();
   const [pausedKey, setPausedKey] = useState<string>();
+  const [retryAttempt, setRetryAttempt] = useState(0);
   const purchaseId = purchase?.purchase_intent_id;
   const key = purchaseId ?? uncertainProductId;
   const recovering = purchase?.state === "awaiting_external_result";
@@ -101,6 +104,7 @@ export function usePurchaseStatusPoll(
           stop();
           return;
         }
+        if (isCurrent()) reportReadError(safeRequestId(error) || requestId);
       } finally {
         reading = false;
       }
@@ -109,7 +113,11 @@ export function usePurchaseStatusPoll(
     }
 
     return stop;
-  }, [acceptLateSessionRefusal, begin, enabled, initialDelayMs, key, purchaseId, recovering, uncertainProductId]);
+  }, [acceptLateSessionRefusal, begin, enabled, initialDelayMs, key, purchaseId, recovering, retryAttempt, uncertainProductId]);
 
-  return { paused: enabled && key !== undefined && pausedKey === key, clearPause: () => setPausedKey(undefined) };
+  return {
+    paused: enabled && key !== undefined && pausedKey === key,
+    clearPause: () => setPausedKey(undefined),
+    retry: () => setRetryAttempt(attempt => attempt + 1),
+  };
 }

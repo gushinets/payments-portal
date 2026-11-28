@@ -91,7 +91,7 @@ async def recover_operation(
     try:
         subject = await delegate(recovery.subject, factory, configuration, claim)
     except BillingRefused as error:
-        if error.code == "billing_work_stale" and await delegate(recovery.recovery_paused, factory, claim):
+        if error.code == "billing_work_stale" and await delegate(recovery.recovery_inactive, factory, claim):
             return  # Deadline can revoke a claim before its first source read.
         raise
     if subject is None:
@@ -116,13 +116,17 @@ async def recover_operation(
                 delegate=delegate,
             )
     except AppError as error:
+        if error.code == "billing_work_stale":
+            if await delegate(recovery.recovery_inactive, factory, claim):
+                return  # A deadline or a successful competing recovery finished this reader.
+            raise
         # Local contention is retryable queue work, never a source result or
         # proof of no-send. Shared apply owns any authoritative conflict.
         saved = await delegate(
             work.retry_work, factory, claim, error=error.code if error.code == "billing_busy" else "recovery_incomplete"
         )
         if not saved:
-            if await delegate(recovery.recovery_paused, factory, claim):
+            if await delegate(recovery.recovery_inactive, factory, claim):
                 return  # Deadline deliberately revoked this owner's late result.
             raise BillingRefused("billing_work_stale", 409) from error
         return
@@ -151,6 +155,8 @@ async def inventory_customer(
             client, admission, configuration, factory=factory, claim=claim, budget=budget, delegate=delegate
         )
     except AppError as error:
+        if error.code == "billing_work_stale":
+            raise
         saved = await delegate(
             work.retry_work,
             factory,

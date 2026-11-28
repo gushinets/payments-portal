@@ -26,11 +26,14 @@ from app.integrations.lbx.financial import (
     Agreement,
     Subscription,
     agreement_is_closed,
+    agreement_explicitly_open,
     prove_effective_terms,
     subscription_lifecycle,
 )
 from app.integrations.lbx.selected_offer import PERIOD_ANCHORS
+from app.integrations.lbx.subscription_points import SubscriptionPointReads, read_subscription_points, timely_point
 from app.models import (
+    ExternalCreateOperationKind as Kind,
     ExternalSubscriptionFinancialAccessStatus as Financial,
     ExternalSubscriptionLifecycleStatus as Lifecycle,
 )
@@ -278,6 +281,10 @@ def normalize_subscription(
         and financial is not None
         and agreement_calendar_complete
     )
+    agreement_create_date = next(
+        (op.agreement_create_date for op in subject.purchase.operations if op.kind == Kind.AGREEMENT),
+        None,
+    )
     return SubscriptionProof(
         now,
         now,
@@ -292,19 +299,16 @@ def normalize_subscription(
         (),
         cycle=cycle if calendar_complete else None,
         access_end_at=normalize_access_end(calendar.get("subscription_end_date")),
+        agreement_open=(
+            agreement is not None
+            and len(customer_pairs) == 1
+            and all(value == wanted for value, wanted in customer_pairs + relationship_pairs[:3])
+            and agreement.is_offer is False
+            and agreement_calendar_complete
+            and (agreement_create_date is None or agreement.create_date == agreement_create_date.isoformat())
+            and agreement_explicitly_open(agreement)
+        ),
     )
-
-
-async def timely_point[T](read: Callable[[], Awaitable[T]], budget: PreflightBudget) -> T:
-    """Reject both values and scope errors returned after the read deadline."""
-    budget.check()
-    try:
-        value = await read()
-    except LbxError:
-        budget.check()
-        raise
-    budget.check()
-    return value
 
 
 async def _agreement_has_competitor(
@@ -339,6 +343,10 @@ async def _agreement_has_competitor(
     return False
 
 
+async def _point_time() -> datetime:
+    return utc_now()
+
+
 async def read_subscription_proof(
     client: LbxServerClient,
     subject: ReconciliationSubject | SubscriptionCandidateSubject,
@@ -346,35 +354,32 @@ async def read_subscription_proof(
     *,
     budget: PreflightBudget,
     check_agreement_inventory: bool = False,
+    read_time: Callable[[], Awaitable[datetime]] = _point_time,
 ) -> SubscriptionProof:
-    started = utc_now()
-    user, agreement, tariff, subscription = None, None, None, None
-    reads: list[str] = []
-    failures: list[str] = []
-    # Read owner and lifecycle before potentially slow policy. Timely negatives
-    # survive an unavailable policy, while every late point result is rejected.
-    try:
-        user = await timely_point(
-            lambda: client.get_user(user_id=int(subject.customer.provider_id), budget=budget), budget
-        )
-        reads.append("customer")
-    except (LbxError, PreflightDeadlineExceeded) as error:
-        failures.append("customer:" + error.code)
-    try:
-        agreement = await timely_point(
-            lambda: client.get_agreement(agreement_id=int(subject.agreement_id), budget=budget), budget
-        )
-        reads.append("agreement")
-    except (LbxError, PreflightDeadlineExceeded) as error:
-        failures.append("agreement:" + error.code)
-    try:
-        subscription = await timely_point(
-            lambda: client.get_subscription(subscription_id=int(subject.provider_subscription_id), budget=budget),
-            budget,
-        )
-        reads.append("subscription")
-    except (LbxError, PreflightDeadlineExceeded) as error:
-        failures.append("subscription:" + error.code)
+    points = await read_subscription_points(client, subject, budget=budget, read_time=read_time)
+    return await complete_subscription_proof(
+        client,
+        configuration,
+        points,
+        budget=budget,
+        check_agreement_inventory=check_agreement_inventory,
+        read_time=read_time,
+    )
+
+
+async def complete_subscription_proof(
+    client: LbxServerClient,
+    configuration: Settings,
+    points: SubscriptionPointReads,
+    *,
+    budget: PreflightBudget,
+    check_agreement_inventory: bool = False,
+    read_time: Callable[[], Awaitable[datetime]],
+) -> SubscriptionProof:
+    subject = points.subject
+    tariff = None
+    reads = list(points.reads)
+    failures = list(points.failures)
     try:
         tariff = await timely_point(
             lambda: client.get_tariff(tariff_id=subject.purchase.accepted.selection.tariff_id, budget=budget), budget
@@ -383,7 +388,12 @@ async def read_subscription_proof(
     except (LbxError, PreflightDeadlineExceeded) as error:
         failures.append("tariff:" + error.code)
     proof = normalize_subscription(
-        subject, configuration, user=user, agreement=agreement, tariff=tariff, subscription=subscription
+        subject,
+        configuration,
+        user=points.user,
+        agreement=points.agreement,
+        tariff=tariff,
+        subscription=points.subscription,
     )
     if any(
         failure.endswith(":" + LbxScopeMismatch().code)
@@ -423,8 +433,10 @@ async def read_subscription_proof(
         failures.append("read_budget_exhausted")
     return replace(
         proof,
-        read_started_at=started,
-        read_finished_at=utc_now(),
+        read_started_at=points.started_at,
+        read_finished_at=await read_time(),
+        agreement_read_finished_at=points.agreement_read_at,
+        subscription_read_finished_at=points.subscription_read_at,
         reads=tuple(reads),
         complete=proof.complete and not failures,
         reasons=proof.reasons + tuple(failures),

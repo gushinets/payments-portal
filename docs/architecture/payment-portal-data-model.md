@@ -1,14 +1,14 @@
 # Payment Portal Data Model and Backend Invariants
 
 Status: authoritative current-state schema reference
-Last updated: 2026-11-23 (ANY-897 Widget activation windows)
+Last updated: 2026-11-26 (ANY-821 audited purchase completion)
 
 > **CURRENT AS-BUILT SCHEMA REFERENCE**
 
 This document describes the schema produced by the current Alembic chain:
 
 ```text
-20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 -> 20261110_0008 -> 20261111_0009 -> 20261111_0010 -> 20261111_0011 -> 20261113_0012 -> 20261113_0013 -> 20261123_0014 (head)
+20260924_0001 -> 20261001_0002 -> 20261029_0003 -> 20261028_0005 -> 20261031_0006 -> 20261110_0007 -> 20261110_0008 -> 20261111_0009 -> 20261111_0010 -> 20261111_0011 -> 20261113_0012 -> 20261113_0013 -> 20261123_0014 -> 20261123_0821 (head)
 ```
 
 `20260924_0001_clean_first_install` creates the 25-table first-install schema.
@@ -67,7 +67,9 @@ A fresh database has exactly 30 application tables: ten retained
 identity/session/legal tables, fifteen original external-billing persistence
 tables, one current product-link pointer, one purchase mutex, one session
 delegation table, one backend policy guard and one code-issuance budget table.
-The Alembic chain above is linear and has one current head. Revision
+The Alembic chain above is linear and has one current head.
+Revision `20261123_0821` (ANY-821) adds `resolved_external_terminal` to the purchase state
+constraint. Revision
 `20261029_0003` belongs to ANY-709, `20261028_0005` to ANY-715 and
 `20261031_0006` to ANY-765 and `20261110_0007`/`20261110_0008`/`20261111_0009`/`20261111_0010` to ANY-766.
 Revision `20261110_0007` adds only `kernel_session_delegations`; revision
@@ -235,11 +237,12 @@ characters; existing users receive no fabricated names.
 mapping revision, exact legal acceptance event, accepted commercial
 fingerprint, immutable accepted snapshot, and client idempotency key. Its
 closed states are `created`, `preparing`, `awaiting_external_result`, `linked`,
-`resolved_no_external_effect`, `failed_before_external_effect`, and
-`manual_review`. PostgreSQL triggers keep the accepted evidence/provenance
-fields immutable. ANY-765 writes `accepted-purchase:v2`, including the optional
-SIMULATED technical terms and selected-meaning confirmation digest, separately
-from full source/audit digests. Historical v2 full-digest acceptances and v1 stay
+`resolved_no_external_effect`, `resolved_external_terminal`,
+`failed_before_external_effect`, and `manual_review`. PostgreSQL triggers keep
+the accepted evidence/provenance fields immutable. ANY-765 writes
+`accepted-purchase:v2`, including the optional SIMULATED technical terms and
+selected-meaning confirmation digest, separately from full source/audit digests.
+Historical v2 full-digest acceptances and v1 stay
 readable without invented limits; exact replay uses saved evidence rather than current
 source configuration. The development fixture is disabled by default and
 rejected in production.
@@ -441,6 +444,13 @@ storage identity. Step 3 needs no additional table or migration beyond the
 Step 2 worker migration `20261028_0005`. Inventory observations use
 `customer-inventory:v1`; conflicts never grant access or rewrite bindings.
 
+ANY-821 stores `original_point_facts` (`original-operation-point-facts:v1`) in
+the financial operation's existing `external_create_recovery` work payload.
+It retains one primary fact and at most one conflicting fact. Each fact
+includes the operation ID and kind, exact provider object ID, open or live
+status, and the completion time of that object's GET. Terminal resolution
+checks these retained facts alongside receipts and bindings.
+
 The pre-existing create-recovery index and customer-send lease identity remain
 unchanged. Claims use paired finite ownership; completion preserves newer enqueue
 generations. Binding atomically enrolls new canonical subscriptions. Source apply
@@ -468,6 +478,16 @@ fence to distinguish possible-send history from completed no-send. Known cases
 without sufficient preserved proof refuse binding; no retrospective assertion
 or force override supplies it. Audit, permitted shared apply/bind and scheduling
 commit atomically; terminal holds remain. No Step 5 DDL is required.
+
+ANY-821 records `purchase-terminal-resolution:v1` in the same audit fields.
+It retains the operator principal, exact request and evidence, before/after
+purchase states and command digest. The audit commits with the release of
+the original purchase hold. Exact late-object cases store their identity,
+point-read time and any confirmed scope evidence as `purchase-late-object:v1`.
+The `purchase-late-object-closure:v1` audit preserves the exact ID and
+terminal confirmation. The retained cases and audits protect exact IDs
+through later discovery omissions. See
+[audited purchase completion](../engineering/billing-background-operations.md#audited-purchase-completion-any-821).
 
 ## Persisted vocabularies
 

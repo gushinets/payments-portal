@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -13,9 +16,12 @@ import pytest
 from app.cli import billing_purchases as cli
 from app.domains.billing.contracts import BillingRefused
 from app.domains.billing.operator_contracts import ResolutionRequest
+from app.domains.billing.terminal_resolution import TerminalRequest, TerminalResult
+from app.domains.billing.late_purchase_reviews import ClosureRequest
 from app.domains.catalog.mapping_evidence import MappingRefused
 from app.composition.mapping_operator import resolve_operator_principal
 from app.core.settings import Settings
+from app.models import PurchaseIntentState
 from apps.api.tests.factories.billing_operator import resolution_request
 from apps.api.tests.factories.reconciliation import subject_factory
 from apps.api.tests.support.any709_step1 import step1_settings
@@ -188,6 +194,112 @@ def test_operation_lookup_harness_forwards_only_its_operation_reference(monkeypa
     ]
 
 
+@pytest.mark.parametrize(
+    "case",
+    [
+        "valid",
+        "duplicate",
+        "incomplete",
+        "extra",
+        "wrong_object",
+        "oversized",
+        "case_closure",
+        "case_without_confirmation",
+        "unsupported_case_outcome",
+    ],
+)
+def test_terminal_evidence_is_local_to_the_operator_cli(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], case: str
+) -> None:
+    user_id, purchase_id = uuid4(), uuid4()
+    review_case_id = uuid4()
+    closing = case in {"case_closure", "case_without_confirmation", "unsupported_case_outcome"}
+    operations = [{"operation_id": str(uuid4()), "outcome": "not_sent"} for _ in range(2)]
+    evidence: dict[str, object] = {"operations": operations}
+    if case == "duplicate":
+        operations[1] = operations[0]
+    elif case == "incomplete":
+        operations.pop()
+    elif case == "extra":
+        evidence["force"] = True
+    elif case == "wrong_object":
+        operations[0]["external_object_id"] = "456"
+    if closing:
+        evidence = {"outcome": "external_terminal", "external_object_id": "456"}
+        if case == "unsupported_case_outcome":
+            evidence["outcome"] = "canonical_binding"
+        if case == "case_closure":
+            evidence["confirmed_at"] = "2026-11-23T00:00:00Z"
+    (tmp_path / "confirmation.json").write_text(
+        json.dumps(evidence) + (" " * 32768 if case == "oversized" else ""), encoding="utf-8"
+    )
+
+    def resolve(factory: object, config: Settings, request: TerminalRequest, principal: str) -> TerminalResult:
+        assert case == "valid" and request.user_id == user_id and request.purchase_id == purchase_id
+        assert principal == "os-euid:1000" and request.reference == "ANY-821"
+        return TerminalResult(
+            review_case_id=uuid4(),
+            purchase_intent_id=purchase_id,
+            state=PurchaseIntentState.RESOLVED_NO_EXTERNAL_EFFECT,
+            already_resolved=False,
+        )
+
+    def close(factory: object, config: Settings, request: ClosureRequest, principal: str) -> TerminalResult:
+        assert case == "case_closure" and request.case_id == review_case_id
+        assert request.evidence.external_object_id == "456" and principal == "os-euid:1000"
+        return TerminalResult(
+            review_case_id=review_case_id,
+            purchase_intent_id=purchase_id,
+            state=PurchaseIntentState.RESOLVED_NO_EXTERNAL_EFFECT,
+            already_resolved=False,
+        )
+
+    def run(command: list[str], *, cwd: Path, **kwargs: object) -> SimpleNamespace:
+        assert "--evidence-file" in command and Path(command[-1]).is_absolute()
+        monkeypatch.chdir(cwd)
+        return SimpleNamespace(returncode=cli.main(command[3:]))
+
+    def forbidden(*args: object) -> None:
+        pytest.fail("terminal completion must not open source resources")
+
+    monkeypatch.setattr(cli, "source_resources", forbidden)
+    monkeypatch.setattr(cli, "resolve_operator_principal", lambda: "os-euid:1000")
+    monkeypatch.setattr(cli, "Settings", step1_settings)
+    monkeypatch.setattr(cli, "resolve_purchase", resolve)
+    monkeypatch.setattr(cli, "close_case", close)
+    monkeypatch.setattr(repo, "direct_api_environment", lambda: {})
+    monkeypatch.setattr(repo.subprocess, "run", run)
+    monkeypatch.chdir(tmp_path)
+    arguments = repo.build_parser().parse_args(
+        [
+            "billing-purchase",
+            "resolve-purchase",
+            "--user-id",
+            str(user_id),
+            "--purchase-id",
+            str(purchase_id),
+            "--expected-digest",
+            "sha256:" + "a" * 64,
+            "--reason",
+            "Restart",
+            "--reference",
+            "ANY-821",
+            "--evidence-file",
+            "confirmation.json",
+            *(["--case-id", str(review_case_id)] if closing else []),
+        ]
+    )
+    with pytest.raises(SystemExit) as outcome:
+        arguments.func(arguments)
+    output = capsys.readouterr()
+    if case in {"valid", "case_closure"}:
+        assert outcome.value.code == 0
+        assert json.loads(output.out)["state"] == "resolved_no_external_effect"
+    else:
+        assert outcome.value.code == 1
+        assert json.loads(output.err) == {"detail": {"code": "purchase_resolution_arguments_invalid"}}
+
+
 @pytest.mark.parametrize("action", ["inspect-invalidation", "retry-invalidation"])
 def test_invalidation_harness_forwards_user_and_recipient(monkeypatch: pytest.MonkeyPatch, action: str) -> None:
     user_id = str(uuid4())
@@ -299,3 +411,36 @@ def test_billing_recovery_cli_select_primary_uses_reconciliation_expectations() 
 
     with pytest.raises(ValidationError):
         ResolutionRequest.model_validate(invalid)
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="requires a POSIX FIFO")
+def test_terminal_evidence_refuses_a_fifo_without_waiting_for_a_writer(tmp_path: Path) -> None:
+    fifo = tmp_path / "evidence"
+    os.mkfifo(fifo)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "app.cli.billing_purchases",
+            "resolve-purchase",
+            "--user-id",
+            str(uuid4()),
+            "--purchase-id",
+            str(uuid4()),
+            "--expected-digest",
+            "sha256:" + "a" * 64,
+            "--reason",
+            "Restart",
+            "--reference",
+            "ANY-821",
+            "--evidence-file",
+            str(fifo),
+        ],
+        cwd=ROOT / "apps/api",
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 1
+    assert json.loads(result.stderr) == {"detail": {"code": "purchase_resolution_arguments_invalid"}}

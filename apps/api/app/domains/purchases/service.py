@@ -28,6 +28,7 @@ from app.domains.legal.acceptance_text import (
 from app.domains.legal.service import create_document_acceptance
 from app.domains.purchases.admission import lock_purchase_link
 from app.domains.purchases.contracts import (
+    FINANCIAL_HINT_SCHEMA,
     AcceptedPurchase,
     FinancialOperation,
     MAX_PURCHASE_LEGAL_DOCUMENTS,
@@ -121,7 +122,7 @@ def verify_original_consent(factory: SessionFactory, purchase: Purchase) -> None
 
 def _operation(db: Session, operation: ExternalCreateOperation, *, may_send: bool = False) -> FinancialOperation:
     agreement_date = None
-    if operation.operation_kind == Kind.AGREEMENT and operation.recovery_hint_schema_version == "financial-create:v1":
+    if operation.operation_kind == Kind.AGREEMENT and operation.recovery_hint_schema_version == FINANCIAL_HINT_SCHEMA:
         try:
             agreement_date = date.fromisoformat(operation.recovery_hint_document["request"]["create_date"])
         except (KeyError, TypeError, ValueError):
@@ -196,8 +197,10 @@ def _operation(db: Session, operation: ExternalCreateOperation, *, may_send: boo
     )
 
 
-def _snapshot(db: Session, row: PurchaseIntent) -> Purchase:
-    scope = queries.hold(db, row.user_id, row.product_id)
+def _snapshot(db: Session, row: PurchaseIntent, *, held: bool | None = None) -> Purchase:
+    if held is None:
+        scope = queries.hold(db, row.user_id, row.product_id)
+        held = bool(scope and scope.purchase_intent_id == row.purchase_intent_id)
     operations = queries.operations(db, row.purchase_intent_id)
     reasons = {
         case.reason_code
@@ -227,7 +230,7 @@ def _snapshot(db: Session, row: PurchaseIntent) -> Purchase:
         row.state,
         accepted(row),
         row.created_at,
-        bool(scope and scope.purchase_intent_id == row.purchase_intent_id),
+        held,
         tuple(_operation(db, op) for op in operations),
         reason,
     )
@@ -240,10 +243,11 @@ def authenticate_user(factory: SessionFactory, configuration: Settings, token: s
 
 def read_purchase(factory: SessionFactory, user_id: UUID, purchase_id: UUID) -> Purchase:
     with factory() as db:
-        row = queries.owned(db, user_id, purchase_id)
-        if row is None:
+        result = queries.owned_with_hold(db, user_id, purchase_id)
+        if result is None:
             raise PurchaseRefused("purchase_not_found", 404)
-        return _snapshot(db, row)
+        row, held = result
+        return _snapshot(db, row, held=held)
 
 
 def inspect_purchase(factory: SessionFactory, configuration: Settings, user_id: UUID, purchase_id: UUID) -> Purchase:
@@ -264,8 +268,8 @@ def inspect_purchase(factory: SessionFactory, configuration: Settings, user_id: 
 def current_purchase(factory: SessionFactory, configuration: Settings, token: str, product_id: str) -> Purchase | None:
     with factory() as db:
         user = authenticate(db, configuration, token)
-        scope = queries.hold(db, user.id, product_id)
-        return _snapshot(db, queries.owned(db, user.id, scope.purchase_intent_id)) if scope else None
+        row = queries.current_held(db, user.id, product_id)
+        return _snapshot(db, row, held=True) if row else None
 
 
 def prior_request(

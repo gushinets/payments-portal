@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.domains.billing.operator_contracts import ResolutionRequest
 from app.domains.catalog.commercial_offer import canonical_document, commercial_digest
-from app.domains.purchases.contracts import Purchase, PurchaseRefused
+from app.domains.purchases.contracts import ORIGINAL_ID_CONFLICT, Purchase, PurchaseRefused
 from app.infrastructure.queries import billing_operator as queries
 from app.models import (
     ExternalCreateOperation,
@@ -24,7 +24,12 @@ RESTORABLE = {
     "accepted_terms_changed_after_preparation",
     "customer_inventory_conflict",
 }
-BINDABLE = {"financial_binding_conflict", "accepted_terms_changed_after_preparation", "customer_inventory_conflict"}
+BINDABLE = {
+    ORIGINAL_ID_CONFLICT,
+    "financial_binding_conflict",
+    "accepted_terms_changed_after_preparation",
+    "customer_inventory_conflict",
+}
 
 
 def digest(value: object) -> str:

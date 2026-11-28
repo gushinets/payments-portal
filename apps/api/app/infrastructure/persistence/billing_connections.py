@@ -27,11 +27,11 @@ def connection_lock_key(tenant_id: str, region: str, provider_origin: str) -> in
     Hash collisions only serialize unrelated connections. SQL evidence still
     decides scope; acquiring the lock never establishes provider identity.
     """
-    encoded = json.dumps(
-        ["payments-portal/connection-scope/v1", tenant_id, region, provider_origin],
-        ensure_ascii=False,
-        separators=(",", ":"),
-    ).encode("utf-8")
+    return billing_lock_key("payments-portal/connection-scope/v1", tenant_id, region, provider_origin)
+
+
+def billing_lock_key(*parts: str) -> int:
+    encoded = json.dumps(parts, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     return int.from_bytes(hashlib.sha256(encoded).digest()[:8], "big", signed=True)
 
 
@@ -44,12 +44,16 @@ def lock_connection_scope(db: Session, *, tenant_id: str, region: str, provider_
     """
     if not tenant_id or not region or not provider_origin:
         raise ValueError("connection lock requires deployment scope and normalized origin")
+    lock_billing_key(db, connection_lock_key(tenant_id, region, provider_origin))
+
+
+def lock_billing_key(db: Session, key: int) -> None:
     if db.get_bind().dialect.name != "postgresql" or db.connection().get_isolation_level() != "READ COMMITTED":
         raise ConnectionIsolationUnsupported()
     try:
         db.execute(
             text("SELECT pg_advisory_xact_lock(:key)"),
-            {"key": connection_lock_key(tenant_id, region, provider_origin)},
+            {"key": key},
         )
     except DBAPIError as error:
         if getattr(error.orig, "sqlstate", None) == "55P03":

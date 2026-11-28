@@ -68,14 +68,11 @@ def subs(factory: sessionmaker[Session]) -> list[ExternalSubscription]:
         return list(db.scalars(select(ExternalSubscription).order_by(ExternalSubscription.product_id)))
 
 
-def historical_link(
+def pin_historical_purchase(
     factory: sessionmaker[Session],
     template: Purchase,
-    transport: object,
     product: str,
     number: int,
-    *,
-    uncertain_subscription: bool = False,
 ) -> Purchase:
     """Construct accepted historical fixtures via real local acceptance/bind paths.
 
@@ -116,9 +113,22 @@ def historical_link(
     meaning = template.accepted.meaning.model_copy(
         update={"product_id": product, "revision_id": linked.mapping_revision_id}
     )
-    purchase = service.pin_purchase(
+    return service.pin_purchase(
         factory, config, TOKEN, product, meaning, linked, template.accepted.offer, template.accepted.documents
     )
+
+
+def historical_link(
+    factory: sessionmaker[Session],
+    template: Purchase,
+    transport: object,
+    product: str,
+    number: int,
+    *,
+    uncertain_subscription: bool = False,
+) -> Purchase:
+    config = step1_settings()
+    purchase = pin_historical_purchase(factory, template, product, number)
     agreement_id, subscription_id = 456 + number, 567 + number
     for kind, provider_id in ((Kind.AGREEMENT, agreement_id), (Kind.SUBSCRIPTION, subscription_id)):
         op = next(op for op in purchase.operations if op.kind == kind)

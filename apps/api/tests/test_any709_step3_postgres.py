@@ -5,15 +5,21 @@ Synthetic transports never reach live LBX.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from threading import Event, get_ident
 from uuid import UUID, uuid4
 
 import httpx
 import pytest
 from alembic import command
-from sqlalchemy import func, select, text
+from alembic.util.exc import CommandError
+from sqlalchemy import create_engine, event, func, select, text
 from sqlalchemy.engine import Engine, URL
 from sqlalchemy.exc import DatabaseError, IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
@@ -22,7 +28,10 @@ from app.composition.billing import bootstrap_account
 from app.composition.purchases import advance_purchase, confirm_purchase, recover_financial, review_purchase
 from app.composition.sources import SourceResources, source_resources
 from app.core.time import utc_now
+from app.domains.billing import background_recovery, terminal_resolution as terminal
+from app.domains.billing import late_purchase_reviews as late
 from app.domains.billing.contracts import BillingRefused
+from app.domains.billing.operator_review import case_digest
 from app.domains.billing.work_contracts import WorkLane
 from app.domains.catalog.link_publication import publish_product_link
 from app.domains.purchases.contracts import Purchase, PurchaseMeaning, LegalSelection, PurchaseRefused
@@ -34,6 +43,7 @@ from app.models import (
     BillingPurchaseScopeHold,
     BillingProductAccessScope,
     BillingWorkItem,
+    BillingWorkState,
     BillingStateObservation,
     DocumentAcceptance,
     ExternalBillingCustomer,
@@ -49,13 +59,17 @@ from app.models import (
     PurchaseIntentState as IntentState,
     PurchasedAllowance,
 )
+from app.integrations.lbx.customer import LbxUser
+from apps.api.tests.factories.billing_operator import terminal_request
 from apps.api.tests.factories.original_operation import advance_deadlines, original_proof
+from apps.api.tests.factories.reconciliation import agreement_factory
 from apps.api.tests.support.any709_step1 import link_document, link_selection, step1_settings
 from apps.api.tests.support.any709_step3 import PurchaseTransport
 from apps.api.tests.support.postgres import alembic_test_config, reset_public_schema
 from apps.api.tests.test_any709_step2_postgres import seed, TOKEN
 
 pytestmark = [pytest.mark.postgres, pytest.mark.anyio]
+PRINCIPAL = "os-euid:1000"
 
 
 @pytest.fixture(autouse=True)
@@ -647,6 +661,270 @@ async def test_any709_step3_restart_zero_discovery_deadline_and_get_only_operato
         assert transport.creates("/agreements") == 1 and recovered.held
 
 
+@pytest.mark.parametrize("point_read", [1, 2], ids=["customer-setup", "inventory"])
+async def test_late_customer_conflict_cannot_poison_replacement(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    point_read: int,
+) -> None:
+    factory, config = postgres_session_factory, step1_settings()
+    transport = setup_purchase(factory)
+    async with source_resources(
+        config,
+        kernel_transport=httpx.MockTransport(transport.kernel),
+        lbx_transport=httpx.MockTransport(transport.respond),
+    ) as sources:
+        purchase = await accept(sources, factory)
+        await bootstrap_account(sources, config, factory=factory, token=TOKEN)
+        customer = service.customer_for_purchase(factory, config, purchase)
+        request = terminal_request(factory, config, purchase)
+        client = sources.require_lbx()
+        get_user = client.get_user
+        entered, release = asyncio.Event(), asyncio.Event()
+        reads = 0
+
+        async def delayed_customer(*, user_id: int, budget: PreflightBudget) -> LbxUser:
+            nonlocal reads
+            point = await get_user(user_id=user_id, budget=budget)
+            reads += 1
+            if reads != point_read:
+                return point
+            entered.set()
+            await release.wait()
+            return point.model_copy(update={"outer_id": "stale-mismatch"})
+
+        monkeypatch.setattr(client, "get_user", delayed_customer)
+        late = asyncio.create_task(
+            advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+        )
+        try:
+            await asyncio.wait_for(entered.wait(), 5)
+            result = terminal.resolve_purchase(factory, config, request, PRINCIPAL)
+            assert result.state == IntentState.RESOLVED_NO_EXTERNAL_EFFECT and not result.already_resolved
+            replacement = await accept(sources, factory, key="replacement-during-old-advance")
+            release.set()
+            with pytest.raises(PurchaseRefused, match="purchase_scope_released"):
+                await late
+        finally:
+            release.set()
+            await asyncio.gather(late, return_exceptions=True)
+        with factory() as db:
+            assert db.get(ExternalBillingCustomer, customer.customer_id).binding_state == Binding.BOUND
+            [audit] = db.scalars(select(ManualReviewCase)).all()
+            assert audit.review_case_id == result.review_case_id and audit.resolved_by_principal == PRINCIPAL
+            assert terminal.TerminalAudit.model_validate(audit.resolution_document).request == request
+        # Replay with a new engine and no source resources or in-process purchase state.
+        restarted = create_engine(migrated_database.url)
+        try:
+            replay = terminal.resolve_purchase(sessionmaker(restarted, autoflush=False), config, request, PRINCIPAL)
+        finally:
+            restarted.dispose()
+        assert replay == result.model_copy(update={"already_resolved": True})
+        saved = service.read_purchase(factory, purchase.user_id, purchase.id)
+        assert not saved.held and saved.accepted == purchase.accepted
+        assert [(op.id, op.key) for op in saved.operations] == [(op.id, op.key) for op in purchase.operations]
+        assert service.read_purchase(factory, replacement.user_id, replacement.id).held
+        assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
+
+
+@pytest.mark.parametrize("entrypoint", ["status", "current"])
+async def test_purchase_status_and_hold_share_one_snapshot(
+    migrated_database: Engine, postgres_session_factory: sessionmaker[Session], entrypoint: str
+) -> None:
+    factory, config = postgres_session_factory, step1_settings()
+    transport = setup_purchase(factory)
+    async with source_resources(
+        config,
+        kernel_transport=httpx.MockTransport(transport.kernel),
+        lbx_transport=httpx.MockTransport(transport.respond),
+    ) as sources:
+        purchase = await accept(sources, factory)
+    completion = terminal_request(factory, config, purchase)
+    row_read, resume = Event(), Event()
+    reader_thread: int | None = None
+
+    def after_select(
+        connection: object, cursor: object, statement: str, parameters: object, context: object, executemany: bool
+    ) -> None:
+        if (
+            get_ident() == reader_thread
+            and statement.startswith("SELECT")
+            and any(f"FROM {table}" in statement for table in ("purchase_intents", "billing_purchase_scope_holds"))
+        ):
+            row_read.set()
+            assert resume.wait(5)
+
+    def read() -> Purchase | None:
+        nonlocal reader_thread
+        reader_thread = get_ident()
+        if entrypoint == "current":
+            return service.current_purchase(factory, config, TOKEN, purchase.accepted.selection.product_id)
+        return service.read_purchase(factory, purchase.user_id, purchase.id)
+
+    event.listen(migrated_database, "after_cursor_execute", after_select)
+    reading = asyncio.create_task(asyncio.to_thread(read))
+    try:
+        assert await asyncio.to_thread(row_read.wait, 5)
+        terminal.resolve_purchase(factory, config, completion, PRINCIPAL)
+    finally:
+        resume.set()
+        try:
+            before_release = await reading
+        finally:
+            event.remove(migrated_database, "after_cursor_execute", after_select)
+
+    assert before_release is not None and before_release.state == IntentState.CREATED and before_release.held
+    saved = service.read_purchase(factory, purchase.user_id, purchase.id)
+    assert saved.state == IntentState.RESOLVED_NO_EXTERNAL_EFFECT and not saved.held
+    assert service.current_purchase(factory, config, TOKEN, purchase.accepted.selection.product_id) is None
+    assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
+
+
+@pytest.mark.parametrize("possible_send", [True, False], ids=["unknown", "proven-not-sent"])
+async def test_operator_requires_supported_proof_before_release(
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    possible_send: bool,
+) -> None:
+    factory, config = postgres_session_factory, step1_settings()
+    transport = setup_purchase(factory)
+
+    def respond(message: httpx.Request) -> httpx.Response:
+        if message.method == "POST" and message.url.path.endswith("/agreements"):
+            transport.requests.append(message)
+            if possible_send:
+                return httpx.Response(500, json={"code": 500, "response": {}})
+            raise httpx.ConnectError("synthetic unsent", request=message)
+        return transport.respond(message)
+
+    async with source_resources(
+        config, kernel_transport=httpx.MockTransport(transport.kernel), lbx_transport=httpx.MockTransport(respond)
+    ) as sources:
+        purchase = await accept(sources, factory)
+        pending = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
+        agreement, subscription = pending.operations
+        assert not transport.agreements
+        count = len(transport.requests)
+        if possible_send:
+            assert agreement.state == State.UNKNOWN and agreement.deadline
+            assert advance_deadlines(factory, now=agreement.deadline + timedelta(seconds=1)) == 1
+            reviewed = service.read_purchase(factory, purchase.user_id, purchase.id)
+            assert reviewed.state == IntentState.MANUAL_REVIEW
+            with pytest.raises(PurchaseRefused, match="purchase_resolution_proof_incomplete"):
+                terminal.resolve_purchase(factory, config, terminal_request(factory, config, reviewed), PRINCIPAL)
+            no_effect = terminal.OperationEvidence(
+                operation_id=agreement.id, outcome=terminal.TerminalEvidenceKind.NO_EXTERNAL_EFFECT
+            )
+            unsent_subscription = terminal.OperationEvidence(
+                operation_id=subscription.id, outcome=terminal.TerminalEvidenceKind.NOT_SENT
+            )
+            confirmed = terminal_request(factory, config, reviewed, no_effect, unsent_subscription, confirmed=True)
+            with pytest.raises(PurchaseRefused, match="purchase_resolution_proof_incomplete"):
+                terminal.resolve_purchase(factory, config, confirmed, PRINCIPAL)
+            assert service.read_purchase(factory, purchase.user_id, purchase.id) == reviewed
+            assert len(transport.requests) == count
+            return
+
+        assert agreement.state == State.PROVEN_NOT_SENT and subscription.state == State.PENDING
+        reviewed = pending
+        confirmed = terminal_request(factory, config, reviewed)
+
+        def fail_after_audit(db: Session, user_id: UUID) -> int:
+            assert (
+                db.scalar(
+                    select(func.count())
+                    .select_from(ManualReviewCase)
+                    .where(ManualReviewCase.reason_code == terminal.TERMINAL_REASON)
+                )
+                == 1
+            )
+            raise RuntimeError("synthetic reducer failure")
+
+        with monkeypatch.context() as fault:
+            fault.setattr(terminal, "reduce_paid_access", fail_after_audit)
+            with pytest.raises(RuntimeError, match="synthetic reducer failure"):
+                terminal.resolve_purchase(factory, config, confirmed, PRINCIPAL)
+        saved = service.read_purchase(factory, purchase.user_id, purchase.id)
+        assert saved.held and saved.operations == reviewed.operations and saved.state == reviewed.state
+        with factory() as db:
+            assert (
+                db.scalar(
+                    select(func.count())
+                    .select_from(ManualReviewCase)
+                    .where(ManualReviewCase.reason_code == terminal.TERMINAL_REASON)
+                )
+                == 0
+            )
+            work = db.scalars(select(BillingWorkItem).where(BillingWorkItem.scope_reference == str(agreement.id))).all()
+            assert work and all(item.work_state != BillingWorkState.INVALID for item in work)
+            generations = {item.work_item_id: item.enqueue_generation for item in work}
+
+        result = terminal.resolve_purchase(factory, config, confirmed, PRINCIPAL)
+        assert result.state == IntentState.RESOLVED_NO_EXTERNAL_EFFECT
+        assert not service.read_purchase(factory, purchase.user_id, purchase.id).held
+        assert not background_recovery._repair_operation(factory, config, agreement.id)
+        with factory() as db:
+            for identity, generation in generations.items():
+                item = db.get(BillingWorkItem, identity)
+                assert item.work_state == BillingWorkState.INVALID and item.enqueue_generation == generation + 1
+                assert item.lease_owner is None and item.lease_expires_at is None
+        assert len(transport.requests) == count
+        assert transport.creates("/subscriptions") == 0
+
+        # A later exact agreement can produce a restriction even when the
+        # terminal outcome uses a state the previous schema recognizes.
+        original_post = next(
+            item for item in transport.requests if item.method == "POST" and item.url.path.endswith("/agreements")
+        )
+        transport.agreements.append({**agreement_factory().model_dump(), **json.loads(original_post.content)})
+        await recover_financial(
+            sources,
+            config,
+            factory=factory,
+            user_id=purchase.user_id,
+            purchase_id=purchase.id,
+            operation_id=agreement.id,
+        )
+        with alembic_test_config(migrated_database.url) as migration:
+            with pytest.raises(CommandError, match="open late-object case"):
+                command.downgrade(migration, "20261113_0013")
+        with factory() as db:
+            case = db.scalars(select(ManualReviewCase).where(ManualReviewCase.reason_code == late.REASON)).one()
+            assert case.case_state == "open" and case.scope_reference == str(purchase.id)
+            closure = late.ClosureRequest(
+                user_id=purchase.user_id,
+                purchase_id=purchase.id,
+                case_id=case.review_case_id,
+                expected_digest=case_digest(case),
+                reason="Late agreement definitively closed",
+                reference="Synthetic provider confirmation for ANY-821",
+                evidence=late.ClosureEvidence(
+                    outcome=late.ClosureKind.EXTERNAL_TERMINAL,
+                    external_object_id=late.LateObjectEvidence.model_validate(
+                        case.evidence_document
+                    ).external_object_id,
+                    confirmed_at=datetime.now(UTC),
+                ),
+            )
+
+        transport.agreements[0]["close_date"] = "2026-10-27"
+        assert late.close_case(factory, config, closure, PRINCIPAL).state == IntentState.RESOLVED_NO_EXTERNAL_EFFECT
+        retained = service.read_purchase(factory, purchase.user_id, purchase.id)
+        assert not retained.held and all(op.bound_id is None for op in retained.operations)
+        with alembic_test_config(migrated_database.url) as migration:
+            with pytest.raises(CommandError, match="downgrade refused"):
+                command.downgrade(migration, "20261113_0013")
+        with factory() as db:
+            assert db.scalar(text("SELECT version_num FROM alembic_version")) == "20261123_0821"
+            case = db.get(ManualReviewCase, closure.case_id)
+            assert case.case_state == "resolved"
+            assert late.ClosureAudit.model_validate(case.resolution_document).request == closure
+        assert service.read_purchase(factory, purchase.user_id, purchase.id) == retained
+        assert transport.creates("/subscriptions") == 0
+
+
 @pytest.mark.parametrize("change", ["retarget", "legal"])
 async def test_any709_step3_rechecks_local_changes_during_source_io(
     migrated_database: Engine, postgres_session_factory: sessionmaker[Session], change: str
@@ -1041,23 +1319,41 @@ async def test_any709_step3_api_ownership_local_status_and_same_key_survive_sour
         assert unknown.status_code == 404
 
 
-async def test_any709_step3_logout_after_async_widget_checks_returns_no_credential(
-    migrated_database: Engine, postgres_session_factory: sessionmaker[Session]
+@pytest.mark.parametrize("interruption", ["logout", "release"])
+async def test_any709_step3_widget_rechecks_after_client_io(
+    migrated_database: Engine, postgres_session_factory: sessionmaker[Session], interruption: str
 ) -> None:
     from app.models import AuthSession
 
     factory = postgres_session_factory
     transport = setup_purchase(factory)
     config = step1_settings()
-    logout = []
+    interrupted = False
 
     def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal interrupted
         response = transport.respond(request)
-        if request.url.path.endswith("/client/user") and not logout:
-            with factory() as db:
-                db.query(AuthSession).delete()
-                db.commit()
-            logout.append(True)
+        if request.url.path.endswith("/client/user") and not interrupted:
+            interrupted = True
+            if interruption == "logout":
+                with factory() as db:
+                    db.query(AuthSession).delete()
+                    db.commit()
+            else:
+                linked = service.read_purchase(factory, purchase.user_id, purchase.id)
+                proofs = tuple(
+                    terminal.OperationEvidence(
+                        operation_id=op.id,
+                        outcome=terminal.TerminalEvidenceKind.EXTERNAL_TERMINAL,
+                        external_object_id=op.bound_id,
+                    )
+                    for op in linked.operations
+                )
+                transport.agreements[0]["close_date"] = "2026-10-27"
+                transport.subscriptions[0]["state"] = 3
+                completion = terminal_request(factory, config, linked, *proofs, confirmed=True)
+                terminal.resolve_purchase(factory, config, completion, PRINCIPAL)
+                return transport.response({"user_id": 345, "outer_id": "stale-client-mismatch"})
         return response
 
     async with source_resources(
@@ -1065,15 +1361,25 @@ async def test_any709_step3_logout_after_async_widget_checks_returns_no_credenti
     ) as sources:
         purchase = await accept(sources, factory)
         await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
-        with pytest.raises(BillingRefused, match="billing_session_required"):
+        refusal = "billing_session_required" if interruption == "logout" else "purchase_scope_released"
+        with pytest.raises(BillingRefused, match=refusal):
             await bootstrap_account(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
-    assert logout and transport.creates("/agreements") == transport.creates("/subscriptions") == 1
-    assert service.read_purchase(factory, purchase.user_id, purchase.id).held
+    assert interrupted and transport.creates("/agreements") == transport.creates("/subscriptions") == 1
+    assert service.read_purchase(factory, purchase.user_id, purchase.id).held == (interruption == "logout")
+    with factory() as db:
+        assert db.get(ExternalBillingCustomer, purchase.customer_id).binding_state == Binding.BOUND
 
 
 async def test_any709_step3_changed_terms_after_possible_send_never_release_or_replace(
-    migrated_database: Engine, postgres_session_factory: sessionmaker[Session]
+    migrated_database: Engine,
+    postgres_session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
+    from app.cli import billing_purchases
+    from app.core import database
+
     factory = postgres_session_factory
     transport = setup_purchase(factory)
     transport.fail_create = "/agreements"
@@ -1087,6 +1393,18 @@ async def test_any709_step3_changed_terms_after_possible_send_never_release_or_r
         purchase = await accept(sources, factory)
         uncertain = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
         original = next(op for op in uncertain.operations if op.kind == Kind.AGREEMENT)
+        subscription = next(op for op in uncertain.operations if op.kind == Kind.SUBSCRIPTION)
+        agreement_id = str(transport.agreements[0]["agreement_id"])
+        original_proof = terminal.OperationEvidence(
+            operation_id=original.id,
+            outcome=terminal.TerminalEvidenceKind.EXTERNAL_TERMINAL,
+            external_object_id=agreement_id,
+        )
+        no_subscription = terminal.OperationEvidence(
+            operation_id=subscription.id,
+            outcome=terminal.TerminalEvidenceKind.NOT_SENT,
+        )
+        early = terminal_request(factory, config, uncertain, original_proof, no_subscription, confirmed=True)
         transport.change_price()
         before = len(transport.requests)
         pending = await advance_purchase(sources, config, factory=factory, token=TOKEN, purchase_id=purchase.id)
@@ -1097,6 +1415,88 @@ async def test_any709_step3_changed_terms_after_possible_send_never_release_or_r
         assert review.state == IntentState.MANUAL_REVIEW and review.held
         assert review.reason == "purchase_terms_changed_after_preparation"
         assert next(op for op in review.operations if op.kind == Kind.AGREEMENT).deadline == original.deadline
+        assert review.operations[0].bound_id == agreement_id and review.operations[1].state == State.MANUAL_REVIEW
+        refreshed = terminal_request(factory, config, review, original_proof, no_subscription, confirmed=True)
+        with pytest.raises(PurchaseRefused, match="purchase_resolution_stale"):
+            terminal.resolve_purchase(factory, config, early, PRINCIPAL)
+        with pytest.raises(PurchaseRefused, match="purchase_resolution_confirmation_required"):
+            terminal.resolve_purchase(
+                factory, config, refreshed.model_copy(update={"evidence": early.evidence}), PRINCIPAL
+            )
+        wrong_subscription = terminal.OperationEvidence(
+            operation_id=subscription.id,
+            outcome=terminal.TerminalEvidenceKind.EXTERNAL_TERMINAL,
+            external_object_id="99999",
+        )
+        wrong = terminal_request(factory, config, review, original_proof, wrong_subscription, confirmed=True)
+        with pytest.raises(PurchaseRefused, match="purchase_resolution_proof_incomplete"):
+            terminal.resolve_purchase(factory, config, wrong, PRINCIPAL)
+        assert service.read_purchase(factory, purchase.user_id, purchase.id).held
+        assert transport.creates("/agreements") == 1 and transport.creates("/subscriptions") == 0
+
+        # A populated database remains readable through the upgrade and
+        # downgrade until it actually contains the new outcome.
+        previous_head = "20261113_0013"
+        with alembic_test_config(migrated_database.url) as migration:
+            command.downgrade(migration, previous_head)
+            assert service.read_purchase(factory, purchase.user_id, purchase.id) == review
+            command.upgrade(migration, "head")
+        assert service.read_purchase(factory, purchase.user_id, purchase.id) == review
+
+        transport.agreements[0]["close_date"] = "2026-10-27"
+        confirmed = terminal_request(factory, config, review, original_proof, no_subscription, confirmed=True)
+        evidence_file = tmp_path / "completion.json"
+        evidence_file.write_text(confirmed.evidence.model_dump_json(), encoding="utf-8")
+
+        def forbidden_source(*args: object) -> None:
+            pytest.fail("inspect and terminal resolution must not initialize source clients")
+
+        monkeypatch.setattr(billing_purchases, "source_resources", forbidden_source)
+        monkeypatch.setattr(billing_purchases, "Settings", lambda: config)
+        monkeypatch.setattr(billing_purchases, "resolve_operator_principal", lambda: PRINCIPAL)
+        monkeypatch.setattr(database, "SessionLocal", factory)
+        scope = ["--user-id", str(purchase.user_id), "--purchase-id", str(purchase.id)]
+        capsys.readouterr()
+        assert await asyncio.to_thread(billing_purchases.main, ["inspect", *scope]) == 0
+        inspected = json.loads(capsys.readouterr().out)
+        assert inspected["state"] == "manual_review" and not inspected["customer_work_active"]
+        assert [operation["create_operation_id"] for operation in inspected["operations"]] == [
+            str(original.id),
+            str(subscription.id),
+        ]
+        assert [operation["locally_proven_not_sent"] for operation in inspected["operations"]] == [False, True]
+        resolve = [
+            "resolve-purchase",
+            *scope,
+            "--expected-digest",
+            inspected["expected_resolution_digest"],
+            "--evidence-file",
+            str(evidence_file),
+            "--reason",
+            confirmed.reason,
+            "--reference",
+            confirmed.reference,
+        ]
+        assert await asyncio.to_thread(billing_purchases.main, resolve) == 0
+        done = terminal.TerminalResult.model_validate_json(capsys.readouterr().out)
+        assert done.state == IntentState.RESOLVED_EXTERNAL_TERMINAL
+        assert not done.already_resolved
+        assert await asyncio.to_thread(billing_purchases.main, resolve) == 0
+        replay = terminal.TerminalResult.model_validate_json(capsys.readouterr().out)
+        assert replay == done.model_copy(update={"already_resolved": True})
+        retained = service.read_purchase(factory, purchase.user_id, purchase.id)
+        assert not retained.held and retained.accepted == purchase.accepted
+        assert all(old.fence != new.fence for old, new in zip(review.operations, retained.operations, strict=True))
+        assert retained.operations == tuple(
+            replace(op, fence=current.fence) for op, current in zip(review.operations, retained.operations, strict=True)
+        )
+        with alembic_test_config(migrated_database.url) as migration:
+            with pytest.raises(CommandError, match="downgrade refused"):
+                command.downgrade(migration, previous_head)
+        assert service.read_purchase(factory, purchase.user_id, purchase.id) == retained
+        with factory() as db:
+            assert db.scalar(text("SELECT version_num FROM alembic_version")) == "20261123_0821"
+            assert db.get(ManualReviewCase, done.review_case_id).case_state == "resolved"
         assert transport.creates("/agreements") == 1 and transport.creates("/subscriptions") == 0
 
 

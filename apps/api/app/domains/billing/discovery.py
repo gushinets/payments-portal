@@ -10,6 +10,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
+from app.domains.purchases.financial_reviews import record_financial_review
 from app.domains.billing import work
 from app.domains.billing.background_recovery import INVENTORY, INVENTORY_SECONDS
 from app.domains.billing.contracts import BillingRefused
@@ -21,7 +22,7 @@ from app.domains.billing.work import verify_claim
 from app.domains.billing.work_contracts import WorkClaim
 from app.domains.catalog.publication import SessionFactory
 from app.domains.identity.services.auth import as_utc
-from app.domains.purchases import financial, service
+from app.domains.purchases import service
 from app.domains.purchases.contracts import Purchase
 from app.infrastructure.queries import billing_reconciliation, paid_access, purchases, billing_background as queries
 from app.models import (
@@ -164,6 +165,7 @@ def select_primaries(
     metering_policy: MeteringPolicy,
 ) -> tuple[BillingStateObservation, ...]:
     """Caller holds user/purchase locks. Reuse committed receipts, never reapply facts."""
+    from app.domains.billing.late_purchase_reviews import blocking_cases
     from app.domains.purchases.inventory_contracts import InventoryStale
 
     causes = []
@@ -198,6 +200,9 @@ def select_primaries(
         }
         candidates = {item.identity: PrimaryCandidate(item.identity, item.conclusion) for item in product.candidates}
         for sub in local:
+            owner = purchases.owned(db, cause.user_id, sub.purchase_intent_id) if sub.purchase_intent_id else None
+            if owner is not None and owner.state.resolved:
+                continue  # Retained local history does not supply a new primary candidate.
             source = sources.get(sub.subscription_id)
             if source is not None:
                 candidate = next(
@@ -227,6 +232,8 @@ def select_primaries(
             continue
         for sub in eligible:
             purchase = sources[sub.subscription_id].purchase
+            if blocking_cases(db, purchase):
+                continue
             if scope.primary_retired_at is not None and as_utc(purchase.created_at) <= as_utc(scope.primary_retired_at):
                 primary_review(db, sub)
                 continue
@@ -362,7 +369,7 @@ def apply_inventory(
                         )
                     )
             else:
-                financial._review(db, row, target, "customer_inventory_conflict")
+                record_financial_review(db, row, target, "customer_inventory_conflict")
             from app.models import (
                 BillingStateObservation,
                 BillingStateObservationKind,

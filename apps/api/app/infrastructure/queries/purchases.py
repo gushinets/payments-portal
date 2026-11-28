@@ -16,6 +16,7 @@ from app.models import (
     BillingWorkItem,
     CommercialProductHead,
     ExternalCreateOperation,
+    ExternalCreateOperationKind,
     ExternalSubscription,
     DocumentVersion,
     DocumentAcceptance,
@@ -49,8 +50,8 @@ def by_key(db: Session, user_id: UUID, key: str) -> list[PurchaseIntent]:
     )
 
 
-def hold(db: Session, user_id: UUID, product_id: str) -> BillingPurchaseScopeHold | None:
-    return db.get(BillingPurchaseScopeHold, (user_id, product_id))
+def hold(db: Session, user_id: UUID, product_id: str, *, lock: bool = False) -> BillingPurchaseScopeHold | None:
+    return db.get(BillingPurchaseScopeHold, (user_id, product_id), with_for_update=lock, populate_existing=lock)
 
 
 def owned(db: Session, user_id: UUID, purchase_id: UUID, *, lock: bool = False) -> PurchaseIntent | None:
@@ -60,6 +61,49 @@ def owned(db: Session, user_id: UUID, purchase_id: UUID, *, lock: bool = False) 
     return db.scalar(query.with_for_update() if lock else query)
 
 
+def owned_customer_id(db: Session, user_id: UUID, purchase_id: UUID) -> UUID | None:
+    return db.scalar(
+        select(PurchaseIntent.customer_id).where(
+            PurchaseIntent.user_id == user_id, PurchaseIntent.purchase_intent_id == purchase_id
+        )
+    )
+
+
+def owned_with_hold(db: Session, user_id: UUID, purchase_id: UUID) -> tuple[PurchaseIntent, bool] | None:
+    held = (
+        select(BillingPurchaseScopeHold.purchase_intent_id)
+        .where(
+            BillingPurchaseScopeHold.user_id == PurchaseIntent.user_id,
+            BillingPurchaseScopeHold.product_id == PurchaseIntent.product_id,
+            BillingPurchaseScopeHold.purchase_intent_id == PurchaseIntent.purchase_intent_id,
+        )
+        .exists()
+    )
+    return (
+        db.execute(
+            select(PurchaseIntent, held).where(
+                PurchaseIntent.user_id == user_id, PurchaseIntent.purchase_intent_id == purchase_id
+            )
+        )
+        .tuples()
+        .one_or_none()
+    )
+
+
+def current_held(db: Session, user_id: UUID, product_id: str) -> PurchaseIntent | None:
+    return db.scalar(
+        select(PurchaseIntent)
+        .join(
+            BillingPurchaseScopeHold, BillingPurchaseScopeHold.purchase_intent_id == PurchaseIntent.purchase_intent_id
+        )
+        .where(
+            BillingPurchaseScopeHold.user_id == user_id,
+            BillingPurchaseScopeHold.product_id == product_id,
+            PurchaseIntent.user_id == user_id,
+        )
+    )
+
+
 def operations(db: Session, purchase_id: UUID, *, lock: bool = False) -> list[ExternalCreateOperation]:
     query = (
         select(ExternalCreateOperation)
@@ -67,6 +111,13 @@ def operations(db: Session, purchase_id: UUID, *, lock: bool = False) -> list[Ex
         .order_by(ExternalCreateOperation.operation_kind)
     )
     return list(db.scalars(query.with_for_update() if lock else query))
+
+
+def operation_kinds(db: Session, purchase_id: UUID) -> dict[UUID, ExternalCreateOperationKind]:
+    statement = select(ExternalCreateOperation.create_operation_id, ExternalCreateOperation.operation_kind).where(
+        ExternalCreateOperation.purchase_intent_id == purchase_id
+    )
+    return {operation_id: kind for operation_id, kind in db.execute(statement).tuples()}
 
 
 def current_head(db: Session, account_id: str, product_id: str) -> CommercialProductHead | None:

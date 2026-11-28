@@ -11,6 +11,7 @@ import { purchaseReview, purchaseUser, savedPurchase, widgetResponse } from "../
 async function syntheticBilling(page: Page, signedIn = true) {
   const state = {
     owned: null as PurchaseIntentResponse | null,
+    review: purchaseReview, nextPurchaseId: savedPurchase.purchase_intent_id, lateCaseOpen: false,
     termsChanged: false, catalogUnavailable: false, scriptFailure: false, readyFailure: false,
     confirmations: [] as { key: string; body: unknown }[], advances: 0, advanceDelayMs: 0,
     advanceState: "linked" as PurchaseIntentResponse["state"],
@@ -57,26 +58,27 @@ async function syntheticBilling(page: Page, signedIn = true) {
     if (path.startsWith("/api/catalog/products")) return route.fulfill(state.catalogUnavailable
       ? { status: 503, json: { detail: { code: "catalog_unavailable" } } }
       : { json: path === "/api/catalog/products" ? { products: [simulatedProduct] } : simulatedProduct });
-    if (path === "/api/purchase-intents/current") return route.fulfill({ json: { purchase: state.owned } });
-    if (path === "/api/purchases/review") return route.fulfill({ json: purchaseReview });
-    if (path === "/api/purchase-intents" && route.request().method() === "GET") return route.fulfill({ json: { purchases: state.owned ? [{ ...state.owned, created_at: "2026-10-27T12:00:00Z" }] : [], next_cursor: null } });
+    if (path === "/api/purchase-intents/current") return route.fulfill({ json: { purchase: state.owned?.scope_held ? state.owned : null } });
+    if (path === "/api/purchases/review") return route.fulfill({ json: state.review });
+    if (path === "/api/purchase-intents" && route.request().method() === "GET") return route.fulfill({ json: { purchases: state.owned?.scope_held ? [{ ...state.owned, created_at: "2026-10-27T12:00:00Z" }] : [], next_cursor: null } });
     if (path === "/api/purchase-intents") {
       state.confirmations.push({ key: route.request().headers()["idempotency-key"], body: route.request().postDataJSON() });
       if (state.termsChanged) {
         state.termsChanged = false;
         return route.fulfill({ status: 409, json: { detail: { code: "terms_changed", request_id: "synthetic-terms-change" } } });
       }
-      state.owned = { ...savedPurchase, state: "created" };
+      state.owned = { ...savedPurchase, purchase_intent_id: state.nextPurchaseId, accepted: state.review, state: "created" };
       return route.fulfill({ json: state.owned });
     }
-    if (path === `/api/purchase-intents/${savedPurchase.purchase_intent_id}/advance`) {
+    if (state.owned && path === `/api/purchase-intents/${state.owned.purchase_intent_id}/advance`) {
       state.advances += 1;
-      state.owned = { ...savedPurchase, state: state.advanceState };
+      if (state.lateCaseOpen) return route.fulfill({ status: 409, json: { detail: { code: "purchase_existing_subscription_review" } } });
+      state.owned = { ...state.owned, state: state.advanceState, reason: null };
       await state.beforeAdvance();
       if (state.advanceDelayMs) await new Promise((resolve) => setTimeout(resolve, state.advanceDelayMs));
       return route.fulfill({ json: state.owned });
     }
-    if (path === `/api/purchase-intents/${savedPurchase.purchase_intent_id}`) return route.fulfill({ json: state.owned });
+    if (path === `/api/purchase-intents/${state.owned?.purchase_intent_id ?? savedPurchase.purchase_intent_id}`) return route.fulfill({ json: state.owned });
     if (path === "/api/billing/widget-bootstrap") {
       const body = route.request().postDataJSON();
       state.bootstraps.push(body);
@@ -166,6 +168,243 @@ test("one-click payment shows the verified target before Widget READY after sess
   })).toBeGreaterThanOrEqual(0);
   await expect(billing.getByRole("button", { name: ru.Billing.loading })).toBeDisabled();
   expect(state.bootstraps).toEqual([{ purchase_intent_id: savedPurchase.purchase_intent_id }]);
+});
+
+test("keyboard focus survives retrying the initial saved-link request", async ({ page }, testInfo) => {
+  const state = await syntheticBilling(page);
+  const purchaseId = savedPurchase.purchase_intent_id;
+  const retryReply = Promise.withResolvers<void>();
+  const statusRequests: string[] = [];
+  await page.route(`**/api/purchase-intents/${purchaseId}`, async (route) => {
+    statusRequests.push(route.request().method());
+    if (statusRequests.length === 1) return route.fulfill({
+      status: 503, json: { detail: { code: "unavailable", request_id: "synthetic-initial-status" } }
+    });
+    await retryReply.promise;
+    return route.fulfill({ json: { ...savedPurchase, state: "resolved_external_terminal", scope_held: false } });
+  });
+
+  await page.goto(`/ru/account?purchase=${purchaseId}#billing`);
+  await page.getByRole("button", { name: ru.CookieBanner.acceptAction, exact: true }).click();
+  const billing = page.getByRole("region", { name: ru.Billing.title });
+  const refresh = billing.getByRole("button", { name: ru.Purchase.refresh });
+  const selector = billing.getByRole("combobox");
+  try {
+    await expect(billing.getByRole("alert")).toContainText("synthetic-initial-status");
+    await refresh.focus();
+    await page.keyboard.press("Enter");
+    await expect(refresh).toBeFocused();
+    await expect(refresh).toHaveAttribute("aria-disabled", "true");
+    await expect(refresh).toHaveCSS("outline-style", "solid");
+    await expect(selector).toBeDisabled();
+    await expect(billing.getByRole("status")).toHaveText(ru.Purchase.loading);
+    await expect.poll(() => statusRequests).toEqual(["GET", "GET"]);
+    await page.keyboard.press("Enter");
+    await page.evaluate(() => document.fonts.ready);
+    expect((await new AxeBuilder({ page }).include("#billing").analyze()).violations).toEqual([]);
+    await page.screenshot({ path: testInfo.outputPath("saved-link-retry-focus.png"), fullPage: true });
+  } finally {
+    retryReply.resolve();
+  }
+
+  await expect(billing.getByText(ru.Purchase.states.resolved_external_terminal)).toBeVisible();
+  await expect(selector).toHaveValue(purchaseId);
+  await expect(selector).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(billing.getByRole("link", { name: ru.Purchase.buy, exact: true })).toBeFocused();
+  expect(statusRequests).toEqual(["GET", "GET"]);
+  expect(state.bootstraps).toEqual([]);
+});
+
+for (const scenario of ["manual retry", "automatic recovery after another 503", "manual retry after scrolling"] as const) {
+  test(`keyboard focus survives a saved-link status recheck with ${scenario}`, async ({ page }, testInfo) => {
+    const automaticRecovery = scenario === "automatic recovery after another 503";
+    const scrolled = scenario === "manual retry after scrolling";
+    if (scrolled) await page.setViewportSize({ width: 393, height: 350 });
+
+    const state = await syntheticBilling(page);
+    state.owned = savedPurchase;
+    const purchaseId = savedPurchase.purchase_intent_id;
+    const listReply = Promise.withResolvers<void>();
+    const retryReply = Promise.withResolvers<void>();
+    let firstStatus = true;
+    let retryStarted = false;
+    let repeatedFailure = false;
+    let terminalReadStarted = false;
+    await page.route("**/api/purchase-intents", async (route) => {
+      await listReply.promise;
+      return route.fulfill({ json: { purchases: [], next_cursor: null } });
+    });
+    await page.route(`**/api/purchase-intents/${purchaseId}`, async (route) => {
+      if (firstStatus) {
+        firstStatus = false;
+        return route.fulfill({ json: savedPurchase });
+      }
+      if (!retryStarted) return route.fulfill({
+        status: 503, json: { detail: { code: "unavailable", request_id: "synthetic-status-recheck" } }
+      });
+      if (automaticRecovery && !repeatedFailure) {
+        repeatedFailure = true;
+        return route.fulfill({
+          status: 503, json: { detail: { code: "unavailable", request_id: "synthetic-status-recheck-repeat" } }
+        });
+      }
+      terminalReadStarted = true;
+      await retryReply.promise;
+      return route.fulfill({ json: { ...savedPurchase, state: "resolved_external_terminal", scope_held: false } });
+    });
+
+    const billing = page.getByRole("region", { name: ru.Billing.title });
+    const selector = billing.getByRole("combobox");
+    const widget = billing.getByTitle(ru.Billing.frameTitle);
+    const alert = billing.getByRole("alert");
+    const retry = alert.getByRole("button", { name: ru.Purchase.refresh });
+    const navigation = page.getByRole("banner");
+    const selectorPosition = () => selector.evaluate(element => {
+      const { top, bottom } = element.getBoundingClientRect();
+      return { top, bottom, viewportBottom: window.innerHeight };
+    });
+    try {
+      await page.goto(`/ru/account?purchase=${purchaseId}#billing`);
+      await page.getByRole("button", { name: ru.CookieBanner.acceptAction, exact: true }).click();
+      await billing.getByRole("button", { name: ru.Billing.pay, exact: true }).click();
+      await expect(billing.frameLocator(`iframe[title="${ru.Billing.frameTitle}"]`)
+        .frameLocator('iframe[title="Synthetic LBX"]').getByText("Synthetic payment view")).toBeVisible();
+      listReply.resolve();
+      await expect(alert).toContainText("synthetic-status-recheck");
+      await expect(widget).toBeHidden();
+
+      await retry.focus();
+      if (scrolled) {
+        await page.evaluate(() => document.fonts.ready);
+        const navigationBottom = await navigation.evaluate(element => element.getBoundingClientRect().bottom);
+        await retry.evaluate((button, bottom) => {
+          window.scrollBy({ top: button.getBoundingClientRect().top - bottom - 12, behavior: "instant" });
+        }, navigationBottom);
+        expect((await selectorPosition()).bottom).toBeLessThan(navigationBottom);
+        expect(await retry.evaluate(button => button.getBoundingClientRect().top)).toBeGreaterThan(navigationBottom);
+        await expect(retry).toBeInViewport();
+      }
+      await expect(retry).toBeFocused();
+      retryStarted = true;
+      await page.keyboard.press("Enter");
+      await expect(selector).toBeFocused();
+      await expect(widget).toBeHidden();
+      if (scrolled) {
+        const navigationBottom = await navigation.evaluate(element => element.getBoundingClientRect().bottom);
+        const { top, bottom, viewportBottom } = await selectorPosition();
+        expect(top).toBeGreaterThanOrEqual(navigationBottom);
+        expect(bottom).toBeLessThanOrEqual(viewportBottom);
+        expect(await selector.evaluate(element => element.matches(":focus-visible"))).toBe(true);
+      }
+      if (automaticRecovery) {
+        await expect(alert).toContainText("synthetic-status-recheck-repeat");
+        await page.keyboard.press("Tab");
+        await expect(retry).toBeFocused();
+        await expect.poll(() => terminalReadStarted).toBe(true);
+        await expect(retry).toBeFocused();
+      }
+      await page.evaluate(() => document.fonts.ready);
+      expect((await new AxeBuilder({ page }).include("#billing").analyze()).violations).toEqual([]);
+      await page.screenshot({ path: testInfo.outputPath("saved-link-recheck-focus.png"), fullPage: true });
+    } finally {
+      listReply.resolve();
+      retryReply.resolve();
+    }
+
+    await expect(billing.getByText(ru.Purchase.states.resolved_external_terminal)).toBeVisible();
+    await expect(selector).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(billing.getByRole("link", { name: ru.Purchase.buy, exact: true })).toBeFocused();
+    await expect(widget).toHaveCount(0);
+    expect(state.bootstraps).toEqual([{ purchase_intent_id: purchaseId }]);
+  });
+}
+
+test("a saved purchase link leads through operator completion to a fresh replacement", async ({ page }, testInfo) => {
+  const state = await syntheticBilling(page);
+  const originalId = savedPurchase.purchase_intent_id;
+  const replacementId = "55555555-5555-4555-8555-555555555555";
+  state.advanceState = "manual_review";
+  const panel = await openProduct(page);
+  await panel.getByRole("button", { name: ru.Purchase.buy, exact: true }).click();
+  await panel.getByRole("checkbox").check();
+  await panel.getByRole("button", { name: ru.Purchase.confirm }).click();
+  const statusLink = panel.getByRole("link", { name: ru.Purchase.statusLink });
+  await expect(statusLink).toHaveAttribute("href", `/ru/account?purchase=${originalId}#billing`);
+  expect(state.confirmations).toHaveLength(1);
+  const originalKey = state.confirmations[0].key;
+  expect(originalKey).toEqual(expect.any(String));
+  await statusLink.click();
+  const billing = page.getByRole("region", { name: ru.Billing.title });
+  await expect(billing.getByRole("combobox")).toHaveValue(originalId);
+  await expect(billing.getByText(ru.Purchase.states.manual_review)).toBeVisible();
+
+  state.owned = { ...savedPurchase, state: "resolved_external_terminal", scope_held: false };
+  await billing.getByRole("button", { name: ru.Purchase.refresh }).click();
+  await expect(billing.getByText(ru.Purchase.states.resolved_external_terminal)).toBeVisible();
+  await page.reload();
+  await expect(billing.getByRole("combobox")).toHaveValue(originalId);
+  await expect(billing.getByText(ru.Purchase.states.resolved_external_terminal)).toBeVisible();
+  await expect(billing.getByRole("button", { name: ru.Billing.open, exact: true })).toBeDisabled();
+  await expect(page.locator("iframe")).toHaveCount(0);
+  expect(state.bootstraps).toEqual([]);
+  await page.evaluate(() => document.fonts.ready);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect((await new AxeBuilder({ page }).include("#billing").analyze()).violations).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath("terminal-purchase.png"), fullPage: true });
+
+  const newDocument = {
+    ...purchaseReview.documents[0],
+    document_version_id: "66666666-6666-4666-8666-666666666666",
+    acceptance_text_hash: "f".repeat(64),
+    version: "synthetic-v2",
+    acceptance_text: "Я принимаю обновлённые тестовые условия оферты."
+  };
+  state.review = {
+    ...purchaseReview,
+    terms: { ...purchaseReview.terms, recurring_amount: "150" },
+    expected_fingerprint: "sha256:" + "d".repeat(64),
+    documents: [newDocument]
+  };
+  state.nextPurchaseId = replacementId;
+  state.advanceState = "linked";
+  state.lateCaseOpen = true;
+  await billing.getByRole("link", { name: ru.Purchase.buy, exact: true }).click();
+  await panel.getByRole("button", { name: ru.Purchase.buy, exact: true }).click();
+  const freshConsent = panel.getByRole("checkbox", { name: newDocument.acceptance_text });
+  await expect(freshConsent).not.toBeChecked();
+  await expect(panel.getByText("150 RUB", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("button", { name: ru.Purchase.confirm })).toBeDisabled();
+  expect(state.confirmations).toHaveLength(1);
+  expect(state.advances).toBe(1);
+  await page.evaluate(() => document.fonts.ready);
+  expect((await new AxeBuilder({ page }).include(".purchase-panel").analyze()).violations).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath("replacement-consent.png"), fullPage: true });
+
+  await freshConsent.check();
+  const firstAdvance = page.waitForResponse(response => new URL(response.url()).pathname.endsWith(`/${replacementId}/advance`));
+  await panel.getByRole("button", { name: ru.Purchase.confirm }).click();
+  expect((await firstAdvance).status()).toBe(409);
+  await expect(panel.getByRole("alert")).toContainText(ru.Billing.errors.purchaseConflict);
+  await expect(panel.getByText(ru.Purchase.reference.replace("{id}", replacementId))).toBeVisible();
+  await expect(panel.getByRole("button", { name: ru.Purchase.buy, exact: true })).toHaveCount(0);
+  expect(state.confirmations).toHaveLength(2);
+  expect(state.confirmations[1]).toEqual(expect.objectContaining({
+    key: expect.any(String), body: expect.objectContaining({
+      expected_fingerprint: state.review.expected_fingerprint,
+      documents: state.review.documents.map(({ document_version_id, acceptance_text_hash }) => ({ document_version_id, acceptance_text_hash })),
+    }),
+  }));
+  expect(state.confirmations[1].key).not.toBe(originalKey);
+  expect(state.advances).toBe(2);
+
+  state.lateCaseOpen = false;
+  await panel.getByRole("button", { name: ru.Purchase.continue, exact: true }).click();
+  await expect(panel.getByRole("link", { name: ru.Billing.pay })).toHaveAttribute("href", `/ru/account?purchase=${replacementId}#billing`);
+  expect(state.confirmations).toHaveLength(2);
+  expect(state.advances).toBe(3);
+  expect(state.bootstraps).toEqual([]);
 });
 
 test("purchase prepares once, then one wide cabinet Widget verifies the selected purchase", async ({ page }, testInfo) => {

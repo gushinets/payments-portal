@@ -7,6 +7,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.domains.purchases.financial_reviews import record_financial_review
 from app.core.settings import Settings
 from app.domains.billing import customers, work
 from app.domains.billing.contracts import BillingRefused, CustomerOpen
@@ -27,6 +28,7 @@ from app.infrastructure.queries import (
     billing_work as work_queries,
 )
 from app.models import (
+    BillingWorkState,
     ExternalCreateOperation,
     ExternalCreateOperationKind as Kind,
     ExternalCreateOperationState as State,
@@ -171,6 +173,8 @@ def _repair_operation(factory: SessionFactory, configuration: Settings, identity
             op = billing_customers.customer_operation(db, customer.customer_id)
         else:
             row = purchases.owned(db, customer.user_id, op.purchase_intent_id, lock=True)
+            if row.state.resolved:
+                return False
             operations = purchases.operations(db, row.purchase_intent_id, lock=True)
             op = next(item for item in operations if item.create_operation_id == identity)
         db.refresh(op)
@@ -336,8 +340,8 @@ def finish_recovery(factory: SessionFactory, claim: WorkClaim) -> None:
         db.commit()
 
 
-def recovery_paused(factory: SessionFactory, claim: WorkClaim) -> bool:
-    """Distinguish an intentional durable pause from a lost/stale acknowledgement."""
+def recovery_inactive(factory: SessionFactory, claim: WorkClaim) -> bool:
+    """A paused or completed recovery no longer needs its outstanding source call."""
     with factory() as db:
         row = work_queries.item(db, claim.id)
         return bool(
@@ -345,7 +349,7 @@ def recovery_paused(factory: SessionFactory, claim: WorkClaim) -> bool:
             and claim.kind == RECOVERY
             and row.work_kind == RECOVERY
             and row.scope_reference == claim.reference
-            and row.work_state == "paused"
+            and row.work_state in {BillingWorkState.PAUSED, BillingWorkState.DONE, BillingWorkState.COMPLETED}
         )
 
 
@@ -386,7 +390,7 @@ def apply_deadline(factory: SessionFactory, claim: WorkClaim) -> RecoveryEscalat
                     record_customer_review(db, op, reason)
                 else:
                     service._locked(db, service._snapshot(db, purchase))
-                    financial._review(db, purchase, op, reason)
+                    record_financial_review(db, purchase, op, reason)
             from app.domains.billing.paid_access import reduce_paid_access
 
             reduce_paid_access(db, customer.user_id)

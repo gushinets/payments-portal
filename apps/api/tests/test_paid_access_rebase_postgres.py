@@ -366,3 +366,122 @@ async def test_known_sibling_on_another_dedicated_agreement_never_selects_first_
         )
         assert len(discoveries) == 2
         assert all(not item.evidence_document["complete"] for item in discoveries)
+
+
+async def test_foreign_late_agreement_does_not_block_independent_primary(
+    background_scenario: tuple, postgres_session_factory: sessionmaker[Session]
+) -> None:
+    from app.composition.backend_consumers import initialize_backend_consumers
+    from app.composition.purchases import recover_financial
+    from app.domains.billing import late_purchase_reviews as late, terminal_resolution as terminal
+    from apps.api.tests.factories.billing_operator import terminal_object_request
+    from apps.api.tests.support.backend_consumers import backend_consumer
+
+    transport, sources, purchase = background_scenario
+    factory = postgres_session_factory
+    config = step1_settings(paid_access_clock_skew_seconds=10)
+    initialize_backend_consumers(config.model_copy(update={"backend_consumers": (backend_consumer(),)}), factory)
+    original = synthetic_prepare(factory, transport, purchase, uncertain=True)
+    agreement, ended = transport.agreements[0], transport.subscriptions[0]
+    agreement["close_date"], ended["state"] = "2026-10-27", 3
+    terminal.resolve_purchase(
+        factory, config, terminal_object_request(factory, config, original, subscription_id="567"), "os-euid:1000"
+    )
+
+    agreement["close_date"] = None
+    ended["state"] = 2  # A new independent subscription has no terminal history.
+    independent = historical_link(factory, original, transport, "brief_decoder", 1)
+    ended["state"] = 3
+    assert independent.accepted.selection.tariff_id == 701
+    transport.agreements[-1]["close_date"] = None
+    transport.subscriptions[-1].update(
+        state=2,
+        subscription_start_date="2026-10-01",
+        subscription_instance_start_date="2026-10-01",
+        last_tariffication_period_start="2026-10-01",
+        last_tariffication_period_end="2026-10-31",
+    )
+    disputed = {**ended, "subscription_id": 789, "state": 2}
+    transport.subscriptions.append(disputed)
+    await recover_financial(
+        sources,
+        config,
+        factory=factory,
+        user_id=original.user_id,
+        purchase_id=original.id,
+        operation_id=original.operations[1].id,
+    )
+    with factory() as db:
+        cases = db.scalars(select(ManualReviewCase).where(ManualReviewCase.reason_code == late.REASON)).all()
+        assert {(case.scope_reference, case.evidence_document["external_object_id"]) for case in cases} == {
+            (str(original.id), "456"),
+            (str(original.id), "789"),
+        }
+        recorded = next(case for case in cases if case.evidence_document["external_object_id"] == "789")
+        assert not late.blocking_cases(db, independent)
+        independent_id = db.scalar(
+            select(ExternalSubscription.subscription_id).where(
+                ExternalSubscription.purchase_intent_id == independent.id
+            )
+        )
+    transport.agreements.append(
+        {**agreement, "agreement_id": 987, "agreement_number": "moved-agreement", "user_id": 346}
+    )
+    disputed.update(agreement_id=987, tariff_id=703)
+
+    before = len(transport.requests)
+    await run_inventory(Scenario(factory, config, transport, sources, independent_id))
+    grants = [grant["product_id"] for grant in effective(factory)[1]["grants"]]
+    with factory() as db:
+        scope = db.scalar(
+            select(BillingProductAccessScope).where(BillingProductAccessScope.product_id == "brief_decoder")
+        )
+        assert not late.blocking_cases(db, independent)
+        assert scope.primary_subscription_id == independent_id
+        assert db.get(ManualReviewCase, recorded.review_case_id).case_state == "open"
+    assert any(req.url.path.endswith("/agreements/987") for req in transport.requests[before:])
+    assert "brief_decoder" in grants
+    assert transport.creates("/agreements") == transport.creates("/subscriptions") == 0
+
+
+async def test_unbound_point_tariff_disagreement_blocks_first_primary_for_actual_tariff(
+    background_scenario: tuple, postgres_session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.integrations.lbx.financial import Subscription
+
+    transport, sources, purchase = background_scenario
+    factory = postgres_session_factory
+    original = synthetic_prepare(factory, transport, purchase, uncertain=False)
+    sibling = historical_link(factory, original, transport, "brief_decoder", 1)
+    for point in transport.subscriptions:
+        point.update(state=2, last_tariffication_period_start="2026-10-01", last_tariffication_period_end="2026-10-31")
+    transport.subscriptions.append({**transport.subscriptions[0], "subscription_id": 789})
+    client = sources.require_lbx()
+    discover = client.discover_subscriptions
+
+    async def stale_tariff(**kwargs: object) -> tuple[Subscription, ...]:
+        return tuple(
+            row.model_copy(update={"tariff_id": 999}) if row.subscription_id == 789 else row
+            for row in await discover(**kwargs)
+        )
+
+    monkeypatch.setattr(client, "discover_subscriptions", stale_tariff)
+    with factory() as db:
+        subscription_id = db.scalar(
+            select(ExternalSubscription.subscription_id).where(ExternalSubscription.purchase_intent_id == sibling.id)
+        )
+    await run_inventory(
+        Scenario(factory, step1_settings(paid_access_clock_skew_seconds=10), transport, sources, subscription_id)
+    )
+    with factory() as db:
+        observation = db.scalars(
+            select(BillingStateObservation).where(
+                BillingStateObservation.evidence_schema_version == DISCOVERY_SCHEMA,
+                BillingStateObservation.product_id == "brief_decoder",
+            )
+        ).one()
+        assert not observation.evidence_document["complete"]
+        scope = db.scalars(
+            select(BillingProductAccessScope).where(BillingProductAccessScope.product_id == "brief_decoder")
+        ).one()
+        assert scope.primary_subscription_id is None

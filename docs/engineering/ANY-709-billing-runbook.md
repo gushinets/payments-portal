@@ -535,10 +535,14 @@ separately through shared authoritative reconciliation and complete inventory.
 fenced, point-proven bindings and review state in Portal. It preserves the
 purchase hold.
 Financial CREATEs and Widget credentials require their respective explicit
-foreground actions. If another caller binds the subscription during recovery,
-the losing attempt uses ordinary subscription reconciliation. That path records
-observations and can update the paid-access projection under the standard
-source-proof and admission rules. Use request IDs and safe stored HTTP/LBX facts.
+foreground actions. If another caller binds the same subscription ID during
+recovery, ordinary subscription reconciliation can record observations and
+update the paid-access projection under the standard source-proof and admission
+rules. If a point read proves a different live subscription ID for the same
+send, Portal keeps the saved binding and opens `original_financial_identity_conflict`.
+While the case is open, it blocks both terminal completion and restoration of
+trust. See [Enrollment, cadence and recovery](billing-background-operations.md#enrollment-cadence-and-recovery).
+Use request IDs and safe stored HTTP/LBX facts.
 Do not publish raw responses or credentials.
 
 Possible-send commits immutable request/key, fence, first `unknown_since + 2h`
@@ -624,12 +628,12 @@ for the same purchase.
 A held, linked result makes the payment action available while that reply is
 pending. A confirmed release shows the saved outcome and lets the buyer
 review the current terms if the product still has an available offer.
-If release commits between the purchase and hold reads, the response can pair
-an earlier state with `scope_held: false`. The product page confirms release only
-when that flag is false and the state is `failed_before_external_effect` or
-`resolved_no_external_effect`. A mixed response from `advance` or a status
-read leaves the previous status in place so polling can continue for a pending
-purchase.
+A purchase-status read returns the purchase state and `scope_held` in one
+database snapshot. If `advance` returns HTTP 409 with
+`purchase_scope_released`, the product page reads the saved purchase again by
+ID. It shows the saved release when `scope_held` is false and the state is
+`failed_before_external_effect`, `resolved_no_external_effect`, or
+`resolved_external_terminal`.
 
 After a lost advance reply, a saved `preparing` state keeps the unknown-outcome
 warning and its request ID visible. That state covers both a possible send and

@@ -71,7 +71,8 @@ def advance_deadlines(factory: sessionmaker[Session], *, now: datetime) -> int:
     with patch("app.infrastructure.queries.billing_reconciliation.database_now", return_value=now):
         while claim := work.claim_work(factory, step1_settings(), WorkLane.LOCAL):
             assert claim.kind == background_recovery.DEADLINE
-            background_recovery.apply_deadline(factory, claim)
+            if background_recovery.apply_deadline(factory, claim) is not None:
+                background_recovery.finish_deadline_notification(factory, claim, notified=True)
     with factory() as db:
         after = set(
             db.scalars(

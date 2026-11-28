@@ -19,7 +19,7 @@ BASELINE_REVISION = "20260924_0001"
 EMAIL_VERIFICATION_REVISION = "20261001_0002"
 BILLING_PREPARATION_REVISION = "20261029_0003"
 WORKER_REVISION = "20261028_0005"
-HEAD_REVISION = "20261123_0014"
+HEAD_REVISION = "20261123_0821"
 
 SURVIVOR_TABLES = {
     "regions",
@@ -805,6 +805,7 @@ def test_clean_first_install_has_expected_revisions_and_exact_application_schema
         assert script.get_bases() == [BASELINE_REVISION]
         assert [item.revision for item in script.walk_revisions()] == [
             HEAD_REVISION,
+            "20261123_0014",
             "20261113_0013",
             "20261113_0012",
             "20261111_0011",
