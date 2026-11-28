@@ -89,14 +89,17 @@ def _calendar_use(
         return None
 
     subscription_end = parsed.get("subscription_end_date")
+    close_day = subscription_end.date() if isinstance(subscription_end, datetime) else subscription_end
+    # The paid calendar is inclusive. A date alone on its final day follows the standard path.
     scheduled_close = (
         cycle is not None
         and cycle.precision == CalendarPrecision.DATE
         and (period.unit, period.length, period.anchor) == ("month", 1, "instance_start")
         and subscription_end is not None
         and subscription_end == parsed.get("subscription_instance_end_date")
-        and _calendar_ordered(cycle_start, subscription_end, strict=True)
-        and _calendar_ordered(subscription_end, cycle_end, strict=True)
+        and close_day is not None
+        and cycle_start <= close_day <= cycle_end
+        and (close_day < cycle_end or isinstance(subscription_end, datetime))
     )
     # Keep the existing all-date completeness policy; the new start-order proof
     # is required only when interpreting the observed naive-midnight form.
@@ -111,17 +114,23 @@ def _calendar_use(
     for prefix in ("subscription", "subscription_instance"):
         start, end = parsed.get(prefix + "_start_date"), parsed.get(prefix + "_end_date")
         calendar_start = monthly_instance_start_date(start, period) if start is not None and monthly_midnight else None
-        # The observed monthly start is a date. An offset on the closing time
-        # must not turn that start into an ambiguous mix of timestamps.
-        interval_start = calendar_start if scheduled_close and calendar_start is not None else start
-        if (
-            interval_start is not None
-            and end is not None
-            and not _calendar_ordered(
-                interval_start, end, strict=isinstance(start, datetime) or isinstance(end, datetime)
+        if start is not None and end is not None:
+            scheduled_start = monthly_instance_start_date(start, period) if scheduled_close else None
+            comparable_times = (
+                isinstance(start, datetime)
+                and isinstance(end, datetime)
+                and (start.utcoffset() is None) == (end.utcoffset() is None)
             )
-        ):
-            return None
+            if scheduled_start is not None and not comparable_times:
+                # The supported monthly start gives a calendar day at mixed precision.
+                end_day = end.date() if isinstance(end, datetime) else end
+                interval_ordered = scheduled_start <= end_day
+            else:
+                interval_ordered = _calendar_ordered(
+                    start, end, strict=isinstance(start, datetime) or isinstance(end, datetime)
+                )
+            if not interval_ordered:
+                return None
         if calendar_start is not None:
             if not _calendar_ordered(calendar_start, cycle_start):
                 return None

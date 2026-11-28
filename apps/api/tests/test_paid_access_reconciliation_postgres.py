@@ -184,14 +184,15 @@ async def test_paid_writer_first_noop_empty_and_same_cycle_recovery(paid_source:
     assert restored[2] == (3, one[2][1]) and restored[4] == one[4]
 
 
+@pytest.mark.parametrize("close_day", ["11-26", "11-27", "12-25"])
 @pytest.mark.parametrize("closure", ["date", "local_time", "offset", "blocked"])
 async def test_scheduled_monthly_close_preserves_issued_allowance(
-    paid_source: Scenario, monkeypatch: pytest.MonkeyPatch, closure: str
+    paid_source: Scenario, monkeypatch: pytest.MonkeyPatch, closure: str, close_day: str
 ) -> None:
     scenario = paid_source
     factory = scenario.factory
     year = datetime.now(UTC).year + 1
-    close_at = datetime.fromisoformat(f"{year}-11-27T23:59:59+03:00")
+    close_at = datetime.fromisoformat(f"{year}-{close_day}T18:00:00+03:00")
     now = close_at - timedelta(hours=2)
     monkeypatch.setattr(billing_reconciliation, "database_now", lambda db: now)
     monkeypatch.setattr(paid_read, "database_now", lambda db: now)
@@ -220,7 +221,9 @@ async def test_scheduled_monthly_close_preserves_issued_allowance(
     result = await reconcile(scenario)
     scheduled = paid_read.read_access_snapshot(factory, scenario.config, user_id, consumer)
     assert scheduled.document.allowances == (original,)
-    assert result.proof.calendar_complete and result.proof.existing_allowance_only
+    assert result.proof.calendar_complete
+    # A date alone on the nominal last day still uses the standard calendar.
+    assert result.proof.existing_allowance_only == (closure != "date" or close_day != "12-25")
     assert "existing_allowance_only" not in result.proof.document()
     await reconcile(scenario)
     repeated = paid_read.read_access_snapshot(factory, scenario.config, user_id, consumer)
@@ -263,9 +266,23 @@ async def test_scheduled_monthly_close_preserves_issued_allowance(
     assert persisted(factory)[4] == (UUID(original.allowance_id),)
 
 
-@pytest.mark.parametrize("period", ["first", "later", "conflicting_ends", "missing_end", "wrong_period_end"])
+@pytest.mark.parametrize(
+    ("period", "close"),
+    [
+        ("first", "2026-11-26"),
+        ("first", "2026-11-26 18:00:00"),
+        ("first", "2026-11-27 23:59:59"),
+        ("first", "2026-12-25 18:00:00"),
+        ("later", "2026-12-26 18:00:00"),
+        ("later", "2026-12-27 23:59:59"),
+        ("later", "2027-01-25 18:00:00"),
+        ("conflicting_ends", "2026-11-27 23:59:59"),
+        ("missing_end", "2026-11-27 23:59:59"),
+        ("wrong_period_end", "2026-11-27 23:59:59"),
+    ],
+)
 async def test_scheduled_monthly_close_requires_an_issued_allowance_for_the_proven_period(
-    paid_source: Scenario, period: str
+    paid_source: Scenario, period: str, close: str
 ) -> None:
     scenario = paid_source
     point = scenario.transport.subscriptions[0]
@@ -278,16 +295,13 @@ async def test_scheduled_monthly_close_requires_an_issued_allowance_for_the_prov
     if period != "first":
         await reconcile(scenario)
     previous_ids = persisted(scenario.factory)[4]
+    assert len(previous_ids) == (0 if period == "first" else 1)
 
-    close = "2026-11-27 23:59:59"
     point.update(subscription_end_date=close, subscription_instance_end_date=close)
     if period == "later":
-        close = "2026-12-27 23:59:59"
         point.update(
             last_tariffication_period_start="2026-12-26",
             last_tariffication_period_end="2027-01-25",
-            subscription_end_date=close,
-            subscription_instance_end_date=close,
         )
     elif period == "conflicting_ends":
         point["subscription_instance_end_date"] = "2026-11-28 23:59:59"
@@ -296,7 +310,9 @@ async def test_scheduled_monthly_close_requires_an_issued_allowance_for_the_prov
     elif period == "wrong_period_end":
         point["last_tariffication_period_end"] = "2026-12-26"
 
-    await reconcile(scenario)
+    result = await reconcile(scenario)
+    if period in {"first", "later"}:
+        assert result.proof.calendar_complete and result.proof.existing_allowance_only
     state = persisted(scenario.factory)
     assert state[2][1]["grants"] and not state[2][1]["allowances"]
     assert state[4] == previous_ids
