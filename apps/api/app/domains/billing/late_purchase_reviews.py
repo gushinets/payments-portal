@@ -120,9 +120,7 @@ class ReleasedOriginal:
     subscription_ids: frozenset[str]
 
 
-def _original(
-    db: Session, row: PurchaseIntent, *, include_late_cases: bool = False, case_subscription_ids: set[str] | None = None
-) -> ReleasedOriginal:
+def _original(db: Session, row: PurchaseIntent, *, case_ids: dict[Kind, set[str]] | None) -> ReleasedOriginal:
     purchase = service._snapshot(db, row)
     case = billing_operator.purchase_resolution_audit(db, purchase.id, reason=TERMINAL_REASON, schema=SCHEMA)
     proofs = (
@@ -137,14 +135,11 @@ def _original(
         op.kind: {value for value in (op.bound_id, proofs.get(op.id)) if value is not None}
         for op in purchase.operations
     }
-    if include_late_cases or case_subscription_ids:
-        points = queries.purchase_object_ids(
-            db, purchase.id, reason=REASON, schema=CASE_SCHEMA, subscription_ids=case_subscription_ids
-        )
-        if len(points) > 100:
-            raise PurchaseInventoryIncomplete()
-        for kind, external_id in points:
-            identities[Kind(kind)].add(external_id)
+    points = queries.purchase_object_ids(db, purchase.id, reason=REASON, schema=CASE_SCHEMA, identities=case_ids)
+    if len(points) > 100:
+        raise PurchaseInventoryIncomplete()
+    for kind, external_id in points:
+        identities[Kind(kind)].add(external_id)
     return ReleasedOriginal(purchase, frozenset(identities[Kind.AGREEMENT]), frozenset(identities[Kind.SUBSCRIPTION]))
 
 
@@ -154,7 +149,7 @@ def released_original(factory: SessionFactory, purchase: Purchase) -> ReleasedOr
         if row is None or not row.state.resolved:
             return None
         return (
-            _original(db, row, include_late_cases=True)
+            _original(db, row, case_ids=None)
             if billing_operator.purchase_resolution_audit(db, purchase.id, reason=TERMINAL_REASON, schema=SCHEMA)
             is not None
             else None
@@ -170,11 +165,11 @@ def released_owners(
     agreement_number: str | None = None,
 ) -> tuple[ReleasedOriginal, ...]:
     with factory() as db:
+        case_ids = {Kind.AGREEMENT: agreement_ids, Kind.SUBSCRIPTION: subscription_ids}
         rows = queries.released_owners(
             db,
             customer_id,
-            agreement_ids,
-            subscription_ids,
+            case_ids,
             agreement_number,
             audit_reason=TERMINAL_REASON,
             audit_schema=SCHEMA,
@@ -183,7 +178,7 @@ def released_owners(
         )
         if len(rows) > 100:
             raise PurchaseInventoryIncomplete()
-        return tuple(_original(db, row, case_subscription_ids=subscription_ids) for row in rows)
+        return tuple(_original(db, row, case_ids=case_ids) for row in rows)
 
 
 def record_late_object(
@@ -223,6 +218,18 @@ def record_late_object(
         )
         if cases and (len(cases) != 1 or cases[0].scope_reference != str(purchase.id)):
             raise PurchaseInventoryIncomplete()
+        # A permanent binding already identifies the affected purchase. Only a
+        # different tariff on that exact subscription/agreement competes with other products.
+        relationship = unverified_relationship
+        if evidence.agreement_id is not None and evidence.competing_tariff_id is not None:
+            relationship = (evidence.agreement_id, evidence.competing_tariff_id)
+        bound_tariff_matches = False
+        if relationship is not None:
+            agreement_id, tariff_id = relationship
+            bound = queries.bound_subscription_purchase(
+                db, customer.customer_id, purchase.account_id, evidence.external_object_id, agreement_id
+            )
+            bound_tariff_matches = bound is not None and service.accepted(bound).selection.tariff_id == tariff_id
         active = cases[0] if cases else None
         previous = LateObjectEvidence.model_validate(active.evidence_document) if active is not None else None
         if unverified_relationship is not None and (previous is None or previous.scope_read_finished_at is None):
@@ -238,8 +245,14 @@ def record_late_object(
             )
             if closed is not None:
                 retained = LateObjectEvidence.model_validate(closed.evidence_document)
-                if unverified_relationship == (retained.agreement_id, retained.competing_tariff_id):
+                agreement_id, tariff_id = unverified_relationship
+                if agreement_id == retained.agreement_id and (
+                    retained.competing_tariff_id == tariff_id
+                    or (bound_tariff_matches and retained.competing_tariff_id is None)
+                ):
                     evidence = retained.merge_point(evidence)
+        if bound_tariff_matches and evidence.competing_tariff_id is not None:
+            evidence = evidence.model_copy(update={"competing_tariff_id": None})
         if active is not None:
             assert previous is not None
             merged = previous.merge_point(evidence)
@@ -264,8 +277,10 @@ def blocking_cases(db: Session, purchase: Purchase) -> list[ManualReviewCase]:
     return queries.product_cases(
         db,
         purchase.customer_id,
+        purchase.account_id,
         purchase.accepted.selection.product_id,
         purchase.accepted.selection.tariff_id,
+        next(op.bound_id for op in purchase.operations if op.kind == Kind.AGREEMENT),
         reason=REASON,
         schema=CASE_SCHEMA,
     )

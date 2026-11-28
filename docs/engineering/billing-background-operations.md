@@ -827,17 +827,26 @@ idempotency key. Ordinary admission still applies.
 ### Close an exact late-object case
 
 `recover` or ordinary inventory can record a case on the completed purchase
-when point proof identifies a disputed live object. A point read confirming
+when point proof identifies a disputed live object. This includes recovery of
+another purchase. An explicitly open agreement that proves the completed
+purchase’s original request, or its retained subscription ID found live on
+another agreement, opens a case on the completed purchase before recovery
+decides whether it can bind the object. A point read confirming
 agreement closure proves that its subscription has ended in that pass, regardless
 of which object was read first. An open case still requires exact terminal
-closure. The case blocks admission for the original product and for products
-using its confirmed competing tariff, even after the object disappears from
-discovery. If the agreement GET times out, the open case retains its confirmed
-scope. After closure, a live point
-read can restore that scope from the most recent closed case with confirmed scope
-when the subscription ID, agreement ID and tariff all match. This applies when
-a new case opens or when an open case still lacks confirmed scope. A durable
-case block for another product requires a confirmed competing tariff.
+closure. The case blocks admission for the original product, for a purchase
+whose dedicated agreement is verified on the case, and for products using its
+confirmed competing tariff. When the exact subscription is back on its
+permanently bound agreement at that purchase's accepted tariff, the case
+retains the agreement scope. Other products that share the tariff remain
+eligible. These restrictions survive omission from discovery.
+If the agreement GET times out, the open case retains its confirmed scope.
+After closure, a live point read can restore that scope from the most recent
+closed case with confirmed scope when the subscription ID, agreement ID and
+tariff all match. This applies when a new case opens or when an open case
+still lacks confirmed scope. An exact agreement ID from an open or closed
+agreement case also identifies the original purchase when another subscription
+appears on that agreement.
 
 In the replacement's `inspect` output, `blocking_late_reviews` identifies the
 original purchase, case and digest. Inspect the original for `late_object` and

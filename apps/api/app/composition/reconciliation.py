@@ -11,11 +11,12 @@ from uuid import UUID
 from starlette.concurrency import run_in_threadpool
 
 from app.composition.purchase_late_objects import (
+    AgreementRead,
     ClosedAgreementReads,
+    LatePointReview,
     SubscriptionRedirect,
-    released_subscription_owner,
-    review_historical_subscription,
     review_late_subscription,
+    review_observed_agreement,
 )
 from app.composition.purchase_recovery import is_live_original_subscription, original_command
 from app.composition.sources import SourceResources
@@ -50,8 +51,51 @@ from app.integrations.lbx.client import LbxServerClient
 from app.integrations.lbx.errors import LbxError
 from app.integrations.lbx.financial import Subscription, agreement_explicitly_open, prove_agreement
 from app.integrations.lbx.reconciliation import complete_subscription_proof
-from app.integrations.lbx.subscription_points import read_subscription_points
+from app.integrations.lbx.subscription_points import SubscriptionPointReads, read_subscription_points
 from app.models import ExternalCreateOperationKind as Kind
+
+
+async def review_inventory_points(
+    client: LbxServerClient,
+    factory: SessionFactory,
+    points: SubscriptionPointReads,
+    *,
+    budget: PreflightBudget,
+    delegate: Callable[..., Awaitable[Any]],
+    closed_agreements: ClosedAgreementReads,
+    defer_redirect: Callable[[SubscriptionRedirect], None] | None = None,
+) -> LatePointReview | None:
+    subject = points.subject
+    customer = subject.customer
+    if points.user is None or points.user.outer_id != customer.outer_key:
+        return None
+    observed = None
+    if points.agreement is not None and points.agreement_read_at is not None:
+        observed = AgreementRead(points.agreement, points.agreement_read_at)
+        await review_observed_agreement(
+            factory, customer, observed, expected_number=subject.agreement_key, delegate=delegate
+        )
+    point, read_at = points.subscription, points.subscription_read_at
+    if point is None or read_at is None:
+        return None
+    redirected = point.agreement_id != int(subject.agreement_id)
+    if redirected and defer_redirect is not None:
+        if str(point.subscription_id) == subject.provider_subscription_id:
+            defer_redirect(SubscriptionRedirect(customer, point, read_at))
+        return None
+    return await review_late_subscription(
+        client,
+        factory,
+        customer,
+        subject.provider_subscription_id,
+        point,
+        read_finished_at=read_at,
+        budget=budget,
+        delegate=delegate,
+        closed_agreements=closed_agreements,
+        observed_agreement=observed,
+        read_agreement=redirected,
+    )
 
 
 async def read_subscription_proof(
@@ -68,17 +112,16 @@ async def read_subscription_proof(
     """Persist only the DB-clock interval surrounding this actual source read."""
     point_clock = partial(delegate, read_source_time, factory)
     points = await read_subscription_points(client, subject, budget=budget, read_time=point_clock)
-    point, read_at = points.subscription, points.subscription_read_at
-    if (
-        on_subscription_redirect is not None
-        and points.user is not None
-        and points.user.outer_id == subject.customer.outer_key
-        and point is not None
-        and read_at is not None
-        and str(point.subscription_id) == subject.provider_subscription_id
-        and point.agreement_id != int(subject.agreement_id)
-    ):
-        on_subscription_redirect(SubscriptionRedirect(subject.customer, point, read_at))
+    if on_subscription_redirect is not None:
+        await review_inventory_points(
+            client,
+            factory,
+            points,
+            budget=budget,
+            delegate=delegate,
+            closed_agreements={},
+            defer_redirect=on_subscription_redirect,
+        )
     return await complete_subscription_proof(
         client,
         configuration,
@@ -99,7 +142,7 @@ async def read_inventory_original_subscription(
     budget: PreflightBudget,
     work_claim: WorkClaim | None,
     delegate: Callable[..., Awaitable[Any]],
-    closed_agreements: ClosedAgreementReads | None = None,
+    closed_agreements: ClosedAgreementReads,
 ) -> SubscriptionProof | None:
     """Retain the exact fact before tariff I/O. Return no proof on an ownership conflict."""
     point_clock = partial(delegate, read_source_time, factory)
@@ -127,6 +170,11 @@ async def read_inventory_original_subscription(
             work_claim=work_claim,
         )
 
+    review = await review_inventory_points(
+        client, factory, points, budget=budget, delegate=delegate, closed_agreements=closed_agreements
+    )
+    if review is not None and review.products:
+        return None
     if points.user is not None and points.user.outer_id == customer.outer_key:
         agreement_id = int(subject.agreement_id)
         agreement = points.agreement
@@ -153,24 +201,10 @@ async def read_inventory_original_subscription(
 
         point, read_at = points.subscription, points.subscription_read_at
         if point is not None and read_at is not None:
-            if point.agreement_id != agreement_id:
-                if (
-                    await review_late_subscription(
-                        client,
-                        factory,
-                        customer,
-                        subject.provider_subscription_id,
-                        point,
-                        read_finished_at=read_at,
-                        budget=budget,
-                        delegate=delegate,
-                        closed_agreements=closed_agreements,
-                    )
-                    is not None
-                ):
-                    return None
-            elif agreement_matches and is_live_original_subscription(
-                subject.purchase, agreement, point, agreement_id=agreement_id
+            if (
+                point.agreement_id == agreement_id
+                and agreement_matches
+                and is_live_original_subscription(subject.purchase, agreement, point, agreement_id=agreement_id)
             ):
                 if not await retain(operation, subject.provider_subscription_id, read_at):
                     return None
@@ -211,20 +245,18 @@ async def review_late_redirects(
         if redirect.customer != customer:
             continue
         try:
-            original = await released_subscription_owner(factory, customer, redirect.point, delegate)
-            if original is not None:
-                await review_historical_subscription(
-                    client,
-                    factory,
-                    original,
-                    customer,
-                    redirect.point,
-                    read_finished_at=redirect.read_finished_at,
-                    budget=budget,
-                    delegate=delegate,
-                    read_agreement=failure is None,
-                    closed_agreements=closed_agreements,
-                )
+            await review_late_subscription(
+                client,
+                factory,
+                customer,
+                str(redirect.point.subscription_id),
+                redirect.point,
+                read_finished_at=redirect.read_finished_at,
+                budget=budget,
+                delegate=delegate,
+                read_agreement=failure is None,
+                closed_agreements=closed_agreements,
+            )
         except (PreflightDeadlineExceeded, PreflightCleanupPending) as error:
             if failure is None:
                 failure = error

@@ -535,10 +535,14 @@ separately through shared authoritative reconciliation and complete inventory.
 fenced, point-proven bindings and review state in Portal. It preserves the
 purchase hold.
 Financial CREATEs and Widget credentials require their respective explicit
-foreground actions. If another caller binds the subscription during recovery,
-the losing attempt uses ordinary subscription reconciliation. That path records
-observations and can update the paid-access projection under the standard
-source-proof and admission rules. Use request IDs and safe stored HTTP/LBX facts.
+foreground actions. If another caller binds the same subscription ID during
+recovery, ordinary subscription reconciliation can record observations and
+update the paid-access projection under the standard source-proof and admission
+rules. If a point read proves a different live subscription ID for the same
+send, Portal keeps the saved binding and opens `original_financial_identity_conflict`.
+While the case is open, it blocks both terminal completion and restoration of
+trust. See [Enrollment, cadence and recovery](billing-background-operations.md#enrollment-cadence-and-recovery).
+Use request IDs and safe stored HTTP/LBX facts.
 Do not publish raw responses or credentials.
 
 Possible-send commits immutable request/key, fence, first `unknown_since + 2h`

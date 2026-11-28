@@ -1,13 +1,19 @@
 """One GET-only original-operation proof and transactional binding path."""
 
 from collections.abc import Awaitable, Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
 from starlette.concurrency import run_in_threadpool
 
+from app.composition.purchase_late_objects import (
+    AgreementRead,
+    recover_released,
+    review_late_subscription,
+    review_observed_agreement,
+)
 from app.composition.purchase_observation import prepared_subscription_observation
 from app.composition.sources import SourceResources
 from app.core.settings import Settings
@@ -72,6 +78,14 @@ def original_command(
     ).request_document()
 
 
+@dataclass(frozen=True)
+class FinancialCandidate:
+    provider_id: int
+    agreement: AgreementRead
+    subscription: Subscription | None
+    read_finished_at: datetime
+
+
 async def find_financial(
     client: LbxServerClient,
     purchase: Purchase,
@@ -79,9 +93,11 @@ async def find_financial(
     customer: CustomerOpen,
     *,
     budget: PreflightBudget,
+    factory: SessionFactory,
     require_discovery: bool = False,
-    retain_point: Callable[[FinancialOperation, int, bool], Awaitable[None]] | None = None,
-) -> tuple[int, Agreement, Subscription | None] | None:
+    retain_point: Callable[[FinancialOperation, int, datetime], Awaitable[None]] | None = None,
+    delegate: Callable[..., Awaitable[Any]] = run_in_threadpool,
+) -> FinancialCandidate | None:
     """Discovery selects candidates; neither a receipt nor a listing binds them."""
     if operation.bound_id is not None:
         return None
@@ -101,38 +117,31 @@ async def find_financial(
             raise LbxScopeMismatch()
         if not ids:
             return None
-        agreement = await timely_point(lambda: client.get_agreement(agreement_id=ids[0], budget=budget), budget)
-        prove_agreement(
-            agreement, user_id=int(customer.provider_id), seller_id=purchase.accepted.seller_id, number=operation.key
-        )
-        if (
-            operation.agreement_create_date is not None
-            and agreement.create_date != operation.agreement_create_date.isoformat()
-        ):
-            raise LbxResponseInvalid()
-        agreement_is_closed(agreement)
-        if retain_point is not None:
-            await retain_point(operation, ids[0], agreement_explicitly_open(agreement))
-        return ids[0], agreement, None
-    agreement_op = next(op for op in purchase.operations if op.kind == Kind.AGREEMENT)
-    if agreement_op.bound_id is None:
-        raise PurchaseRefused("purchase_pending", 409)
-    agreement_id = int(agreement_op.bound_id)
+        agreement_op, agreement_id = operation, ids[0]
+    else:
+        agreement_op = next(op for op in purchase.operations if op.kind == Kind.AGREEMENT)
+        if agreement_op.bound_id is None:
+            raise PurchaseRefused("purchase_pending", 409)
+        agreement_id = int(agreement_op.bound_id)
     agreement = await timely_point(lambda: client.get_agreement(agreement_id=agreement_id, budget=budget), budget)
+    observed = AgreementRead(agreement, await delegate(read_source_time, factory))
+    await review_observed_agreement(factory, customer, observed, expected_number=agreement_op.key, delegate=delegate)
     prove_agreement(
         agreement, user_id=int(customer.provider_id), seller_id=purchase.accepted.seller_id, number=agreement_op.key
     )
-    if agreement_is_closed(agreement) and operation.state in {State.PENDING, State.PROVEN_NOT_SENT}:
+    date_matches = (
+        agreement_op.agreement_create_date is None
+        or agreement.create_date == agreement_op.agreement_create_date.isoformat()
+    )
+    if operation.kind == Kind.AGREEMENT and not date_matches:
+        raise LbxResponseInvalid()
+    closed = agreement_is_closed(agreement)
+    if retain_point is not None and date_matches and agreement_explicitly_open(agreement):
+        await retain_point(agreement_op, agreement_id, observed.read_finished_at)
+    if operation.kind == Kind.AGREEMENT:
+        return FinancialCandidate(agreement_id, observed, None, observed.read_finished_at)
+    if closed and operation.state in {State.PENDING, State.PROVEN_NOT_SENT}:
         raise PurchaseRefused("purchase_not_prepared", 409)
-    if (
-        retain_point is not None
-        and agreement_explicitly_open(agreement)
-        and (
-            agreement_op.agreement_create_date is None
-            or agreement.create_date == agreement_op.agreement_create_date.isoformat()
-        )
-    ):
-        await retain_point(agreement_op, agreement_id, True)
     rows = await timely_point(
         lambda: client.discover_subscriptions(
             user_id=int(customer.provider_id), agreement_id=agreement_id, budget=budget
@@ -149,11 +158,24 @@ async def find_financial(
     if not ids:
         return None
     point = await timely_point(lambda: client.get_subscription(subscription_id=ids[0], budget=budget), budget)
+    point_at = await delegate(read_source_time, factory)
+    await review_late_subscription(
+        client,
+        factory,
+        customer,
+        str(ids[0]),
+        point,
+        read_finished_at=point_at,
+        budget=budget,
+        delegate=delegate,
+        closed_agreements={},
+        observed_agreement=observed,
+    )
     if operation.state in {State.PENDING, State.PROVEN_NOT_SENT}:
         prove_effective_terms(
             point, agreement_id=agreement_id, selection=purchase.accepted.selection, offer=purchase.accepted.offer
         )
-    return ids[0], agreement, point
+    return FinancialCandidate(ids[0], observed, point, point_at)
 
 
 def is_live_original_subscription(
@@ -191,7 +213,6 @@ async def recover_one(
         return await _already_bound(sources, configuration, factory, purchase, operation, budget, delegate)
     client = sources.require_lbx()
     started = await delegate(read_source_time, factory)
-    agreement_read_at: datetime | None = None
 
     async def retain_point(original: FinancialOperation, provider_id: int, observed_at: datetime) -> None:
         fact = OriginalPointFact(
@@ -214,12 +235,6 @@ async def recover_one(
             work_claim=work_claim,
         ) and (resolution is None or original.id != operation.id):
             raise LbxScopeMismatch()
-
-    async def retain_agreement(original: FinancialOperation, provider_id: int, explicitly_open: bool) -> None:
-        nonlocal agreement_read_at
-        agreement_read_at = await delegate(read_source_time, factory)
-        if explicitly_open:
-            await retain_point(original, provider_id, agreement_read_at)
 
     try:
         try:
@@ -246,21 +261,26 @@ async def recover_one(
             customer,
             budget=budget,
             require_discovery=resolution is not None,
-            retain_point=retain_agreement,
+            factory=factory,
+            retain_point=retain_point,
+            delegate=delegate,
         )
         if found is None:
             if resolution is not None:
                 raise PurchaseRefused("billing_review_proof_incomplete", 409)
             await delegate(financial.financial_pending, factory, purchase, operation, work_claim=work_claim)
             return False
-        provider_id, agreement, point = found
+        provider_id, agreement, point = found.provider_id, found.agreement.point, found.subscription
         proof = None
         if point is not None:
             agreement_op = next(op for op in purchase.operations if op.kind == Kind.AGREEMENT)
-            subscription_read_at = await delegate(read_source_time, factory)
+            subscription_read_at = found.read_finished_at
+            agreement_id = int(agreement_op.bound_id)
+            if point.agreement_id != agreement_id:
+                raise LbxScopeMismatch()
             # Effective terms are proven by the subscription point response.
             # Later tariff policy is required for binding, not to retain this identity.
-            if is_live_original_subscription(purchase, agreement, point, agreement_id=int(agreement_op.bound_id)):
+            if is_live_original_subscription(purchase, agreement, point, agreement_id=agreement_id):
                 await retain_point(operation, provider_id, subscription_read_at)
             tariff = await timely_point(
                 lambda: client.get_tariff(tariff_id=purchase.accepted.selection.tariff_id, budget=budget), budget
@@ -284,7 +304,7 @@ async def recover_one(
                 proof,
                 read_started_at=started,
                 read_finished_at=finished,
-                agreement_read_finished_at=agreement_read_at,
+                agreement_read_finished_at=found.agreement.read_finished_at,
                 subscription_read_finished_at=subscription_read_at,
                 reads=("customer", "agreement", "subscription", "tariff_policy"),
             )
@@ -298,7 +318,7 @@ async def recover_one(
             customer,
             proof,
             agreement.close_date if agreement_is_closed(agreement) else None,
-            subscription_read_at if point is not None else agreement_read_at,
+            found.read_finished_at,
         )
         if resolution is not None:
             from app.composition.purchase_inventory import collect_inventory
@@ -392,7 +412,6 @@ async def recover_financial(
     purchase = await delegate(service.inspect_purchase, factory, configuration, user_id, purchase_id)
     _connection(purchase, configuration)
     if not purchase.held and purchase.state.resolved and work_claim is None and sources.billing is not None:
-        from app.composition.purchase_late_objects import recover_released
         from app.domains.billing.late_purchase_reviews import released_original
 
         original = await delegate(released_original, factory, purchase)

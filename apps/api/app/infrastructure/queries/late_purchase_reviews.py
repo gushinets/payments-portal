@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Select, Text, and_, cast, exists, or_, select
+from sqlalchemy import Select, Text, and_, cast, exists, or_, select, tuple_
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.sql.selectable import Exists
@@ -12,6 +12,7 @@ from app.models import (
     ExternalBillingCustomer as Customer,
     ExternalCreateOperation as Operation,
     ExternalCreateOperationKind as Kind,
+    ExternalSubscription,
     ManualReviewCase as Case,
     PurchaseIntent as Purchase,
     PurchaseIntentState as State,
@@ -105,16 +106,15 @@ def has_terminal_closure(
     return bool(db.scalar(select(query.exists())))
 
 
-def _subscription_case_ids(identities: set[str]) -> ColumnElement[bool]:
+def _case_ids(identities: dict[Kind, set[str]]) -> ColumnElement[bool]:
     evidence = Case.evidence_document
-    return and_(
-        evidence["kind"].as_string() == Kind.SUBSCRIPTION.value,
-        evidence["external_object_id"].as_string().in_(identities),
+    return tuple_(evidence["kind"].as_string(), evidence["external_object_id"].as_string()).in_(
+        [(kind, value) for kind, values in identities.items() for value in values]
     )
 
 
 def purchase_object_ids(
-    db: Session, purchase_id: UUID, *, reason: str, schema: str, subscription_ids: set[str] | None = None
+    db: Session, purchase_id: UUID, *, reason: str, schema: str, identities: dict[Kind, set[str]] | None
 ) -> list[tuple[str, str]]:
     evidence = Case.evidence_document
     query = select(evidence["kind"].as_string(), evidence["external_object_id"].as_string()).where(
@@ -123,16 +123,33 @@ def purchase_object_ids(
         Case.reason_code == reason,
         Case.evidence_schema_version == schema,
     )
-    if subscription_ids is not None:
-        query = query.where(_subscription_case_ids(subscription_ids))
+    if identities is not None:
+        query = query.where(_case_ids(identities))
     return [tuple(row) for row in db.execute(query.distinct().limit(101))]
+
+
+def bound_subscription_purchase(
+    db: Session, customer_id: UUID, account: str, subscription_id: str, agreement_id: str
+) -> Purchase | None:
+    return db.scalar(
+        select(Purchase)
+        .join(ExternalSubscription, ExternalSubscription.purchase_intent_id == Purchase.purchase_intent_id)
+        .where(
+            ExternalSubscription.customer_id == customer_id,
+            ExternalSubscription.external_billing_account_id == account,
+            ExternalSubscription.external_subscription_id == subscription_id,
+            ExternalSubscription.external_agreement_id == agreement_id,
+        )
+    )
 
 
 def product_cases(
     db: Session,
     customer_id: UUID,
+    account_id: str,
     product_id: str,
     tariff_id: int,
+    agreement_id: str | None,
     *,
     reason: str,
     schema: str,
@@ -144,9 +161,13 @@ def product_cases(
             .where(
                 *_purchase_cases(reason, schema),
                 Purchase.customer_id == customer_id,
+                Purchase.external_billing_account_id == account_id,
                 or_(
                     Purchase.product_id == product_id,
-                    Case.evidence_document["competing_tariff_id"].as_integer() == tariff_id,
+                    cast(Case.evidence_document["competing_tariff_id"], Text) == str(tariff_id),
+                    Case.evidence_document["agreement_id"].as_string() == agreement_id
+                    if agreement_id is not None
+                    else False,
                 ),
                 Case.case_state == "open",
             )
@@ -199,8 +220,7 @@ def other_audited_owner(db: Session, operation: Operation, external_id: str, *, 
 def released_owners(
     db: Session,
     customer_id: UUID,
-    agreement_ids: set[str],
-    subscription_ids: set[str],
+    identities: dict[Kind, set[str]],
     agreement_number: str | None = None,
     *,
     audit_reason: str,
@@ -221,11 +241,11 @@ def released_owners(
 
     operation_matches = exists().where(
         Operation.purchase_intent_id == Purchase.purchase_intent_id,
-        or_(matches(Kind.AGREEMENT, agreement_ids), matches(Kind.SUBSCRIPTION, subscription_ids)),
+        or_(*(matches(kind, values) for kind, values in identities.items())),
     )
     case_matches = exists().where(
         *_purchase_cases(case_reason, case_schema),
-        _subscription_case_ids(subscription_ids),
+        _case_ids(identities),
     )
     return list(
         db.scalars(

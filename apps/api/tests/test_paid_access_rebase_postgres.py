@@ -412,8 +412,12 @@ async def test_foreign_late_agreement_does_not_block_independent_primary(
         operation_id=original.operations[1].id,
     )
     with factory() as db:
-        recorded = db.scalars(select(ManualReviewCase).where(ManualReviewCase.reason_code == late.REASON)).one()
-        assert recorded.evidence_document["external_object_id"] == "789"
+        cases = db.scalars(select(ManualReviewCase).where(ManualReviewCase.reason_code == late.REASON)).all()
+        assert {(case.scope_reference, case.evidence_document["external_object_id"]) for case in cases} == {
+            (str(original.id), "456"),
+            (str(original.id), "789"),
+        }
+        recorded = next(case for case in cases if case.evidence_document["external_object_id"] == "789")
         assert not late.blocking_cases(db, independent)
         independent_id = db.scalar(
             select(ExternalSubscription.subscription_id).where(

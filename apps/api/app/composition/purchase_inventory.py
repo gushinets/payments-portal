@@ -11,11 +11,6 @@ from app.composition.purchase_late_objects import (
     SubscriptionRedirect,
     candidate_point,
     historical_subscription_matches,
-    historical_subscription_owner,
-    read_inventory_agreement,
-    record_inventory_late_subscription,
-    released_subscription_owner,
-    review_historical_subscription,
     review_late_subscription,
 )
 from app.composition.purchase_recovery import original_command
@@ -219,10 +214,16 @@ async def collect_inventory(
             raise PurchaseInventoryIncomplete()
         counts = Counter(row.agreement_id for row in rows)
 
-        def products_for_tariff(tariff_id: int | None) -> set[str]:
+        def products_for_tariff(tariff_id: int) -> set[str]:
             return {
                 item.accepted.selection.product_id for item in initial if item.accepted.selection.tariff_id == tariff_id
             }
+
+        def candidate_products(point: Subscription | None) -> set[str]:
+            if point is None:
+                return set()
+            owner = agreements.get(str(point.agreement_id))
+            return {owner.accepted.selection.product_id} if owner is not None else products_for_tariff(point.tariff_id)
 
         for provider_id, candidate in relevant.items():
             budget.check()
@@ -238,11 +239,7 @@ async def collect_inventory(
                 and not historical_matches
             ):
                 continue
-            affected = (
-                {owner.accepted.selection.product_id}
-                if owner is not None
-                else products_for_tariff(candidate.tariff_id if candidate else None)
-            )
+            affected = candidate_products(candidate)
             if historical_matches:
                 affected.update(old.purchase.accepted.selection.product_id for old in historical_matches)
                 point = await candidate_point(
@@ -256,32 +253,21 @@ async def collect_inventory(
                         candidate.tariff_id,
                         candidate.agreement_id,
                     )
-                    # A terminal point cannot reopen any of the matching historical cases.
-                    if (
-                        len(historical_matches) > 1
-                        and agrees_with_listing
-                        and subscription_lifecycle(point)[0] == Lifecycle.ENDED
-                    ):
+                    review = await review_late_subscription(
+                        client,
+                        factory,
+                        current,
+                        provider_id,
+                        point,
+                        read_finished_at=point_finished_at,
+                        budget=budget,
+                        delegate=delegate,
+                        closed_agreements=closed,
+                    )
+                    if review.products and review.complete and agrees_with_listing:
                         continue
-                    historical = historical_subscription_owner(history, provider_id, str(point.agreement_id))
-                    if historical is None:
-                        historical = await released_subscription_owner(factory, current, point, delegate)
-                    if historical is not None:
-                        reviewed = await review_historical_subscription(
-                            client,
-                            factory,
-                            historical,
-                            current,
-                            point,
-                            read_finished_at=point_finished_at,
-                            budget=budget,
-                            delegate=delegate,
-                            closed_agreements=closed,
-                        )
-                        if reviewed and agrees_with_listing:
-                            continue
-                        affected.add(historical.purchase.accepted.selection.product_id)
-                    affected.update(products_for_tariff(point.tariff_id))
+                    affected.update(review.products)
+                    affected.update(candidate_products(point))
                 complete = False
                 product_complete.update(dict.fromkeys(affected, False))
                 continue
@@ -400,38 +386,38 @@ async def collect_inventory(
                         continue
                     unbound_tariff_mismatch = True
             owner = agreements.get(str(point.agreement_id))
-            if unbound_tariff_mismatch or (known is None and listed_elsewhere) or (known is not None and owner is None):
-                await review_late_subscription(
-                    client,
-                    factory,
-                    current,
-                    provider_id,
-                    point,
-                    read_finished_at=point_finished_at,
-                    budget=budget,
-                    delegate=delegate,
-                    closed_agreements=closed,
-                )
-                continue
-            # A receipt conflict on the listed agreement belongs to its owner alone.
-            if receipt_mismatch or (known is not None and owner is not None and owner.id == known.id):
-                continue
-            agreement = await read_inventory_agreement(
-                client, factory, point, budget=budget, delegate=delegate, closed_agreements=closed, user_id=user_id
+            redirected = (
+                unbound_tariff_mismatch or (known is None and listed_elsewhere) or (known is not None and owner is None)
             )
-            if agreement is None:
-                complete = False
+            if not redirected and (
+                receipt_mismatch or (known is not None and owner is not None and owner.id == known.id)
+            ):
                 continue
-            late = await record_inventory_late_subscription(
+            review = await review_late_subscription(
+                client,
                 factory,
                 current,
+                provider_id,
                 point,
-                agreement,
                 read_finished_at=point_finished_at,
+                budget=budget,
                 delegate=delegate,
                 closed_agreements=closed,
             )
-            if late or agreement_is_closed(agreement.point) or subscription_lifecycle(point)[0] == Lifecycle.ENDED:
+            if not review.complete:
+                complete = False
+                affected.update(review.products)
+                affected.update(candidate_products(point))
+                product_complete.update(dict.fromkeys(affected, False))
+                continue
+            if redirected:
+                continue
+            assert review.agreement is not None
+            if (
+                review.products
+                or agreement_is_closed(review.agreement)
+                or subscription_lifecycle(point)[0] == Lifecycle.ENDED
+            ):
                 for product in affected:
                     candidates[product][-1] = candidates[product][-1].model_copy(
                         update={"conclusion": Conclusion.INELIGIBLE}

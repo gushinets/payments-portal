@@ -170,7 +170,7 @@ async def _prepare(
                 await run_in_threadpool(block_admission, factory, inventory, purchase)
                 raise
             try:
-                found = await _find_financial(client, purchase, operation, customer, budget=budget)
+                found = await _find_financial(client, purchase, operation, customer, budget=budget, factory=factory)
             except PurchaseInventoryIncomplete:
                 await run_in_threadpool(financial.financial_pending, factory, purchase, operation)
                 raise

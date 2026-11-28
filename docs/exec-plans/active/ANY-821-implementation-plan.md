@@ -245,13 +245,18 @@ write scope.
 
 ### Recording
 
-When ordinary customer inventory or explicit GET-only recovery proves a live object related to a terminal purchase:
+Ordinary customer inventory and GET-only recovery follow the same rules when
+they prove that a live object is related to a terminal purchase.
 
 - lock the exact financial object identity;
 - create or update one `purchase_late_external_object` case for that exact object on the original purchase;
 - store the exact typed point fact plus the minimum relationship needed for product scoping;
 - preserve the newest fact for the same ID;
 - retain conflict instead of guessing ownership.
+
+If a background worker proves this relationship while recovering another held
+purchase, record the case on the terminal purchase before deciding whether the
+held purchase can bind the object.
 
 Write an already-proven exact fact once the point response and retained
 original relationship establish identity. A later agreement or tariff GET
@@ -319,7 +324,7 @@ inspect
 → inspect again
 → stop and drain affected Portal processes and commands; prevent automatic restart
 → verify no active work or live lease
-→ obtain final LBX evidence
+→ use local proof for each not_sent operation and final LBX confirmation for each external_terminal outcome or exact case closure
 → resolve-purchase / close exact case
 → exact replay if CLI outcome is uncertain
 → restart compatible processes
@@ -422,7 +427,7 @@ the affected behavior and repeat the relevant checks on the final revision.
 - `test_billing_terminal_resolution_races_postgres.py` as a wholesale module.
   Retain regressions reachable on the supported paths in focused tests.
 - callback chains whose only purpose is to preserve evidence across concurrent terminal closure.
-- automatic completed-purchase scan/batch behavior beyond explicit recovery and ordinary inventory correlation.
+- automatic scans or batch recovery of completed purchases.
 - unrelated focus/UI polish.
 
 ## 6. Targeted regressions from ANY-821(#191)

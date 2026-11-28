@@ -374,8 +374,11 @@ application/database backup pair for an incompatible rollback.
    to run the one-off CLI. Set `PYTHONPATH=/app/apps/api` and use
    `python -m app.cli.billing_purchases`. Mount any evidence file read-only at a
    path readable by that service's OS user. Run `inspect` and verify
-   `customer_work_active: false`. Obtain final LBX evidence, then run
-   `resolve-purchase` or exact case closure with the inspected digest. Replay
+   `customer_work_active: false`. If both original operations show
+   `locally_proven_not_sent: true`, use local `not_sent` evidence for both.
+   Obtain final LBX confirmation for each `external_terminal` outcome,
+   including closure of an exact late-object case. Run `resolve-purchase`
+   with the inspected purchase or case digest. Replay
    the identical command from the same OS principal if the result is uncertain.
 4. Restart compatible API/worker and web processes, verify readiness, then
    verify the saved link, terminal status and fresh replacement admission.
